@@ -89,6 +89,44 @@ pub struct LiveConnection {
     pub connected_at: Instant,
     pub current_database: Option<String>,
     pub current_schema: Option<String>,
+    /// Stops the keep-alive task when the connection is dropped.
+    _keepalive: KeepAlive,
+}
+
+/// Background keep-alive: pings the main session every `keep_alive_secs`
+/// on the tokio runtime, independent of UI frames (the UI does not repaint
+/// while idle). Cancelled when dropped.
+struct KeepAlive(tokio_util::sync::CancellationToken);
+
+impl Drop for KeepAlive {
+    fn drop(&mut self) {
+        self.0.cancel();
+    }
+}
+
+impl KeepAlive {
+    fn start(backend: &Backend, session: SessionHandle, secs: u32) -> KeepAlive {
+        let token = tokio_util::sync::CancellationToken::new();
+        if secs > 0 {
+            let t = token.clone();
+            backend.spawn_detached(async move {
+                let period = Duration::from_secs(secs.max(5) as u64);
+                loop {
+                    tokio::select! {
+                        _ = t.cancelled() => break,
+                        _ = tokio::time::sleep(period) => {}
+                    }
+                    if session.is_closed() {
+                        break;
+                    }
+                    if let Err(e) = session.ping().await {
+                        tracing::warn!("keep-alive failed: {e}");
+                    }
+                }
+            });
+        }
+        KeepAlive(token)
+    }
 }
 
 impl LiveConnection {
@@ -333,7 +371,6 @@ pub struct ConnectionManager {
     pub just_connected: Vec<String>,
     /// The store changed and should be written to disk.
     pub dirty: bool,
-    last_keepalive: Instant,
 }
 
 impl ConnectionManager {
@@ -349,7 +386,6 @@ impl ConnectionManager {
             pgpass: None,
             just_connected: Vec::new(),
             dirty: false,
-            last_keepalive: Instant::now(),
         }
     }
 
@@ -563,6 +599,7 @@ impl ConnectionManager {
                         let dialect = driver.dialect();
                         let conn_type = self.connection_type(&cfg.connection_type);
                         let main = SessionHandle::new(c.session, format!("{} (main)", cfg.name), c.database.clone());
+                        let keepalive = KeepAlive::start(backend, main.clone(), cfg.init.keep_alive_secs);
                         if let Some(cfg) = self.config_mut(&id) {
                             cfg.last_connected = Some(chrono::Utc::now().timestamp());
                         }
@@ -582,6 +619,7 @@ impl ConnectionManager {
                                 connected_at: Instant::now(),
                                 current_database: c.database,
                                 current_schema: c.schema,
+                                _keepalive: keepalive,
                             },
                         );
                         self.just_connected.push(id);
@@ -596,19 +634,6 @@ impl ConnectionManager {
             live.meta.poll();
             for s in live.db_sessions.values_mut() {
                 s.poll();
-            }
-        }
-        // Keep-alive pings.
-        if self.last_keepalive.elapsed() > Duration::from_secs(5) {
-            self.last_keepalive = Instant::now();
-            for live in self.live.values() {
-                let secs = live.config.init.keep_alive_secs;
-                if secs > 0 && live.connected_at.elapsed().as_secs() % (secs as u64).max(5) < 5 {
-                    let s = live.main.clone();
-                    backend.spawn_detached(async move {
-                        let _ = s.ping().await;
-                    });
-                }
             }
         }
     }

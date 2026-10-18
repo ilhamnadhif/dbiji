@@ -1,0 +1,234 @@
+//! PRD phase 1 gate: query, edit data, save and cancel work on PostgreSQL,
+//! MySQL, MariaDB and SQLite. The table data view is drawn in headless egui
+//! frames; edits go through the grid model exactly like keyboard edits, and
+//! saving runs the generated statements in one transaction.
+//! Servers: `DBIJI_TEST_PG`, `DBIJI_TEST_MYSQL`, `DBIJI_TEST_MARIADB` (SQLite always runs).
+
+use dbiji_app::backend::Backend;
+use dbiji_app::command::AppCommand;
+use dbiji_app::conn::{ConnectionManager, Credentials, DirectNet, MemorySecrets, SecretSource};
+use dbiji_app::cx::AppContext;
+use dbiji_app::keys::Keymap;
+use dbiji_app::ops::Operations;
+use dbiji_app::results::data_tab::TableDataView;
+use dbiji_app::services::{Services, Settings};
+use dbiji_app::toasts::Toasts;
+use dbiji_core::config::{SecretSlot, secret_key};
+use dbiji_core::meta::ObjectRef;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+fn servers() -> Vec<(&'static str, String)> {
+    let file = std::env::temp_dir().join(format!("dbiji-edit-e2e-{}.db", uuid::Uuid::new_v4().simple()));
+    let mut out = vec![("sqlite", format!("sqlite://{}", file.display()))];
+    for (name, var) in [("postgres", "DBIJI_TEST_PG"), ("mysql", "DBIJI_TEST_MYSQL"), ("mariadb", "DBIJI_TEST_MARIADB")] {
+        if let Ok(url) = std::env::var(var) {
+            if !url.trim().is_empty() {
+                out.push((name, url));
+            }
+        }
+    }
+    out
+}
+
+struct H {
+    backend: Arc<Backend>,
+    ctx: egui::Context,
+    cm: ConnectionManager,
+    services: Services,
+    settings: Settings,
+    keymap: Keymap,
+    toasts: Toasts,
+    ops: Operations,
+    commands: Vec<AppCommand>,
+    time: f64,
+    id: String,
+    dir: std::path::PathBuf,
+}
+
+impl Drop for H {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+impl H {
+    fn new(url: &str) -> H {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        let backend = Arc::new(Backend::new().unwrap());
+        let ctx = egui::Context::default();
+        backend.set_context(ctx.clone());
+        let (mut cfg, password) = dbiji_config::parse_connection_url(url).unwrap();
+        cfg.save_password = true;
+        let secrets = Arc::new(MemorySecrets::default());
+        if let Some(pw) = &password {
+            secrets.set(&secret_key(&cfg.id, SecretSlot::Password), pw).unwrap();
+        }
+        let mut cm = ConnectionManager::new(dbiji_app::driver_registry(), secrets, Arc::new(DirectNet));
+        let id = cfg.id.clone();
+        cm.upsert(cfg);
+        cm.connect(&backend, &id, Credentials::default()).unwrap();
+        let t0 = Instant::now();
+        while !cm.is_connected(&id) {
+            assert!(cm.errors().is_empty(), "{:?}", cm.errors());
+            assert!(t0.elapsed() < Duration::from_secs(20));
+            cm.poll(&backend);
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let dir = std::env::temp_dir().join(format!("dbiji-edit-e2e-home-{}", uuid::Uuid::new_v4().simple()));
+        let services = Services::ephemeral(&dir);
+        let settings = Settings::default();
+        let (keymap, _) = Keymap::from_config(&settings.keymap, dbiji_app::keys::IS_MAC);
+        H { backend, ctx, cm, services, settings, keymap, toasts: Toasts::default(), ops: Operations::default(), commands: Vec::new(), time: 0.0, id, dir }
+    }
+
+    fn frame(&mut self, view: &mut TableDataView) {
+        self.time += 1.0 / 60.0;
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1200.0, 800.0))),
+            time: Some(self.time),
+            focused: true,
+            ..Default::default()
+        };
+        let ctx = self.ctx.clone();
+        let mut out = ctx.run_ui(input, |ui| {
+            let mut cx = AppContext {
+                backend: &self.backend,
+                conns: &mut self.cm,
+                services: &self.services,
+                settings: &mut self.settings,
+                commands: &mut self.commands,
+                toasts: &mut self.toasts,
+                ops: &mut self.ops,
+                keymap: &self.keymap,
+                tab_active: true,
+                current_tab: Some(1),
+            };
+            view.ui(ui, &mut cx);
+        });
+        out.textures_delta.clear();
+        self.cm.poll(&self.backend);
+    }
+
+    fn until(&mut self, view: &mut TableDataView, what: &str, mut done: impl FnMut(&mut TableDataView) -> bool) {
+        let t0 = Instant::now();
+        loop {
+            self.frame(view);
+            if done(view) {
+                return;
+            }
+            assert!(t0.elapsed() < Duration::from_secs(30), "timed out waiting for {what}");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn sql(&self, sql: &str) {
+        let s = self.cm.live(&self.id).unwrap().main.clone();
+        let owned = sql.to_string();
+        self.backend.block_on(async move { s.execute_update(&owned, &[]).await }).unwrap_or_else(|e| panic!("{sql}: {e}"));
+    }
+
+    fn query(&self, sql: &str) -> Vec<Vec<String>> {
+        let s = self.cm.live(&self.id).unwrap().main.clone();
+        let sql = sql.to_string();
+        let (_, rows) = self.backend.block_on(async move { s.query_all(&sql, &[]).await }).unwrap();
+        rows.iter().map(|r| r.iter().map(|v| v.to_text().into_owned()).collect()).collect()
+    }
+}
+
+fn save_and_wait(h: &mut H, view: &mut TableDataView) {
+    {
+        let mut cx = AppContext {
+            backend: &h.backend,
+            conns: &mut h.cm,
+            services: &h.services,
+            settings: &mut h.settings,
+            commands: &mut h.commands,
+            toasts: &mut h.toasts,
+            ops: &mut h.ops,
+            keymap: &h.keymap,
+            tab_active: true,
+            current_tab: Some(1),
+        };
+        view.panel.as_mut().unwrap().save(&mut cx);
+    }
+    h.until(view, "save", |v| !v.panel.as_ref().unwrap().has_changes());
+}
+
+#[test]
+fn edit_save_and_cancel() {
+    for (name, url) in servers() {
+        let mut h = H::new(&url);
+        let table = format!("dbiji_edit_{}", &uuid::Uuid::new_v4().simple().to_string()[..8]);
+        h.sql(&format!("CREATE TABLE {table} (id INT PRIMARY KEY, name VARCHAR(40), qty INT)"));
+        h.sql(&format!("INSERT INTO {table} VALUES (1, 'one', 10), (2, 'two', 20), (3, 'three', 30)"));
+        let schema = {
+            let live = h.cm.live(&h.id).unwrap();
+            if name == "sqlite" { None } else { live.current_schema.clone().or(live.current_database.clone()) }
+        };
+        let obj = ObjectRef::table(schema, table.clone());
+        let mut view = TableDataView::new(h.id.clone(), obj, None);
+        h.until(&mut view, "rows", |v| v.panel.as_ref().is_some_and(|p| p.model.row_count() == 3 && p.model.is_editable()));
+
+        // Cancel: edits are discarded and nothing reaches the database.
+        {
+            let p = view.panel.as_mut().unwrap();
+            p.model.set_cell(0, 1, "changed").unwrap();
+            assert!(p.model.has_changes());
+            p.discard();
+            assert!(!p.model.has_changes());
+        }
+        assert_eq!(h.query(&format!("SELECT name FROM {table} WHERE id = 1")), vec![vec!["one".to_string()]], "{name}: cancel");
+
+        // Update, insert and delete, saved together.
+        let rows = {
+            let p = view.panel.as_mut().unwrap();
+            let id_col = p.model.columns().iter().position(|c| c.name.eq_ignore_ascii_case("id")).unwrap();
+            let name_col = p.model.columns().iter().position(|c| c.name.eq_ignore_ascii_case("name")).unwrap();
+            let qty_col = p.model.columns().iter().position(|c| c.name.eq_ignore_ascii_case("qty")).unwrap();
+            let row_of = |p: &dbiji_app::results::panel::ResultPanel, id: i64| (0..p.model.row_count()).find(|&r| p.model.cell(r, id_col).and_then(|v| v.as_i64()) == Some(id)).unwrap();
+            let r1 = row_of(p, 1);
+            p.model.set_cell(r1, name_col, "uno").unwrap();
+            let r2 = row_of(p, 2);
+            p.model.delete_rows(&[r2]).unwrap();
+            let new = p.model.add_row(None).unwrap();
+            p.model.set_cell(new, id_col, "4").unwrap();
+            p.model.set_cell(new, name_col, "four").unwrap();
+            p.model.set_cell(new, qty_col, "40").unwrap();
+            p.model.row_count()
+        };
+        assert!(rows >= 3);
+        save_and_wait(&mut h, &mut view);
+        let got = h.query(&format!("SELECT id, name, qty FROM {table} ORDER BY id"));
+        assert_eq!(
+            got,
+            vec![
+                vec!["1".to_string(), "uno".into(), "10".into()],
+                vec!["3".to_string(), "three".into(), "30".into()],
+                vec!["4".to_string(), "four".into(), "40".into()],
+            ],
+            "{name}: saved"
+        );
+
+        // NULL and duplicate rows.
+        {
+            let p = view.panel.as_mut().unwrap();
+            let qty_col = p.model.columns().iter().position(|c| c.name.eq_ignore_ascii_case("qty")).unwrap();
+            let id_col = p.model.columns().iter().position(|c| c.name.eq_ignore_ascii_case("id")).unwrap();
+            let r = (0..p.model.row_count()).find(|&r| p.model.cell(r, id_col).and_then(|v| v.as_i64()) == Some(3)).unwrap();
+            p.model.set_cells(vec![(r, qty_col, dbiji_grid::model::CellValue::Value(dbiji_core::Value::Null))]).unwrap();
+            let dup = p.model.duplicate_rows(&[r]).unwrap();
+            p.model.set_cell(dup[0], id_col, "5").unwrap();
+        }
+        save_and_wait(&mut h, &mut view);
+        let got = h.query(&format!("SELECT id, qty FROM {table} WHERE id IN (3, 5) ORDER BY id"));
+        assert_eq!(got.len(), 2, "{name}: duplicate saved");
+        assert!(got.iter().all(|r| r[1].is_empty() || r[1].eq_ignore_ascii_case("null")), "{name}: NULL saved: {got:?}");
+
+        h.sql(&format!("DROP TABLE {table}"));
+        h.cm.disconnect_all(&h.backend);
+        if let Some(p) = url.strip_prefix("sqlite://") {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+}

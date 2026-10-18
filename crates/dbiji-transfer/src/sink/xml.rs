@@ -114,7 +114,9 @@ impl RowSink for XmlSink {
                 head.push_str(&format!("  <!ELEMENT {record} ({}?)*>\n", self.names.join("?,")));
             }
             for n in &self.names {
-                head.push_str(&format!("  <!ELEMENT {n} (#PCDATA)>\n  <!ATTLIST {n} null (true|false) #IMPLIED encoding CDATA #IMPLIED>\n"));
+                head.push_str(&format!(
+                    "  <!ELEMENT {n} (#PCDATA)>\n  <!ATTLIST {n} null (true|false) #IMPLIED encoding CDATA #IMPLIED>\n"
+                ));
             }
             head.push_str("]>\n");
         }

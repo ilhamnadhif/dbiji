@@ -120,14 +120,14 @@ impl SqlSink {
                         ..Default::default()
                     });
                 }
-                if !self.opts.key_columns.is_empty() {
-                    t.primary_key = Some(KeyDef { name: None, columns: self.opts.key_columns.clone() });
-                }
                 t
             }
         };
         def.schema = schema;
         def.name = name.to_string();
+        if def.primary_key.is_none() && !self.opts.key_columns.is_empty() {
+            def.primary_key = Some(KeyDef { name: None, columns: self.opts.key_columns.clone() });
+        }
         // Foreign keys may reference tables that are not part of the script.
         def.foreign_keys.clear();
         self.dialect.ddl().create_table(&def, false)
@@ -175,7 +175,8 @@ impl RowSink for SqlSink {
             _ => match &source {
                 Some((_, n)) => n.clone(),
                 None => {
-                    self.warnings.push("The result has no single source table; statements target 'query_result'".into());
+                    self.warnings
+                        .push("The result has no single source table; statements target 'query_result'".into());
                     "query_result".to_string()
                 }
             },
@@ -206,11 +207,11 @@ impl RowSink for SqlSink {
         if self.opts.mode == SqlInsertMode::Upsert {
             let mut keys: Vec<String> = self.opts.key_columns.clone();
             if keys.is_empty()
-                && let Some(k) = self.table_def.as_ref().and_then(|d| d.row_key()) {
-                    keys = k.columns.clone();
-                }
-            let index: Option<Vec<usize>> =
-                keys.iter().map(|k| columns.iter().position(|c| &c.name == k)).collect();
+                && let Some(k) = self.table_def.as_ref().and_then(|d| d.row_key())
+            {
+                keys = k.columns.clone();
+            }
+            let index: Option<Vec<usize>> = keys.iter().map(|k| columns.iter().position(|c| &c.name == k)).collect();
             match index {
                 Some(idx) if !idx.is_empty() => {
                     self.key_index = idx;
@@ -227,7 +228,9 @@ impl RowSink for SqlSink {
                     self.upsert = true;
                 }
                 _ => {
-                    self.warnings.push("Upsert needs key columns present in the result; plain INSERT statements are written".into());
+                    self.warnings.push(
+                        "Upsert needs key columns present in the result; plain INSERT statements are written".into(),
+                    );
                 }
             }
         }
@@ -256,8 +259,18 @@ impl RowSink for SqlSink {
                         _ => format!("{k} = {}", self.literals[i]),
                     })
                     .collect();
-                text.push_str(&format!("DELETE FROM {} WHERE {}{}\n", self.table_sql, cond.join(" AND "), self.opts.terminator));
-                text.push_str(&format!("{} ({}){}\n", self.insert_prefix, self.literals.join(", "), self.opts.terminator));
+                text.push_str(&format!(
+                    "DELETE FROM {} WHERE {}{}\n",
+                    self.table_sql,
+                    cond.join(" AND "),
+                    self.opts.terminator
+                ));
+                text.push_str(&format!(
+                    "{} ({}){}\n",
+                    self.insert_prefix,
+                    self.literals.join(", "),
+                    self.opts.terminator
+                ));
             }
             self.out.write_str(&text)?;
         } else {

@@ -103,13 +103,10 @@ async fn xml_golden_and_null_modes() {
     let xml = out(ExportFormat::Xml, &o).await;
     assert!(xml.contains("<price>[NULL]</price>"), "{xml}");
     // Characters XML cannot carry are transported as base64; CR is a character reference.
-    let special = vec![vec![Value::Int(1), Value::text("a\u{1}b"), Value::Null, Value::Null, Value::Null], vec![
-        Value::Int(2),
-        Value::text("x\r\ny"),
-        Value::Null,
-        Value::Null,
-        Value::Null,
-    ]];
+    let special = vec![
+        vec![Value::Int(1), Value::text("a\u{1}b"), Value::Null, Value::Null, Value::Null],
+        vec![Value::Int(2), Value::text("x\r\ny"), Value::Null, Value::Null, Value::Null],
+    ];
     let xml = export_string(ExportFormat::Xml, &ExportOptions::default(), cols(), special, table(), None).await;
     assert!(xml.contains("<name encoding=\"base64\">YQFi</name>"), "{xml}");
     assert!(xml.contains("<name>x&#13;\ny</name>"), "{xml}");
@@ -153,7 +150,15 @@ async fn dbunit_golden() {
     let x = out(ExportFormat::DbUnit, &o).await;
     assert!(x.contains("<T ID=\"2\" NAME=\"Bob&#10;Smith\" PRICE=\"[null]\" BORN=\"[null]\" OK=\"false\"/>"), "{x}");
     let bin = vec![vec![Value::bytes(vec![1u8, 2, 3])]];
-    let x = export_string(ExportFormat::DbUnit, &ExportOptions::default(), vec![ColumnMeta::new("b", "bytea", DataKind::Binary)], bin, None, None).await;
+    let x = export_string(
+        ExportFormat::DbUnit,
+        &ExportOptions::default(),
+        vec![ColumnMeta::new("b", "bytea", DataKind::Binary)],
+        bin,
+        None,
+        None,
+    )
+    .await;
     assert!(x.contains("<query_result b=\"AQID\"/>"), "{x}");
 }
 
@@ -196,7 +201,10 @@ async fn csv_options_golden() {
     let csv = out(ExportFormat::Csv, &o).await;
     assert_eq!(csv, "\"1\",\"Ann | \\\"A\\\"\",\"12.50\",\"2024-01-31\",\"true\"\n\"2\",\"Bob\nSmith\",,,\"false\"\n");
     let tsv = out(ExportFormat::Tsv, &ExportOptions::default()).await;
-    assert_eq!(tsv, "id\tname\tprice\tborn\tok\n1\t\"Ann | \"\"A\"\"\"\t12.50\t2024-01-31\ttrue\n2\t\"Bob\nSmith\"\t\t\tfalse\n");
+    assert_eq!(
+        tsv,
+        "id\tname\tprice\tborn\tok\n1\t\"Ann | \"\"A\"\"\"\t12.50\t2024-01-31\ttrue\n2\t\"Bob\nSmith\"\t\t\tfalse\n"
+    );
     // Value formatting.
     let mut o = ExportOptions::default();
     o.values.date_format = Some("%d.%m.%Y".into());
@@ -232,7 +240,15 @@ async fn text_encodings_and_bom() {
     // XML declares the encoding it is written in.
     let o = ExportOptions { encoding: "windows-1252".into(), ..Default::default() };
     let xml_path = dir.path().join("x.xml");
-    export_to(ExportFormat::Xml, &o, &xml_path, vec![ColumnMeta::new("v", "text", DataKind::Text)], vec![vec![Value::text("é")]], None).await;
+    export_to(
+        ExportFormat::Xml,
+        &o,
+        &xml_path,
+        vec![ColumnMeta::new("v", "text", DataKind::Text)],
+        vec![vec![Value::text("é")]],
+        None,
+    )
+    .await;
     let bytes = std::fs::read(&xml_path).unwrap();
     assert!(bytes.starts_with(b"<?xml version=\"1.0\" encoding=\"windows-1252\"?>"));
     let mut src = XmlSource::open(&xml_path, XmlReadOptions::default()).unwrap();
@@ -276,7 +292,8 @@ async fn json_golden() {
 #[tokio::test]
 async fn sql_golden() {
     let dialect = Some(generic());
-    let sql = export_string(ExportFormat::Sql, &ExportOptions::default(), cols(), rows(), table(), dialect.clone()).await;
+    let sql =
+        export_string(ExportFormat::Sql, &ExportOptions::default(), cols(), rows(), table(), dialect.clone()).await;
     assert_eq!(
         sql,
         "INSERT INTO app.t (id, name, price, born, ok) VALUES\n(1, 'Ann | \"A\"', 12.50, '2024-01-31', TRUE),\n\
@@ -321,7 +338,10 @@ async fn sql_golden() {
         "INSERT INTO t (id, name, price, born, ok) VALUES (1, 'Ann | \"A\"', '12.50', '2024-01-31', TRUE) ON CONFLICT (id) DO UPDATE SET"
     ), "{native}");
     let fallback = export_string(ExportFormat::Sql, &o, cols(), rows(), table(), dialect.clone()).await;
-    assert!(fallback.starts_with("DELETE FROM t WHERE id = 1;\nINSERT INTO t (id, name, price, born, ok) VALUES (1, "), "{fallback}");
+    assert!(
+        fallback.starts_with("DELETE FROM t WHERE id = 1;\nINSERT INTO t (id, name, price, born, ok) VALUES (1, "),
+        "{fallback}"
+    );
     // Upsert without keys falls back to INSERT with a warning.
     let mut o = ExportOptions::default();
     o.sql.mode = SqlInsertMode::Upsert;
@@ -381,7 +401,9 @@ async fn xlsx_reread_with_calamine() {
             Value::Bool(true),
             Value::Date(d),
             Value::DateTime(d.and_hms_opt(12, 30, 0).unwrap()),
-            Value::DateTimeTz(d.and_hms_opt(8, 0, 0).unwrap().and_local_timezone(FixedOffset::east_opt(7 * 3600).unwrap()).unwrap()),
+            Value::DateTimeTz(
+                d.and_hms_opt(8, 0, 0).unwrap().and_local_timezone(FixedOffset::east_opt(7 * 3600).unwrap()).unwrap(),
+            ),
             Value::Time(NaiveTime::from_hms_opt(6, 0, 0).unwrap()),
             Value::bytes(vec![0xABu8, 0xCD]),
             Value::Int(1_234_567_890_123_456_789),
@@ -493,7 +515,9 @@ async fn xlsx_options_and_sheet_split() {
         }
     }
     let mut src = VecSource::new(cols(), rows());
-    let mut sink = create_sink(ExportFormat::Xlsx, &ExportOptions::default(), ExportTarget::writer(Shared(buf.clone())), None).unwrap();
+    let mut sink =
+        create_sink(ExportFormat::Xlsx, &ExportOptions::default(), ExportTarget::writer(Shared(buf.clone())), None)
+            .unwrap();
     run_export(&mut src, sink.as_mut(), &Progress::new(), &CancellationToken::new()).await.unwrap();
     assert_eq!(&buf.lock()[..2], b"PK");
 }
@@ -604,7 +628,8 @@ async fn parquet_type_mismatch_is_an_error_with_row() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("bad.parquet");
     let mut src = VecSource::new(c, r);
-    let mut sink = create_sink(ExportFormat::Parquet, &ExportOptions::default(), ExportTarget::path(&path), None).unwrap();
+    let mut sink =
+        create_sink(ExportFormat::Parquet, &ExportOptions::default(), ExportTarget::path(&path), None).unwrap();
     let err = run_export(&mut src, sink.as_mut(), &Progress::new(), &CancellationToken::new()).await.unwrap_err();
     assert!(err.message.contains("Row 2, column n"), "{}", err.message);
     // The partial file is removed.

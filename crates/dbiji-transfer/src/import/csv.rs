@@ -155,11 +155,7 @@ impl<R: Read> CsvParser<R> {
     }
 
     fn peek(&mut self) -> DbResult<Option<u8>> {
-        if self.pos < self.len || self.fill(1)? {
-            Ok(Some(self.buf[self.pos]))
-        } else {
-            Ok(None)
-        }
+        if self.pos < self.len || self.fill(1)? { Ok(Some(self.buf[self.pos])) } else { Ok(None) }
     }
 
     fn bump(&mut self) -> DbResult<Option<u8>> {
@@ -266,18 +262,7 @@ impl<R: Read> CsvParser<R> {
                     }
                 }
             } else {
-                loop {
-                    if self.at_delimiter()? {
-                        break;
-                    }
-                    match self.peek()? {
-                        None | Some(b'\n' | b'\r') => break,
-                        Some(c) => {
-                            bytes.push(c);
-                            self.pos += 1;
-                        }
-                    }
-                }
+                self.read_unquoted(&mut bytes)?;
                 if self.trim {
                     while bytes.last().is_some_and(|b| *b == b' ' || *b == b'\t') {
                         bytes.pop();
@@ -295,6 +280,42 @@ impl<R: Read> CsvParser<R> {
             }
             self.eat_line_end()?;
             return Ok(Some(fields));
+        }
+    }
+
+    /// Copy an unquoted field up to the delimiter or line end (not consumed).
+    fn read_unquoted(&mut self, out: &mut Vec<u8>) -> DbResult<()> {
+        let first = self.delimiter[0];
+        loop {
+            // Fast path: copy bytes that cannot start a delimiter or a line end in bulk.
+            let start = self.pos;
+            let mut i = self.pos;
+            while i < self.len {
+                let b = self.buf[i];
+                if b == first || b == b'\n' || b == b'\r' {
+                    break;
+                }
+                i += 1;
+            }
+            out.extend_from_slice(&self.buf[start..i]);
+            self.pos = i;
+            if self.pos >= self.len {
+                if !self.fill(1)? {
+                    return Ok(());
+                }
+                continue;
+            }
+            if self.at_delimiter()? {
+                return Ok(());
+            }
+            match self.buf[self.pos] {
+                b'\n' | b'\r' => return Ok(()),
+                c => {
+                    // First byte of the delimiter without the rest of it.
+                    out.push(c);
+                    self.pos += 1;
+                }
+            }
         }
     }
 
@@ -446,7 +467,9 @@ impl CsvSource {
         let mut row: Row = fields
             .into_iter()
             .take(width)
-            .map(|f| if !f.quoted && f.text == self.null_string { Value::Null } else { Value::Text(f.text.into_boxed_str()) })
+            .map(|f| {
+                if !f.quoted && f.text == self.null_string { Value::Null } else { Value::Text(f.text.into_boxed_str()) }
+            })
             .collect();
         row.resize(width, Value::Null);
         row
@@ -582,10 +605,7 @@ mod tests {
             trim: true,
             ..Default::default()
         };
-        assert_eq!(
-            texts("# comment\n a || \"b\\\"c\\\\\" ||d|e\n", &o),
-            vec![vec!["a", "b\"c\\", "d|e"]]
-        );
+        assert_eq!(texts("# comment\n a || \"b\\\"c\\\\\" ||d|e\n", &o), vec![vec!["a", "b\"c\\", "d|e"]]);
     }
 
     #[test]
@@ -610,8 +630,12 @@ mod tests {
     #[tokio::test]
     async fn source_header_null_ragged() {
         let csv = "id,name,note\n1,\"\",\n2,x\n3,y,z,extra\n";
-        let mut s = CsvSource::from_reader(std::io::Cursor::new(csv.as_bytes().to_vec()), CsvReadOptions::default()).unwrap();
-        assert_eq!(s.columns().iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), vec!["id", "name", "note", "column4"]);
+        let mut s =
+            CsvSource::from_reader(std::io::Cursor::new(csv.as_bytes().to_vec()), CsvReadOptions::default()).unwrap();
+        assert_eq!(
+            s.columns().iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+            vec!["id", "name", "note", "column4"]
+        );
         let rows = s.next_batch(10).await.unwrap();
         assert_eq!(rows[0], vec![Value::text("1"), Value::text(""), Value::Null, Value::Null]);
         assert_eq!(rows[2][3], Value::text("extra"));
@@ -622,8 +646,11 @@ mod tests {
     #[tokio::test]
     async fn header_detection() {
         let with = "name,age\nann,31\nbob,42\n";
-        let s = CsvSource::from_reader(std::io::Cursor::new(with.as_bytes().to_vec()), CsvReadOptions { header: CsvHeader::Auto, ..Default::default() })
-            .unwrap();
+        let s = CsvSource::from_reader(
+            std::io::Cursor::new(with.as_bytes().to_vec()),
+            CsvReadOptions { header: CsvHeader::Auto, ..Default::default() },
+        )
+        .unwrap();
         assert_eq!(s.columns()[1].name, "age");
         let without = "1,2\n3,4\n";
         let mut s = CsvSource::from_reader(

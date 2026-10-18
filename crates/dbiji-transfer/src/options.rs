@@ -618,7 +618,11 @@ pub struct ParquetOptions {
 
 impl Default for ParquetOptions {
     fn default() -> Self {
-        ParquetOptions { compression: ParquetCompression::Snappy, row_group_rows: 65_536, row_group_bytes: 64 * 1024 * 1024 }
+        ParquetOptions {
+            compression: ParquetCompression::Snappy,
+            row_group_rows: 65_536,
+            row_group_bytes: 64 * 1024 * 1024,
+        }
     }
 }
 

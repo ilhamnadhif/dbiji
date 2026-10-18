@@ -115,7 +115,14 @@ impl CursorSource {
         loop {
             match cursor.next_result().await {
                 Ok(Some(ResultHeader::Rows(columns))) => {
-                    return Ok(CursorSource { cursor: Some(cursor), columns, table: None, total: None, done: false, warnings: Vec::new() });
+                    return Ok(CursorSource {
+                        cursor: Some(cursor),
+                        columns,
+                        table: None,
+                        total: None,
+                        done: false,
+                        warnings: Vec::new(),
+                    });
                 }
                 Ok(Some(ResultHeader::Update { .. })) => continue,
                 Ok(None) => {

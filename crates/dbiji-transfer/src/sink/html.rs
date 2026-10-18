@@ -39,7 +39,14 @@ pub(crate) fn push_escaped_html(out: &mut String, s: &str) {
 
 impl HtmlSink {
     pub(crate) fn new(out: TextOutput, options: &ExportOptions) -> Self {
-        HtmlSink { out, opts: options.html.clone(), values: options.values.clone(), ncols: 0, line: String::new(), rows: 0 }
+        HtmlSink {
+            out,
+            opts: options.html.clone(),
+            values: options.values.clone(),
+            ncols: 0,
+            line: String::new(),
+            rows: 0,
+        }
     }
 }
 

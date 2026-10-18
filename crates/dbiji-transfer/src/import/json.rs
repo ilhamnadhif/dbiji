@@ -461,7 +461,7 @@ impl<R: BufRead> Stream<R> {
         unescape(inner).map_err(|e| self.error(e))
     }
 
-    fn expect(&mut self, b: u8) -> DbResult<()> {
+    fn expect_byte(&mut self, b: u8) -> DbResult<()> {
         match self.skip_ws()? {
             Some(c) if c == b => {
                 self.bump()?;
@@ -495,13 +495,15 @@ fn column_from_descriptor(v: &serde_json::Value, i: usize) -> ColumnMeta {
     match v {
         serde_json::Value::String(s) => ColumnMeta::new(s.clone(), "", DataKind::Text),
         serde_json::Value::Object(o) => {
-            let name = o.get("name").and_then(|n| n.as_str()).map(str::to_string).unwrap_or_else(|| format!("column{}", i + 1));
+            let name = o
+                .get("name")
+                .and_then(|n| n.as_str())
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("column{}", i + 1));
             let type_name = o.get("type").and_then(|t| t.as_str()).unwrap_or("").to_string();
-            let kind = o
-                .get("kind")
-                .and_then(|k| k.as_str())
-                .and_then(kind_from_name)
-                .unwrap_or_else(|| if type_name.is_empty() { DataKind::Text } else { DataKind::guess_from_type_name(&type_name) });
+            let kind = o.get("kind").and_then(|k| k.as_str()).and_then(kind_from_name).unwrap_or_else(|| {
+                if type_name.is_empty() { DataKind::Text } else { DataKind::guess_from_type_name(&type_name) }
+            });
             ColumnMeta::new(name, type_name, kind)
         }
         _ => ColumnMeta::new(format!("column{}", i + 1), "", DataKind::Text),
@@ -596,14 +598,16 @@ impl JsonSource {
                 }
                 Some(b'"') => {
                     let key = self.stream.read_string()?;
-                    self.stream.expect(b':')?;
+                    self.stream.expect_byte(b':')?;
                     match self.stream.skip_ws()? {
                         Some(b'[') if key == "columns" => {
                             let mut raw = Vec::new();
                             self.stream.capture(&mut raw, 0)?;
                             let parsed: serde_json::Value =
                                 serde_json::from_slice(&raw).map_err(|e| self.stream.error(e))?;
-                            let cols = parsed.as_array().map(|a| a.iter().enumerate().map(|(i, v)| column_from_descriptor(v, i)).collect());
+                            let cols = parsed
+                                .as_array()
+                                .map(|a| a.iter().enumerate().map(|(i, v)| column_from_descriptor(v, i)).collect());
                             *declared = cols;
                         }
                         Some(b'[') => {
@@ -790,7 +794,10 @@ mod tests {
         let mut s = JsonSource::from_reader(std::io::Cursor::new(layout.as_bytes().to_vec()), opts).unwrap();
         assert_eq!(s.columns()[0].kind, DataKind::Int);
         assert_eq!(s.columns()[1].name, "name");
-        assert_eq!(s.next_batch(10).await.unwrap(), vec![vec![Value::Int(1), Value::text("a")], vec![Value::Int(2), Value::Null]]);
+        assert_eq!(
+            s.next_batch(10).await.unwrap(),
+            vec![vec![Value::Int(1), Value::text("a")], vec![Value::Int(2), Value::Null]]
+        );
     }
 
     #[tokio::test]
@@ -799,7 +806,10 @@ mod tests {
         let opts = JsonReadOptions::default();
         assert!(JsonSource::from_reader(std::io::Cursor::new(bad.as_bytes().to_vec()), opts).is_err());
         let truncated = "[{\"a\": 1}, {\"a\"";
-        assert!(JsonSource::from_reader(std::io::Cursor::new(truncated.as_bytes().to_vec()), JsonReadOptions::default()).is_err());
+        assert!(
+            JsonSource::from_reader(std::io::Cursor::new(truncated.as_bytes().to_vec()), JsonReadOptions::default())
+                .is_err()
+        );
         let empty = "";
         let (names, rows) = read(empty, JsonInputFormat::Auto).await;
         assert!(names.is_empty() && rows.is_empty());

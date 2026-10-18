@@ -167,7 +167,9 @@ pub fn format_value<'a>(value: &'a Value, fmt: &'a ValueFormat) -> Cow<'a, str> 
         },
         Value::DateTimeTz(dt) => match (&fmt.timestamptz_format, &fmt.datetime_format) {
             (Some(p), _) => Cow::Owned(safe_format(|out| write!(out, "{}", dt.format(p)))),
-            (None, Some(p)) => Cow::Owned(safe_format(|out| write!(out, "{}{}", dt.naive_local().format(p), dt.format("%:z")))),
+            (None, Some(p)) => {
+                Cow::Owned(safe_format(|out| write!(out, "{}{}", dt.naive_local().format(p), dt.format("%:z"))))
+            }
             (None, None) => value.to_text(),
         },
         Value::Uuid(_) | Value::Array(_) => value.to_text(),
@@ -196,7 +198,8 @@ pub(crate) fn localize_number(s: &str, decimal: char, thousands: Option<char>) -
         Some(i) => (&body[..i], Some(&body[i + 1..])),
         None => (body, None),
     };
-    let plain = int_part.chars().all(|c| c.is_ascii_digit()) && frac.is_none_or(|f| f.chars().all(|c| c.is_ascii_digit()));
+    let plain =
+        int_part.chars().all(|c| c.is_ascii_digit()) && frac.is_none_or(|f| f.chars().all(|c| c.is_ascii_digit()));
     if !plain {
         return s.replace('.', &decimal.to_string());
     }
@@ -268,7 +271,8 @@ mod tests {
         assert!(!f.is_canonical());
         let d = NaiveDate::from_ymd_opt(2024, 1, 31).unwrap();
         assert_eq!(format_value(&Value::Date(d), &f), "31.01.2024");
-        let tz = d.and_hms_opt(10, 30, 0).unwrap().and_local_timezone(FixedOffset::east_opt(7 * 3600).unwrap()).unwrap();
+        let tz =
+            d.and_hms_opt(10, 30, 0).unwrap().and_local_timezone(FixedOffset::east_opt(7 * 3600).unwrap()).unwrap();
         assert_eq!(format_value(&Value::DateTimeTz(tz), &f), "31.01.2024 10:30+07:00");
         assert_eq!(format_value(&Value::decimal("-1234567.891"), &f), "-1.234.567,891");
         assert_eq!(format_value(&Value::Float(1234.5678), &f), "1.234,57");

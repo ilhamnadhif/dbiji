@@ -156,7 +156,13 @@ impl ImportMapping {
                     skip: c.generated.is_some(),
                     nullable: c.nullable,
                 },
-                None => ColumnMapping { source_index: i, target_name: s.name.clone(), skip: true, nullable: true, ..Default::default() },
+                None => ColumnMapping {
+                    source_index: i,
+                    target_name: s.name.clone(),
+                    skip: true,
+                    nullable: true,
+                    ..Default::default()
+                },
             })
             .collect();
         let target = ObjectRef::table(table.schema.clone(), table.name.clone());
@@ -270,8 +276,11 @@ async fn import_rows(
     if mapping.create_table {
         let mut def = TableDef::new(mapping.target.schema.clone(), mapping.target.name.clone());
         for (i, (c, kind)) in active.iter().zip(&kinds).enumerate() {
-            let data_type =
-                if c.target_type.trim().is_empty() { dialect.ddl().default_type_for(*kind) } else { c.target_type.clone() };
+            let data_type = if c.target_type.trim().is_empty() {
+                dialect.ddl().default_type_for(*kind)
+            } else {
+                c.target_type.clone()
+            };
             def.columns.push(ColumnDef {
                 name: c.target_name.clone(),
                 data_type,
@@ -300,9 +309,10 @@ async fn import_rows(
             .key_columns
             .iter()
             .map(|k| {
-                active.iter().position(|c| c.target_name.eq_ignore_ascii_case(k)).ok_or_else(|| {
-                    DbError::config(format!("Key column '{k}' is not among the imported columns"))
-                })
+                active
+                    .iter()
+                    .position(|c| c.target_name.eq_ignore_ascii_case(k))
+                    .ok_or_else(|| DbError::config(format!("Key column '{k}' is not among the imported columns")))
             })
             .collect::<DbResult<_>>()?
     } else {
@@ -314,8 +324,14 @@ async fn import_rows(
         key_index,
     };
     let handle = session.cancel_handle();
-    let mut writer =
-        BatchWriter::new(session, target, mapping.transaction, mapping.on_error, mapping.rows_per_statement, item.clone());
+    let mut writer = BatchWriter::new(
+        session,
+        target,
+        mapping.transaction,
+        mapping.on_error,
+        mapping.rows_per_statement,
+        item.clone(),
+    );
     writer.begin().await?;
     let outcome = async {
         if mapping.mode == ImportMode::TruncateFirst {
@@ -363,9 +379,10 @@ async fn import_rows(
             writer.end_batch().await?;
             progress.add_rows(n);
             if let Some(max) = mapping.max_errors
-                && writer.failed > max {
-                    return Err(DbError::config(format!("Import stopped after {} failed rows", writer.failed)));
-                }
+                && writer.failed > max
+            {
+                return Err(DbError::config(format!("Import stopped after {} failed rows", writer.failed)));
+            }
             if cancel.is_cancelled() {
                 return Err(DbError::cancelled());
             }
@@ -378,9 +395,10 @@ async fn import_rows(
         Err(e) => {
             writer.abort().await;
             if e.kind == ErrorKind::Cancelled
-                && let Some(h) = handle {
-                    let _ = h.cancel().await;
-                }
+                && let Some(h) = handle
+            {
+                let _ = h.cancel().await;
+            }
             return Err(crate::error::with_item(e, &item));
         }
     }
@@ -442,7 +460,9 @@ impl ImportSourceConfig {
     pub async fn open(&self) -> DbResult<Box<dyn RowSource>> {
         Ok(match self {
             ImportSourceConfig::Csv { path, options } => Box::new(csv::CsvSource::open(path, options.clone())?),
-            ImportSourceConfig::Xlsx { path, options } => Box::new(xlsx::XlsxSource::open(path, options.clone()).await?),
+            ImportSourceConfig::Xlsx { path, options } => {
+                Box::new(xlsx::XlsxSource::open(path, options.clone()).await?)
+            }
             ImportSourceConfig::Xml { path, options } => Box::new(xml::XmlSource::open(path, options.clone())?),
             ImportSourceConfig::Json { path, options } => Box::new(json::JsonSource::open(path, options.clone())?),
         })

@@ -7,9 +7,15 @@
 use async_trait::async_trait;
 use chrono::{FixedOffset, NaiveDate, NaiveTime};
 use dbiji_core::admin::TabularData;
-use dbiji_core::ddl::{ColumnDef, DdlGenerator, FkAction, ForeignKeyDef, IndexColumn, IndexDef, KeyDef, SchemaSnapshot, SnapshotOptions, TableDef};
+use dbiji_core::ddl::{
+    ColumnDef, DdlGenerator, FkAction, ForeignKeyDef, IndexColumn, IndexDef, KeyDef, SchemaSnapshot, SnapshotOptions,
+    TableDef,
+};
 use dbiji_core::dialect::{GenericDialect, SqlSyntax};
-use dbiji_core::driver::{CancelHandle, ExecOptions, MaterializedResult, MemoryCursor, QueryCursor, ResultHeader, ServerInfo, Session, TransactionMode};
+use dbiji_core::driver::{
+    CancelHandle, ExecOptions, MaterializedResult, MemoryCursor, QueryCursor, ResultHeader, ServerInfo, Session,
+    TransactionMode,
+};
 use dbiji_core::meta::{DatabaseInfo, MetadataSearch, ObjectInfo, ObjectKind, SchemaInfo, SchemaRef};
 use dbiji_core::plan::QueryPlan;
 use dbiji_core::{ColumnMeta, DataKind, DbError, DbKind, DbResult, Dialect, ObjectRef, Row, Value};
@@ -199,7 +205,8 @@ impl Dialect for SqliteTestDialect {
     fn upsert(&self, table: &str, columns: &[String], key_columns: &[String], values: &[String]) -> Option<String> {
         let updates: Vec<String> =
             columns.iter().filter(|c| !key_columns.contains(c)).map(|c| format!("{c} = excluded.{c}")).collect();
-        let action = if updates.is_empty() { "NOTHING".to_string() } else { format!("UPDATE SET {}", updates.join(", ")) };
+        let action =
+            if updates.is_empty() { "NOTHING".to_string() } else { format!("UPDATE SET {}", updates.join(", ")) };
         Some(format!(
             "INSERT INTO {table} ({}) VALUES ({}) ON CONFLICT ({}) DO {action}",
             columns.join(", "),
@@ -240,7 +247,12 @@ impl SqliteSession {
         SqliteSession {
             conn,
             dialect,
-            info: ServerInfo { product: "SQLite".into(), version: "3".into(), version_number: (3, 0, 0), session_id: None },
+            info: ServerInfo {
+                product: "SQLite".into(),
+                version: "3".into(),
+                version_number: (3, 0, 0),
+                session_id: None,
+            },
             mode: TransactionMode::Auto,
             closed: false,
             log: Arc::new(Mutex::new(Vec::new())),
@@ -280,9 +292,10 @@ impl Session for SqliteSession {
     async fn execute(&mut self, sql: &str, params: &[Value], _opts: &ExecOptions) -> DbResult<Box<dyn QueryCursor>> {
         self.log.lock().push(sql.to_string());
         if let Some(f) = &self.fail_on
-            && sql.contains(f.as_str()) {
-                return Err(DbError::query(format!("injected failure for: {f}")));
-            }
+            && sql.contains(f.as_str())
+        {
+            return Err(DbError::query(format!("injected failure for: {f}")));
+        }
         if sql.contains("/*endless*/") {
             return Ok(Box::new(EndlessCursor::new(std::time::Duration::from_millis(1))));
         }
@@ -572,7 +585,9 @@ pub fn same_value(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Float(x), Value::Float(y)) => (x.is_nan() && y.is_nan()) || x == y,
         (Value::DateTimeTz(x), Value::DateTimeTz(y)) => x == y && x.offset() == y.offset(),
-        (Value::Array(x), Value::Array(y)) => x.len() == y.len() && x.iter().zip(y.iter()).all(|(p, q)| same_value(p, q)),
+        (Value::Array(x), Value::Array(y)) => {
+            x.len() == y.len() && x.iter().zip(y.iter()).all(|(p, q)| same_value(p, q))
+        }
         _ => a == b,
     }
 }
@@ -597,7 +612,9 @@ pub fn convert_rows(rows: Vec<Row>, columns: &[ColumnMeta], opts: &dbiji_transfe
         .map(|r| {
             r.iter()
                 .zip(columns)
-                .map(|(v, c)| dbiji_transfer::convert_value(v, c.kind, opts).unwrap_or_else(|e| panic!("{}: {e}", c.name)))
+                .map(|(v, c)| {
+                    dbiji_transfer::convert_value(v, c.kind, opts).unwrap_or_else(|e| panic!("{}: {e}", c.name))
+                })
                 .collect()
         })
         .collect()
@@ -630,10 +647,16 @@ pub async fn export_to(
     dialect: Option<Arc<dyn Dialect>>,
 ) -> dbiji_transfer::ExportSummary {
     let mut src = dbiji_transfer::VecSource::new(columns, rows);
-    let mut sink = dbiji_transfer::create_sink(format, opts, dbiji_transfer::ExportTarget::path(path), dialect).unwrap();
-    dbiji_transfer::run_export(&mut src, sink.as_mut(), &dbiji_transfer::Progress::new(), &dbiji_transfer::CancellationToken::new())
-        .await
-        .unwrap()
+    let mut sink =
+        dbiji_transfer::create_sink(format, opts, dbiji_transfer::ExportTarget::path(path), dialect).unwrap();
+    dbiji_transfer::run_export(
+        &mut src,
+        sink.as_mut(),
+        &dbiji_transfer::Progress::new(),
+        &dbiji_transfer::CancellationToken::new(),
+    )
+    .await
+    .unwrap()
 }
 
 /// Export `rows` into a string (text formats).
@@ -651,9 +674,15 @@ pub async fn export_string(
     if let Some(t) = table {
         src = src.with_table(t);
     }
-    let mut sink = dbiji_transfer::create_sink(format, opts, dbiji_transfer::ExportTarget::path(&path), dialect).unwrap();
-    dbiji_transfer::run_export(&mut src, sink.as_mut(), &dbiji_transfer::Progress::new(), &dbiji_transfer::CancellationToken::new())
-        .await
-        .unwrap();
+    let mut sink =
+        dbiji_transfer::create_sink(format, opts, dbiji_transfer::ExportTarget::path(&path), dialect).unwrap();
+    dbiji_transfer::run_export(
+        &mut src,
+        sink.as_mut(),
+        &dbiji_transfer::Progress::new(),
+        &dbiji_transfer::CancellationToken::new(),
+    )
+    .await
+    .unwrap();
     std::fs::read_to_string(&path).unwrap()
 }

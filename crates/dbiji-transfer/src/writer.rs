@@ -81,8 +81,14 @@ struct Savepoints {
 fn savepoint_sql(kind: DbKind) -> Option<Savepoints> {
     match kind {
         DbKind::DuckDb | DbKind::ClickHouse => None,
-        DbKind::SqlServer => Some(Savepoints { create: "SAVE TRANSACTION", release: None, rollback: "ROLLBACK TRANSACTION" }),
-        _ => Some(Savepoints { create: "SAVEPOINT", release: Some("RELEASE SAVEPOINT"), rollback: "ROLLBACK TO SAVEPOINT" }),
+        DbKind::SqlServer => {
+            Some(Savepoints { create: "SAVE TRANSACTION", release: None, rollback: "ROLLBACK TRANSACTION" })
+        }
+        _ => Some(Savepoints {
+            create: "SAVEPOINT",
+            release: Some("RELEASE SAVEPOINT"),
+            rollback: "ROLLBACK TO SAVEPOINT",
+        }),
     }
 }
 
@@ -252,9 +258,10 @@ impl<'a> BatchWriter<'a> {
 
     fn insert_sql(&mut self, nrows: usize) -> String {
         if let Some((n, sql)) = &self.insert_cache
-            && *n == nrows {
-                return sql.clone();
-            }
+            && *n == nrows
+        {
+            return sql.clone();
+        }
         let ncols = self.target.columns.len();
         let mut sql = format!("INSERT INTO {} ({}) VALUES ", self.target.table_sql, self.target.columns.join(", "));
         let mut p = 1;
@@ -459,8 +466,11 @@ impl<'a> BatchWriter<'a> {
 
     /// Commit and restore the original transaction mode.
     pub(crate) async fn finish(&mut self) -> DbResult<()> {
-        if self.transactional() {
-            self.session.commit().await?;
+        if self.transactional()
+            && let Err(e) = self.session.commit().await
+        {
+            self.abort().await;
+            return Err(e);
         }
         self.restore_mode().await
     }
@@ -468,9 +478,10 @@ impl<'a> BatchWriter<'a> {
     /// Roll back what is not committed yet and restore the transaction mode.
     pub(crate) async fn abort(&mut self) {
         if self.transactional()
-            && let Err(e) = self.session.rollback().await {
-                tracing::debug!("rollback after failed write: {e}");
-            }
+            && let Err(e) = self.session.rollback().await
+        {
+            tracing::debug!("rollback after failed write: {e}");
+        }
         if let Err(e) = self.restore_mode().await {
             tracing::debug!("restoring the transaction mode failed: {e}");
         }
@@ -478,9 +489,10 @@ impl<'a> BatchWriter<'a> {
 
     async fn restore_mode(&mut self) -> DbResult<()> {
         if let Some(orig) = self.original_mode.take()
-            && self.session.transaction_mode() != orig {
-                self.session.set_transaction_mode(orig).await?;
-            }
+            && self.session.transaction_mode() != orig
+        {
+            self.session.set_transaction_mode(orig).await?;
+        }
         Ok(())
     }
 }

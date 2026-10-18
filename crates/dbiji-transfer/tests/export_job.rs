@@ -130,6 +130,25 @@ async fn sql_job_reads_table_definitions() {
 }
 
 #[tokio::test]
+async fn sql_job_for_another_dialect() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("db.sqlite");
+    database(&db);
+    let factory = SqliteFactory::new(&db, sqlite_dialect());
+    let mut j = job(dir.path(), vec![table("c")]);
+    j.format = ExportFormat::Sql;
+    j.file_name_pattern = "${table}".into();
+    j.options.sql.mode = SqlInsertMode::Upsert;
+    // The source dialect has a native upsert; the ANSI target does not.
+    let s =
+        run_export_job_with(j, factory, Some(generic()), Progress::shared(), CancellationToken::new()).await.unwrap();
+    assert_eq!(s.failed(), 0);
+    let sql = std::fs::read_to_string(dir.path().join("out/c.sql")).unwrap();
+    assert!(sql.starts_with("DELETE FROM c WHERE id = 0;\nINSERT INTO c (id, v) VALUES (0, 'c0');\n"), "{sql}");
+    assert!(!sql.contains("ON CONFLICT"));
+}
+
+#[tokio::test]
 async fn every_format_through_a_job() {
     let dir = tempfile::tempdir().unwrap();
     let db = dir.path().join("db.sqlite");
@@ -177,9 +196,10 @@ impl RowSource for Endless {
     async fn next_batch(&mut self, max: usize) -> DbResult<Vec<Row>> {
         self.batches += 1;
         if let Some((n, token)) = &self.cancel_after
-            && self.batches == *n {
-                token.cancel();
-            }
+            && self.batches == *n
+        {
+            token.cancel();
+        }
         if self.hang_after.is_some_and(|n| self.batches > n) {
             std::future::pending::<()>().await;
         }
@@ -229,7 +249,8 @@ async fn cancel_while_waiting_for_rows() {
     let cancel = CancellationToken::new();
     let mut src = Endless::new();
     src.hang_after = Some(2);
-    let mut sink = create_sink(ExportFormat::Parquet, &ExportOptions::default(), ExportTarget::path(&path), None).unwrap();
+    let mut sink =
+        create_sink(ExportFormat::Parquet, &ExportOptions::default(), ExportTarget::path(&path), None).unwrap();
     let canceller = {
         let c = cancel.clone();
         tokio::spawn(async move {
@@ -286,7 +307,8 @@ async fn row_store_selection_export() {
         ColumnMeta::new("label", "text", DataKind::Text),
         ColumnMeta::new("even", "bool", DataKind::Bool),
     ];
-    let mut src = RowStoreSource::new(store.clone(), columns.clone()).with_rows(vec![5, 1, 999]).with_columns(vec![2, 0]);
+    let mut src =
+        RowStoreSource::new(store.clone(), columns.clone()).with_rows(vec![5, 1, 999]).with_columns(vec![2, 0]);
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("sel.csv");
     let mut sink = create_sink(ExportFormat::Csv, &ExportOptions::default(), ExportTarget::path(&path), None).unwrap();
@@ -306,7 +328,9 @@ async fn row_store_selection_export() {
         }
     }
     let mut src = RowStoreSource::new(store, columns);
-    let mut sink = create_sink(ExportFormat::Markdown, &ExportOptions::default(), ExportTarget::writer(Shared(buf.clone())), None).unwrap();
+    let mut sink =
+        create_sink(ExportFormat::Markdown, &ExportOptions::default(), ExportTarget::writer(Shared(buf.clone())), None)
+            .unwrap();
     let progress = Progress::new();
     let s = run_export(&mut src, sink.as_mut(), &progress, &CancellationToken::new()).await.unwrap();
     assert_eq!(s.rows, 1000);

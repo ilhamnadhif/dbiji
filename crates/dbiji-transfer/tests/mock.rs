@@ -44,7 +44,8 @@ async fn auto_generators_fill_a_table() {
     session.exec_batch(SCHEMA);
     let def = customers_def(&mut session).await;
     let generators = auto_generators(&def);
-    let config = MockConfig { table: def.clone(), rows: 300, generators, batch_size: 64, seed: Some(42), ..Default::default() };
+    let config =
+        MockConfig { table: def.clone(), rows: 300, generators, batch_size: 64, seed: Some(42), ..Default::default() };
     let progress = Progress::new();
     let s = run_mock(&config, &mut session, &progress, &CancellationToken::new()).await.unwrap();
     assert_eq!(s.rows_inserted, 300);
@@ -100,11 +101,10 @@ async fn seeds_reproduce_and_sequences_continue() {
     assert_eq!(select(&a.conn, q), select(&b.conn, q));
     // A second run continues the unique sequence after MAX(code).
     run_mock(&config, &mut a, &Progress::new(), &CancellationToken::new()).await.unwrap();
-    assert_eq!(select(&a.conn, "SELECT min(code), max(code), count(*) FROM customers"), vec![vec![
-        Value::Int(1),
-        Value::Int(100),
-        Value::Int(100)
-    ]]);
+    assert_eq!(
+        select(&a.conn, "SELECT min(code), max(code), count(*) FROM customers"),
+        vec![vec![Value::Int(1), Value::Int(100), Value::Int(100)]]
+    );
     // Truncate first starts over.
     let config = MockConfig { mode: MockMode::TruncateFirst, rows: 5, ..config };
     run_mock(&config, &mut a, &Progress::new(), &CancellationToken::new()).await.unwrap();

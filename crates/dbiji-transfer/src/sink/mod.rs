@@ -268,27 +268,31 @@ impl TextOutput {
             let _ = w.flush();
         }
         if let Some(p) = &self.path
-            && !self.keep_partial {
-                remove_partial(p);
-            }
+            && !self.keep_partial
+        {
+            remove_partial(p);
+        }
     }
 }
 
 /// Create (truncate) an output file, creating missing parent folders.
 pub(crate) fn create_file(path: &Path) -> DbResult<File> {
     if let Some(parent) = path.parent()
-        && !parent.as_os_str().is_empty() && !parent.exists() {
-            std::fs::create_dir_all(parent).map_err(|e| file_error("Cannot create folder", parent, e))?;
-        }
+        && !parent.as_os_str().is_empty()
+        && !parent.exists()
+    {
+        std::fs::create_dir_all(parent).map_err(|e| file_error("Cannot create folder", parent, e))?;
+    }
     File::create(path).map_err(|e| file_error("Cannot create", path, e))
 }
 
 /// Best effort removal of a partial output file.
 pub(crate) fn remove_partial(path: &Path) {
     if let Err(e) = std::fs::remove_file(path)
-        && e.kind() != io::ErrorKind::NotFound {
-            tracing::warn!("cannot remove partial export file {}: {e}", path.display());
-        }
+        && e.kind() != io::ErrorKind::NotFound
+    {
+        tracing::warn!("cannot remove partial export file {}: {e}", path.display());
+    }
 }
 
 /// Column names made unique (`id`, `id_2`, ...) for formats keyed by name.
@@ -338,7 +342,8 @@ mod tests {
 
     #[test]
     fn table_name_from_sources() {
-        let src = |t: &str| ColumnSource { database: None, schema: Some("s".into()), table: t.into(), column: "c".into() };
+        let src =
+            |t: &str| ColumnSource { database: None, schema: Some("s".into()), table: t.into(), column: "c".into() };
         let cols = vec![
             ColumnMeta::new("a", "int", DataKind::Int).with_source(src("t")),
             ColumnMeta::new("b", "int", DataKind::Int).with_source(src("t")),

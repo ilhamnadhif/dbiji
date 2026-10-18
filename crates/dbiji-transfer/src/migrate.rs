@@ -185,7 +185,14 @@ impl MigrationJob {
 }
 
 /// Map a source definition into the target dialect.
-fn plan_table(job: &MigrationJob, source: &ObjectRef, def: TableDef, src_kind: DbKind, dst: &dyn Dialect, warnings: &mut Vec<String>) -> Plan {
+fn plan_table(
+    job: &MigrationJob,
+    source: &ObjectRef,
+    def: TableDef,
+    src_kind: DbKind,
+    dst: &dyn Dialect,
+    warnings: &mut Vec<String>,
+) -> Plan {
     let same = src_kind == dst.kind() && src_kind != DbKind::Generic;
     let tname = job.table_name(&def.name);
     let mut t = TableDef::new(job.target_schema.clone(), tname.clone());
@@ -193,7 +200,9 @@ fn plan_table(job: &MigrationJob, source: &ObjectRef, def: TableDef, src_kind: D
     for c in &def.columns {
         let name = job.column_name(&def.name, &c.name);
         let explicit = job.column_types.get(&format!("{}.{}", def.name, c.name)).cloned();
-        let data_type = explicit.unwrap_or_else(|| if same { c.data_type.clone() } else { dst.ddl().map_type(src_kind, &c.data_type, c.kind) });
+        let data_type = explicit.unwrap_or_else(|| {
+            if same { c.data_type.clone() } else { dst.ddl().map_type(src_kind, &c.data_type, c.kind) }
+        });
         let mut col = c.clone();
         col.name = name.clone();
         col.data_type = data_type;
@@ -214,7 +223,10 @@ fn plan_table(job: &MigrationJob, source: &ObjectRef, def: TableDef, src_kind: D
         }
         t.columns.push(col);
     }
-    let key = |k: &KeyDef| KeyDef { name: if same { k.name.clone() } else { None }, columns: job.map_columns(&def.name, &k.columns) };
+    let key = |k: &KeyDef| KeyDef {
+        name: if same { k.name.clone() } else { None },
+        columns: job.map_columns(&def.name, &k.columns),
+    };
     t.primary_key = def.primary_key.as_ref().filter(|k| !k.columns.is_empty()).map(key);
     t.unique_keys = def.unique_keys.iter().map(key).collect();
     if same {
@@ -372,7 +384,11 @@ async fn migrate(
                         match cancellable(execute_update(dst, &sql, &[]), cancel, dst_handle.clone()).await {
                             Ok(_) => ts.indexes_created += 1,
                             Err(e) if e.kind == ErrorKind::Cancelled => return Err(e),
-                            Err(e) => summary.warnings.push(format!("{}: index {} not created: {e}", plan.target_ref.display_path(), idx.name)),
+                            Err(e) => summary.warnings.push(format!(
+                                "{}: index {} not created: {e}",
+                                plan.target_ref.display_path(),
+                                idx.name
+                            )),
                         }
                     }
                 }
@@ -402,7 +418,9 @@ async fn migrate(
                 continue;
             }
             for fk in &plan.source_def.foreign_keys {
-                let Some(parent) = plans.iter().find(|p| p.source_def.name == fk.ref_table && (fk.ref_schema.is_none() || fk.ref_schema == p.source.schema)) else {
+                let Some(parent) = plans.iter().find(|p| {
+                    p.source_def.name == fk.ref_table && (fk.ref_schema.is_none() || fk.ref_schema == p.source.schema)
+                }) else {
                     summary.warnings.push(format!(
                         "{}: foreign key to {} not copied (table not migrated)",
                         plan.target_ref.display_path(),
@@ -426,7 +444,9 @@ async fn migrate(
                 match cancellable(execute_update(dst, &sql, &[]), cancel, dst_handle.clone()).await {
                     Ok(_) => summary.foreign_keys_created += 1,
                     Err(e) if e.kind == ErrorKind::Cancelled => return Err(e),
-                    Err(e) => summary.warnings.push(format!("{}: foreign key not created: {e}", plan.target_ref.display_path())),
+                    Err(e) => summary
+                        .warnings
+                        .push(format!("{}: foreign key not created: {e}", plan.target_ref.display_path())),
                 }
             }
         }
@@ -483,7 +503,12 @@ async fn migrate_table(
         })?;
         key.columns
             .iter()
-            .map(|k| plan.copy.iter().position(|(_, t, _)| t == k).ok_or_else(|| DbError::config(format!("Key column {k} is not copied"))))
+            .map(|k| {
+                plan.copy
+                    .iter()
+                    .position(|(_, t, _)| t == k)
+                    .ok_or_else(|| DbError::config(format!("Key column {k} is not copied")))
+            })
             .collect::<DbResult<_>>()?
     } else {
         Vec::new()
@@ -496,7 +521,8 @@ async fn migrate_table(
     let scope = if job.transaction_per_table { TransactionScope::Whole } else { TransactionScope::PerBatch };
     let select_cols: Vec<String> = plan.copy.iter().map(|(s, _, _)| s.clone()).collect();
     let sql = src_dialect.select_table(&plan.source, Some(&select_cols), None, None, None);
-    let cursor = cancellable(src.execute(&sql, &[], &dbiji_core::ExecOptions::default()), cancel, src_handle.clone()).await?;
+    let cursor =
+        cancellable(src.execute(&sql, &[], &dbiji_core::ExecOptions::default()), cancel, src_handle.clone()).await?;
     let mut rows = cancellable(CursorSource::new(cursor), cancel, src_handle.clone()).await?;
     let kinds: Vec<DataKind> = plan.copy.iter().map(|(_, _, k)| *k).collect();
     let convert = ConvertOptions::default();
@@ -546,9 +572,10 @@ async fn migrate_table(
         Err(e) => {
             writer.abort().await;
             if e.kind == ErrorKind::Cancelled
-                && let Some(h) = &src_handle {
-                    let _ = h.cancel().await;
-                }
+                && let Some(h) = &src_handle
+            {
+                let _ = h.cancel().await;
+            }
             return Err(e);
         }
     }
@@ -567,13 +594,18 @@ mod tests {
     #[test]
     fn plan_maps_names_and_types() {
         let mut def = TableDef::new(Some("app".into()), "Users");
-        def.columns.push(ColumnDef::new("Id", "serial").not_null().auto_increment().default_value("nextval('users_id_seq')"));
+        def.columns
+            .push(ColumnDef::new("Id", "serial").not_null().auto_increment().default_value("nextval('users_id_seq')"));
         def.columns.push(ColumnDef::new("Name", "character varying(40)"));
         let mut generated = ColumnDef::new("Upper", "text");
         generated.generated = Some("upper(name)".into());
         def.columns.push(generated);
         def.primary_key = Some(KeyDef { name: Some("users_pkey".into()), columns: vec!["Id".into()] });
-        def.indexes.push(IndexDef { name: "users_name".into(), columns: vec![IndexColumn::column("Name")], ..Default::default() });
+        def.indexes.push(IndexDef {
+            name: "users_name".into(),
+            columns: vec![IndexColumn::column("Name")],
+            ..Default::default()
+        });
         def.indexes.push(IndexDef {
             name: "users_lower".into(),
             columns: vec![IndexColumn { name: "lower(name)".into(), is_expression: true, descending: false }],
@@ -581,7 +613,14 @@ mod tests {
         });
         let job = MigrationJob { name_case: NameCase::Lower, target_schema: Some("dst".into()), ..Default::default() };
         let mut warnings = Vec::new();
-        let plan = plan_table(&job, &ObjectRef::table(Some("app".into()), "Users"), def, DbKind::Postgres, &GenericDialect::new(), &mut warnings);
+        let plan = plan_table(
+            &job,
+            &ObjectRef::table(Some("app".into()), "Users"),
+            def,
+            DbKind::Postgres,
+            &GenericDialect::new(),
+            &mut warnings,
+        );
         assert_eq!(plan.target.name, "users");
         assert_eq!(plan.target.schema.as_deref(), Some("dst"));
         assert_eq!(plan.target.columns[0].name, "id");

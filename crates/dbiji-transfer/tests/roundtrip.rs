@@ -136,7 +136,12 @@ async fn json_layouts() {
 const SQLITE_TABLE: &str = "CREATE TABLE t (id INTEGER, flag INTEGER, big TEXT, ratio REAL, amount TEXT, note TEXT, code TEXT, \
      data BLOB, day TEXT, at TEXT, ts TEXT, tstz TEXT, uid TEXT, doc TEXT, arr TEXT)";
 
-async fn sql_round_trip(rows: Vec<Row>, dialect: std::sync::Arc<dyn dbiji_core::Dialect>, rows_per_statement: usize, what: &str) {
+async fn sql_round_trip(
+    rows: Vec<Row>,
+    dialect: std::sync::Arc<dyn dbiji_core::Dialect>,
+    rows_per_statement: usize,
+    what: &str,
+) {
     let cols = nasty_columns();
     let mut opts = ExportOptions::default();
     opts.sql.table_name = Some("t".into());
@@ -160,9 +165,10 @@ fn sqlite_safe(rows: Vec<Row>) -> Vec<Row> {
                 r[2] = Value::Int(4_242);
             }
             if let Value::Float(f) = r[3]
-                && f.abs() > 1e20 {
-                    r[3] = Value::Float(1.5e10);
-                }
+                && f.abs() > 1e20
+            {
+                r[3] = Value::Float(1.5e10);
+            }
             if let Value::Decimal(d) = &r[4] {
                 let safe = match d.as_ref() {
                     "12345678901234567890.123456789" => "12.5",
@@ -194,9 +200,10 @@ async fn sql_full_data_set_with_text_decimals() {
         .into_iter()
         .map(|mut r| {
             if let Value::Float(f) = r[3]
-                && f.abs() > 1e20 {
-                    r[3] = Value::Float(-1e15);
-                }
+                && f.abs() > 1e20
+            {
+                r[3] = Value::Float(-1e15);
+            }
             r
         })
         .collect();
@@ -213,7 +220,8 @@ async fn sql_upsert_round_trip() {
     opts.sql.key_columns = vec!["id".into()];
     // Native upsert (SQLite ON CONFLICT) and the DELETE + INSERT fallback (ANSI).
     for (dialect, what) in [(sqlite_dialect(), "native upsert"), (generic(), "delete+insert")] {
-        let script = export_string(ExportFormat::Sql, &opts, cols.clone(), rows.clone(), None, Some(dialect.clone())).await;
+        let script =
+            export_string(ExportFormat::Sql, &opts, cols.clone(), rows.clone(), None, Some(dialect.clone())).await;
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch(&SQLITE_TABLE.replace("id INTEGER", "id INTEGER PRIMARY KEY")).unwrap();
         // Running the script twice must not duplicate rows.
@@ -260,7 +268,8 @@ async fn csv_through_import_into_sqlite() {
         .collect();
     mapping.batch_size = 4;
     mapping.rows_per_statement = 3;
-    let summary = run_import(&mut src, &mut session, &mapping, &Progress::new(), &CancellationToken::new()).await.unwrap();
+    let summary =
+        run_import(&mut src, &mut session, &mapping, &Progress::new(), &CancellationToken::new()).await.unwrap();
     assert_eq!(summary.rows_written, rows.len() as u64);
     assert_eq!(summary.rows_failed, 0);
     let back = convert_rows(select(&session.conn, "SELECT * FROM t ORDER BY id"), &cols, &ConvertOptions::default());
@@ -303,8 +312,21 @@ fn data_set_covers_every_variant() {
         }
     }
     for name in [
-        "null", "bool", "int", "uint", "float", "decimal", "text", "bytes", "date", "time", "datetime", "datetimetz", "uuid",
-        "json", "array",
+        "null",
+        "bool",
+        "int",
+        "uint",
+        "float",
+        "decimal",
+        "text",
+        "bytes",
+        "date",
+        "time",
+        "datetime",
+        "datetimetz",
+        "uuid",
+        "json",
+        "array",
     ] {
         assert!(seen.contains(name), "variant {name} missing from the data set");
     }

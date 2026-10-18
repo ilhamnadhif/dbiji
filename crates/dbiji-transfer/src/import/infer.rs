@@ -141,7 +141,12 @@ pub(crate) fn classify_text(raw: &str, opts: &InferOptions) -> Guess {
         let (int_part, frac) = unsigned.split_once('.').unwrap_or((unsigned, ""));
         return Guess::Decimal { int_digits: count_digits(int_part), scale: frac.len() as u32 };
     }
-    if opts.detect_bool && matches!(t.to_ascii_lowercase().as_str(), "true" | "false" | "t" | "f" | "yes" | "no" | "y" | "n" | "on" | "off") {
+    if opts.detect_bool
+        && matches!(
+            t.to_ascii_lowercase().as_str(),
+            "true" | "false" | "t" | "f" | "yes" | "no" | "y" | "n" | "on" | "off"
+        )
+    {
         return Guess::Bool;
     }
     if opts.date_formats.iter().any(|f| NaiveDate::parse_from_str(t, f).is_ok()) {
@@ -236,7 +241,9 @@ pub fn infer_columns(columns: &[ColumnMeta], sample: &[Row], opts: &InferOptions
                 }
                 Guess::Bool => (DataKind::Bool, None, None),
                 Guess::Int { digits } => (DataKind::Int, Some(digits), None),
-                Guess::Decimal { int_digits, scale } => (DataKind::Decimal, Some((int_digits + scale).max(1)), Some(scale)),
+                Guess::Decimal { int_digits, scale } => {
+                    (DataKind::Decimal, Some((int_digits + scale).max(1)), Some(scale))
+                }
                 Guess::Float => (DataKind::Float, None, None),
                 Guess::Date => (DataKind::Date, None, None),
                 Guess::DateTime => (DataKind::DateTime, None, None),
@@ -293,7 +300,8 @@ mod tests {
 
     fn infer(values: &[&str]) -> InferredColumn {
         let cols = vec![ColumnMeta::new("c", "", DataKind::Text)];
-        let rows: Vec<Row> = values.iter().map(|v| vec![if v.is_empty() { Value::Null } else { Value::text(*v) }]).collect();
+        let rows: Vec<Row> =
+            values.iter().map(|v| vec![if v.is_empty() { Value::Null } else { Value::text(*v) }]).collect();
         infer_columns(&cols, &rows, &InferOptions::default()).remove(0)
     }
 

@@ -133,14 +133,15 @@ impl XlsxSink {
         self.sheet_index = self.sheet_no as usize - 1;
         self.next_row = u32::from(header);
         self.rows_in_sheet = 0;
-        self.widths = self.headers.iter().map(|h| h.chars().count() + if self.opts.autofilter { 3 } else { 0 }).collect();
+        self.widths =
+            self.headers.iter().map(|h| h.chars().count() + if self.opts.autofilter { 3 } else { 0 }).collect();
         Ok(())
     }
 
     /// Column widths and autofilter of the current sheet (written when the file is saved).
     fn finish_sheet(&mut self) -> DbResult<()> {
         let auto = self.opts.auto_column_width;
-        let max = usize::from(self.opts.max_column_width.max(1));
+        let max = usize::from(self.opts.max_column_width).max(4);
         let widths = self.widths.clone();
         let filter = self.opts.autofilter && self.opts.header && self.ncols > 0;
         let last_row = self.next_row.saturating_sub(1);
@@ -191,14 +192,23 @@ impl XlsxSink {
 }
 
 /// Write one cell; returns the approximate display width in characters.
-fn write_cell(ws: &mut Worksheet, row: u32, col: u16, v: &Value, f: &Formats, truncated: &mut u64) -> Result<usize, XlsxError> {
+fn write_cell(
+    ws: &mut Worksheet,
+    row: u32,
+    col: u16,
+    v: &Value,
+    f: &Formats,
+    truncated: &mut u64,
+) -> Result<usize, XlsxError> {
     Ok(match v {
         Value::Null => 0,
         Value::Bool(b) => {
             ws.write_boolean(row, col, *b)?;
             5
         }
-        Value::Int(i) if i.unsigned_abs() <= EXCEL_MAX_EXACT as u64 => write_int(ws, row, col, *i as f64, f, i.to_string().len())?,
+        Value::Int(i) if i.unsigned_abs() <= EXCEL_MAX_EXACT as u64 => {
+            write_int(ws, row, col, *i as f64, f, i.to_string().len())?
+        }
         Value::UInt(u) if *u <= EXCEL_MAX_EXACT as u64 => write_int(ws, row, col, *u as f64, f, u.to_string().len())?,
         Value::Float(x) if x.is_finite() => {
             match &f.number {
@@ -378,7 +388,10 @@ impl RowSink for XlsxSink {
         let files = self.save()?;
         let mut warnings = Vec::new();
         if self.truncated > 0 {
-            warnings.push(format!("{} text value(s) longer than {EXCEL_MAX_STRING} characters were truncated", self.truncated));
+            warnings.push(format!(
+                "{} text value(s) longer than {EXCEL_MAX_STRING} characters were truncated",
+                self.truncated
+            ));
         }
         if self.sheet_no > 1 {
             warnings.push(format!("The data was split into {} sheets", self.sheet_no));

@@ -112,7 +112,8 @@ impl TxtSink {
         self.widths = (0..self.headers.len())
             .map(|i| {
                 let header = if self.opts.header { self.headers[i].chars().count() } else { 0 };
-                let data = self.sample.iter().filter_map(|r| r.get(i)).map(|c| c.text.chars().count()).max().unwrap_or(0);
+                let data =
+                    self.sample.iter().filter_map(|r| r.get(i)).map(|c| c.text.chars().count()).max().unwrap_or(0);
                 header.max(data).clamp(min, max)
             })
             .collect();

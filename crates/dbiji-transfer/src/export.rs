@@ -283,10 +283,16 @@ impl ExportJobSummary {
 
 /// Characters not allowed in file names on the supported platforms.
 fn sanitize_file_name(name: &str) -> String {
-    let s: String = name
-        .chars()
-        .map(|c| if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control() { '_' } else { c })
-        .collect();
+    let s: String =
+        name.chars()
+            .map(|c| {
+                if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control() {
+                    '_'
+                } else {
+                    c
+                }
+            })
+            .collect();
     let s = s.trim().trim_matches('.').to_string();
     if s.is_empty() { "export".into() } else { s }
 }
@@ -348,9 +354,24 @@ fn plan_files(job: &ExportJob, timestamp: NaiveDateTime) -> Vec<PathBuf> {
 /// Returns per item results (failed items carry an error unless
 /// `continue_on_error` is false, in which case the first error is returned).
 /// Cancellation returns an error of kind [`ErrorKind::Cancelled`].
+///
+/// SQL scripts are written in the dialect of the source connection; use
+/// [`run_export_job_with`] to target another database product.
 pub async fn run_export_job(
     job: ExportJob,
     factory: Arc<dyn SessionFactory>,
+    progress: Arc<Progress>,
+    cancel: CancellationToken,
+) -> DbResult<ExportJobSummary> {
+    run_export_job_with(job, factory, None, progress, cancel).await
+}
+
+/// [`run_export_job`] with the dialect the SQL format writes for (e.g.
+/// MySQL `INSERT`s from a PostgreSQL table); `None` uses the source dialect.
+pub async fn run_export_job_with(
+    job: ExportJob,
+    factory: Arc<dyn SessionFactory>,
+    sql_dialect: Option<Arc<dyn Dialect>>,
     progress: Arc<Progress>,
     cancel: CancellationToken,
 ) -> DbResult<ExportJobSummary> {
@@ -360,6 +381,7 @@ pub async fn run_export_job(
     if job.options.sql.source_kind.is_none() {
         job.options.sql.source_kind = Some(dialect.kind());
     }
+    let output_dialect = sql_dialect.unwrap_or_else(|| dialect.clone());
     if job.items.is_empty() {
         return Ok(ExportJobSummary::default());
     }
@@ -384,6 +406,7 @@ pub async fn run_export_job(
         let (job, files, next, results, open_error) =
             (job.clone(), files.clone(), next.clone(), results.clone(), open_error.clone());
         let (factory, dialect, progress, stop) = (factory.clone(), dialect.clone(), progress.clone(), stop.clone());
+        let output_dialect = output_dialect.clone();
         set.spawn(async move {
             let mut session = match cancellable(factory.open(), &stop, None).await {
                 Ok(s) => s,
@@ -405,7 +428,8 @@ pub async fn run_export_job(
                 progress.item_started(&name);
                 let t0 = Instant::now();
                 let outcome =
-                    export_item(session.as_mut(), item, &files[i], &job, dialect.clone(), &progress, &stop).await;
+                    export_item(session.as_mut(), item, &files[i], &job, (&dialect, &output_dialect), &progress, &stop)
+                        .await;
                 progress.item_finished(&name);
                 let mut summary = ExportItemSummary {
                     name: name.clone(),
@@ -479,33 +503,37 @@ pub async fn run_export_job(
     }
     summary.duration_ms = started.elapsed().as_millis() as u64;
     if !job.continue_on_error
-        && let Some((i, err)) = summary.items.iter().enumerate().find_map(|(i, s)| s.error.clone().map(|e| (i, e))) {
-            return Err(with_item(DbError::query(err), &job.items[i].name()));
-        }
+        && let Some((i, err)) = summary.items.iter().enumerate().find_map(|(i, s)| s.error.clone().map(|e| (i, e)))
+    {
+        return Err(with_item(DbError::query(err), &job.items[i].name()));
+    }
     Ok(summary)
 }
 
-/// Export one item on `session`.
+/// Export one item on `session`. `dialects` are the session's dialect (for
+/// the queries) and the dialect SQL output is written in.
 async fn export_item(
     session: &mut dyn Session,
     item: &ExportItem,
     path: &std::path::Path,
     job: &ExportJob,
-    dialect: Arc<dyn Dialect>,
+    dialects: (&Arc<dyn Dialect>, &Arc<dyn Dialect>),
     progress: &Progress,
     cancel: &CancellationToken,
 ) -> DbResult<ExportSummary> {
+    let (dialect, output_dialect) = dialects;
     let sql = item.sql(dialect.as_ref());
     let handle = session.cancel_handle();
     let mut table_def = None;
     if let (Some(table), ExportFormat::Sql) = (item.table(), job.format)
-        && (job.options.sql.include_create_table || job.options.sql.mode == crate::options::SqlInsertMode::Upsert) {
-            match cancellable(session.table_definition(table), cancel, handle.clone()).await {
-                Ok(def) => table_def = Some(def),
-                Err(e) if e.kind == ErrorKind::Cancelled => return Err(e),
-                Err(e) => progress.warn(Some(&item.name()), format!("Cannot read the table definition: {e}")),
-            }
+        && (job.options.sql.include_create_table || job.options.sql.mode == crate::options::SqlInsertMode::Upsert)
+    {
+        match cancellable(session.table_definition(table), cancel, handle.clone()).await {
+            Ok(def) => table_def = Some(def),
+            Err(e) if e.kind == ErrorKind::Cancelled => return Err(e),
+            Err(e) => progress.warn(Some(&item.name()), format!("Cannot read the table definition: {e}")),
         }
+    }
     let mut total = None;
     if job.count_rows {
         let count_sql = dialect.count_query(&sql);
@@ -518,15 +546,17 @@ async fn export_item(
     let cursor = cancellable(session.execute(&sql, &[], &ExecOptions::default()), cancel, handle.clone()).await?;
     let source = cancellable(CursorSource::new(cursor), cancel, handle.clone()).await?;
     let mut source = source.with_table(item.table().cloned()).with_total_rows(total);
-    let mut sink = create_sink(job.format, &job.options, ExportTarget::Path(path.to_path_buf()), Some(dialect))?;
+    let mut sink =
+        create_sink(job.format, &job.options, ExportTarget::Path(path.to_path_buf()), Some(output_dialect.clone()))?;
     if let Some(def) = &table_def {
         sink.set_table_definition(def);
     }
     let result = run_export_batched(&mut source, sink.as_mut(), job.options.fetch_size, progress, cancel).await;
     if let (Err(e), Some(h)) = (&result, &handle)
-        && e.kind == ErrorKind::Cancelled {
-            let _ = h.cancel().await;
-        }
+        && e.kind == ErrorKind::Cancelled
+    {
+        let _ = h.cancel().await;
+    }
     result
 }
 
@@ -563,7 +593,10 @@ mod tests {
         };
         let ts = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap().and_hms_opt(0, 0, 0).unwrap();
         let files = plan_files(&job, ts);
-        assert_eq!(files, vec![PathBuf::from("out/query.csv"), PathBuf::from("out/query_2.csv"), PathBuf::from("out/query_3.csv")]);
+        assert_eq!(
+            files,
+            vec![PathBuf::from("out/query.csv"), PathBuf::from("out/query_2.csv"), PathBuf::from("out/query_3.csv")]
+        );
     }
 
     #[test]

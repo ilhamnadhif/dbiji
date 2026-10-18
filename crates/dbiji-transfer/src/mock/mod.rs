@@ -316,9 +316,16 @@ pub fn auto_generators(table: &TableDef) -> Vec<ColumnGenerator> {
         .map(|c| {
             let n = c.name.to_ascii_lowercase();
             let has = |w: &str| {
-                n == w || n.starts_with(&format!("{w}_")) || n.ends_with(&format!("_{w}")) || n.contains(&format!("_{w}_"))
+                n == w
+                    || n.starts_with(&format!("{w}_"))
+                    || n.ends_with(&format!("_{w}"))
+                    || n.contains(&format!("_{w}_"))
             };
-            let unique_key = table.primary_key.iter().chain(table.unique_keys.iter()).any(|k| k.columns.len() == 1 && k.columns[0] == c.name);
+            let unique_key = table
+                .primary_key
+                .iter()
+                .chain(table.unique_keys.iter())
+                .any(|k| k.columns.len() == 1 && k.columns[0] == c.name);
             let mut g = ColumnGenerator::new(&c.name, GeneratorKind::Skip);
             let sequence_default = c.default.as_deref().is_some_and(|d| d.to_ascii_lowercase().contains("nextval("));
             if c.auto_increment || c.generated.is_some() || sequence_default {
@@ -326,15 +333,16 @@ pub fn auto_generators(table: &TableDef) -> Vec<ColumnGenerator> {
             }
             if let Some(fk) = table.foreign_keys.iter().find(|fk| fk.columns.iter().any(|x| x == &c.name))
                 && let Some(pos) = fk.columns.iter().position(|x| x == &c.name)
-                    && let Some(ref_col) = fk.ref_columns.get(pos) {
-                        let schema = fk.ref_schema.clone().or_else(|| table.schema.clone());
-                        g.generator = GeneratorKind::ForeignKey {
-                            table: ObjectRef::table(schema, fk.ref_table.clone()),
-                            column: ref_col.clone(),
-                            group: (fk.columns.len() > 1).then(|| fk.name.clone().unwrap_or_else(|| fk.ref_table.clone())),
-                        };
-                        return g;
-                    }
+                && let Some(ref_col) = fk.ref_columns.get(pos)
+            {
+                let schema = fk.ref_schema.clone().or_else(|| table.schema.clone());
+                g.generator = GeneratorKind::ForeignKey {
+                    table: ObjectRef::table(schema, fk.ref_table.clone()),
+                    column: ref_col.clone(),
+                    group: (fk.columns.len() > 1).then(|| fk.name.clone().unwrap_or_else(|| fk.ref_table.clone())),
+                };
+                return g;
+            }
             let limit = text_limit(c);
             let textual = matches!(c.kind, DataKind::Text | DataKind::Enum);
             let numeric = c.kind.is_numeric();
@@ -343,15 +351,35 @@ pub fn auto_generators(table: &TableDef) -> Vec<ColumnGenerator> {
                 GeneratorKind::Uuid
             } else if textual && (has("email") || has("mail")) {
                 GeneratorKind::Email
-            } else if textual && matches!(n.as_str(), "first_name" | "firstname" | "fname" | "given_name" | "forename") {
+            } else if textual && matches!(n.as_str(), "first_name" | "firstname" | "fname" | "given_name" | "forename")
+            {
                 GeneratorKind::FirstName
             } else if textual && matches!(n.as_str(), "last_name" | "lastname" | "lname" | "surname" | "family_name") {
                 GeneratorKind::LastName
             } else if textual && (has("username") || has("login") || n == "user_name") {
                 GeneratorKind::UserName
-            } else if textual && (n == "name" || matches!(n.as_str(), "full_name" | "fullname" | "display_name" | "contact_name" | "customer_name" | "person_name" | "employee_name" | "author")) {
+            } else if textual
+                && (n == "name"
+                    || matches!(
+                        n.as_str(),
+                        "full_name"
+                            | "fullname"
+                            | "display_name"
+                            | "contact_name"
+                            | "customer_name"
+                            | "person_name"
+                            | "employee_name"
+                            | "author"
+                    ))
+            {
                 GeneratorKind::FullName
-            } else if textual && (has("company") || has("organization") || has("organisation") || has("employer") || n == "company_name") {
+            } else if textual
+                && (has("company")
+                    || has("organization")
+                    || has("organisation")
+                    || has("employer")
+                    || n == "company_name")
+            {
                 GeneratorKind::Company
             } else if textual && (has("phone") || has("mobile") || has("tel") || has("fax")) {
                 GeneratorKind::Phone
@@ -367,7 +395,8 @@ pub fn auto_generators(table: &TableDef) -> Vec<ColumnGenerator> {
                 GeneratorKind::StreetAddress
             } else if textual && (has("url") || has("website") || has("homepage") || has("link")) {
                 GeneratorKind::Url
-            } else if c.kind == DataKind::Network || (textual && (has("ip") || has("ipv4") || n.contains("ip_address"))) {
+            } else if c.kind == DataKind::Network || (textual && (has("ip") || has("ipv4") || n.contains("ip_address")))
+            {
                 GeneratorKind::IpV4
             } else if textual && (has("zip") || has("postcode") || has("postal")) {
                 GeneratorKind::Pattern { pattern: "#####".into() }
@@ -382,9 +411,21 @@ pub fn auto_generators(table: &TableDef) -> Vec<ColumnGenerator> {
             } else if textual && (has("password") || has("hash") || has("token") || has("secret")) {
                 GeneratorKind::Pattern { pattern: "*".repeat(limit.unwrap_or(32).min(32)) }
             } else if textual
-                && ["description", "comment", "comments", "notes", "note", "bio", "body", "content", "summary", "message", "remarks"]
-                    .iter()
-                    .any(|w| has(w))
+                && [
+                    "description",
+                    "comment",
+                    "comments",
+                    "notes",
+                    "note",
+                    "bio",
+                    "body",
+                    "content",
+                    "summary",
+                    "message",
+                    "remarks",
+                ]
+                .iter()
+                .any(|w| has(w))
             {
                 if limit.is_none_or(|l| l > 200) { GeneratorKind::Paragraph } else { GeneratorKind::Sentence }
             } else if textual && (has("title") || has("subject") || has("headline")) {
@@ -397,9 +438,15 @@ pub fn auto_generators(table: &TableDef) -> Vec<ColumnGenerator> {
                 GeneratorKind::IntRange { min: 18, max: 90 }
             } else if c.kind == DataKind::Int && has("year") {
                 GeneratorKind::IntRange { min: 1990, max: today.year() as i64 }
-            } else if numeric && ["price", "amount", "total", "cost", "salary", "balance", "fee", "subtotal"].iter().any(|w| has(w)) {
+            } else if numeric
+                && ["price", "amount", "total", "cost", "salary", "balance", "fee", "subtotal"].iter().any(|w| has(w))
+            {
                 let scale = numeric_precision(c).and_then(|(_, s)| s).unwrap_or(2);
-                GeneratorKind::DecimalRange { min: 1.0, max: 1000.0, scale: if c.kind == DataKind::Int { 0 } else { scale } }
+                GeneratorKind::DecimalRange {
+                    min: 1.0,
+                    max: 1000.0,
+                    scale: if c.kind == DataKind::Int { 0 } else { scale },
+                }
             } else if c.kind == DataKind::Int && ["qty", "quantity", "count", "stock"].iter().any(|w| has(w)) {
                 GeneratorKind::IntRange { min: 0, max: 100 }
             } else if temporal && (has("birth") || has("dob") || has("birthday") || has("birthdate")) {
@@ -441,7 +488,8 @@ pub fn auto_generators(table: &TableDef) -> Vec<ColumnGenerator> {
                 }
             };
             g.generator = gen_kind;
-            g.unique = unique_key && textual && !matches!(g.generator, GeneratorKind::Uuid | GeneratorKind::Enum { .. });
+            g.unique =
+                unique_key && textual && !matches!(g.generator, GeneratorKind::Uuid | GeneratorKind::Enum { .. });
             g
         })
         .collect()
@@ -521,7 +569,8 @@ fn decimal_text(units: i128, scale: u32) -> String {
     let neg = units < 0;
     let digits = units.unsigned_abs().to_string();
     let scale = scale as usize;
-    let padded = if digits.len() <= scale { format!("{}{digits}", "0".repeat(scale + 1 - digits.len())) } else { digits };
+    let padded =
+        if digits.len() <= scale { format!("{}{digits}", "0".repeat(scale + 1 - digits.len())) } else { digits };
     let (int_part, frac) = padded.split_at(padded.len() - scale);
     format!("{}{int_part}.{frac}", if neg { "-" } else { "" })
 }
@@ -541,7 +590,14 @@ fn fk_key(table: &ObjectRef, column: &str, group: &Option<String>) -> String {
 }
 
 /// Generate the raw value of one column for row `row_no` (1-based).
-fn generate(kind: &GeneratorKind, slot: usize, row_no: u64, st: &mut State, fk_pick: &BTreeMap<String, usize>, fk_cols: &BTreeMap<String, Vec<String>>) -> Value {
+fn generate(
+    kind: &GeneratorKind,
+    slot: usize,
+    row_no: u64,
+    st: &mut State,
+    fk_pick: &BTreeMap<String, usize>,
+    fk_cols: &BTreeMap<String, Vec<String>>,
+) -> Value {
     let rng = &mut st.rng;
     match kind {
         GeneratorKind::Skip | GeneratorKind::Null => Value::Null,
@@ -572,11 +628,11 @@ fn generate(kind: &GeneratorKind, slot: usize, row_no: u64, st: &mut State, fk_p
         GeneratorKind::Bool { true_ratio } => Value::Bool(chance(rng, *true_ratio)),
         GeneratorKind::DateRange { from, to } => {
             let days = to.signed_duration_since(*from).num_days();
-            Value::Date(*from + Duration::days(int_in(rng, 0, days)))
+            Value::Date(from.checked_add_signed(Duration::days(int_in(rng, 0, days))).unwrap_or(*from))
         }
         GeneratorKind::DateTimeRange { from, to } => {
             let secs = to.signed_duration_since(*from).num_seconds();
-            Value::DateTime(*from + Duration::seconds(int_in(rng, 0, secs)))
+            Value::DateTime(from.checked_add_signed(Duration::seconds(int_in(rng, 0, secs))).unwrap_or(*from))
         }
         GeneratorKind::Uuid => {
             let mut b = [0u8; 16];
@@ -616,19 +672,18 @@ fn generate(kind: &GeneratorKind, slot: usize, row_no: u64, st: &mut State, fk_p
         GeneratorKind::Phone => Value::text(pattern(rng, "+1 555-01##-####")),
         GeneratorKind::City => Value::text(pick(rng, CITIES)),
         GeneratorKind::Country => Value::text(pick(rng, COUNTRIES)),
-        GeneratorKind::StreetAddress => Value::text(format!(
-            "{} {} {}",
-            int_in(rng, 1, 9999),
-            pick(rng, STREET_WORDS),
-            pick(rng, STREET_SUFFIXES)
-        )),
+        GeneratorKind::StreetAddress => {
+            Value::text(format!("{} {} {}", int_in(rng, 1, 9999), pick(rng, STREET_WORDS), pick(rng, STREET_SUFFIXES)))
+        }
         GeneratorKind::Company => Value::text(format!(
             "{} {} {}",
             pick(rng, COMPANY_WORDS),
             pick(rng, COMPANY_NOUNS),
             pick(rng, COMPANY_SUFFIXES)
         )),
-        GeneratorKind::Url => Value::text(format!("https://{}.{}/{}", pick(rng, LOREM), pick(rng, DOMAINS), pick(rng, LOREM))),
+        GeneratorKind::Url => {
+            Value::text(format!("https://{}.{}/{}", pick(rng, LOREM), pick(rng, DOMAINS), pick(rng, LOREM)))
+        }
         GeneratorKind::IpV4 => {
             let v = match int_in(rng, 0, 2) {
                 0 => format!("10.{}.{}.{}", int_in(rng, 0, 255), int_in(rng, 0, 255), int_in(rng, 1, 254)),
@@ -752,7 +807,9 @@ pub async fn run_mock(
     // Truncate first (before sequences look at MAX()).
     if config.mode == MockMode::TruncateFirst {
         let truncate = dialect.truncate_table(&table_ref);
-        if let Err(e) = cancellable(dbiji_core::driver::execute_update(session, &truncate, &[]), cancel, handle.clone()).await {
+        if let Err(e) =
+            cancellable(dbiji_core::driver::execute_update(session, &truncate, &[]), cancel, handle.clone()).await
+        {
             if e.kind == ErrorKind::Cancelled {
                 return Err(e);
             }
@@ -775,7 +832,11 @@ pub async fn run_mock(
         if let GeneratorKind::Sequence { start, step, after_max } = &g.generator {
             sequences[i] = *start;
             if *after_max {
-                let sql = format!("SELECT MAX({}) FROM {}", dialect.quote_ident(&col.name), dialect.qualified_ref(&table_ref));
+                let sql = format!(
+                    "SELECT MAX({}) FROM {}",
+                    dialect.quote_ident(&col.name),
+                    dialect.qualified_ref(&table_ref)
+                );
                 let max = cancellable(query_scalar(session, &sql, &[]), cancel, handle.clone()).await?;
                 if let Some(m) = max.as_i64() {
                     sequences[i] = sequences[i].max(m.saturating_add(*step));
@@ -798,13 +859,16 @@ pub async fn run_mock(
     }
     for (key, cols) in &fk_cols {
         let Some((table, _)) = active.iter().find_map(|(g, _)| match &g.generator {
-            GeneratorKind::ForeignKey { table, column, group } if &fk_key(table, column, group) == key => Some((table, column)),
+            GeneratorKind::ForeignKey { table, column, group } if &fk_key(table, column, group) == key => {
+                Some((table, column))
+            }
             _ => None,
         }) else {
             continue;
         };
         let list = cols.iter().map(|c| dialect.quote_ident(c)).collect::<Vec<_>>().join(", ");
-        let sql = dialect.limit_query(&format!("SELECT DISTINCT {list} FROM {}", dialect.qualified_ref(table)), 10_000, 0);
+        let sql =
+            dialect.limit_query(&format!("SELECT DISTINCT {list} FROM {}", dialect.qualified_ref(table)), 10_000, 0);
         let (_, rows) = cancellable(query_all(session, &sql, &[]), cancel, handle.clone()).await?;
         let rows: Vec<Row> = rows.into_iter().filter(|r| r.iter().all(|v| !v.is_null())).collect();
         if rows.is_empty() {
@@ -833,7 +897,8 @@ pub async fn run_mock(
     progress.set_total_rows(Some(config.rows));
     progress.item_started(&item);
     let batch_size = config.batch_size.max(1);
-    let mut writer = BatchWriter::new(session, target, TransactionScope::PerBatch, config.on_error, batch_size, item.clone());
+    let mut writer =
+        BatchWriter::new(session, target, TransactionScope::PerBatch, config.on_error, batch_size, item.clone());
     writer.begin().await?;
     let outcome = async {
         let mut produced = 0u64;
@@ -855,14 +920,19 @@ pub async fn run_mock(
                 let mut row: Row = Vec::with_capacity(active.len());
                 for (slot, (g, col)) in active.iter().enumerate() {
                     let null = col.nullable && g.null_ratio > 0.0 && chance(&mut st.rng, g.null_ratio);
-                    let raw = if null { Value::Null } else { generate(&g.generator, slot, produced, &mut st, &fk_pick, &fk_cols) };
+                    let raw = if null {
+                        Value::Null
+                    } else {
+                        generate(&g.generator, slot, produced, &mut st, &fk_pick, &fk_cols)
+                    };
                     let raw = if g.unique {
                         make_unique(raw, unique_offset + produced, limits[slot])
                     } else {
                         fit_limit(raw, limits[slot])
                     };
-                    let value = convert_value(&raw, col.kind, &convert)
-                        .map_err(|e| DbError::config(format!("Column '{}': generated value does not fit: {e}", col.name)))?;
+                    let value = convert_value(&raw, col.kind, &convert).map_err(|e| {
+                        DbError::config(format!("Column '{}': generated value does not fit: {e}", col.name))
+                    })?;
                     row.push(value);
                 }
                 batch.push((produced, row));
@@ -880,9 +950,10 @@ pub async fn run_mock(
         Err(e) => {
             writer.abort().await;
             if e.kind == ErrorKind::Cancelled
-                && let Some(h) = handle {
-                    let _ = h.cancel().await;
-                }
+                && let Some(h) = handle
+            {
+                let _ = h.cancel().await;
+            }
             return Err(crate::error::with_item(e, &item));
         }
     }
@@ -964,12 +1035,16 @@ mod tests {
         let seq = GeneratorKind::Sequence { start: 5, step: 2, after_max: false };
         assert_eq!(generate(&seq, 0, 1, &mut a, &none, &none_cols), Value::Int(5));
         assert_eq!(generate(&seq, 0, 2, &mut a, &none, &none_cols), Value::Int(7));
-        let d = generate(&GeneratorKind::DecimalRange { min: -5.0, max: 5.0, scale: 3 }, 0, 1, &mut a, &none, &none_cols);
+        let d =
+            generate(&GeneratorKind::DecimalRange { min: -5.0, max: 5.0, scale: 3 }, 0, 1, &mut a, &none, &none_cols);
         let text = d.to_text();
         assert_eq!(text.split('.').nth(1).map(str::len), Some(3), "{text}");
-        let p = generate(&GeneratorKind::Pattern { pattern: "AB-##\\#?".into() }, 0, 1, &mut a, &none, &none_cols).to_text().into_owned();
+        let p = generate(&GeneratorKind::Pattern { pattern: "AB-##\\#?".into() }, 0, 1, &mut a, &none, &none_cols)
+            .to_text()
+            .into_owned();
         assert!(p.starts_with("AB-") && p.len() == 7 && p.contains('#'), "{p}");
-        let t = generate(&GeneratorKind::Text { min: 10, max: 10 }, 0, 1, &mut a, &none, &none_cols).to_text().into_owned();
+        let t =
+            generate(&GeneratorKind::Text { min: 10, max: 10 }, 0, 1, &mut a, &none, &none_cols).to_text().into_owned();
         assert_eq!(t.chars().count(), 10, "{t}");
     }
 

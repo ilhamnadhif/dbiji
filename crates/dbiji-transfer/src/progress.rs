@@ -282,9 +282,10 @@ impl Progress {
     /// Completed fraction in `0.0..=1.0`: rows of the known total, otherwise finished items.
     pub fn fraction(&self) -> Option<f64> {
         if let Some(total) = self.total_rows()
-            && total > 0 {
-                return Some((self.rows() as f64 / total as f64).clamp(0.0, 1.0));
-            }
+            && total > 0
+        {
+            return Some((self.rows() as f64 / total as f64).clamp(0.0, 1.0));
+        }
         let items = self.items_total();
         if items > 0 {
             return Some((self.items_done() as f64 / items as f64).clamp(0.0, 1.0));

@@ -152,7 +152,8 @@ fn convert_text(s: &str, kind: DataKind, opts: &ConvertOptions) -> Result<Value,
             }
             for f in &opts.date_formats {
                 if let Ok(d) = NaiveDate::parse_from_str(t, f) {
-                    return local_tz(d.and_time(NaiveTime::MIN)).ok_or_else(|| format!("'{t}' is not a valid local time"));
+                    return local_tz(d.and_time(NaiveTime::MIN))
+                        .ok_or_else(|| format!("'{t}' is not a valid local time"));
                 }
             }
             Value::parse_as(t, DataKind::DateTimeTz)
@@ -179,9 +180,7 @@ fn convert_text(s: &str, kind: DataKind, opts: &ConvertOptions) -> Result<Value,
                 Err(format!("'{}' is not valid JSON", shorten(t)))
             }
         }
-        DataKind::Array => Ok(parse_array_literal(t)
-            .or_else(|| json_array(t))
-            .unwrap_or_else(|| Value::text(s))),
+        DataKind::Array => Ok(parse_array_literal(t).or_else(|| json_array(t)).unwrap_or_else(|| Value::text(s))),
         DataKind::Bool | DataKind::Uuid => Value::parse_as(t, kind),
         _ => Ok(Value::text(s)),
     }
@@ -236,7 +235,9 @@ pub(crate) fn normalize_number(t: &str, opts: &ConvertOptions) -> String {
 }
 
 fn decode_binary(t: &str, encoding: Option<BinaryEncoding>) -> Result<Vec<u8>, String> {
-    let b64 = |s: &str| base64::engine::general_purpose::STANDARD.decode(s.as_bytes()).map_err(|e| format!("invalid base64: {e}"));
+    let b64 = |s: &str| {
+        base64::engine::general_purpose::STANDARD.decode(s.as_bytes()).map_err(|e| format!("invalid base64: {e}"))
+    };
     match encoding {
         Some(BinaryEncoding::Hex) => parse_hex_bytes(t).ok_or_else(|| format!("'{}' is not hexadecimal", shorten(t))),
         Some(BinaryEncoding::Base64) => b64(t),
@@ -314,7 +315,9 @@ fn convert_typed(v: &Value, kind: DataKind, opts: &ConvertOptions) -> Result<Val
         DataKind::DateTimeTz => match v {
             V::DateTimeTz(_) => Ok(v.clone()),
             V::DateTime(dt) => local_tz(*dt).ok_or_else(|| format!("'{dt}' does not exist in the local time zone")),
-            V::Date(d) => local_tz(d.and_time(NaiveTime::MIN)).ok_or_else(|| format!("'{d}' is not a valid local time")),
+            V::Date(d) => {
+                local_tz(d.and_time(NaiveTime::MIN)).ok_or_else(|| format!("'{d}' is not a valid local time"))
+            }
             _ => text_fallback(),
         },
         DataKind::Time => match v {
@@ -384,9 +387,10 @@ pub(crate) fn parse_array_literal(s: &str) -> Option<Value> {
             return Value::Int(i);
         }
         if dbiji_core::value::is_decimal_text(raw)
-            && let Ok(f) = raw.parse::<f64>() {
-                return Value::Float(f);
-            }
+            && let Ok(f) = raw.parse::<f64>()
+        {
+            return Value::Float(f);
+        }
         match raw {
             "true" => Value::Bool(true),
             "false" => Value::Bool(false),
@@ -511,8 +515,13 @@ mod tests {
         assert_eq!(
             c(Value::text("{1,NULL,\"x y\",{2}}"), DataKind::Array).unwrap(),
             Value::Array(
-                vec![Value::Int(1), Value::Null, Value::text("x y"), Value::Array(vec![Value::Int(2)].into_boxed_slice())]
-                    .into_boxed_slice()
+                vec![
+                    Value::Int(1),
+                    Value::Null,
+                    Value::text("x y"),
+                    Value::Array(vec![Value::Int(2)].into_boxed_slice())
+                ]
+                .into_boxed_slice()
             )
         );
         assert_eq!(c(Value::text("2024-01-02 00:00:00"), DataKind::Date).unwrap().to_text(), "2024-01-02");

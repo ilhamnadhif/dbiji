@@ -32,6 +32,7 @@
 //! All configuration types implement `Serialize`/`Deserialize` and `Default`
 //! so that transfers can be saved as tasks (FR-T5).
 
+#![warn(missing_docs)]
 // `DbError` (the error type mandated by dbiji-core) is 144 bytes, so every
 // `DbResult` trips this lint; boxing it is a decision for dbiji-core.
 #![allow(clippy::result_large_err)]
@@ -55,7 +56,7 @@ pub use tokio_util::sync::CancellationToken;
 pub use convert::{ConvertOptions, convert_value};
 pub use export::{
     DEFAULT_FILE_NAME_PATTERN, ExportItem, ExportItemSummary, ExportJob, ExportJobSummary, SessionFactory,
-    expand_file_name, run_export, run_export_batched, run_export_job,
+    expand_file_name, run_export, run_export_batched, run_export_job, run_export_job_with,
 };
 pub use format::{BinaryEncoding, ValueFormat, format_value};
 pub use import::csv::{CsvHeader, CsvReadOptions, CsvSource};
@@ -64,15 +65,14 @@ pub use import::json::{JsonInputFormat, JsonReadOptions, JsonSource};
 pub use import::xlsx::{SheetSelector, XlsxReadOptions, XlsxSource, xlsx_sheet_names};
 pub use import::xml::{XmlReadOptions, XmlSource};
 pub use import::{
-    ColumnMapping, ImportJob, ImportMapping, ImportMode, ImportSourceConfig, ImportSummary, run_import,
-    run_import_job,
+    ColumnMapping, ImportJob, ImportMapping, ImportMode, ImportSourceConfig, ImportSummary, run_import, run_import_job,
 };
 pub use migrate::{MigrationJob, MigrationMode, MigrationSummary, NameCase, TableMigrationSummary, run_migration};
 pub use mock::{ColumnGenerator, GeneratorKind, MockConfig, MockMode, MockSummary, auto_generators, run_mock};
 pub use options::{
-    CsvOptions, DbUnitOptions, EscapeStyle, ExportFormat, ExportOptions, HeaderStyle, HtmlOptions,
-    IdentifierQuoting, JsonLayout, JsonOptions, LineEnding, MarkdownOptions, ParquetCompression, ParquetOptions,
-    PhpOptions, QuoteMode, SqlInsertMode, SqlOptions, TxtOptions, XlsxOptions, XmlNullMode, XmlOptions,
+    CsvOptions, DbUnitOptions, EscapeStyle, ExportFormat, ExportOptions, HeaderStyle, HtmlOptions, IdentifierQuoting,
+    JsonLayout, JsonOptions, LineEnding, MarkdownOptions, ParquetCompression, ParquetOptions, PhpOptions, QuoteMode,
+    SqlInsertMode, SqlOptions, TxtOptions, XlsxOptions, XmlNullMode, XmlOptions,
 };
 pub use progress::{MessageLevel, Progress, ProgressMessage, ProgressSnapshot};
 pub use sink::{ExportSummary, ExportTarget, RowSink, create_sink};

@@ -50,7 +50,13 @@ pub struct XlsxReadOptions {
 
 impl Default for XlsxReadOptions {
     fn default() -> Self {
-        XlsxReadOptions { sheet: SheetSelector::Index(0), header: true, skip_rows: 0, skip_empty_rows: true, sample_rows: 100 }
+        XlsxReadOptions {
+            sheet: SheetSelector::Index(0),
+            header: true,
+            skip_rows: 0,
+            skip_empty_rows: true,
+            sample_rows: 100,
+        }
     }
 }
 
@@ -223,7 +229,8 @@ fn read_workbook(path: PathBuf, sheet: SheetSelector, tx: Sender<Msg>, skip_empt
         Ok(())
     })();
     if errors > 0 {
-        let _ = tx.blocking_send(Msg::Warning(format!("{errors} cell(s) contained Excel errors and were read as NULL")));
+        let _ =
+            tx.blocking_send(Msg::Warning(format!("{errors} cell(s) contained Excel errors and were read as NULL")));
     }
     if let Err(e) = result {
         let _ = tx.blocking_send(Msg::Error(e));
@@ -268,7 +275,14 @@ impl XlsxSource {
             .name("dbiji-xlsx-reader".into())
             .spawn(move || read_workbook(path, sheet, tx, skip_empty))
             .map_err(|e| DbError::io(format!("Cannot start the XLSX reader: {e}")))?;
-        let mut src = XlsxSource { rx, columns: Vec::new(), first_col: 0, pending: VecDeque::new(), done: false, warnings: Vec::new() };
+        let mut src = XlsxSource {
+            rx,
+            columns: Vec::new(),
+            first_col: 0,
+            pending: VecDeque::new(),
+            done: false,
+            warnings: Vec::new(),
+        };
         // Read the header and a sample to determine the columns.
         let needed = options.skip_rows + usize::from(options.header) + options.sample_rows.max(1);
         let mut head: Vec<Row> = Vec::new();

@@ -132,7 +132,9 @@ impl Column {
                 let x = match v {
                     Value::UInt(u) if unsigned => *u as i64,
                     Value::UInt(u) => i64::try_from(*u).map_err(|_| format!("{u} does not fit into INT64"))?,
-                    Value::Int(i) if unsigned && *i < 0 => return Err(format!("{i} is negative in an unsigned column")),
+                    Value::Int(i) if unsigned && *i < 0 => {
+                        return Err(format!("{i} is negative in an unsigned column"));
+                    }
                     other => other.as_i64().ok_or_else(|| mismatch(other, "integer"))?,
                 };
                 b.push(x);
@@ -144,7 +146,10 @@ impl Column {
                     Value::DateTime(dt) => dt.time(),
                     other => dbiji_core::value::parse_time(&other.to_text()).ok_or_else(|| mismatch(other, "time"))?,
                 };
-                b.push(i64::from(t.num_seconds_from_midnight()) * 1_000_000 + i64::from(t.nanosecond().min(999_999_999) / 1000));
+                b.push(
+                    i64::from(t.num_seconds_from_midnight()) * 1_000_000
+                        + i64::from(t.nanosecond().min(999_999_999) / 1000),
+                );
                 8
             }
             (Buffer::I64(b), ColKind::Timestamp { .. }) => {
@@ -334,7 +339,9 @@ impl RowSink for ParquetSink {
         self.buffered_rows += 1;
         self.buffered_bytes += bytes;
         self.rows += 1;
-        if self.buffered_rows >= self.opts.row_group_rows.max(1) || self.buffered_bytes >= self.opts.row_group_bytes.max(1024) {
+        if self.buffered_rows >= self.opts.row_group_rows.max(1)
+            || self.buffered_bytes >= self.opts.row_group_bytes.max(1024)
+        {
             self.flush_row_group()?;
         }
         Ok(())
@@ -358,9 +365,10 @@ impl RowSink for ParquetSink {
     fn abort(&mut self) {
         self.writer = None;
         if let Some(p) = &self.path
-            && !self.keep_partial {
-                remove_partial(p);
-            }
+            && !self.keep_partial
+        {
+            remove_partial(p);
+        }
     }
 
     fn bytes_written(&self) -> u64 {

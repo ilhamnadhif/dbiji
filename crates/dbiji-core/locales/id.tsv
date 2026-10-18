@@ -208,3 +208,92 @@ not connected	tidak terhubung
 pgpass file	file pgpass
 value	nilai
 {} running	{} berjalan
+(none found)	(tidak ditemukan)
+(top level)	(tingkat teratas)
+Auto	Otomatis
+Bound	Batas
+Browse…	Telusuri…
+Cannot copy the saved passwords	Tidak dapat menyalin kata sandi tersimpan
+Cannot duplicate the connection	Tidak dapat menggandakan koneksi
+Cannot save the connections	Tidak dapat menyimpan koneksi
+Cannot store the imported passwords	Tidak dapat menyimpan kata sandi yang diimpor
+Choose a DBeaver workspace folder.	Pilih folder workspace DBeaver.
+Collation	Kolasi
+Columns	Kolom
+Comment	Komentar
+Configuration problem	Masalah konfigurasi
+Constraints	Batasan
+Copy	Salin
+Copy the passwords into the secure store (otherwise the connections read .pgpass)	Salin kata sandi ke penyimpanan aman (jika tidak, koneksi membaca .pgpass)
+Create	Buat
+Create the password vault	Buat brankas kata sandi
+DDL	DDL
+Data	Data
+Default	Bawaan
+Definition	Definisi
+Dependencies	Dependensi
+Dependency	Dependensi
+Deriving the key…	Menurunkan kunci…
+Diagram	Diagram
+Direction	Arah
+Enabled	Aktif
+Enter the master password.	Masukkan kata sandi master.
+Events	Event
+Existing connections	Koneksi yang sudah ada
+Find connections	Cari koneksi
+Foreign keys	Foreign key
+Import notes	Catatan impor
+Import {} connection(s)	Impor {} koneksi
+Indexes	Indeks
+Keep both	Simpan keduanya
+Keep shell commands that run on connect / disconnect	Pertahankan perintah shell yang dijalankan saat terhubung / terputus
+Kind	Jenis
+Level	Level
+Master password	Kata sandi master
+Method	Metode
+Name	Nama
+No connections found.	Tidak ada koneksi ditemukan.
+No dependencies.	Tidak ada dependensi.
+No statistics available.	Tidak ada statistik.
+Null	Null
+Object	Objek
+On delete	Saat hapus
+On update	Saat ubah
+Open in SQL editor	Buka di editor SQL
+Partitioned by	Dipartisi menurut
+Partitions	Partisi
+Passwords saved by DBeaver with the default key are imported into the secure store.	Kata sandi yang disimpan DBeaver dengan kunci bawaan diimpor ke penyimpanan aman.
+Passwords will be asked when connecting.	Kata sandi akan ditanyakan saat menghubungkan.
+Predicate	Predikat
+Properties	Properti
+Put into folder	Masukkan ke folder
+Referenced columns	Kolom yang dirujuk
+References	Referensi
+Repeat password	Ulangi kata sandi
+Replace	Ganti
+Retry	Coba lagi
+Rows	Baris
+Rows:	Baris:
+Runs a shell command when connecting or disconnecting.	Menjalankan perintah shell saat menghubungkan atau memutus.
+Saved passwords are kept in a file encrypted with your master password.	Kata sandi tersimpan disimpan dalam file yang dienkripsi dengan kata sandi master Anda.
+Saved passwords unlocked	Kata sandi tersimpan terbuka
+Select all	Pilih semua
+Select none	Kosongkan pilihan
+Size:	Ukuran:
+Skip	Lewati
+Statistics	Statistik
+Supported: postgres://, mysql://, mariadb://, sqlserver://, clickhouse://, sqlite:, duckdb:, jdbc:…	Didukung: postgres://, mysql://, mariadb://, sqlserver://, clickhouse://, sqlite:, duckdb:, jdbc:…
+Table	Tabel
+The connection is closed.	Koneksi ditutup.
+The data editor is not available.	Editor data tidak tersedia.
+The passwords do not match.	Kata sandi tidak cocok.
+Timing	Waktu
+Triggers	Trigger
+URL	URL
+Unlock	Buka kunci
+Unlock saved passwords	Buka kunci kata sandi tersimpan
+Workspace folder (contains General/.dbeaver/data-sources.json):	Folder workspace (berisi General/.dbeaver/data-sources.json):
+depends on	bergantung pada
+used by	digunakan oleh
+{} connection(s) found	{} koneksi ditemukan
+{} note(s)	{} catatan

@@ -12,9 +12,13 @@ struct PaletteState {
     query: String,
     selected: usize,
     focus_requested: bool,
+    /// Scripts and bookmarks of the project, read once per opening.
+    project: Option<std::sync::Arc<(Vec<(String, std::path::PathBuf)>, Vec<dbiji_config::Bookmark>)>>,
 }
 
 enum Target {
+    Script(std::path::PathBuf),
+    Bookmark(String, dbiji_core::ObjectRef),
     Action(crate::keys::Action),
     Command(fn() -> AppCommand),
     Connect(String),
@@ -59,6 +63,26 @@ pub fn fuzzy(pattern: &str, text: &str) -> Option<i32> {
         last = Some(i);
     }
     Some(score - t.len() as i32 / 4)
+}
+
+fn collect_project(cx: &AppContext, state: &mut PaletteState) -> Vec<Item> {
+    let data = state
+        .project
+        .get_or_insert_with(|| {
+            let p = cx.services.projects.as_ref().and_then(|m| m.default_project().ok());
+            let scripts = p.as_ref().and_then(|p| p.list_scripts().ok()).unwrap_or_default().into_iter().map(|s| (s.relative, s.path)).collect();
+            let bookmarks = p.as_ref().and_then(|p| p.bookmarks().ok()).unwrap_or_default();
+            std::sync::Arc::new((scripts, bookmarks))
+        })
+        .clone();
+    let mut items = Vec::new();
+    for (name, path) in &data.0 {
+        items.push(Item { icon: icon::FILE_SQL, label: name.clone(), detail: tr("Script").to_string(), target: Target::Script(path.clone()) });
+    }
+    for b in &data.1 {
+        items.push(Item { icon: icon::BOOKMARK_SIMPLE, label: b.label.clone(), detail: tr("Bookmark").to_string(), target: Target::Bookmark(b.connection_id.clone(), b.object.clone()) });
+    }
+    items
 }
 
 fn collect(cx: &AppContext) -> Vec<Item> {
@@ -113,7 +137,8 @@ fn collect(cx: &AppContext) -> Vec<Item> {
 pub fn show(ctx: &egui::Context, cx: &mut AppContext, open: &mut bool) {
     let id = egui::Id::new("dbiji_palette");
     let mut state: PaletteState = ctx.data_mut(|d| d.get_temp(id)).unwrap_or_default();
-    let items = collect(cx);
+    let mut items = collect(cx);
+    items.extend(collect_project(cx, &mut state));
     let mut scored: Vec<(i32, &Item)> = items
         .iter()
         .filter_map(|it| fuzzy(&state.query, &format!("{} {}", it.label, it.detail)).map(|s| (s, it)))
@@ -176,6 +201,13 @@ pub fn show(ctx: &egui::Context, cx: &mut AppContext, open: &mut bool) {
         if let Some((_, it)) = scored.get(i) {
             match &it.target {
                 Target::Action(a) => cx.push(AppCommand::Action(*a)),
+                Target::Script(p) => cx.push(AppCommand::OpenScript(p.clone())),
+                Target::Bookmark(c, o) => {
+                    if !cx.conns.is_connected(c) {
+                        cx.push(AppCommand::Connect(c.clone()));
+                    }
+                    cx.push(AppCommand::OpenObject { connection: c.clone(), object: o.clone(), page: ObjectPage::Properties });
+                }
                 Target::Command(f) => cx.push(f()),
                 Target::Connect(c) => cx.push(AppCommand::Connect(c.clone())),
                 Target::Editor(c) => {

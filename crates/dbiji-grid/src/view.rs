@@ -610,6 +610,11 @@ mod tests {
             JobPoll::Done(v) => assert_eq!(v.rows.len(), 5000),
             other => panic!("unexpected {other:?}"),
         }
+        // The result is sent first, then the worker calls on_done.
+        let t0 = Instant::now();
+        while !done.load(AtomicOrdering::SeqCst) && t0.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(Duration::from_millis(1));
+        }
         assert!(done.load(AtomicOrdering::SeqCst));
         let cancelled = compute_view(&s, &ViewSpec { sort: vec![SortKey::asc(0)], filter: None }, &ViewContext { base_columns: 3, ..Default::default() }, &AtomicBool::new(true));
         assert!(cancelled.is_none());

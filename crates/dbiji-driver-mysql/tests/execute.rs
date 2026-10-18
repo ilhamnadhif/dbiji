@@ -473,11 +473,6 @@ async fn statement_timeout() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dropped_cursor_does_not_hang() {
-    // KILL QUERY timings show up when the test fails.
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter("dbiji_driver_mysql=debug")
-        .with_test_writer()
-        .try_init();
     for srv in servers() {
         let mut s = srv.connect().await;
         // 1. huge result, a few rows read, cursor dropped
@@ -493,9 +488,10 @@ async fn dropped_cursor_does_not_hang() {
         assert_eq!(query(&mut s, "SELECT 5").await[0][0], Value::Int(5));
         assert!(
             started.elapsed() < Duration::from_secs(5),
-            "[{}] took {:?}",
+            "[{}] took {:?}: {}",
             srv.name,
-            started.elapsed()
+            started.elapsed(),
+            dbiji_driver_mysql::cursor::last_abandon_report()
         );
 
         // 2. cursor dropped while the statement still executes

@@ -148,12 +148,12 @@ impl Watch {
         self.pending_kill = Some(tokio::spawn(async move {
             let started = std::time::Instant::now();
             let id = killer.connection_id();
-            match killer.kill_query().await {
-                Ok(()) => tracing::debug!("KILL QUERY {id} sent in {:?}", started.elapsed()),
-                Err(e) => {
-                    tracing::debug!("KILL QUERY {id} failed after {:?}: {e}", started.elapsed())
-                }
-            }
+            let line = match killer.kill_query().await {
+                Ok(()) => format!("KILL QUERY {id} sent in {:?}", started.elapsed()),
+                Err(e) => format!("KILL QUERY {id} failed after {:?}: {e}", started.elapsed()),
+            };
+            tracing::debug!("{line}");
+            *LAST_KILL.lock() = line;
         }));
     }
 
@@ -650,6 +650,8 @@ async fn abandon<P: Protocol>(mut qr: QueryResult<'_, 'static, P>, w: &mut Watch
     w.abandoned = true;
     let soft = Instant::now() + SOFT_DRAIN;
     let hard = soft + HARD_DRAIN;
+    let started = std::time::Instant::now();
+    let mut rows: u64 = 0;
     loop {
         if qr.is_empty() {
             // Consume a pending, already received result (no I/O).
@@ -660,7 +662,7 @@ async fn abandon<P: Protocol>(mut qr: QueryResult<'_, 'static, P>, w: &mut Watch
             continue;
         }
         match w.drain(qr.next(), soft, hard).await {
-            Some(Ok(_)) => {}
+            Some(Ok(_)) => rows += 1,
             Some(Err(e)) if error::is_fatal(&e) => {
                 return Outcome {
                     broken: Some(error::err(e)),
@@ -680,7 +682,21 @@ async fn abandon<P: Protocol>(mut qr: QueryResult<'_, 'static, P>, w: &mut Watch
             }
         }
     }
+    let line = format!("discarded {rows} row(s) in {:?}", started.elapsed());
+    tracing::debug!("connection {}: {line}", w.killer.connection_id());
+    *LAST_ABANDON.lock() = line;
     Outcome::abandoned()
+}
+
+/// The last abandoned result (rows discarded, time) and `KILL QUERY`
+/// outcome: diagnostics for logs and tests.
+static LAST_ABANDON: parking_lot::Mutex<String> = parking_lot::Mutex::new(String::new());
+static LAST_KILL: parking_lot::Mutex<String> = parking_lot::Mutex::new(String::new());
+
+/// See [`LAST_ABANDON`].
+#[doc(hidden)]
+pub fn last_abandon_report() -> String {
+    format!("{}; {}", LAST_ABANDON.lock(), LAST_KILL.lock())
 }
 
 async fn show_warnings(conn: &mut Conn) -> Vec<ServerMessage> {

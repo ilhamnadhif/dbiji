@@ -1683,12 +1683,12 @@ dependencies = [
  "dbiji-core",
  "encoding_rs",
  "mysql_async",
+ "parking_lot",
  "rustls",
  "rustls-native-certs",
  "serde_json",
  "tokio",
  "tracing",
- "tracing-subscriber",
  "uuid",
 ]
 

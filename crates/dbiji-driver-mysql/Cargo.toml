@@ -18,8 +18,8 @@ serde_json.workspace = true
 chrono.workspace = true
 encoding_rs.workspace = true
 tracing.workspace = true
+parking_lot.workspace = true
 
 [dev-dependencies]
-tracing-subscriber.workspace = true
 tokio = { workspace = true }
 uuid.workspace = true

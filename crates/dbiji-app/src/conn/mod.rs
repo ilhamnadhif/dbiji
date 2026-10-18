@@ -298,14 +298,16 @@ pub async fn connect_saved(
         )));
     }
     let driver = registry.get(cfg.kind).ok_or_else(|| DbError::unsupported(format!("No driver for {}", cfg.kind)))?;
-    let get = |slot| secrets.get(&store.network_secret_key(&cfg, slot)).ok().flatten();
-    let creds = Credentials {
-        password: get(SecretSlot::Password),
-        ssh_password: get(SecretSlot::SshPassword),
-        ssh_passphrase: get(SecretSlot::SshPassphrase),
-        proxy_password: get(SecretSlot::ProxyPassword),
-    };
     let net_cfg = store.effective_network(&cfg);
+    // Only read the secrets this connection uses (each read may hit the OS keychain).
+    let get = |slot, used: bool| if used { secrets.get(&store.network_secret_key(&cfg, slot)).ok().flatten() } else { None };
+    let password_used = !cfg.kind.is_file_based() && matches!(cfg.auth, AuthMethod::Password);
+    let creds = Credentials {
+        password: get(SecretSlot::Password, password_used),
+        ssh_password: get(SecretSlot::SshPassword, net_cfg.ssh.is_some()),
+        ssh_passphrase: get(SecretSlot::SshPassphrase, net_cfg.ssh.is_some()),
+        proxy_password: get(SecretSlot::ProxyPassword, net_cfg.proxy.is_some()),
+    };
     let mut eff = cfg.clone();
     eff.ssh = net_cfg.ssh;
     eff.proxy = net_cfg.proxy;

@@ -11,7 +11,7 @@ use crate::services::{Services, Settings};
 use crate::tabs::{DockViewer, Tab, TabView};
 use crate::toasts::Toasts;
 use dbiji_core::tr;
-use egui::{Key, KeyboardShortcut, Modifiers, RichText, Ui};
+use egui::{RichText, Ui};
 use egui_dock::{DockArea, DockState};
 use egui_phosphor::regular as icon;
 use std::sync::Arc;
@@ -22,6 +22,7 @@ pub struct DbijiApp {
     pub conns: ConnectionManager,
     pub services: Services,
     pub settings: Settings,
+    pub keymap: crate::keys::Keymap,
     pub dock: DockState<Tab>,
     next_tab_id: u64,
     pub nav: Navigator,
@@ -41,11 +42,15 @@ pub struct DbijiApp {
 
 impl DbijiApp {
     pub fn new(backend: Arc<Backend>, conns: ConnectionManager, services: Services, settings: Settings) -> Self {
+        let (keymap, keymap_warnings) = crate::keys::Keymap::from_config(&settings.keymap, crate::keys::IS_MAC);
+        let mut services = services;
+        services.warnings.extend(keymap_warnings);
         let mut app = DbijiApp {
             backend,
             conns,
             services,
             settings,
+            keymap,
             dock: DockState::new(Vec::new()),
             next_tab_id: 1,
             nav: Navigator::default(),
@@ -93,6 +98,7 @@ impl DbijiApp {
                     commands: &mut self.commands,
                     toasts: &mut self.toasts,
                     ops: &mut self.ops,
+                    keymap: &self.keymap,
                     tab_active: false,
                 };
                 if !tab.view.on_close(&mut cx) {
@@ -167,6 +173,7 @@ impl DbijiApp {
             }
             AppCommand::DeleteConnection(id) => self.dialogs.confirm_delete_connection(&id, &self.conns),
             AppCommand::ShowPalette => self.dialogs.palette_open = true,
+            AppCommand::Action(a) => self.dispatch_action(ctx, a),
             AppCommand::ToggleNavigator => self.show_nav = !self.show_nav,
             AppCommand::ToggleOperations => self.ops.panel_open = !self.ops.panel_open,
             AppCommand::ShowAbout => self.dialogs.about_open = true,
@@ -185,22 +192,127 @@ impl DbijiApp {
         }
     }
 
-    fn global_shortcuts(&mut self, ctx: &egui::Context) {
-        let palette = KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::P);
-        let new_editor = KeyboardShortcut::new(Modifiers::COMMAND, Key::CloseBracket);
-        let toggle_nav = KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::B);
-        ctx.input_mut(|i| {
-            if i.consume_shortcut(&palette) {
-                self.commands.push(AppCommand::ShowPalette);
+    /// Keyboard shortcuts of the focused context (active tab) and global ones.
+    fn shortcuts(&mut self, ctx: &egui::Context) {
+        if self.dialogs.captures_keyboard() {
+            return;
+        }
+        let context = self.dock.find_active_focused().map(|(_, t)| t.view.focus_context()).unwrap_or(crate::keys::ActionContext::Global);
+        for action in crate::keys::take_actions(ctx, &self.keymap, context) {
+            self.dispatch_action(ctx, action);
+        }
+    }
+
+    fn selected_connection(&self) -> Option<String> {
+        self.nav
+            .selected
+            .as_ref()
+            .and_then(|n| n.connection())
+            .map(str::to_string)
+            .or_else(|| {
+                let active = self.active_tab?;
+                self.dock.iter_all_tabs().find(|(_, t)| t.id == active).and_then(|(_, t)| t.view.connection_id().map(str::to_string))
+            })
+    }
+
+    /// Run an action: the active tab gets the first chance, then the global handler.
+    pub fn dispatch_action(&mut self, ctx: &egui::Context, action: crate::keys::Action) {
+        use crate::keys::Action as A;
+        let handled = match self.dock.find_active_focused() {
+            Some((_, tab)) => {
+                let mut cx = AppContext {
+                    backend: &self.backend,
+                    conns: &mut self.conns,
+                    services: &self.services,
+                    settings: &mut self.settings,
+                    commands: &mut self.commands,
+                    toasts: &mut self.toasts,
+                    ops: &mut self.ops,
+                    keymap: &self.keymap,
+                    tab_active: true,
+                };
+                tab.view.on_action(action, &mut cx)
             }
-            if i.consume_shortcut(&new_editor) {
-                let conn = self.nav.selected.as_ref().and_then(|n| n.connection()).map(str::to_string);
-                self.commands.push(AppCommand::NewSqlEditor { connection: conn, schema: None, text: None });
+            None => false,
+        };
+        if handled {
+            return;
+        }
+        let conn = self.selected_connection();
+        let cmd = match action {
+            A::NewSqlEditor => Some(AppCommand::NewSqlEditor { connection: conn, schema: None, text: None }),
+            A::OpenSqlConsole => conn.map(|c| AppCommand::NewSqlConsole { connection: c }),
+            A::NewConnection => Some(AppCommand::NewConnection { kind: None, folder: None }),
+            A::EditConnection => conn.map(AppCommand::EditConnection),
+            A::Connect => conn.map(AppCommand::Connect),
+            A::Disconnect => conn.map(AppCommand::Disconnect),
+            A::Reconnect => conn.map(AppCommand::Reconnect),
+            A::ToggleNavigator => Some(AppCommand::ToggleNavigator),
+            A::CommandPalette => Some(AppCommand::ShowPalette),
+            A::OpenHistory => Some(AppCommand::OpenHistory),
+            A::OpenErDiagram => match (conn, self.nav.selected_schema()) {
+                (Some(c), Some(s)) => Some(AppCommand::OpenErDiagram { connection: c, schema: s, tables: Vec::new() }),
+                _ => {
+                    self.toasts.info(tr("Select a schema in the navigator first."));
+                    None
+                }
+            },
+            A::OpenTasks => Some(AppCommand::OpenTasks),
+            A::OpenSessionManager => conn.map(|c| AppCommand::OpenSessionManager { connection: c }),
+            A::AiAssistant => Some(AppCommand::OpenAiAssistant { connection: conn }),
+            A::OpenSettings => Some(AppCommand::OpenSettings),
+            A::Quit => Some(AppCommand::Quit),
+            A::ShowShortcuts | A::Help => Some(AppCommand::ShowShortcuts),
+            A::Export => conn.map(|c| AppCommand::OpenExport { connection: c, objects: Vec::new(), sql: None }),
+            A::Import => conn.map(|c| AppCommand::OpenImport { connection: c, table: None, schema: None }),
+            A::CloseTab => self.active_tab.map(AppCommand::CloseTab),
+            A::NextTab | A::PrevTab => {
+                self.cycle_tab(action == A::NextTab);
+                None
             }
-            if i.consume_shortcut(&toggle_nav) {
-                self.commands.push(AppCommand::ToggleNavigator);
+            A::ZoomIn | A::ZoomOut | A::ResetZoom => {
+                let z = ctx.zoom_factor();
+                let nz = match action {
+                    A::ZoomIn => (z + 0.1).min(3.0),
+                    A::ZoomOut => (z - 0.1).max(0.5),
+                    _ => 1.0,
+                };
+                ctx.set_zoom_factor(nz);
+                self.settings.general.ui_scale = nz;
+                self.save_settings();
+                None
             }
-        });
+            A::Refresh => {
+                if let Some(node) = self.nav.selected.clone() {
+                    self.nav.refresh_node(&node, &mut self.commands);
+                }
+                None
+            }
+            _ => None,
+        };
+        if let Some(c) = cmd {
+            self.commands.push(c);
+        }
+    }
+
+    fn cycle_tab(&mut self, forward: bool) {
+        let ids: Vec<u64> = self.dock.iter_all_tabs().map(|(_, t)| t.id).collect();
+        if ids.is_empty() {
+            return;
+        }
+        let pos = self.active_tab.and_then(|a| ids.iter().position(|i| *i == a)).unwrap_or(0);
+        let next = if forward { (pos + 1) % ids.len() } else { (pos + ids.len() - 1) % ids.len() };
+        let id = ids[next];
+        if let Some(path) = self.dock.find_tab_from(|t| t.id == id) {
+            let _ = self.dock.set_active_tab(path);
+        }
+    }
+
+    /// Write `settings.json` / `keymap.json`.
+    pub fn save_settings(&mut self) {
+        if let Err(e) = dbiji_config::settings::save(&self.services.paths, &self.settings) {
+            self.toasts.error(tr("Cannot save the settings"), Some(e.to_string()));
+        }
     }
 
     fn menu_bar(&mut self, ui: &mut Ui) {
@@ -371,7 +483,7 @@ impl eframe::App for DbijiApp {
             self.toasts.error(dbiji_core::trf("Cannot connect to {}", &[&name]), Some(err));
             self.conns.take_error(&id);
         }
-        self.global_shortcuts(&ctx);
+        self.shortcuts(&ctx);
 
         egui::Panel::top("dbiji_menu").show(ui, |ui| self.menu_bar(ui));
         egui::Panel::bottom("dbiji_status").exact_size(24.0).show(ui, |ui| self.status_bar(ui));
@@ -384,6 +496,7 @@ impl eframe::App for DbijiApp {
             commands: &mut self.commands,
             toasts: &mut self.toasts,
             ops: &mut self.ops,
+            keymap: &self.keymap,
             tab_active: false,
         };
         if self.show_nav {

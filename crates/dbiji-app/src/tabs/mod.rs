@@ -41,10 +41,17 @@ pub trait TabView: Any {
 
     fn ui(&mut self, ui: &mut Ui, cx: &mut AppContext);
 
-    /// Handle a global command routed to the active tab. Return true if handled.
-    fn on_action(&mut self, action: &str, cx: &mut AppContext) -> bool {
+    /// Handle an action (shortcut, menu, palette) routed to the active tab.
+    /// Return true if handled.
+    fn on_action(&mut self, action: crate::keys::Action, cx: &mut AppContext) -> bool {
         let _ = (action, cx);
         false
+    }
+
+    /// Which part of the tab had keyboard focus last frame (selects the
+    /// shortcut context: SQL editor, results grid ...).
+    fn focus_context(&self) -> crate::keys::ActionContext {
+        crate::keys::ActionContext::Global
     }
 
     /// Called before closing; return false to keep the tab open (e.g. to ask
@@ -166,9 +173,12 @@ pub trait EmbeddedView {
     fn is_dirty(&self) -> bool {
         false
     }
-    fn on_action(&mut self, action: &str, cx: &mut AppContext) -> bool {
+    fn on_action(&mut self, action: crate::keys::Action, cx: &mut AppContext) -> bool {
         let _ = (action, cx);
         false
+    }
+    fn focus_context(&self) -> crate::keys::ActionContext {
+        crate::keys::ActionContext::Global
     }
 }
 

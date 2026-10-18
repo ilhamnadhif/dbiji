@@ -15,6 +15,7 @@ struct PaletteState {
 }
 
 enum Target {
+    Action(crate::keys::Action),
     Command(fn() -> AppCommand),
     Connect(String),
     Editor(String),
@@ -76,6 +77,14 @@ fn collect(cx: &AppContext) -> Vec<Item> {
         Item { icon: icon::KEYBOARD, label: tr("Keyboard shortcuts").into(), detail: String::new(), target: Target::Command(|| AppCommand::ShowShortcuts) },
         Item { icon: icon::PLUGS, label: tr("Disconnect all").into(), detail: String::new(), target: Target::Command(|| AppCommand::DisconnectAll) },
     ];
+    for a in crate::keys::Action::ALL {
+        items.push(Item {
+            icon: icon::LIGHTNING,
+            label: crate::keys::action_label(*a).to_string(),
+            detail: format!("{} {}", tr(a.category().label()), crate::keys::label(cx.keymap, *a)).trim().to_string(),
+            target: Target::Action(*a),
+        });
+    }
     for c in cx.conns.configs() {
         let connected = cx.conns.is_connected(&c.id);
         if !connected {
@@ -166,6 +175,7 @@ pub fn show(ctx: &egui::Context, cx: &mut AppContext, open: &mut bool) {
     if let Some(i) = chosen {
         if let Some((_, it)) = scored.get(i) {
             match &it.target {
+                Target::Action(a) => cx.push(AppCommand::Action(*a)),
                 Target::Command(f) => cx.push(f()),
                 Target::Connect(c) => cx.push(AppCommand::Connect(c.clone())),
                 Target::Editor(c) => {

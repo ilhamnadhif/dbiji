@@ -15,6 +15,7 @@ pub struct AppContext<'a> {
     pub commands: &'a mut Vec<AppCommand>,
     pub toasts: &'a mut Toasts,
     pub ops: &'a mut Operations,
+    pub keymap: &'a crate::keys::Keymap,
     /// The tab currently being drawn is the focused one (receives shortcuts).
     pub tab_active: bool,
 }

@@ -756,7 +756,7 @@ impl Navigator {
         }
     }
 
-    fn selected_schema(&self) -> Option<SchemaRef> {
+    pub fn selected_schema(&self) -> Option<SchemaRef> {
         match self.selected.as_ref()? {
             NavNode::Schema { schema, .. } | NavNode::KindFolder { schema, .. } => Some(schema.clone()),
             NavNode::Object { obj, .. } | NavNode::Child { obj, .. } => Some(obj.schema_ref()),
@@ -765,8 +765,13 @@ impl Navigator {
         }
     }
 
-    fn refresh_selected(&mut self, cx: &mut AppContext) {
+    pub fn refresh_selected(&mut self, cx: &mut AppContext) {
         let Some(node) = self.selected.clone() else { return };
+        self.refresh_node(&node, cx.commands);
+    }
+
+    /// Ask to reload the metadata below `node`.
+    pub fn refresh_node(&self, node: &NavNode, commands: &mut Vec<AppCommand>) {
         let Some(conn) = node.connection().map(str::to_string) else { return };
         let (object, schema) = match &node {
             NavNode::Object { obj, .. } | NavNode::Child { obj, .. } => (Some(obj.clone()), None),
@@ -774,7 +779,7 @@ impl Navigator {
             NavNode::Schema { schema, .. } | NavNode::KindFolder { schema, .. } => (None, Some(schema.clone())),
             _ => (None, None),
         };
-        cx.push(AppCommand::RefreshMetadata { connection: conn, object, schema });
+        commands.push(AppCommand::RefreshMetadata { connection: conn, object, schema });
     }
 
     fn keyboard(&mut self, ui: &mut Ui, cx: &mut AppContext) {

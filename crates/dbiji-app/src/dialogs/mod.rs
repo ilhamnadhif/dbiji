@@ -80,6 +80,11 @@ impl Dialogs {
         });
     }
 
+    /// A dialog that takes keyboard input is open (shortcuts are suspended).
+    pub fn captures_keyboard(&self) -> bool {
+        self.palette_open || self.vault_open || self.delete.is_some() || !self.prompts.is_empty() || self.import.is_some() || !self.connection.is_empty()
+    }
+
     /// Credentials entered by the user since the last call.
     pub fn take_credentials(&mut self) -> Vec<(String, Credentials)> {
         std::mem::take(&mut self.ready)

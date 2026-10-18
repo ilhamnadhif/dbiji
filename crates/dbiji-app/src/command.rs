@@ -19,6 +19,8 @@ pub enum ObjectPage {
 }
 
 pub enum AppCommand {
+    /// A keymap action (palette, toolbar, menu) dispatched like its shortcut.
+    Action(crate::keys::Action),
     // ------------------------------------------------------------------ tabs
     OpenTab(Box<dyn TabView>),
     CloseTab(u64),

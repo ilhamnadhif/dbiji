@@ -441,10 +441,17 @@ impl TabView for ObjectEditorTab {
         }
     }
 
-    fn on_action(&mut self, action: &str, cx: &mut AppContext) -> bool {
+    fn on_action(&mut self, action: crate::keys::Action, cx: &mut AppContext) -> bool {
         match (&mut self.data, self.page) {
             (Some(d), ObjectPage::Data) => d.on_action(action, cx),
             _ => false,
+        }
+    }
+
+    fn focus_context(&self) -> crate::keys::ActionContext {
+        match (&self.data, self.page) {
+            (Some(d), ObjectPage::Data) => d.focus_context(),
+            _ => crate::keys::ActionContext::Global,
         }
     }
 

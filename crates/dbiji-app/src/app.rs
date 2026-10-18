@@ -207,7 +207,7 @@ impl DbijiApp {
                 self.request_connect(&id);
             }
             AppCommand::DisconnectAll => self.conns.disconnect_all(&self.backend),
-            AppCommand::NewConnection { kind, folder } => self.dialogs.new_connection(kind, folder, &self.conns),
+            AppCommand::NewConnection { kind, folder } => self.dialogs.new_connection(kind, folder, &self.conns, self.settings.navigator.default_view),
             AppCommand::EditConnection(id) => self.dialogs.edit_connection(&id, &self.conns),
             AppCommand::DuplicateConnection(id) => match self.conns.store.duplicate(&id) {
                 Ok(dup) => {
@@ -932,8 +932,10 @@ impl eframe::App for DbijiApp {
             self.poll_generate();
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
-        for id in self.conns.just_connected.clone() {
-            self.nav.expand(crate::nav::NavNode::Connection(id.clone()));
+        if self.settings.navigator.expand_on_connect {
+            for id in self.conns.just_connected.clone() {
+                self.nav.expand(crate::nav::NavNode::Connection(id.clone()));
+            }
         }
         for (id, err) in self.conns.errors() {
             let name = self.conns.config(&id).map(|c| c.name.clone()).unwrap_or_default();

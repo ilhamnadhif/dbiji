@@ -74,6 +74,8 @@ pub struct Navigator {
     rows: Vec<Row>,
     scroll_to_selected: bool,
     dark: bool,
+    /// Navigator preferences (copied from the settings every frame).
+    prefs: dbiji_config::settings::NavigatorSettings,
 }
 
 pub fn kind_icon(kind: ObjectKind) -> &'static str {
@@ -235,7 +237,7 @@ impl Navigator {
             node: node.clone(),
             depth,
             label: cfg.name.clone(),
-            detail: Some(cfg.summary()),
+            detail: self.prefs.show_connection_details.then(|| cfg.summary()),
             icon: db_icon(cfg.kind),
             icon_color: color.or(marker),
             expandable: true,
@@ -251,7 +253,7 @@ impl Navigator {
         let backend = cx.backend;
         let Some(live) = cx.conns.live_mut(&cfg.id) else { return };
         let caps = live.driver.info().capabilities.clone();
-        let show_system = live.config.init.show_system_objects;
+        let show_system = live.config.init.show_system_objects || self.prefs.show_system_objects;
         let mut child_rows = Vec::new();
         if caps.multiple_databases {
             live.meta.request_databases(backend, &live.main.clone());
@@ -460,7 +462,7 @@ impl Navigator {
         depth: usize,
         has_children: bool,
     ) {
-        let show_system = live.config.init.show_system_objects;
+        let show_system = live.config.init.show_system_objects || self.prefs.show_system_objects;
         let cfg = live.config.clone();
         let list = match live.meta.objects.get(&(schema.clone(), kind)) {
             Some(Loadable::Loaded(v)) => v.clone(),
@@ -474,6 +476,10 @@ impl Navigator {
             }
         };
         let mut shown = 0;
+        let mut list = list;
+        if self.prefs.sort == dbiji_config::settings::NavigatorSort::Alphabetical {
+            list.sort_by_key(|o| o.obj.name.to_lowercase());
+        }
         for o in list.iter().filter(|o| (show_system || !o.is_system) && filter_ok(&cfg, kind, &o.obj.name)) {
             if !self.filter_matches(&o.obj.name) {
                 continue;
@@ -572,6 +578,9 @@ impl Navigator {
 
     pub fn ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
         self.dark = ui.visuals().dark_mode;
+        if self.prefs != cx.settings.navigator {
+            self.prefs = cx.settings.navigator.clone();
+        }
         // Toolbar
         ui.horizontal(|ui| {
             if ui.button(icon::PLUS).on_hover_text(tr("New connection")).clicked() {

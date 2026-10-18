@@ -47,8 +47,10 @@ pub struct Dialogs {
 }
 
 impl Dialogs {
-    pub fn new_connection(&mut self, kind: Option<dbiji_core::DbKind>, folder: Option<String>, _conns: &ConnectionManager) {
-        self.connection.push(ConnectionDialog::new(kind, folder));
+    pub fn new_connection(&mut self, kind: Option<dbiji_core::DbKind>, folder: Option<String>, _conns: &ConnectionManager, default_view: dbiji_core::config::NavigatorView) {
+        let mut d = ConnectionDialog::new(kind, folder);
+        d.cfg.navigator_view = default_view;
+        self.connection.push(d);
     }
 
     pub fn edit_connection(&mut self, id: &str, conns: &ConnectionManager) {

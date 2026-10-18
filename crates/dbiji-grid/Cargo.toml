@@ -22,3 +22,15 @@ quick-xml.workspace = true
 
 [dev-dependencies]
 eframe.workspace = true
+
+[[example]]
+name = "grid_demo"
+path = "examples/grid_demo.rs"
+
+[[example]]
+name = "grid_bench"
+path = "examples/grid_bench.rs"
+
+[[example]]
+name = "grid_snapshot"
+path = "examples/grid_snapshot.rs"

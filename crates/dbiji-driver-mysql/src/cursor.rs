@@ -101,6 +101,7 @@ pub(crate) fn spawn(
         timed_out: false,
         abandoned: false,
         killed: false,
+        pending_kill: None,
     };
     tokio::spawn(run(conn, job, req_rx, watch, ret_tx, tx_state));
     (
@@ -126,6 +127,10 @@ struct Watch {
     timed_out: bool,
     abandoned: bool,
     killed: bool,
+    /// `KILL QUERY` in flight: the result keeps being read meanwhile, and
+    /// the connection is only reused once it is done (a late KILL would
+    /// interrupt the next statement).
+    pending_kill: Option<tokio::task::JoinHandle<()>>,
 }
 
 fn far_future() -> Instant {
@@ -133,16 +138,29 @@ fn far_future() -> Instant {
 }
 
 impl Watch {
-    async fn kill(&mut self) {
+    /// Send `KILL QUERY` from a side connection, without waiting for it.
+    fn kill(&mut self) {
         if self.killed {
             return;
         }
         self.killed = true;
-        if let Err(e) = self.killer.kill_query().await {
-            tracing::debug!(
-                "KILL QUERY for connection {} failed: {e}",
-                self.killer.connection_id()
-            );
+        let killer = self.killer.clone();
+        self.pending_kill = Some(tokio::spawn(async move {
+            let started = std::time::Instant::now();
+            let id = killer.connection_id();
+            match killer.kill_query().await {
+                Ok(()) => tracing::debug!("KILL QUERY {id} sent in {:?}", started.elapsed()),
+                Err(e) => {
+                    tracing::debug!("KILL QUERY {id} failed after {:?}: {e}", started.elapsed())
+                }
+            }
+        }));
+    }
+
+    /// Wait until a `KILL QUERY` in flight has reached the server.
+    async fn kill_done(&mut self) {
+        if let Some(h) = self.pending_kill.take() {
+            let _ = h.await;
         }
     }
 
@@ -163,19 +181,19 @@ impl Watch {
                 out = &mut fut => return out,
                 _ = sleep_until(deadline.unwrap_or_else(far_future)), if deadline.is_some() => {
                     self.timed_out = true;
-                    self.kill().await;
+                    self.kill();
                 }
                 res = self.alive.changed(), if !self.abandoned => {
                     if res.is_err() {
                         self.abandoned = true;
-                        self.kill().await;
+                        self.kill();
                     }
                 }
                 res = self.abort.changed(), if abort_open && !self.abandoned => {
                     match res {
                         Ok(()) if self.abort_requested() => {
                             self.abandoned = true;
-                            self.kill().await;
+                            self.kill();
                         }
                         Ok(()) => {}
                         Err(_) => abort_open = false,
@@ -198,7 +216,7 @@ impl Watch {
             tokio::select! {
                 biased;
                 out = &mut fut => return Some(out),
-                _ = sleep_until(soft), if !self.killed => self.kill().await,
+                _ = sleep_until(soft), if !self.killed => self.kill(),
                 _ = sleep_until(hard) => return None,
             }
         }
@@ -374,6 +392,7 @@ async fn run(
             }
         }
     };
+    w.kill_done().await;
     finish(conn, outcome, &job, ret, &tx_state).await;
 }
 

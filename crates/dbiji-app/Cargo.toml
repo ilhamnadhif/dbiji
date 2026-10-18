@@ -20,6 +20,7 @@ dbiji-core.workspace = true
 dbiji-config.workspace = true
 dbiji-net.workspace = true
 dbiji-visual.workspace = true
+dbiji-grid.workspace = true
 dbiji-driver-mysql.workspace = true
 eframe.workspace = true
 egui.workspace = true

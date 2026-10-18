@@ -1544,6 +1544,7 @@ dependencies = [
  "dbiji-config",
  "dbiji-core",
  "dbiji-driver-mysql",
+ "dbiji-grid",
  "dbiji-net",
  "dbiji-visual",
  "eframe",

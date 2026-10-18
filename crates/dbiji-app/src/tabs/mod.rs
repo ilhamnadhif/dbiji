@@ -188,8 +188,8 @@ pub trait EmbeddedView {
 
 /// Data editor for a table or view (filled in by the results module).
 pub fn make_table_data_view(cx: &mut AppContext, conn: &str, obj: &dbiji_core::ObjectRef) -> Option<Box<dyn EmbeddedView>> {
-    let _ = (cx, conn, obj);
-    None
+    let _ = cx;
+    Some(Box::new(crate::results::data_tab::TableDataView::new(conn.to_string(), obj.clone(), None)))
 }
 
 /// Read-only highlighted code (DDL, plans, logs).

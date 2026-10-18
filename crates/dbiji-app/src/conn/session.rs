@@ -307,6 +307,53 @@ impl SessionHandle {
         r
     }
 
+    /// Run data-change statements atomically (FR-D2 "save in one transaction").
+    ///
+    /// In auto-commit mode a transaction is opened, committed on success and
+    /// rolled back on the first error, then auto-commit is restored. In manual
+    /// mode the statements join the user's open transaction (nothing is
+    /// committed). Returns the total number of affected rows and whether the
+    /// changes are already committed.
+    pub async fn apply_changes(&self, stmts: &[(String, Vec<Value>)]) -> DbResult<(u64, bool)> {
+        let mut guard = self.lock().await;
+        let manual = guard.transaction_mode() == TransactionMode::Manual;
+        if !manual {
+            guard.set_transaction_mode(TransactionMode::Manual).await?;
+        }
+        let mut total = 0u64;
+        let mut failure = None;
+        for (sql, params) in stmts {
+            let started = Instant::now();
+            match dbiji_core::driver::execute_update(guard.as_mut(), sql, params).await {
+                Ok(n) => {
+                    total += n.unwrap_or(0);
+                    self.log_tx(sql, started, n, true);
+                }
+                Err(e) => {
+                    self.note_error(&e);
+                    self.log_tx(sql, started, None, false);
+                    failure = Some(e.with_context(sql.chars().take(200).collect::<String>()));
+                    break;
+                }
+            }
+        }
+        let result = match failure {
+            Some(e) => {
+                if !manual {
+                    let _ = guard.rollback().await;
+                }
+                Err(e)
+            }
+            None if !manual => guard.commit().await.map(|_| (total, true)),
+            None => Ok((total, false)),
+        };
+        if !manual {
+            let _ = guard.set_transaction_mode(TransactionMode::Auto).await;
+        }
+        self.refresh_tx(guard.as_ref());
+        result
+    }
+
     pub async fn set_transaction_mode(&self, mode: TransactionMode) -> DbResult<()> {
         let mut guard = self.lock().await;
         let r = guard.set_transaction_mode(mode).await;

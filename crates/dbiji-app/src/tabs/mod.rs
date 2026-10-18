@@ -8,6 +8,7 @@ pub mod history;
 pub mod object;
 pub mod query_builder;
 pub mod settings;
+pub mod sql_editor;
 pub mod welcome;
 
 use crate::cx::AppContext;
@@ -118,7 +119,9 @@ impl egui_dock::TabViewer for DockViewer<'_, '_> {
 
     fn ui(&mut self, ui: &mut Ui, tab: &mut Tab) {
         self.cx.tab_active = self.active_tab == Some(tab.id);
+        self.cx.current_tab = Some(tab.id);
         tab.view.ui(ui, self.cx);
+        self.cx.current_tab = None;
     }
 
     fn on_tab_button(&mut self, tab: &mut Tab, response: &egui::Response) {

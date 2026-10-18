@@ -1021,12 +1021,8 @@ pub fn object_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, obj: &ObjectRef
     }
     ui.menu_button(format!("{} {}", icon::FILE_SQL, tr("Generate SQL")), |ui| {
         for (label, kind) in [("SELECT", "select"), ("INSERT", "insert"), ("UPDATE", "update"), ("DELETE", "delete"), ("UPSERT", "upsert"), ("DDL", "ddl")] {
-            if ui.button(label).clicked() {
-                cx.push(AppCommand::NewSqlEditor {
-                    connection: Some(c.clone()),
-                    schema: Some(obj.schema_ref()),
-                    text: Some(format!("-- @generate {kind} {}", obj.display_path())),
-                });
+            if (obj.kind.is_table_like() || kind == "ddl" || kind == "select") && ui.button(label).clicked() {
+                cx.push(AppCommand::GenerateSql { connection: c.clone(), object: obj.clone(), kind: kind.to_string() });
                 ui.close();
             }
         }

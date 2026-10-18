@@ -31,6 +31,10 @@ impl Backend {
         *self.ctx.lock() = Some(ctx);
     }
 
+    pub fn context(&self) -> Option<egui::Context> {
+        self.ctx.lock().clone()
+    }
+
     pub fn handle(&self) -> tokio::runtime::Handle {
         self.runtime.handle().clone()
     }

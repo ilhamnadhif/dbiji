@@ -22,6 +22,7 @@ dbiji-net.workspace = true
 dbiji-visual.workspace = true
 dbiji-grid.workspace = true
 dbiji-sql.workspace = true
+dbiji-editor.workspace = true
 dbiji-compare.workspace = true
 dbiji-tasks.workspace = true
 dbiji-ai.workspace = true

@@ -38,6 +38,9 @@ pub struct DbijiApp {
     active_tab: Option<u64>,
     /// Benchmark mode: quit after this instant.
     exit_at: Option<Instant>,
+    /// "Generate SQL" requests waiting for the table definition.
+    pending_generate: Vec<(String, dbiji_core::ObjectRef, String)>,
+    script_counter: u32,
 }
 
 impl DbijiApp {
@@ -67,6 +70,8 @@ impl DbijiApp {
                 .ok()
                 .and_then(|v| v.parse::<u64>().ok())
                 .map(|s| Instant::now() + std::time::Duration::from_secs(s)),
+            pending_generate: Vec::new(),
+            script_counter: 0,
         };
         app.open_tab(Box::new(crate::tabs::welcome::WelcomeTab));
         app
@@ -100,6 +105,7 @@ impl DbijiApp {
                     ops: &mut self.ops,
                     keymap: &self.keymap,
                     tab_active: false,
+                    current_tab: None,
                 };
                 if !tab.view.on_close(&mut cx) {
                     // put it back
@@ -174,6 +180,37 @@ impl DbijiApp {
             AppCommand::DeleteConnection(id) => self.dialogs.confirm_delete_connection(&id, &self.conns),
             AppCommand::ShowPalette => self.dialogs.palette_open = true,
             AppCommand::Action(a) => self.dispatch_action(ctx, a),
+            AppCommand::NewSqlEditor { connection, schema, text } => {
+                self.script_counter += 1;
+                let title = format!("Script-{}", self.script_counter);
+                let tab = crate::tabs::sql_editor::SqlEditorTab::new(connection.clone(), schema, text.unwrap_or_default(), None, false, title);
+                if let Some(c) = &connection {
+                    if !self.conns.is_connected(c) {
+                        self.request_connect(c);
+                    }
+                }
+                self.open_tab(Box::new(tab));
+            }
+            AppCommand::NewSqlConsole { connection } => {
+                let name = self.conns.config(&connection).map(|c| c.name.clone()).unwrap_or_default();
+                let title = format!("{} {}", tr("Console"), name);
+                if !self.conns.is_connected(&connection) {
+                    self.request_connect(&connection);
+                }
+                self.open_tab(Box::new(crate::tabs::sql_editor::SqlEditorTab::new(Some(connection), None, String::new(), None, true, title)));
+            }
+            AppCommand::OpenScript(path) => self.open_script(path),
+            AppCommand::GenerateSql { connection, object, kind } => {
+                if object.kind.is_table_like() {
+                    if let Some(live) = self.conns.live_mut(&connection) {
+                        let main = live.main.clone();
+                        live.meta.request_table_def(&self.backend, &main, &object);
+                    }
+                    self.pending_generate.push((connection, object, kind));
+                } else {
+                    self.commands.push(AppCommand::OpenObject { connection, object, page: crate::command::ObjectPage::Ddl });
+                }
+            }
             AppCommand::OpenSettings => {
                 self.open_tab(Box::new(crate::tabs::settings::SettingsTab::default()));
             }
@@ -255,6 +292,7 @@ impl DbijiApp {
                     ops: &mut self.ops,
                     keymap: &self.keymap,
                     tab_active: true,
+                    current_tab: self.active_tab,
                 };
                 tab.view.on_action(action, &mut cx)
             }
@@ -331,6 +369,137 @@ impl DbijiApp {
         if let Some(path) = self.dock.find_tab_from(|t| t.id == id) {
             let _ = self.dock.set_active_tab(path);
         }
+    }
+
+    /// Open a file given on the command line: SQL scripts open in an editor,
+    /// SQLite / DuckDB database files become (or reuse) a connection.
+    pub fn open_path(&mut self, path: &std::path::Path) {
+        let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+        let kind = match ext.as_str() {
+            "db" | "sqlite" | "sqlite3" | "db3" => Some(dbiji_core::DbKind::Sqlite),
+            "duckdb" | "ddb" => Some(dbiji_core::DbKind::DuckDb),
+            _ => None,
+        };
+        let Some(kind) = kind.filter(|k| self.conns.registry.get(*k).is_some()) else {
+            self.open_script(path.to_path_buf());
+            return;
+        };
+        let full = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        let file = full.display().to_string();
+        let existing = self.conns.configs().iter().find(|c| c.kind == kind && c.file_path.as_deref() == Some(file.as_str())).map(|c| c.id.clone());
+        let id = match existing {
+            Some(id) => id,
+            None => {
+                let name = full.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_else(|| file.clone());
+                let mut cfg = dbiji_core::config::ConnectionConfig::new(kind, self.conns.store.unique_name(&name, None));
+                cfg.file_path = Some(file);
+                cfg.auth = dbiji_core::config::AuthMethod::None;
+                let id = cfg.id.clone();
+                self.conns.upsert(cfg);
+                id
+            }
+        };
+        self.request_connect(&id);
+        self.nav.select(crate::nav::NavNode::Connection(id));
+    }
+
+    /// Reopen the editors of the previous session (FR-S1).
+    pub fn restore_session(&mut self) {
+        let Some(projects) = self.services.projects.as_ref() else { return };
+        let state = projects.load_session();
+        let mut opened = 0;
+        for t in state.tabs {
+            match t.kind {
+                dbiji_config::project::TabKind::SqlScript if t.path.as_ref().is_some_and(|p| p.exists()) => {
+                    if let Some(p) = t.path.clone() {
+                        self.open_script(p);
+                        opened += 1;
+                    }
+                }
+                dbiji_config::project::TabKind::SqlScript | dbiji_config::project::TabKind::SqlConsole => {
+                    let conn = t.connection_id.clone().filter(|c| self.conns.config(c).is_some());
+                    let schema = (t.schema.is_some() || t.database.is_some()).then(|| dbiji_core::meta::SchemaRef::new(t.database.clone(), t.schema.clone()));
+                    let console = t.kind == dbiji_config::project::TabKind::SqlConsole;
+                    self.script_counter += 1;
+                    let title = t.title.clone().unwrap_or_else(|| format!("Script-{}", self.script_counter));
+                    self.open_tab(Box::new(crate::tabs::sql_editor::SqlEditorTab::new(conn, schema, t.content.clone().unwrap_or_default(), None, console, title)));
+                    opened += 1;
+                }
+                _ => {}
+            }
+        }
+        if opened > 0 {
+            // The welcome tab is not needed when editors were restored.
+            let welcome: Vec<u64> = self.dock.iter_all_tabs().filter(|(_, t)| t.view.as_any().is::<crate::tabs::welcome::WelcomeTab>()).map(|(_, t)| t.id).collect();
+            for id in welcome {
+                if let Some(path) = self.dock.find_tab_from(|t| t.id == id) {
+                    self.dock.remove_tab(path);
+                }
+            }
+        }
+    }
+
+    /// Remember the open editors for the next start.
+    pub fn save_session(&mut self) {
+        let Some(projects) = self.services.projects.as_ref() else { return };
+        let mut state = dbiji_config::SessionState::default();
+        for (_, t) in self.dock.iter_all_tabs() {
+            if let Some(v) = t.view.session_state() {
+                if let Ok(tab) = serde_json::from_value::<dbiji_config::SessionTab>(v) {
+                    state.tabs.push(tab);
+                }
+            }
+        }
+        if let Err(e) = projects.save_session(&state) {
+            tracing::warn!("cannot save the session: {e}");
+        }
+    }
+
+    /// Open a script file in an editor (its saved connection and schema are restored).
+    pub fn open_script(&mut self, path: std::path::PathBuf) {
+        let text = match std::fs::read_to_string(&path) {
+            Ok(t) => t,
+            Err(e) => {
+                self.toasts.error(tr("Cannot open the script"), Some(format!("{}: {e}", path.display())));
+                return;
+            }
+        };
+        let meta = self.services.projects.as_ref().and_then(|p| p.default_project().ok()).and_then(|p| p.script_meta(&path).ok().flatten());
+        let conn = meta.as_ref().and_then(|m| m.connection_id.clone()).filter(|c| self.conns.config(c).is_some());
+        let schema = meta.as_ref().and_then(|m| (m.schema.is_some() || m.database.is_some()).then(|| dbiji_core::meta::SchemaRef::new(m.database.clone(), m.schema.clone())));
+        let title = path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+        if let Some(c) = &conn {
+            if !self.conns.is_connected(c) {
+                self.request_connect(c);
+            }
+        }
+        self.open_tab(Box::new(crate::tabs::sql_editor::SqlEditorTab::new(conn, schema, text, Some(path), false, title)));
+    }
+
+    /// Finish "Generate SQL" requests whose table definitions arrived.
+    fn poll_generate(&mut self) {
+        let mut still = Vec::new();
+        for (conn, obj, kind) in std::mem::take(&mut self.pending_generate) {
+            let Some(live) = self.conns.live(&conn) else { continue };
+            match live.meta.table_defs.get(&obj) {
+                Some(crate::backend::Loadable::Loaded(def)) => {
+                    let d = live.dialect.as_ref();
+                    let o = dbiji_sql::GenerateOptions::default();
+                    let text = match kind.as_str() {
+                        "select" => dbiji_sql::select_sql(d, def, &o),
+                        "insert" => dbiji_sql::insert_sql(d, def, &o),
+                        "update" => dbiji_sql::update_sql(d, def, &o),
+                        "delete" => dbiji_sql::delete_sql(d, def, &o),
+                        "upsert" => dbiji_sql::upsert_sql(d, def, &o).unwrap_or_else(|| format!("-- {}", tr("This database has no UPSERT statement."))),
+                        _ => dbiji_sql::ddl_sql(d, def),
+                    };
+                    self.commands.push(AppCommand::NewSqlEditor { connection: Some(conn), schema: Some(obj.schema_ref()), text: Some(text) });
+                }
+                Some(crate::backend::Loadable::Failed(e)) => self.toasts.error(tr("Cannot read the table"), Some(e.full_text())),
+                _ => still.push((conn, obj, kind)),
+            }
+        }
+        self.pending_generate = still;
     }
 
     /// Apply edited preferences (theme, language, limits, keymap) and save them.
@@ -539,6 +708,10 @@ impl eframe::App for DbijiApp {
             }
         }
         self.conns.poll(&self.backend);
+        if !self.pending_generate.is_empty() {
+            self.poll_generate();
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
         for id in self.conns.just_connected.clone() {
             self.nav.expand(crate::nav::NavNode::Connection(id.clone()));
         }
@@ -563,6 +736,7 @@ impl eframe::App for DbijiApp {
             ops: &mut self.ops,
             keymap: &self.keymap,
             tab_active: false,
+            current_tab: None,
         };
         if self.show_nav {
             egui::Panel::left("dbiji_navigator")
@@ -613,6 +787,7 @@ impl eframe::App for DbijiApp {
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.save_session();
         self.ops.cancel_all();
         self.conns.disconnect_all(&self.backend);
     }

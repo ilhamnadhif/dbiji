@@ -47,6 +47,8 @@ pub struct ExecOpts {
     pub resolve_sources: bool,
     pub timeout: Option<Duration>,
     pub store_budget: usize,
+    /// Smart commit: switch the session to manual commit before running.
+    pub switch_to_manual: bool,
 }
 
 impl Default for ExecOpts {
@@ -57,6 +59,7 @@ impl Default for ExecOpts {
             resolve_sources: true,
             timeout: None,
             store_budget: dbiji_core::rowstore::DEFAULT_STORE_BUDGET,
+            switch_to_manual: false,
         }
     }
 }
@@ -158,6 +161,13 @@ async fn run(
     let mut failed = 0usize;
     let exec_opts = ExecOptions { resolve_sources: opts.resolve_sources, timeout: opts.timeout };
     let last_index = plans.len().saturating_sub(1);
+    if opts.switch_to_manual {
+        if let Err(e) = session.set_transaction_mode(dbiji_core::driver::TransactionMode::Manual).await {
+            send(ExecEvent::Message { index: None, severity: "WARNING".into(), text: format!("Cannot switch to manual commit: {e}") });
+        } else {
+            send(ExecEvent::Message { index: None, severity: "INFO".into(), text: "Smart commit: switched to manual commit mode".into() });
+        }
+    }
     for (pos, plan) in plans.into_iter().enumerate() {
         if cancel.is_cancelled() {
             break;

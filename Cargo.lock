@@ -1529,6 +1529,7 @@ dependencies = [
  "dbiji-driver-mssql",
  "dbiji-driver-mysql",
  "dbiji-driver-postgres",
+ "dbiji-editor",
  "dbiji-grid",
  "dbiji-net",
  "dbiji-sql",

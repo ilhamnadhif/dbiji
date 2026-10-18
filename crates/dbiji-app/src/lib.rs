@@ -19,6 +19,7 @@ pub mod palette;
 pub mod results;
 pub mod router;
 pub mod services;
+pub mod sqllang;
 pub mod sqlprep;
 pub mod taskexec;
 pub mod tools;
@@ -169,6 +170,7 @@ pub fn run() -> ExitCode {
     }
     let options = eframe::NativeOptions { viewport, ..Default::default() };
     let exit_after_first = args.exit_after_first_frame;
+    let files = args.files.clone();
     let result = eframe::run_native(
         "DBiji",
         options,
@@ -178,6 +180,12 @@ pub fn run() -> ExitCode {
             backend.set_context(cc.egui_ctx.clone());
             let mut app = app::DbijiApp::new(backend, conns, services, settings);
             app.exit_after_first_frame = exit_after_first;
+            if app.settings.general.restore_session && std::env::var_os("DBIJI_BENCH_SCENARIO").is_none() {
+                app.restore_session();
+            }
+            for f in &files {
+                app.open_path(std::path::Path::new(f));
+            }
             Ok(Box::new(app))
         }),
     );

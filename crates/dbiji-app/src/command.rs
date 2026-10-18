@@ -32,6 +32,9 @@ pub enum AppCommand {
     OpenScript(PathBuf),
     /// Open the SQL console (terminal-style output) for a connection.
     NewSqlConsole { connection: String },
+    /// Generate SELECT / INSERT / UPDATE / DELETE / UPSERT / DDL for an object
+    /// and open it in a new editor.
+    GenerateSql { connection: String, object: ObjectRef, kind: String },
 
     // ----------------------------------------------------------- connections
     Connect(String),

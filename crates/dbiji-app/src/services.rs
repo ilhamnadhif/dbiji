@@ -78,10 +78,10 @@ impl Services {
                 tokio::time::sleep(std::time::Duration::from_secs(30)).await;
                 let Some(s) = secrets.upgrade() else { break };
                 let vault = s.read().vault().cloned();
-                if let Some(v) = vault {
-                    if v.lock_if_idle(idle) {
-                        tracing::info!("vault locked after {minutes} idle minutes");
-                    }
+                if let Some(v) = vault
+                    && v.lock_if_idle(idle)
+                {
+                    tracing::info!("vault locked after {minutes} idle minutes");
                 }
             }
         });
@@ -111,10 +111,9 @@ impl Services {
         };
         let exec = crate::headless::executor(paths, secrets.clone());
         let scheduler = Arc::new(dbiji_tasks::Scheduler::new(store.clone(), log.clone(), exec, dbiji_tasks::SchedulerOptions::default(), runtime));
-        if schedule
-            && let Err(e) = scheduler.start() {
-                warnings.push(e.to_string());
-            }
+        if schedule && let Err(e) = scheduler.start() {
+            warnings.push(e.to_string());
+        }
         (Some(store), Some(log), Some(scheduler))
     }
 
@@ -122,10 +121,7 @@ impl Services {
     /// user's configuration, Keychain or history).
     pub fn ephemeral(root: &std::path::Path) -> Services {
         let paths = AppPaths::with_root(root);
-        let secrets = Arc::new(RwLock::new(SecretsManager::with_store(
-            dbiji_config::SecretBackend::Keychain,
-            Arc::new(dbiji_config::MemoryStore::new()),
-        )));
+        let secrets = Arc::new(RwLock::new(SecretsManager::with_store(dbiji_config::SecretBackend::Keychain, Arc::new(dbiji_config::MemoryStore::new()))));
         let history = HistoryStore::open_in_memory().ok().map(|h| Arc::new(Mutex::new(h)));
         let tasks = dbiji_tasks::TaskStore::open(paths.tasks_dir()).ok().map(Arc::new);
         let runlog = dbiji_tasks::RunLog::open(paths.tasks_dir(), dbiji_tasks::RunLogOptions::default()).ok().map(Arc::new);

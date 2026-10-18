@@ -54,8 +54,7 @@ impl Raster {
             let Some(tex) = self.textures.get(&mesh.texture_id) else { continue };
             let clip = p.clip_rect;
             let (cx0, cy0) = ((clip.min.x * ppp).max(0.0) as i64, (clip.min.y * ppp).max(0.0) as i64);
-            let (cx1, cy1) =
-                (((clip.max.x * ppp).ceil() as i64).min(w as i64), ((clip.max.y * ppp).ceil() as i64).min(h as i64));
+            let (cx1, cy1) = (((clip.max.x * ppp).ceil() as i64).min(w as i64), ((clip.max.y * ppp).ceil() as i64).min(h as i64));
             for tri in mesh.indices.as_chunks::<3>().0 {
                 let v: Vec<_> = tri.iter().map(|&i| mesh.vertices[i as usize]).collect();
                 let pts: Vec<(f32, f32)> = v.iter().map(|v| (v.pos.x * ppp, v.pos.y * ppp)).collect();
@@ -63,8 +62,7 @@ impl Raster {
                 let maxx = pts.iter().map(|p| p.0).fold(f32::NEG_INFINITY, f32::max).ceil().min(cx1 as f32) as i64;
                 let miny = pts.iter().map(|p| p.1).fold(f32::INFINITY, f32::min).floor().max(cy0 as f32) as i64;
                 let maxy = pts.iter().map(|p| p.1).fold(f32::NEG_INFINITY, f32::max).ceil().min(cy1 as f32) as i64;
-                let area =
-                    (pts[1].0 - pts[0].0) * (pts[2].1 - pts[0].1) - (pts[2].0 - pts[0].0) * (pts[1].1 - pts[0].1);
+                let area = (pts[1].0 - pts[0].0) * (pts[2].1 - pts[0].1) - (pts[2].0 - pts[0].0) * (pts[1].1 - pts[0].1);
                 if area.abs() < 1e-9 {
                     continue;
                 }
@@ -117,18 +115,8 @@ impl Shot {
     fn frame(&mut self, events: Vec<Event>) -> Vec<ClippedPrimitive> {
         self.time += 0.5;
         let mut viewports = egui::ViewportIdMap::default();
-        viewports.insert(
-            egui::ViewportId::ROOT,
-            egui::ViewportInfo { native_pixels_per_point: Some(self.ppp), focused: Some(true), ..Default::default() },
-        );
-        let input = RawInput {
-            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, self.size)),
-            time: Some(self.time),
-            events,
-            focused: true,
-            viewports,
-            ..Default::default()
-        };
+        viewports.insert(egui::ViewportId::ROOT, egui::ViewportInfo { native_pixels_per_point: Some(self.ppp), focused: Some(true), ..Default::default() });
+        let input = RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, self.size)), time: Some(self.time), events, focused: true, viewports, ..Default::default() };
         let app = &mut self.app;
         let mut out = self.ctx.run_ui(input, |ui| app.ui(ui));
         self.raster.apply(&out.textures_delta);
@@ -153,11 +141,7 @@ impl Shot {
 }
 
 fn click(p: Pos2, button: PointerButton, mods: Modifiers) -> Vec<Event> {
-    vec![
-        Event::PointerMoved(p),
-        Event::PointerButton { pos: p, button, pressed: true, modifiers: mods },
-        Event::PointerButton { pos: p, button, pressed: false, modifiers: mods },
-    ]
+    vec![Event::PointerMoved(p), Event::PointerButton { pos: p, button, pressed: true, modifiers: mods }, Event::PointerButton { pos: p, button, pressed: false, modifiers: mods }]
 }
 
 fn main() {
@@ -167,14 +151,7 @@ fn main() {
     egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
     ctx.set_fonts(fonts);
     ctx.set_theme(egui::Theme::Dark);
-    let mut s = Shot {
-        ctx,
-        raster: Raster { textures: HashMap::new() },
-        app: demo_app::DemoApp::new(100_000, 40, 3_000),
-        size: vec2(1400.0, 820.0),
-        ppp: 1.0,
-        time: 0.0,
-    };
+    let mut s = Shot { ctx, raster: Raster { textures: HashMap::new() }, app: demo_app::DemoApp::new(100_000, 40, 3_000), size: vec2(1400.0, 820.0), ppp: 1.0, time: 0.0 };
     let _ = s.frame(vec![]);
     // Some pending edits so the change colours show.
     let _ = s.app.model.set_cell(2, 1, "Edited Name");
@@ -204,16 +181,7 @@ fn main() {
     s.save(&format!("{dir}/grid_light.png"), vec![]);
     // Context menu on a cell.
     s.save(&format!("{dir}/grid_menu.png"), click(Pos2::new(300.0, 260.0), PointerButton::Secondary, Modifiers::NONE));
-    s.save(
-        &format!("{dir}/grid_menu_closed.png"),
-        vec![Event::Key {
-            key: Key::Escape,
-            physical_key: None,
-            pressed: true,
-            repeat: false,
-            modifiers: Modifiers::NONE,
-        }],
-    );
+    s.save(&format!("{dir}/grid_menu_closed.png"), vec![Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE }]);
     s.app.view.toolbar.view = dbiji_grid::ResultViewKind::Record;
     s.save(&format!("{dir}/record_view.png"), vec![]);
     s.app.view.toolbar.view = dbiji_grid::ResultViewKind::Text;

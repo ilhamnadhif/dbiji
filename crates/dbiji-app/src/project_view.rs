@@ -3,8 +3,8 @@
 
 use crate::command::{AppCommand, ObjectPage};
 use crate::cx::AppContext;
-use dbiji_config::project::ScriptFolder;
 use dbiji_config::Bookmark;
+use dbiji_config::project::ScriptFolder;
 use dbiji_core::tr;
 use egui::{RichText, Ui};
 use egui_phosphor::regular as icon;
@@ -45,9 +45,10 @@ impl ProjectView {
                 self.reload(cx);
             }
             if let Some(p) = cx.services.projects.as_ref().and_then(|m| m.default_project().ok())
-                && ui.button(icon::FOLDER_OPEN).on_hover_text(tr("Show in Finder")).clicked() {
-                    let _ = open::that(p.path());
-                }
+                && ui.button(icon::FOLDER_OPEN).on_hover_text(tr("Show in Finder")).clicked()
+            {
+                let _ = open::that(p.path());
+            }
         });
         ui.add(egui::TextEdit::singleline(&mut self.filter).hint_text(format!("{} {}", icon::MAGNIFYING_GLASS, tr("Filter"))).desired_width(f32::INFINITY));
         if let Some(e) = &self.error {
@@ -102,9 +103,10 @@ impl ProjectView {
                         continue;
                     }
                     if ui.selectable_label(false, format!("{} {d}", icon::GRAPH)).double_clicked()
-                        && let Some(dir) = &dir {
-                            cx.push(AppCommand::OpenSavedDiagram(dir.join(format!("{d}.json"))));
-                        }
+                        && let Some(dir) = &dir
+                    {
+                        cx.push(AppCommand::OpenSavedDiagram(dir.join(format!("{d}.json"))));
+                    }
                 }
             });
         });

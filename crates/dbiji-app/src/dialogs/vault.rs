@@ -23,31 +23,28 @@ impl VaultDialog {
             return;
         };
         if let Some(job) = self.job.as_mut()
-            && let Some(res) = job.poll() {
-                self.job = None;
-                match res {
-                    Ok(()) => {
-                        self.password.clear();
-                        self.confirm.clear();
-                        self.error = None;
-                        cx.toasts.success(tr("Saved passwords unlocked"));
-                        *open = false;
-                        return;
-                    }
-                    Err(e) => self.error = Some(e.message),
+            && let Some(res) = job.poll()
+        {
+            self.job = None;
+            match res {
+                Ok(()) => {
+                    self.password.clear();
+                    self.confirm.clear();
+                    self.error = None;
+                    cx.toasts.success(tr("Saved passwords unlocked"));
+                    *open = false;
+                    return;
                 }
+                Err(e) => self.error = Some(e.message),
             }
+        }
         let create = !vault.exists();
         let busy = self.job.is_some();
         let mut submit = false;
         let mut skip = false;
         let modal = egui::Modal::new(egui::Id::new("vault_unlock")).show(ctx, |ui| {
             ui.set_width(380.0);
-            ui.heading(format!(
-                "{} {}",
-                icon::LOCK_KEY,
-                if create { tr("Create the password vault") } else { tr("Unlock saved passwords") }
-            ));
+            ui.heading(format!("{} {}", icon::LOCK_KEY, if create { tr("Create the password vault") } else { tr("Unlock saved passwords") }));
             ui.label(tr("Saved passwords are kept in a file encrypted with your master password."));
             ui.add_space(6.0);
             egui::Grid::new("vault_grid").num_columns(2).spacing([10.0, 8.0]).show(ui, |ui| {
@@ -98,9 +95,7 @@ impl VaultDialog {
                 self.confirm.clear();
                 self.error = None;
                 self.job = Some(cx.backend.spawn(async move {
-                    tokio::task::spawn_blocking(move || if create { vault.create(&master) } else { vault.unlock(&master) })
-                        .await
-                        .map_err(|e| DbError::internal(e.to_string()))?
+                    tokio::task::spawn_blocking(move || if create { vault.create(&master) } else { vault.unlock(&master) }).await.map_err(|e| DbError::internal(e.to_string()))?
                 }));
             }
         }

@@ -196,22 +196,17 @@ impl LiveConnection {
 }
 
 /// Apply transaction mode, default schema and init SQL after connecting.
-pub async fn init_session(
-    s: &mut dyn dbiji_core::Session,
-    cfg: &ConnectionConfig,
-    params: &ConnectParams,
-) -> DbResult<()> {
+pub async fn init_session(s: &mut dyn dbiji_core::Session, cfg: &ConnectionConfig, params: &ConnectParams) -> DbResult<()> {
     if !params.auto_commit {
         s.set_transaction_mode(TransactionMode::Manual).await?;
     }
     if let Some(schema) = cfg.init.default_schema.as_deref().filter(|s| !s.is_empty())
-        && let Err(e) = s.set_current_schema(schema).await {
-            tracing::warn!("cannot set default schema: {e}");
-        }
+        && let Err(e) = s.set_current_schema(schema).await
+    {
+        tracing::warn!("cannot set default schema: {e}");
+    }
     for stmt in split_simple(&cfg.init.init_sql) {
-        dbiji_core::driver::execute_update(s, &stmt, &[])
-            .await
-            .map_err(|e| e.with_context("Initialization SQL"))?;
+        dbiji_core::driver::execute_update(s, &stmt, &[]).await.map_err(|e| e.with_context("Initialization SQL"))?;
     }
     Ok(())
 }
@@ -282,27 +277,23 @@ async fn connect_task(
             let db = cfg.database.clone().unwrap_or_default();
             pgpass.as_ref().and_then(|f| f(&cfg.host, cfg.effective_port(), &db, &user))
         }
-        AuthMethod::Command { command } => Some(
-            dbiji_net::password_from_command(command, Duration::from_secs(30))
-                .await
-                .map_err(|e| e.with_context("Password command"))?,
-        ),
+        AuthMethod::Command { command } => Some(dbiji_net::password_from_command(command, Duration::from_secs(30)).await.map_err(|e| e.with_context("Password command"))?),
         AuthMethod::None => None,
     };
     let mut params = ConnectParams::from_config(&cfg, password);
     params.auto_commit = cfg.auto_commit.unwrap_or(conn_type.auto_commit);
     let mut tunnel = None;
     if !cfg.kind.is_file_based()
-        && let Some(t) = net.open(&cfg, &creds, &cfg.host, cfg.effective_port()).await? {
-            params.tls_server_name = Some(cfg.host.clone());
-            params.host = t.local_host.clone();
-            params.port = t.local_port;
-            tunnel = Some(t);
-        }
+        && let Some(t) = net.open(&cfg, &creds, &cfg.host, cfg.effective_port()).await?
+    {
+        params.tls_server_name = Some(cfg.host.clone());
+        params.host = t.local_host.clone();
+        params.port = t.local_port;
+        tunnel = Some(t);
+    }
     let timeout = params.connect_timeout + Duration::from_secs(5);
-    let mut session = tokio::time::timeout(timeout, driver.connect(&params))
-        .await
-        .map_err(|_| DbError::timeout(format!("Connection timed out after {}s", timeout.as_secs())))??;
+    let mut session =
+        tokio::time::timeout(timeout, driver.connect(&params)).await.map_err(|_| DbError::timeout(format!("Connection timed out after {}s", timeout.as_secs())))??;
     init_session(session.as_mut(), &cfg, &params).await?;
     let database = session.current_database().await.ok().flatten();
     let schema = session.current_schema().await.ok().flatten();
@@ -321,19 +312,10 @@ pub struct HeadlessConnection {
 }
 
 /// Connect to a saved connection with saved credentials only (no prompts).
-pub async fn connect_saved(
-    registry: &DriverRegistry,
-    store: &ConnectionStore,
-    secrets: &dyn SecretSource,
-    net: Arc<dyn NetConnector>,
-    id: &str,
-) -> DbResult<HeadlessConnection> {
+pub async fn connect_saved(registry: &DriverRegistry, store: &ConnectionStore, secrets: &dyn SecretSource, net: Arc<dyn NetConnector>, id: &str) -> DbResult<HeadlessConnection> {
     let cfg = store.get(id).cloned().ok_or_else(|| DbError::config(format!("Unknown connection {id}")))?;
     if matches!(cfg.auth, AuthMethod::Prompt) {
-        return Err(DbError::auth(format!(
-            "The connection \"{}\" asks for its password at every connect; save the password to use it in tasks",
-            cfg.name
-        )));
+        return Err(DbError::auth(format!("The connection \"{}\" asks for its password at every connect; save the password to use it in tasks", cfg.name)));
     }
     let driver = registry.get(cfg.kind).ok_or_else(|| DbError::unsupported(format!("No driver for {}", cfg.kind)))?;
     let net_cfg = store.effective_network(&cfg);
@@ -491,12 +473,7 @@ impl ConnectionManager {
             let driver = driver.ok_or_else(|| DbError::unsupported(format!("No driver for {}", cfg.kind)))?;
             let started = Instant::now();
             let mut c = connect_task(driver, cfg, conn_type, creds, net, pgpass).await?;
-            let info = format!(
-                "{} {} ({} ms)",
-                c.server.product,
-                c.server.version.split_whitespace().next().unwrap_or(""),
-                started.elapsed().as_millis()
-            );
+            let info = format!("{} {} ({} ms)", c.server.product, c.server.version.split_whitespace().next().unwrap_or(""), started.elapsed().as_millis());
             let _ = c.session.close().await;
             drop(c.tunnel.take());
             Ok(info)
@@ -522,24 +499,21 @@ impl ConnectionManager {
         let saved = |slot| self.secret_for(cfg, slot).is_some();
         match cfg.auth {
             AuthMethod::Prompt => out.push(PromptField::Password),
-            AuthMethod::Password if !cfg.kind.is_file_based() && !(cfg.save_password && saved(SecretSlot::Password)) => {
-                out.push(PromptField::Password)
-            }
+            AuthMethod::Password if !cfg.kind.is_file_based() && !(cfg.save_password && saved(SecretSlot::Password)) => out.push(PromptField::Password),
             _ => {}
         }
         let net = self.store.effective_network(cfg);
         if let Some(ssh) = net.ssh.as_ref() {
             match &ssh.auth {
-                dbiji_core::config::SshAuth::Password if !(ssh.save_credentials && saved(SecretSlot::SshPassword)) => {
-                    out.push(PromptField::SshPassword)
-                }
+                dbiji_core::config::SshAuth::Password if !(ssh.save_credentials && saved(SecretSlot::SshPassword)) => out.push(PromptField::SshPassword),
                 _ => {}
             }
         }
         if let Some(p) = net.proxy.as_ref().filter(|p| p.user.is_some())
-            && !(p.save_credentials && saved(SecretSlot::ProxyPassword)) {
-                out.push(PromptField::ProxyPassword);
-            }
+            && !(p.save_credentials && saved(SecretSlot::ProxyPassword))
+        {
+            out.push(PromptField::ProxyPassword);
+        }
         out
     }
 
@@ -571,10 +545,7 @@ impl ConnectionManager {
             return Ok(());
         }
         let cfg = self.config(id).map(|c| self.effective_config(c)).ok_or_else(|| DbError::config("Unknown connection"))?;
-        let driver = self
-            .registry
-            .get(cfg.kind)
-            .ok_or_else(|| DbError::unsupported(format!("No driver for {}", cfg.kind)))?;
+        let driver = self.registry.get(cfg.kind).ok_or_else(|| DbError::unsupported(format!("No driver for {}", cfg.kind)))?;
         let conn_type = self.connection_type(&cfg.connection_type);
         let creds = self.credentials(id, &prompted);
         let net = self.net.clone();
@@ -660,9 +631,10 @@ impl ConnectionManager {
                 }
                 drop(live.tunnel);
                 if let Some(cmd) = after.filter(|c| !c.trim().is_empty())
-                    && let Err(e) = run_shell(&cmd, Duration::from_secs(60)).await {
-                        tracing::warn!("shell command after disconnect failed: {e}");
-                    }
+                    && let Err(e) = run_shell(&cmd, Duration::from_secs(60)).await
+                {
+                    tracing::warn!("shell command after disconnect failed: {e}");
+                }
             });
         }
         self.connecting.remove(id);
@@ -741,12 +713,7 @@ impl NetConnector for TunnelNet {
         }
         let tunnel = Arc::new(dbiji_net::open_tunnel(spec).await?);
         let alive = tunnel.clone();
-        Ok(Some(TunnelGuard {
-            local_host: tunnel.local_host(),
-            local_port: tunnel.local_port(),
-            alive: Box::new(move || alive.is_alive()),
-            guard: Box::new(tunnel),
-        }))
+        Ok(Some(TunnelGuard { local_host: tunnel.local_host(), local_port: tunnel.local_port(), alive: Box::new(move || alive.is_alive()), guard: Box::new(tunnel) }))
     }
 }
 

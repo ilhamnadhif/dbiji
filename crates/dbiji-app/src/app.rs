@@ -90,10 +90,7 @@ impl DbijiApp {
             first_frame: true,
             exit_after_first_frame: false,
             active_tab: None,
-            exit_at: std::env::var("DBIJI_BENCH_EXIT_AFTER_SECS")
-                .ok()
-                .and_then(|v| v.parse::<u64>().ok())
-                .map(|s| Instant::now() + std::time::Duration::from_secs(s)),
+            exit_at: std::env::var("DBIJI_BENCH_EXIT_AFTER_SECS").ok().and_then(|v| v.parse::<u64>().ok()).map(|s| Instant::now() + std::time::Duration::from_secs(s)),
             pending_generate: Vec::new(),
             script_counter: 0,
             confirm_quit: false,
@@ -104,14 +101,20 @@ impl DbijiApp {
         app
     }
 
+    /// Queue a command for the next frame (as a menu item would).
+    pub fn push_command(&mut self, cmd: AppCommand) {
+        self.commands.push(cmd);
+    }
+
     /// Open a tab, or focus an existing tab with the same dedupe key.
     pub fn open_tab(&mut self, view: Box<dyn TabView>) -> u64 {
         if let Some(key) = view.dedupe_key()
-            && let Some(path) = self.dock.find_tab_from(|t| t.view.dedupe_key().as_deref() == Some(key.as_str())) {
-                let id = self.dock.iter_all_tabs().find(|(p, _)| *p == path).map(|(_, t)| t.id).unwrap_or(0);
-                self.focus_tab_path(path);
-                return id;
-            }
+            && let Some(path) = self.dock.find_tab_from(|t| t.view.dedupe_key().as_deref() == Some(key.as_str()))
+        {
+            let id = self.dock.iter_all_tabs().find(|(p, _)| *p == path).map(|(_, t)| t.id).unwrap_or(0);
+            self.focus_tab_path(path);
+            return id;
+        }
         let id = self.next_tab_id;
         self.next_tab_id += 1;
         self.dock.push_to_focused_leaf(Tab::new(id, view));
@@ -142,24 +145,25 @@ impl DbijiApp {
 
     fn close_tab(&mut self, id: u64) {
         if let Some(path) = self.dock.find_tab_from(|t| t.id == id)
-            && let Some(mut tab) = self.dock.remove_tab(path) {
-                let mut cx = AppContext {
-                    backend: &self.backend,
-                    conns: &mut self.conns,
-                    services: &self.services,
-                    settings: &mut self.settings,
-                    commands: &mut self.commands,
-                    toasts: &mut self.toasts,
-                    ops: &mut self.ops,
-                    keymap: &self.keymap,
-                    tab_active: false,
-                    current_tab: None,
-                };
-                if !tab.view.on_close(&mut cx) {
-                    // put it back
-                    self.dock.push_to_focused_leaf(tab);
-                }
+            && let Some(mut tab) = self.dock.remove_tab(path)
+        {
+            let mut cx = AppContext {
+                backend: &self.backend,
+                conns: &mut self.conns,
+                services: &self.services,
+                settings: &mut self.settings,
+                commands: &mut self.commands,
+                toasts: &mut self.toasts,
+                ops: &mut self.ops,
+                keymap: &self.keymap,
+                tab_active: false,
+                current_tab: None,
+            };
+            if !tab.view.on_close(&mut cx) {
+                // put it back
+                self.dock.push_to_focused_leaf(tab);
             }
+        }
     }
 
     /// Request connecting, prompting for credentials when needed.
@@ -248,16 +252,20 @@ impl DbijiApp {
                 }
             }
             AppCommand::DeleteConnection(id) => self.dialogs.confirm_delete_connection(&id, &self.conns),
-            AppCommand::ShowPalette => self.dialogs.palette_open = true,
+            AppCommand::ShowPalette => {
+                crate::palette::reset(ctx);
+                self.dialogs.palette_open = true;
+            }
             AppCommand::Action(a) => self.dispatch_action(ctx, a),
             AppCommand::NewSqlEditor { connection, schema, text } => {
                 self.script_counter += 1;
                 let title = format!("Script-{}", self.script_counter);
                 let tab = crate::tabs::sql_editor::SqlEditorTab::new(connection.clone(), schema, text.unwrap_or_default(), None, false, title);
                 if let Some(c) = &connection
-                    && !self.conns.is_connected(c) {
-                        self.request_connect(c);
-                    }
+                    && !self.conns.is_connected(c)
+                {
+                    self.request_connect(c);
+                }
                 self.open_tab(Box::new(tab));
             }
             AppCommand::NewSqlConsole { connection } => {
@@ -399,15 +407,10 @@ impl DbijiApp {
     }
 
     fn selected_connection(&self) -> Option<String> {
-        self.nav
-            .selected
-            .as_ref()
-            .and_then(|n| n.connection())
-            .map(str::to_string)
-            .or_else(|| {
-                let active = self.active_tab?;
-                self.dock.iter_all_tabs().find(|(_, t)| t.id == active).and_then(|(_, t)| t.view.connection_id().map(str::to_string))
-            })
+        self.nav.selected.as_ref().and_then(|n| n.connection()).map(str::to_string).or_else(|| {
+            let active = self.active_tab?;
+            self.dock.iter_all_tabs().find(|(_, t)| t.id == active).and_then(|(_, t)| t.view.connection_id().map(str::to_string))
+        })
     }
 
     /// Run an action: the active tab gets the first chance, then the global handler.
@@ -567,9 +570,10 @@ impl DbijiApp {
             let id = self.open_script(path.to_path_buf());
             if let (true, Some(id)) = (execute, id)
                 && let Some((_, tab)) = self.dock.iter_all_tabs_mut().find(|(_, t)| t.id == id)
-                    && let Some(ed) = tab.view.as_any_mut().downcast_mut::<crate::tabs::sql_editor::SqlEditorTab>() {
-                        ed.auto_run = true;
-                    }
+                && let Some(ed) = tab.view.as_any_mut().downcast_mut::<crate::tabs::sql_editor::SqlEditorTab>()
+            {
+                ed.auto_run = true;
+            }
             return;
         };
         let full = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
@@ -598,10 +602,10 @@ impl DbijiApp {
         let mut opened = 0;
         let mut to_connect: Vec<String> = Vec::new();
         for t in &state.tabs {
-            if matches!(t.kind, dbiji_config::project::TabKind::ObjectEditor | dbiji_config::project::TabKind::DataEditor | dbiji_config::project::TabKind::ErDiagram) {
-                if let Some(c) = t.connection_id.clone().filter(|c| self.conns.config(c).is_some() && !to_connect.contains(c)) {
-                    to_connect.push(c);
-                }
+            if matches!(t.kind, dbiji_config::project::TabKind::ObjectEditor | dbiji_config::project::TabKind::DataEditor | dbiji_config::project::TabKind::ErDiagram)
+                && let Some(c) = t.connection_id.clone().filter(|c| self.conns.config(c).is_some() && !to_connect.contains(c))
+            {
+                to_connect.push(c);
             }
         }
         for c in to_connect {
@@ -669,9 +673,10 @@ impl DbijiApp {
         let mut state = dbiji_config::SessionState::default();
         for (_, t) in self.dock.iter_all_tabs() {
             if let Some(v) = t.view.session_state()
-                && let Ok(tab) = serde_json::from_value::<dbiji_config::SessionTab>(v) {
-                    state.tabs.push(tab);
-                }
+                && let Ok(tab) = serde_json::from_value::<dbiji_config::SessionTab>(v)
+            {
+                state.tabs.push(tab);
+            }
         }
         if let Err(e) = projects.save_session(&state) {
             tracing::warn!("cannot save the session: {e}");
@@ -697,9 +702,10 @@ impl DbijiApp {
         let schema = meta.as_ref().and_then(|m| (m.schema.is_some() || m.database.is_some()).then(|| dbiji_core::meta::SchemaRef::new(m.database.clone(), m.schema.clone())));
         let title = path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
         if let Some(c) = &conn
-            && !self.conns.is_connected(c) {
-                self.request_connect(c);
-            }
+            && !self.conns.is_connected(c)
+        {
+            self.request_connect(c);
+        }
         Some(self.open_tab(Box::new(crate::tabs::sql_editor::SqlEditorTab::new(conn, schema, text, Some(path), false, title))))
     }
 
@@ -715,10 +721,8 @@ impl DbijiApp {
             None => return,
         };
         let conn = doc.get("connection").and_then(|v| v.as_str()).map(str::to_string).unwrap_or_default();
-        let schema = dbiji_core::meta::SchemaRef::new(
-            doc.get("database").and_then(|v| v.as_str()).map(str::to_string),
-            doc.get("schema").and_then(|v| v.as_str()).map(str::to_string),
-        );
+        let schema =
+            dbiji_core::meta::SchemaRef::new(doc.get("database").and_then(|v| v.as_str()).map(str::to_string), doc.get("schema").and_then(|v| v.as_str()).map(str::to_string));
         let diagram = doc.get("diagram").map(|d| d.to_string()).and_then(|j| dbiji_visual::er::ErDiagram::from_json(&j).ok());
         match diagram {
             Some(d) => {
@@ -1050,43 +1054,33 @@ impl eframe::App for DbijiApp {
             current_tab: None,
         };
         if self.show_nav {
-            egui::Panel::left("dbiji_navigator")
-                .resizable(true)
-                .default_size(280.0)
-                .size_range(160.0..=600.0)
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        if ui.selectable_label(!self.show_project, format!("{} {}", icon::DATABASE, tr("Database"))).clicked() {
-                            self.show_project = false;
-                        }
-                        if ui.selectable_label(self.show_project, format!("{} {}", icon::FOLDER_SIMPLE, tr("Project"))).clicked() {
-                            self.show_project = true;
-                        }
-                    });
-                    ui.separator();
-                    if self.show_project {
-                        self.project.ui(ui, &mut cx);
-                    } else {
-                        self.nav.ui(ui, &mut cx);
+            egui::Panel::left("dbiji_navigator").resizable(true).default_size(280.0).size_range(160.0..=600.0).show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    if ui.selectable_label(!self.show_project, format!("{} {}", icon::DATABASE, tr("Database"))).clicked() {
+                        self.show_project = false;
+                    }
+                    if ui.selectable_label(self.show_project, format!("{} {}", icon::FOLDER_SIMPLE, tr("Project"))).clicked() {
+                        self.show_project = true;
                     }
                 });
+                ui.separator();
+                if self.show_project {
+                    self.project.ui(ui, &mut cx);
+                } else {
+                    self.nav.ui(ui, &mut cx);
+                }
+            });
         }
         self.active_tab = self.dock.find_active_focused().map(|(_, t)| t.id);
         egui::CentralPanel::default().frame(egui::Frame::new()).show(ui, |ui| {
             let mut viewer = DockViewer { cx: &mut cx, close_vetoed: Vec::new(), active_tab: self.active_tab };
-            DockArea::new(&mut self.dock)
-                .style(egui_dock::Style::from_egui(ui.style().as_ref()))
-                .show_leaf_collapse_buttons(false)
-                .show_inside(ui, &mut viewer);
+            DockArea::new(&mut self.dock).style(egui_dock::Style::from_egui(ui.style().as_ref())).show_leaf_collapse_buttons(false).show_inside(ui, &mut viewer);
         });
 
         self.dialogs.show(&ctx, &mut cx);
         if self.ops.panel_open {
             let mut open = true;
-            egui::Window::new(format!("{} {}", icon::HOURGLASS, tr("Background operations")))
-                .open(&mut open)
-                .default_width(360.0)
-                .show(&ctx, |ui| self.ops.ui(ui));
+            egui::Window::new(format!("{} {}", icon::HOURGLASS, tr("Background operations"))).open(&mut open).default_width(360.0).show(&ctx, |ui| self.ops.ui(ui));
             self.ops.panel_open = open;
         }
         self.toasts.show(&ctx);

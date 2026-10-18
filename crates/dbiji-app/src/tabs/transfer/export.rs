@@ -3,9 +3,8 @@
 //! parallel workers; runs with progress and can be saved as a task.
 
 use super::{
-    MessageLog, Running, TaskSaver, char_edit, combo, connection_name, current_schema, default_output_folder, error_text,
-    next_uid, not_connected, opt_char_edit, opt_number, opt_text, progress_ui, schema_combo, schema_tables, section,
-    steps_ui,
+    MessageLog, Running, TaskSaver, char_edit, combo, connection_name, current_schema, default_output_folder, error_text, next_uid, not_connected, opt_char_edit, opt_number,
+    opt_text, progress_ui, schema_combo, schema_tables, section, steps_ui,
 };
 use crate::cx::AppContext;
 use crate::tabs::TabView;
@@ -14,11 +13,10 @@ use dbiji_core::meta::{ObjectKind, ObjectRef, SchemaRef};
 use dbiji_core::{ColumnMeta, DbError, DbKind, DbResult, Dialect, SharedRowStore, tr, trf};
 use dbiji_tasks::TaskKind;
 use dbiji_transfer::{
-    BinaryEncoding, CancellationToken, CsvOptions, DbUnitOptions, EscapeStyle, ExportFormat, ExportItem, ExportItemSummary,
-    ExportJob, ExportJobSummary, ExportOptions, ExportTarget, HeaderStyle, HtmlOptions, IdentifierQuoting, JsonLayout,
-    JsonOptions, LineEnding, MarkdownOptions, ParquetCompression, ParquetOptions, PhpOptions, Progress, QuoteMode,
-    RowStoreSource, SessionFactory, SqlInsertMode, SqlOptions, TxtOptions, ValueFormat, XlsxOptions, XmlNullMode,
-    XmlOptions, create_sink, expand_file_name, run_export_batched, run_export_job_with,
+    BinaryEncoding, CancellationToken, CsvOptions, DbUnitOptions, EscapeStyle, ExportFormat, ExportItem, ExportItemSummary, ExportJob, ExportJobSummary, ExportOptions,
+    ExportTarget, HeaderStyle, HtmlOptions, IdentifierQuoting, JsonLayout, JsonOptions, LineEnding, MarkdownOptions, ParquetCompression, ParquetOptions, PhpOptions, Progress,
+    QuoteMode, RowStoreSource, SessionFactory, SqlInsertMode, SqlOptions, TxtOptions, ValueFormat, XlsxOptions, XmlNullMode, XmlOptions, create_sink, expand_file_name,
+    run_export_batched, run_export_job_with,
 };
 use egui::{RichText, Ui};
 use egui_phosphor::regular as icon;
@@ -31,22 +29,8 @@ const PAGE_OUTPUT: usize = 2;
 const PAGE_RUN: usize = 3;
 
 /// Character encodings offered for text output (WHATWG labels).
-const ENCODINGS: [&str; 14] = [
-    "UTF-8",
-    "UTF-16LE",
-    "UTF-16BE",
-    "windows-1252",
-    "ISO-8859-1",
-    "ISO-8859-15",
-    "windows-1250",
-    "windows-1251",
-    "KOI8-R",
-    "Shift_JIS",
-    "EUC-JP",
-    "GBK",
-    "Big5",
-    "EUC-KR",
-];
+const ENCODINGS: [&str; 14] =
+    ["UTF-8", "UTF-16LE", "UTF-16BE", "windows-1252", "ISO-8859-1", "ISO-8859-15", "windows-1250", "windows-1251", "KOI8-R", "Shift_JIS", "EUC-JP", "GBK", "Big5", "EUC-KR"];
 
 #[derive(Clone)]
 struct SourceItem {
@@ -170,15 +154,7 @@ impl ExportTab {
     /// to the columns `cols` (indices into `columns`, in output order; empty
     /// = all). Both run without database access. With `sql` the query can
     /// also be run again for all rows (then the export can be saved as a task).
-    pub fn from_result(
-        conn: String,
-        title: String,
-        store: SharedRowStore,
-        columns: Vec<ColumnMeta>,
-        rows: Option<Vec<usize>>,
-        cols: Vec<usize>,
-        sql: Option<String>,
-    ) -> Self {
+    pub fn from_result(conn: String, title: String, store: SharedRowStore, columns: Vec<ColumnMeta>, rows: Option<Vec<usize>>, cols: Vec<usize>, sql: Option<String>) -> Self {
         let sql = sql.filter(|s| !s.trim().is_empty());
         let mut tab = Self::new(conn, Vec::new(), sql.clone());
         let name = Some(title.trim().to_string()).filter(|t| !t.is_empty());
@@ -219,14 +195,12 @@ impl ExportTab {
             .iter()
             .filter(|i| i.enabled)
             .map(|i| match &i.item {
-                ExportItem::Query { sql, name } => ExportItem::Query {
-                    sql: sql.trim().trim_end_matches(';').trim_end().to_string(),
-                    name: name.as_ref().map(|n| n.trim().to_string()).filter(|n| !n.is_empty()),
-                },
-                ExportItem::Table { table, where_clause } => ExportItem::Table {
-                    table: table.clone(),
-                    where_clause: where_clause.as_ref().map(|w| w.trim().to_string()).filter(|w| !w.is_empty()),
-                },
+                ExportItem::Query { sql, name } => {
+                    ExportItem::Query { sql: sql.trim().trim_end_matches(';').trim_end().to_string(), name: name.as_ref().map(|n| n.trim().to_string()).filter(|n| !n.is_empty()) }
+                }
+                ExportItem::Table { table, where_clause } => {
+                    ExportItem::Table { table: table.clone(), where_clause: where_clause.as_ref().map(|w| w.trim().to_string()).filter(|w| !w.is_empty()) }
+                }
             })
             .collect();
         job
@@ -270,16 +244,13 @@ impl ExportTab {
         let database = export_database(&job);
         let Some(live) = cx.conns.live(&self.conn) else { return };
         let factory: Arc<dyn SessionFactory> = Arc::new(AppSessionFactory::from_live(live, database.as_deref()));
-        let sql_dialect =
-            if job.format == ExportFormat::Sql { self.sql_dialect.map(|k| cx.conns.registry.dialect(k)) } else { None };
+        let sql_dialect = if job.format == ExportFormat::Sql { self.sql_dialect.map(|k| cx.conns.registry.dialect(k)) } else { None };
         self.error = None;
         self.result = None;
         self.log.clear();
         self.page = PAGE_RUN;
         let title = self.title();
-        self.run = Some(Running::spawn(cx, title, move |progress, cancel| {
-            run_export_job_with(job, factory, sql_dialect, progress, cancel)
-        }));
+        self.run = Some(Running::spawn(cx, title, move |progress, cancel| run_export_job_with(job, factory, sql_dialect, progress, cancel)));
     }
 
     pub fn is_running(&self) -> bool {
@@ -367,16 +338,12 @@ impl ExportTab {
         self.log.clear();
         self.page = PAGE_RUN;
         let title = self.title();
-        self.run = Some(Running::spawn(cx, title, move |progress, cancel| {
-            export_fetched(source, name, format, options, path, dialect, progress, cancel)
-        }));
+        self.run = Some(Running::spawn(cx, title, move |progress, cancel| export_fetched(source, name, format, options, path, dialect, progress, cancel)));
     }
 
     fn task_kind(&self) -> DbResult<TaskKind> {
         if self.fetched_mode() {
-            return Err(DbError::config(tr(
-                "Rows fetched into the grid cannot be saved as a task; choose to run the query again instead.",
-            )));
+            return Err(DbError::config(tr("Rows fetched into the grid cannot be saved as a task; choose to run the query again instead.")));
         }
         self.validate().map_err(DbError::config)?;
         let job = self.job();
@@ -451,10 +418,7 @@ impl ExportTab {
             match result {
                 Ok(summary) => {
                     if summary.failed() > 0 {
-                        cx.toasts.warning(
-                            trf("Export finished, {} object(s) failed", &[&summary.failed()]),
-                            summary.first_error().map(str::to_string),
-                        );
+                        cx.toasts.warning(trf("Export finished, {} object(s) failed", &[&summary.failed()]), summary.first_error().map(str::to_string));
                     } else {
                         cx.toasts.success(describe(&summary));
                     }
@@ -558,13 +522,7 @@ impl ExportTab {
         if let Some(i) = self.expanded
             && let Some(SourceItem { item: ExportItem::Query { sql, .. }, .. }) = self.items.get_mut(i)
         {
-            ui.add(
-                egui::TextEdit::multiline(sql)
-                    .code_editor()
-                    .desired_rows(6)
-                    .desired_width(f32::INFINITY)
-                    .hint_text(tr("SELECT … (one statement returning rows)")),
-            );
+            ui.add(egui::TextEdit::multiline(sql).code_editor().desired_rows(6).desired_width(f32::INFINITY).hint_text(tr("SELECT … (one statement returning rows)")));
         }
         ui.horizontal(|ui| {
             if ui.button(format!("{} {}", icon::PLUS, tr("Add query"))).clicked() {
@@ -610,14 +568,9 @@ impl ExportTab {
             Some(Err(e)) => crate::widgets::error_box(ui, &e.full_text()),
             Some(Ok(list)) => {
                 let filter = self.picker_filter.to_lowercase();
-                let shown: Vec<ObjectRef> = list
-                    .iter()
-                    .filter(|o| !o.is_system && (filter.is_empty() || o.obj.name.to_lowercase().contains(&filter)))
-                    .map(|o| o.obj.clone())
-                    .collect();
-                let added = |items: &[SourceItem], o: &ObjectRef| {
-                    items.iter().any(|i| matches!(&i.item, ExportItem::Table { table, .. } if table == o))
-                };
+                let shown: Vec<ObjectRef> =
+                    list.iter().filter(|o| !o.is_system && (filter.is_empty() || o.obj.name.to_lowercase().contains(&filter))).map(|o| o.obj.clone()).collect();
+                let added = |items: &[SourceItem], o: &ObjectRef| items.iter().any(|i| matches!(&i.item, ExportItem::Table { table, .. } if table == o));
                 ui.horizontal(|ui| {
                     ui.weak(trf("{} objects", &[&shown.len()]));
                     if !shown.is_empty() && ui.button(tr("Add all shown")).clicked() {
@@ -626,22 +579,19 @@ impl ExportTab {
                         }
                     }
                 });
-                egui::ScrollArea::vertical().id_salt(("exp_pick", self.uid)).max_height(240.0).auto_shrink([false, true]).show(
-                    ui,
-                    |ui| {
-                        for o in &shown {
-                            let already = added(&self.items, o);
-                            ui.horizontal(|ui| {
-                                if ui.add_enabled(!already, egui::Button::new(icon::PLUS).small()).clicked() {
-                                    self.add_table(o.clone());
-                                }
-                                let glyph = if o.kind == ObjectKind::View { icon::EYE } else { icon::TABLE };
-                                let text = RichText::new(format!("{glyph} {}", o.name));
-                                ui.label(if already { text.weak() } else { text });
-                            });
-                        }
-                    },
-                );
+                egui::ScrollArea::vertical().id_salt(("exp_pick", self.uid)).max_height(240.0).auto_shrink([false, true]).show(ui, |ui| {
+                    for o in &shown {
+                        let already = added(&self.items, o);
+                        ui.horizontal(|ui| {
+                            if ui.add_enabled(!already, egui::Button::new(icon::PLUS).small()).clicked() {
+                                self.add_table(o.clone());
+                            }
+                            let glyph = if o.kind == ObjectKind::View { icon::EYE } else { icon::TABLE };
+                            let text = RichText::new(format!("{glyph} {}", o.name));
+                            ui.label(if already { text.weak() } else { text });
+                        });
+                    }
+                });
             }
         }
     }
@@ -715,10 +665,7 @@ impl ExportTab {
             ui.end_row();
             ui.label(tr("Workers"));
             ui.horizontal(|ui| {
-                ui.add_enabled(
-                    self.settings.open_new_connections,
-                    egui::DragValue::new(&mut self.settings.threads).range(1..=16),
-                );
+                ui.add_enabled(self.settings.open_new_connections, egui::DragValue::new(&mut self.settings.threads).range(1..=16));
                 ui.weak(tr("objects exported in parallel"));
             });
             ui.end_row();
@@ -838,8 +785,7 @@ impl ExportTab {
                         ui.add(egui::Label::new(RichText::new(e).color(crate::theme::error_color(dark))).wrap());
                     }
                     None if !item.warnings.is_empty() => {
-                        ui.label(RichText::new(trf("{} warning(s)", &[&item.warnings.len()])).color(crate::theme::warning_color(dark)))
-                            .on_hover_text(item.warnings.join("\n"));
+                        ui.label(RichText::new(trf("{} warning(s)", &[&item.warnings.len()])).color(crate::theme::warning_color(dark))).on_hover_text(item.warnings.join("\n"));
                     }
                     None => {
                         ui.label(RichText::new(tr("OK")).color(crate::theme::success_color(dark)));
@@ -872,11 +818,7 @@ impl ExportTab {
                 self.page -= 1;
             }
             let reachable = self.reachable();
-            if self.page < PAGE_RUN
-                && ui
-                    .add_enabled(self.page < reachable, egui::Button::new(format!("{} {}", tr("Next"), icon::CARET_RIGHT)))
-                    .clicked()
-            {
+            if self.page < PAGE_RUN && ui.add_enabled(self.page < reachable, egui::Button::new(format!("{} {}", tr("Next"), icon::CARET_RIGHT))).clicked() {
                 self.page += 1;
             }
             ui.separator();
@@ -917,9 +859,7 @@ async fn export_fetched(
         && !parent.as_os_str().is_empty()
         && !parent.exists()
     {
-        tokio::fs::create_dir_all(parent)
-            .await
-            .map_err(|e| DbError::io(trf("Cannot create the folder {}: {}", &[&parent.display(), &e])))?;
+        tokio::fs::create_dir_all(parent).await.map_err(|e| DbError::io(trf("Cannot create the folder {}: {}", &[&parent.display(), &e])))?;
     }
     let mut source = source;
     progress.set_items_total(1);
@@ -935,15 +875,7 @@ async fn export_fetched(
         progress.warn(Some(&name), w.clone());
     }
     progress.info(Some(&name), trf("{} rows exported to {}", &[&s.rows, &path.display()]));
-    let item = ExportItemSummary {
-        name,
-        file: Some(path),
-        rows: s.rows,
-        bytes: s.bytes,
-        warnings: s.warnings,
-        error: None,
-        duration_ms: s.duration_ms,
-    };
+    let item = ExportItemSummary { name, file: Some(path), rows: s.rows, bytes: s.bytes, warnings: s.warnings, error: None, duration_ms: s.duration_ms };
     Ok(ExportJobSummary { rows: item.rows, bytes: item.bytes, items: vec![item], duration_ms: started.elapsed().as_millis() as u64 })
 }
 
@@ -983,28 +915,35 @@ fn csv_ui(ui: &mut Ui, id: u64, o: &mut CsvOptions, tsv: bool) {
         char_edit(ui, &mut o.quote_char);
         ui.end_row();
         ui.label(tr("Quote values"));
-        combo(ui, ("csv_quote", id), &mut o.quote_mode, &[
-            (QuoteMode::Needed, tr("When needed").to_string()),
-            (QuoteMode::Strings, tr("Text values").to_string()),
-            (QuoteMode::Always, tr("Always").to_string()),
-            (QuoteMode::Never, tr("Never").to_string()),
-        ]);
+        combo(
+            ui,
+            ("csv_quote", id),
+            &mut o.quote_mode,
+            &[
+                (QuoteMode::Needed, tr("When needed").to_string()),
+                (QuoteMode::Strings, tr("Text values").to_string()),
+                (QuoteMode::Always, tr("Always").to_string()),
+                (QuoteMode::Never, tr("Never").to_string()),
+            ],
+        );
         ui.end_row();
         ui.label(tr("Quotes inside values"));
-        combo(ui, ("csv_escape", id), &mut o.escape, &[
-            (EscapeStyle::Doubled, tr("Doubled (\"\")").to_string()),
-            (EscapeStyle::Backslash, tr("Backslash (\\\")").to_string()),
-        ]);
+        combo(ui, ("csv_escape", id), &mut o.escape, &[(EscapeStyle::Doubled, tr("Doubled (\"\")").to_string()), (EscapeStyle::Backslash, tr("Backslash (\\\")").to_string())]);
         ui.end_row();
         ui.label(tr("Header row"));
         ui.horizontal(|ui| {
             ui.checkbox(&mut o.header, "");
             ui.add_enabled_ui(o.header, |ui| {
-                combo(ui, ("csv_header", id), &mut o.header_style, &[
-                    (HeaderStyle::Label, tr("Column names").to_string()),
-                    (HeaderStyle::Type, tr("Column types").to_string()),
-                    (HeaderStyle::Both, tr("Names and types").to_string()),
-                ]);
+                combo(
+                    ui,
+                    ("csv_header", id),
+                    &mut o.header_style,
+                    &[
+                        (HeaderStyle::Label, tr("Column names").to_string()),
+                        (HeaderStyle::Type, tr("Column types").to_string()),
+                        (HeaderStyle::Both, tr("Names and types").to_string()),
+                    ],
+                );
             });
         });
         ui.end_row();
@@ -1012,31 +951,30 @@ fn csv_ui(ui: &mut Ui, id: u64, o: &mut CsvOptions, tsv: bool) {
         ui.add(egui::TextEdit::singleline(&mut o.null_string).hint_text(tr("nothing")).desired_width(100.0));
         ui.end_row();
         ui.label(tr("Line ending"));
-        combo(ui, ("csv_eol", id), &mut o.line_ending, &[
-            (LineEnding::Lf, tr("LF (macOS, Linux)").to_string()),
-            (LineEnding::CrLf, tr("CRLF (Windows)").to_string()),
-            (LineEnding::Cr, tr("CR").to_string()),
-        ]);
+        combo(
+            ui,
+            ("csv_eol", id),
+            &mut o.line_ending,
+            &[(LineEnding::Lf, tr("LF (macOS, Linux)").to_string()), (LineEnding::CrLf, tr("CRLF (Windows)").to_string()), (LineEnding::Cr, tr("CR").to_string())],
+        );
         ui.end_row();
     });
 }
 
 fn binary_options() -> Vec<(BinaryEncoding, String)> {
-    vec![
-        (BinaryEncoding::Hex, tr("Hexadecimal").to_string()),
-        (BinaryEncoding::Base64, tr("Base64").to_string()),
-        (BinaryEncoding::Text, tr("As text (UTF-8)").to_string()),
-    ]
+    vec![(BinaryEncoding::Hex, tr("Hexadecimal").to_string()), (BinaryEncoding::Base64, tr("Base64").to_string()), (BinaryEncoding::Text, tr("As text (UTF-8)").to_string())]
 }
 
 fn json_ui(ui: &mut Ui, id: u64, o: &mut JsonOptions, document: bool) {
     grid(id, "json").show(ui, |ui| {
         if document {
             ui.label(tr("Structure"));
-            combo(ui, ("json_layout", id), &mut o.layout, &[
-                (JsonLayout::ArrayOfObjects, tr("Array of objects").to_string()),
-                (JsonLayout::ColumnsAndRows, tr("Columns and rows").to_string()),
-            ]);
+            combo(
+                ui,
+                ("json_layout", id),
+                &mut o.layout,
+                &[(JsonLayout::ArrayOfObjects, tr("Array of objects").to_string()), (JsonLayout::ColumnsAndRows, tr("Columns and rows").to_string())],
+            );
             ui.end_row();
             ui.label(tr("Indent"));
             ui.checkbox(&mut o.pretty, tr("Pretty print"));
@@ -1071,10 +1009,7 @@ fn sql_ui(ui: &mut Ui, id: u64, o: &mut SqlOptions, dialect: &mut Option<DbKind>
         combo(ui, ("sql_dialect", id), dialect, &options);
         ui.end_row();
         ui.label(tr("Statements"));
-        combo(ui, ("sql_mode", id), &mut o.mode, &[
-            (SqlInsertMode::Insert, tr("INSERT").to_string()),
-            (SqlInsertMode::Upsert, tr("INSERT or UPDATE (upsert)").to_string()),
-        ]);
+        combo(ui, ("sql_mode", id), &mut o.mode, &[(SqlInsertMode::Insert, tr("INSERT").to_string()), (SqlInsertMode::Upsert, tr("INSERT or UPDATE (upsert)").to_string())]);
         ui.end_row();
         if o.mode == SqlInsertMode::Upsert {
             ui.label(tr("Key columns"));
@@ -1100,10 +1035,7 @@ fn sql_ui(ui: &mut Ui, id: u64, o: &mut SqlOptions, dialect: &mut Option<DbKind>
         ui.checkbox(&mut o.include_create_table, tr("Write the table definition before the data"));
         ui.end_row();
         ui.label(tr("Quote identifiers"));
-        combo(ui, ("sql_quote", id), &mut o.quoting, &[
-            (IdentifierQuoting::AsNeeded, tr("When needed").to_string()),
-            (IdentifierQuoting::Always, tr("Always").to_string()),
-        ]);
+        combo(ui, ("sql_quote", id), &mut o.quoting, &[(IdentifierQuoting::AsNeeded, tr("When needed").to_string()), (IdentifierQuoting::Always, tr("Always").to_string())]);
         ui.end_row();
         ui.label(tr("Statement terminator"));
         ui.add(egui::TextEdit::singleline(&mut o.terminator).desired_width(60.0));
@@ -1190,12 +1122,17 @@ fn xml_ui(ui: &mut Ui, id: u64, o: &mut XmlOptions) {
         ui.add(egui::TextEdit::singleline(&mut o.record_element).desired_width(160.0));
         ui.end_row();
         ui.label(tr("NULL values"));
-        combo(ui, ("xml_null", id), &mut o.null_mode, &[
-            (XmlNullMode::NullAttribute, tr("Element with null=\"true\"").to_string()),
-            (XmlNullMode::Omit, tr("Leave the element out").to_string()),
-            (XmlNullMode::Empty, tr("Empty element").to_string()),
-            (XmlNullMode::Text, tr("NULL text of the value formatting").to_string()),
-        ]);
+        combo(
+            ui,
+            ("xml_null", id),
+            &mut o.null_mode,
+            &[
+                (XmlNullMode::NullAttribute, tr("Element with null=\"true\"").to_string()),
+                (XmlNullMode::Omit, tr("Leave the element out").to_string()),
+                (XmlNullMode::Empty, tr("Empty element").to_string()),
+                (XmlNullMode::Text, tr("NULL text of the value formatting").to_string()),
+            ],
+        );
         ui.end_row();
         ui.label(tr("Document type"));
         ui.checkbox(&mut o.include_dtd, tr("Include a DTD"));
@@ -1271,10 +1208,7 @@ fn php_ui(ui: &mut Ui, id: u64, o: &mut PhpOptions) {
 fn parquet_ui(ui: &mut Ui, id: u64, o: &mut ParquetOptions) {
     grid(id, "parquet").show(ui, |ui| {
         ui.label(tr("Compression"));
-        combo(ui, ("pq_comp", id), &mut o.compression, &[
-            (ParquetCompression::Snappy, tr("Snappy").to_string()),
-            (ParquetCompression::None, tr("None").to_string()),
-        ]);
+        combo(ui, ("pq_comp", id), &mut o.compression, &[(ParquetCompression::Snappy, tr("Snappy").to_string()), (ParquetCompression::None, tr("None").to_string())]);
         ui.end_row();
         ui.label(tr("Rows per row group"));
         ui.add(egui::DragValue::new(&mut o.row_group_rows).range(1..=10_000_000));
@@ -1398,13 +1332,11 @@ impl TabView for ExportTab {
         });
         egui::Panel::bottom(egui::Id::new(("exp_bottom", uid))).show(ui, |ui| self.footer(ui, cx));
         egui::CentralPanel::default().show(ui, |ui| {
-            egui::ScrollArea::vertical().id_salt(("exp_body", uid)).auto_shrink([false, false]).show(ui, |ui| {
-                match self.page {
-                    PAGE_SOURCE => self.source_page(ui, cx),
-                    PAGE_FORMAT => self.format_page(ui, cx),
-                    PAGE_OUTPUT => self.output_page(ui),
-                    _ => self.run_page(ui, cx),
-                }
+            egui::ScrollArea::vertical().id_salt(("exp_body", uid)).auto_shrink([false, false]).show(ui, |ui| match self.page {
+                PAGE_SOURCE => self.source_page(ui, cx),
+                PAGE_FORMAT => self.format_page(ui, cx),
+                PAGE_OUTPUT => self.output_page(ui),
+                _ => self.run_page(ui, cx),
             });
         });
         if let Some((name, folder)) = self.saver.ui(ui.ctx(), egui::Id::new(("exp_save", uid))) {

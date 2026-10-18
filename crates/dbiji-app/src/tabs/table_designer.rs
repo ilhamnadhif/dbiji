@@ -65,11 +65,7 @@ pub fn join_type(type_text: &str, length: &str) -> String {
         return t.to_string();
     }
     let lower = t.to_ascii_lowercase();
-    let at = [" with time zone", " without time zone", " unsigned", " signed", " zerofill", "[", " array"]
-        .iter()
-        .filter_map(|s| lower.find(s))
-        .min()
-        .unwrap_or(t.len());
+    let at = [" with time zone", " without time zone", " unsigned", " signed", " zerofill", "[", " array"].iter().filter_map(|s| lower.find(s)).min().unwrap_or(t.len());
     format!("{}({len}){}", &t[..at], &t[at..])
 }
 
@@ -77,25 +73,125 @@ pub fn join_type(type_text: &str, length: &str) -> String {
 pub fn common_types(kind: DbKind) -> &'static [&'static str] {
     match kind {
         DbKind::Postgres | DbKind::CockroachDb => &[
-            "integer", "bigint", "smallint", "numeric", "real", "double precision", "boolean", "varchar", "char", "text", "uuid", "date", "time",
-            "timestamp", "timestamptz", "interval", "json", "jsonb", "bytea", "inet", "money",
+            "integer",
+            "bigint",
+            "smallint",
+            "numeric",
+            "real",
+            "double precision",
+            "boolean",
+            "varchar",
+            "char",
+            "text",
+            "uuid",
+            "date",
+            "time",
+            "timestamp",
+            "timestamptz",
+            "interval",
+            "json",
+            "jsonb",
+            "bytea",
+            "inet",
+            "money",
         ],
         DbKind::MySql | DbKind::MariaDb => &[
-            "int", "bigint", "smallint", "tinyint", "mediumint", "decimal", "float", "double", "bit", "varchar", "char", "text", "mediumtext",
-            "longtext", "binary", "varbinary", "blob", "longblob", "date", "time", "datetime", "timestamp", "year", "json", "enum('a','b')",
+            "int",
+            "bigint",
+            "smallint",
+            "tinyint",
+            "mediumint",
+            "decimal",
+            "float",
+            "double",
+            "bit",
+            "varchar",
+            "char",
+            "text",
+            "mediumtext",
+            "longtext",
+            "binary",
+            "varbinary",
+            "blob",
+            "longblob",
+            "date",
+            "time",
+            "datetime",
+            "timestamp",
+            "year",
+            "json",
+            "enum('a','b')",
         ],
         DbKind::Sqlite => &["INTEGER", "REAL", "TEXT", "BLOB", "NUMERIC", "BOOLEAN", "DATE", "DATETIME", "VARCHAR"],
         DbKind::SqlServer => &[
-            "int", "bigint", "smallint", "tinyint", "bit", "decimal", "numeric", "money", "float", "real", "nvarchar", "varchar", "nchar", "char",
-            "nvarchar(max)", "date", "time", "datetime2", "datetimeoffset", "uniqueidentifier", "varbinary", "xml",
+            "int",
+            "bigint",
+            "smallint",
+            "tinyint",
+            "bit",
+            "decimal",
+            "numeric",
+            "money",
+            "float",
+            "real",
+            "nvarchar",
+            "varchar",
+            "nchar",
+            "char",
+            "nvarchar(max)",
+            "date",
+            "time",
+            "datetime2",
+            "datetimeoffset",
+            "uniqueidentifier",
+            "varbinary",
+            "xml",
         ],
         DbKind::ClickHouse => &[
-            "UInt8", "UInt16", "UInt32", "UInt64", "Int8", "Int16", "Int32", "Int64", "Float32", "Float64", "Decimal", "Bool", "String", "FixedString",
-            "UUID", "Date", "Date32", "DateTime", "DateTime64", "IPv4", "IPv6", "Nullable(String)", "LowCardinality(String)", "Array(String)",
+            "UInt8",
+            "UInt16",
+            "UInt32",
+            "UInt64",
+            "Int8",
+            "Int16",
+            "Int32",
+            "Int64",
+            "Float32",
+            "Float64",
+            "Decimal",
+            "Bool",
+            "String",
+            "FixedString",
+            "UUID",
+            "Date",
+            "Date32",
+            "DateTime",
+            "DateTime64",
+            "IPv4",
+            "IPv6",
+            "Nullable(String)",
+            "LowCardinality(String)",
+            "Array(String)",
         ],
         DbKind::DuckDb => &[
-            "INTEGER", "BIGINT", "SMALLINT", "TINYINT", "HUGEINT", "DOUBLE", "REAL", "DECIMAL", "BOOLEAN", "VARCHAR", "BLOB", "UUID", "DATE", "TIME",
-            "TIMESTAMP", "TIMESTAMPTZ", "INTERVAL", "JSON",
+            "INTEGER",
+            "BIGINT",
+            "SMALLINT",
+            "TINYINT",
+            "HUGEINT",
+            "DOUBLE",
+            "REAL",
+            "DECIMAL",
+            "BOOLEAN",
+            "VARCHAR",
+            "BLOB",
+            "UUID",
+            "DATE",
+            "TIME",
+            "TIMESTAMP",
+            "TIMESTAMPTZ",
+            "INTERVAL",
+            "JSON",
         ],
         DbKind::Generic => &["INTEGER", "BIGINT", "SMALLINT", "DECIMAL", "REAL", "DOUBLE PRECISION", "BOOLEAN", "VARCHAR", "CHAR", "CLOB", "BLOB", "DATE", "TIME", "TIMESTAMP"],
     }
@@ -294,10 +390,10 @@ impl Model {
         if let Some(c) = self.columns.iter().find(|c| c.name == name) {
             return ColRef::Col(c.uid, String::new());
         }
-        if let Some((base, suffix)) = split_prefix(name) {
-            if let Some(c) = self.columns.iter().find(|c| c.name == base) {
-                return ColRef::Col(c.uid, suffix.to_string());
-            }
+        if let Some((base, suffix)) = split_prefix(name)
+            && let Some(c) = self.columns.iter().find(|c| c.name == base)
+        {
+            return ColRef::Col(c.uid, suffix.to_string());
         }
         ColRef::Name(name.to_string())
     }
@@ -645,11 +741,7 @@ impl TableDesignerTab {
 
     /// Columns renamed by the user: `(old, new)`.
     fn renames(&self) -> Vec<(String, String)> {
-        self.model
-            .columns
-            .iter()
-            .filter_map(|c| c.orig_name.as_ref().filter(|o| o.as_str() != c.name.trim()).map(|o| (o.clone(), c.name.trim().to_string())))
-            .collect()
+        self.model.columns.iter().filter_map(|c| c.orig_name.as_ref().filter(|o| o.as_str() != c.name.trim()).map(|o| (o.clone(), c.name.trim().to_string()))).collect()
     }
 
     /// The original definition as the ALTER source: keys, indexes and
@@ -664,10 +756,10 @@ impl TableDesignerTab {
             if let Some((_, new)) = renames.iter().find(|(o, _)| o == n) {
                 return new.clone();
             }
-            if let Some((base, suffix)) = split_prefix(n) {
-                if let Some((_, new)) = renames.iter().find(|(o, _)| o == base) {
-                    return format!("{new}{suffix}");
-                }
+            if let Some((base, suffix)) = split_prefix(n)
+                && let Some((_, new)) = renames.iter().find(|(o, _)| o == base)
+            {
+                return format!("{new}{suffix}");
             }
             n.to_string()
         };
@@ -700,10 +792,10 @@ impl TableDesignerTab {
     }
 
     fn statements(&mut self) -> Vec<String> {
-        if let Some((m, s)) = &self.preview {
-            if *m == self.model {
-                return s.clone();
-            }
+        if let Some((m, s)) = &self.preview
+            && *m == self.model
+        {
+            return s.clone();
         }
         let s = self.compute_statements();
         self.preview = Some((self.model.clone(), s.clone()));
@@ -752,10 +844,7 @@ impl TableDesignerTab {
         for (i, f) in m.fks.iter().enumerate() {
             let cols = m.resolve_all(&f.cols);
             if f.ref_table.trim().is_empty() || cols.is_empty() || cols.len() != f.ref_columns.len() || f.ref_columns.iter().any(|c| c.trim().is_empty()) {
-                out.push(trf(
-                    "Foreign key {} needs a referenced table and the same number of columns on both sides.",
-                    &[&opt(&f.name).unwrap_or_else(|| format!("#{}", i + 1))],
-                ));
+                out.push(trf("Foreign key {} needs a referenced table and the same number of columns on both sides.", &[&opt(&f.name).unwrap_or_else(|| format!("#{}", i + 1))]));
             }
         }
         for (i, c) in m.checks.iter().enumerate() {
@@ -820,42 +909,42 @@ impl TableDesignerTab {
     }
 
     fn poll(&mut self, cx: &mut AppContext) {
-        if let Some(j) = self.load.as_mut() {
-            if let Some(r) = j.poll() {
-                self.load = None;
-                match r {
-                    Ok(def) => self.reset_to(def),
-                    Err(e) => self.load_error = Some(e.full_text()),
-                }
+        if let Some(j) = self.load.as_mut()
+            && let Some(r) = j.poll()
+        {
+            self.load = None;
+            match r {
+                Ok(def) => self.reset_to(def),
+                Err(e) => self.load_error = Some(e.full_text()),
             }
         }
-        if let Some(j) = self.exec.as_mut() {
-            if let Some(r) = j.poll() {
-                self.exec = None;
-                match r {
-                    Ok(()) => {
-                        let name = self.model.name.trim().to_string();
-                        let target = ObjectRef::table(self.schema.schema.clone(), name.clone()).with_database(self.schema.database.clone());
-                        cx.push(AppCommand::RefreshMetadata { connection: self.conn.clone(), object: None, schema: Some(self.schema.clone()) });
-                        if self.creating {
-                            cx.toasts.success(trf("Table {} created", &[&name]));
-                            cx.push(AppCommand::OpenObject { connection: self.conn.clone(), object: target.clone(), page: ObjectPage::Properties });
-                        } else {
-                            cx.toasts.success(trf("Table {} altered", &[&name]));
-                        }
-                        // Continue editing the table as it now is.
-                        self.table = Some(target);
-                        self.original = None;
-                        self.baseline = self.model.clone();
+        if let Some(j) = self.exec.as_mut()
+            && let Some(r) = j.poll()
+        {
+            self.exec = None;
+            match r {
+                Ok(()) => {
+                    let name = self.model.name.trim().to_string();
+                    let target = ObjectRef::table(self.schema.schema.clone(), name.clone()).with_database(self.schema.database.clone());
+                    cx.push(AppCommand::RefreshMetadata { connection: self.conn.clone(), object: None, schema: Some(self.schema.clone()) });
+                    if self.creating {
+                        cx.toasts.success(trf("Table {} created", &[&name]));
+                        cx.push(AppCommand::OpenObject { connection: self.conn.clone(), object: target.clone(), page: ObjectPage::Properties });
+                    } else {
+                        cx.toasts.success(trf("Table {} altered", &[&name]));
                     }
-                    Err(e) => {
-                        let mut text = e.full_text();
-                        if !transactional_ddl(self.kind) && !self.creating {
-                            text.push_str("\n\n");
-                            text.push_str(tr("Statements before the failing one were applied; reload the table before continuing."));
-                        }
-                        self.exec_error = Some(text);
+                    // Continue editing the table as it now is.
+                    self.table = Some(target);
+                    self.original = None;
+                    self.baseline = self.model.clone();
+                }
+                Err(e) => {
+                    let mut text = e.full_text();
+                    if !transactional_ddl(self.kind) && !self.creating {
+                        text.push_str("\n\n");
+                        text.push_str(tr("Statements before the failing one were applied; reload the table before continuing."));
                     }
+                    self.exec_error = Some(text);
                 }
             }
         }
@@ -942,24 +1031,24 @@ impl TableDesignerTab {
                 self.selected = Some(at);
             }
             let sel = self.selected.filter(|s| *s < self.model.columns.len());
-            if ui.add_enabled(sel.is_some(), egui::Button::new(format!("{} {}", icon::MINUS, tr("Remove")))).clicked() {
-                if let Some(i) = sel {
-                    let uid = self.model.columns[i].uid;
-                    self.model.remove_column(uid);
-                    self.selected = if self.model.columns.is_empty() { None } else { Some(i.min(self.model.columns.len() - 1)) };
-                }
+            if ui.add_enabled(sel.is_some(), egui::Button::new(format!("{} {}", icon::MINUS, tr("Remove")))).clicked()
+                && let Some(i) = sel
+            {
+                let uid = self.model.columns[i].uid;
+                self.model.remove_column(uid);
+                self.selected = if self.model.columns.is_empty() { None } else { Some(i.min(self.model.columns.len() - 1)) };
             }
-            if ui.add_enabled(sel.is_some_and(|i| i > 0), egui::Button::new(icon::ARROW_UP)).on_hover_text(tr("Move up")).clicked() {
-                if let Some(i) = sel {
-                    self.model.columns.swap(i, i - 1);
-                    self.selected = Some(i - 1);
-                }
+            if ui.add_enabled(sel.is_some_and(|i| i > 0), egui::Button::new(icon::ARROW_UP)).on_hover_text(tr("Move up")).clicked()
+                && let Some(i) = sel
+            {
+                self.model.columns.swap(i, i - 1);
+                self.selected = Some(i - 1);
             }
-            if ui.add_enabled(sel.is_some_and(|i| i + 1 < self.model.columns.len()), egui::Button::new(icon::ARROW_DOWN)).on_hover_text(tr("Move down")).clicked() {
-                if let Some(i) = sel {
-                    self.model.columns.swap(i, i + 1);
-                    self.selected = Some(i + 1);
-                }
+            if ui.add_enabled(sel.is_some_and(|i| i + 1 < self.model.columns.len()), egui::Button::new(icon::ARROW_DOWN)).on_hover_text(tr("Move down")).clicked()
+                && let Some(i) = sel
+            {
+                self.model.columns.swap(i, i + 1);
+                self.selected = Some(i + 1);
             }
         });
         let types = common_types(self.kind);
@@ -1257,16 +1346,16 @@ impl TableDesignerTab {
         let mut schema_names: Vec<String> = Vec::new();
         let backend = cx.backend;
         let db = self.schema.database.clone();
-        if let Some(live) = cx.conns.live_mut(&self.conn) {
-            if let Some(session) = live.ensure_session(backend, db.as_deref()) {
-                live.meta.request_schemas(backend, &session, db.as_deref());
-                schema_names = live.meta.schemas_of(db.as_deref()).get().map(|v| v.iter().filter(|s| !s.is_system).map(|s| s.name.clone()).collect()).unwrap_or_default();
-                for s in schemas.iter().filter(|s| !s.is_empty()) {
-                    let sr = SchemaRef::new(db.clone(), Some(s.clone()));
-                    live.meta.request_snapshot(backend, &session, &sr);
-                    if let Some(snap) = live.meta.snapshot(&sr) {
-                        snaps.insert(s.clone(), snap);
-                    }
+        if let Some(live) = cx.conns.live_mut(&self.conn)
+            && let Some(session) = live.ensure_session(backend, db.as_deref())
+        {
+            live.meta.request_schemas(backend, &session, db.as_deref());
+            schema_names = live.meta.schemas_of(db.as_deref()).get().map(|v| v.iter().filter(|s| !s.is_system).map(|s| s.name.clone()).collect()).unwrap_or_default();
+            for s in schemas.iter().filter(|s| !s.is_empty()) {
+                let sr = SchemaRef::new(db.clone(), Some(s.clone()));
+                live.meta.request_snapshot(backend, &session, &sr);
+                if let Some(snap) = live.meta.snapshot(&sr) {
+                    snaps.insert(s.clone(), snap);
                 }
             }
         }
@@ -1289,15 +1378,18 @@ impl TableDesignerTab {
                         f.ref_columns = f.cols.iter().map(|r| before.iter().position(|b| b == r).and_then(|p| old.get(p).cloned()).unwrap_or_default()).collect();
                     }
                     ui.label("→");
-                    egui::ComboBox::from_id_salt(("td_fks", uid, f.uid)).selected_text(if f.ref_schema.is_empty() { "—".to_string() } else { f.ref_schema.clone() }).width(120.0).show_ui(ui, |ui| {
-                        for s in &schema_names {
-                            if ui.selectable_label(&f.ref_schema == s, s).clicked() && &f.ref_schema != s {
-                                f.ref_schema = s.clone();
-                                f.ref_table.clear();
-                                f.ref_columns.clear();
+                    egui::ComboBox::from_id_salt(("td_fks", uid, f.uid))
+                        .selected_text(if f.ref_schema.is_empty() { "—".to_string() } else { f.ref_schema.clone() })
+                        .width(120.0)
+                        .show_ui(ui, |ui| {
+                            for s in &schema_names {
+                                if ui.selectable_label(&f.ref_schema == s, s).clicked() && &f.ref_schema != s {
+                                    f.ref_schema = s.clone();
+                                    f.ref_table.clear();
+                                    f.ref_columns.clear();
+                                }
                             }
-                        }
-                    });
+                        });
                     let snap = snaps.get(f.ref_schema.trim());
                     let mut tables: Vec<String> = snap.map(|s| s.tables.iter().map(|t| t.name.clone()).collect()).unwrap_or_default();
                     if f.ref_schema.trim() == own_schema && !this_table.is_empty() && !tables.contains(&this_table) {
@@ -1335,15 +1427,18 @@ impl TableDesignerTab {
                     for (j, name) in names.iter().enumerate() {
                         ui.label(format!("{name} →"));
                         let cur = f.ref_columns.get(j).cloned().unwrap_or_default();
-                        egui::ComboBox::from_id_salt(("td_fkc", uid, f.uid, j)).selected_text(if cur.is_empty() { tr("column…").to_string() } else { cur.clone() }).width(130.0).show_ui(ui, |ui| {
-                            for rc in &ref_cols {
-                                if ui.selectable_label(&cur == rc, rc).clicked() {
-                                    if let Some(slot) = f.ref_columns.get_mut(j) {
+                        egui::ComboBox::from_id_salt(("td_fkc", uid, f.uid, j))
+                            .selected_text(if cur.is_empty() { tr("column…").to_string() } else { cur.clone() })
+                            .width(130.0)
+                            .show_ui(ui, |ui| {
+                                for rc in &ref_cols {
+                                    if ui.selectable_label(&cur == rc, rc).clicked()
+                                        && let Some(slot) = f.ref_columns.get_mut(j)
+                                    {
                                         *slot = rc.clone();
                                     }
                                 }
-                            }
-                        });
+                            });
                     }
                 });
                 ui.horizontal(|ui| {
@@ -1376,7 +1471,13 @@ impl TableDesignerTab {
         for (i, c) in self.model.checks.iter_mut().enumerate() {
             ui.horizontal(|ui| {
                 ui.add(egui::TextEdit::singleline(&mut c.name).hint_text(tr("name (optional)")).desired_width(160.0).id_salt(("td_chn", uid, c.uid)));
-                ui.add(egui::TextEdit::singleline(&mut c.expression).hint_text(tr("condition, e.g. price >= 0")).code_editor().desired_width((ui.available_width() - 40.0).max(120.0)).id_salt(("td_che", uid, c.uid)));
+                ui.add(
+                    egui::TextEdit::singleline(&mut c.expression)
+                        .hint_text(tr("condition, e.g. price >= 0"))
+                        .code_editor()
+                        .desired_width((ui.available_width() - 40.0).max(120.0))
+                        .id_salt(("td_che", uid, c.uid)),
+                );
                 if ui.small_button(icon::TRASH).on_hover_text(tr("Remove")).clicked() {
                     remove = Some(i);
                 }
@@ -1444,10 +1545,13 @@ impl TableDesignerTab {
                     }
                     if pg {
                         let mut row = t.for_each_row;
-                        egui::ComboBox::from_id_salt(("td_trl", uid, t.uid)).selected_text(if row { tr("for each row") } else { tr("for each statement") }).width(140.0).show_ui(ui, |ui| {
-                            ui.selectable_value(&mut row, true, tr("for each row"));
-                            ui.selectable_value(&mut row, false, tr("for each statement"));
-                        });
+                        egui::ComboBox::from_id_salt(("td_trl", uid, t.uid)).selected_text(if row { tr("for each row") } else { tr("for each statement") }).width(140.0).show_ui(
+                            ui,
+                            |ui| {
+                                ui.selectable_value(&mut row, true, tr("for each row"));
+                                ui.selectable_value(&mut row, false, tr("for each statement"));
+                            },
+                        );
                         if row != t.for_each_row {
                             t.for_each_row = row;
                             changed = true;
@@ -1459,7 +1563,9 @@ impl TableDesignerTab {
                     }
                 });
                 let hint = if pg { tr("Function to execute, e.g. audit_changes()") } else { tr("Statement, e.g. SET NEW.updated_at = NOW() or BEGIN … END") };
-                changed |= ui.add(egui::TextEdit::multiline(&mut t.body).hint_text(hint).code_editor().desired_rows(2).desired_width(f32::INFINITY).id_salt(("td_trb", uid, t.uid))).changed();
+                changed |= ui
+                    .add(egui::TextEdit::multiline(&mut t.body).hint_text(hint).code_editor().desired_rows(2).desired_width(f32::INFINITY).id_salt(("td_trb", uid, t.uid)))
+                    .changed();
                 if changed {
                     t.edited = true;
                 }
@@ -1813,11 +1919,7 @@ impl TabView for TableDesignerTab {
         }
         self.toolbar(ui, cx);
         ui.separator();
-        egui::Panel::bottom(egui::Id::new(("td_preview", self.uid)))
-            .resizable(true)
-            .default_size(200.0)
-            .size_range(80.0..=f32::INFINITY)
-            .show(ui, |ui| self.preview_ui(ui));
+        egui::Panel::bottom(egui::Id::new(("td_preview", self.uid))).resizable(true).default_size(200.0).size_range(80.0..=f32::INFINITY).show(ui, |ui| self.preview_ui(ui));
         egui::CentralPanel::default().show(ui, |ui| {
             self.pages_ui(ui);
             ui.separator();

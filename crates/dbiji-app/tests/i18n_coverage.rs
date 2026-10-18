@@ -32,9 +32,10 @@ fn extract(src: &str, out: &mut BTreeSet<String>) {
     for (i, len) in starts {
         // must not be part of a longer identifier (e.g. `attr("`)
         if let Some(prev) = src[..i].chars().next_back()
-            && (prev.is_alphanumeric() || prev == '_') {
-                continue;
-            }
+            && (prev.is_alphanumeric() || prev == '_')
+        {
+            continue;
+        }
         let mut s = String::new();
         let mut closed = false;
         let mut chars = src[i + len..].chars();

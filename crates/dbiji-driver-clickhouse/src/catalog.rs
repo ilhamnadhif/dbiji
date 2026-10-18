@@ -46,9 +46,7 @@ fn obj_schema(s: &ClickHouseSession, obj: &ObjectRef) -> String {
 async fn rows_or(s: &mut ClickHouseSession, primary: &str, fallback: &str) -> DbResult<Vec<Row>> {
     match s.rows(primary).await {
         Ok(r) => Ok(r),
-        Err(e) if e.kind == ErrorKind::Query && e.code.as_deref().is_some_and(|c| c.starts_with("47") || c.starts_with("16")) => {
-            s.rows(fallback).await
-        }
+        Err(e) if e.kind == ErrorKind::Query && e.code.as_deref().is_some_and(|c| c.starts_with("47") || c.starts_with("16")) => s.rows(fallback).await,
         Err(e) => Err(e),
     }
 }
@@ -268,12 +266,7 @@ pub fn like_pattern(pattern: &str) -> String {
 // ------------------------------------------------------------ navigator
 
 pub async fn list_databases(s: &mut ClickHouseSession) -> DbResult<Vec<DatabaseInfo>> {
-    let rows = rows_or(
-        s,
-        "SELECT name, engine, comment FROM system.databases ORDER BY name",
-        "SELECT name, engine, '' FROM system.databases ORDER BY name",
-    )
-    .await?;
+    let rows = rows_or(s, "SELECT name, engine, comment FROM system.databases ORDER BY name", "SELECT name, engine, '' FROM system.databases ORDER BY name").await?;
     let sizes: BTreeMap<String, i64> = s
         .rows("SELECT database, sum(total_bytes) FROM system.tables GROUP BY database")
         .await
@@ -300,18 +293,12 @@ pub async fn list_databases(s: &mut ClickHouseSession) -> DbResult<Vec<DatabaseI
 }
 
 pub async fn list_schemas(s: &mut ClickHouseSession) -> DbResult<Vec<SchemaInfo>> {
-    Ok(list_databases(s)
-        .await?
-        .into_iter()
-        .map(|d| SchemaInfo { name: d.name, is_current: d.is_current, is_system: d.is_system, owner: None, comment: d.comment })
-        .collect())
+    Ok(list_databases(s).await?.into_iter().map(|d| SchemaInfo { name: d.name, is_current: d.is_current, is_system: d.is_system, owner: None, comment: d.comment }).collect())
 }
 
 fn engine_filter(kind: ObjectKind) -> Option<&'static str> {
     Some(match kind {
-        ObjectKind::Table => {
-            "engine NOT IN ('View', 'MaterializedView', 'LiveView', 'WindowView', 'Dictionary') AND name NOT LIKE '.inner%'"
-        }
+        ObjectKind::Table => "engine NOT IN ('View', 'MaterializedView', 'LiveView', 'WindowView', 'Dictionary') AND name NOT LIKE '.inner%'",
         ObjectKind::View => "engine IN ('View', 'LiveView', 'WindowView')",
         ObjectKind::MaterializedView => "engine = 'MaterializedView'",
         _ => return None,
@@ -331,9 +318,7 @@ pub async fn list_objects(s: &mut ClickHouseSession, schema: &SchemaRef, kind: O
         return Ok(rows
             .into_iter()
             .map(|r| {
-                let mut info = ObjectInfo::new(ObjectRef::new(kind, Some(db.clone()), text(r.first())))
-                    .with_detail(text(r.get(1)))
-                    .with_comment(opt(r.get(2)));
+                let mut info = ObjectInfo::new(ObjectRef::new(kind, Some(db.clone()), text(r.first()))).with_detail(text(r.get(1))).with_comment(opt(r.get(2)));
                 info.is_system = system;
                 info.row_estimate = int(r.get(3));
                 info
@@ -342,16 +327,8 @@ pub async fn list_objects(s: &mut ClickHouseSession, schema: &SchemaRef, kind: O
     }
     match kind {
         ObjectKind::Type => {
-            let sql = format!(
-                "SELECT name, type, status, comment FROM system.dictionaries WHERE database = {} ORDER BY name",
-                lit(&db)
-            );
-            let rows = rows_or(
-                s,
-                &sql,
-                &format!("SELECT name, type, status, '' FROM system.dictionaries WHERE database = {} ORDER BY name", lit(&db)),
-            )
-            .await?;
+            let sql = format!("SELECT name, type, status, comment FROM system.dictionaries WHERE database = {} ORDER BY name", lit(&db));
+            let rows = rows_or(s, &sql, &format!("SELECT name, type, status, '' FROM system.dictionaries WHERE database = {} ORDER BY name", lit(&db))).await?;
             Ok(rows
                 .into_iter()
                 .map(|r| {
@@ -362,15 +339,10 @@ pub async fn list_objects(s: &mut ClickHouseSession, schema: &SchemaRef, kind: O
                 .collect())
         }
         ObjectKind::Function => {
-            let rows = s
-                .rows("SELECT name, create_query FROM system.functions WHERE origin = 'SQLUserDefined' ORDER BY name")
-                .await?;
+            let rows = s.rows("SELECT name, create_query FROM system.functions WHERE origin = 'SQLUserDefined' ORDER BY name").await?;
             Ok(rows
                 .into_iter()
-                .map(|r| {
-                    ObjectInfo::new(ObjectRef::new(ObjectKind::Function, Some(db.clone()), text(r.first())))
-                        .with_detail("SQL user defined function")
-                })
+                .map(|r| ObjectInfo::new(ObjectRef::new(ObjectKind::Function, Some(db.clone()), text(r.first()))).with_detail("SQL user defined function"))
                 .collect())
         }
         _ => Ok(Vec::new()),
@@ -404,9 +376,7 @@ pub async fn list_children(s: &mut ClickHouseSession, parent: &ObjectRef, kind: 
                     if truthy(r.get(5)) {
                         detail.push_str(" (key)");
                     }
-                    ObjectInfo::new(ObjectRef::child(ObjectKind::Column, parent, text(r.first())))
-                        .with_detail(detail)
-                        .with_comment(opt(r.get(4)))
+                    ObjectInfo::new(ObjectRef::child(ObjectKind::Column, parent, text(r.first()))).with_detail(detail).with_comment(opt(r.get(4)))
                 })
                 .collect())
         }
@@ -430,13 +400,7 @@ pub async fn list_children(s: &mut ClickHouseSession, parent: &ObjectRef, kind: 
                 .collect())
         }
         ObjectKind::PrimaryKey => {
-            let rows = s
-                .rows(&format!(
-                    "SELECT primary_key, sorting_key FROM system.tables WHERE database = {} AND name = {}",
-                    lit(&db),
-                    lit(&table)
-                ))
-                .await?;
+            let rows = s.rows(&format!("SELECT primary_key, sorting_key FROM system.tables WHERE database = {} AND name = {}", lit(&db), lit(&table))).await?;
             Ok(rows
                 .into_iter()
                 .filter_map(|r| {
@@ -449,14 +413,7 @@ pub async fn list_children(s: &mut ClickHouseSession, parent: &ObjectRef, kind: 
             let create = create_query(s, &db, &table).await?;
             Ok(parse_constraints(&create)
                 .into_iter()
-                .map(|c| {
-                    ObjectInfo::new(ObjectRef::child(
-                        ObjectKind::CheckConstraint,
-                        parent,
-                        c.name.clone().unwrap_or_default(),
-                    ))
-                    .with_detail(c.expression)
-                })
+                .map(|c| ObjectInfo::new(ObjectRef::child(ObjectKind::CheckConstraint, parent, c.name.clone().unwrap_or_default())).with_detail(c.expression))
                 .collect())
         }
         _ => Ok(Vec::new()),
@@ -464,13 +421,7 @@ pub async fn list_children(s: &mut ClickHouseSession, parent: &ObjectRef, kind: 
 }
 
 async fn create_query(s: &mut ClickHouseSession, db: &str, table: &str) -> DbResult<String> {
-    let v = s
-        .scalar(&format!(
-            "SELECT create_table_query FROM system.tables WHERE database = {} AND name = {}",
-            lit(db),
-            lit(table)
-        ))
-        .await?;
+    let v = s.scalar(&format!("SELECT create_table_query FROM system.tables WHERE database = {} AND name = {}", lit(db), lit(table))).await?;
     Ok(v.to_text().into_owned())
 }
 
@@ -555,16 +506,8 @@ fn table_from_row(db: &str, r: &Row) -> TableDef {
 
 pub async fn table_definition(s: &mut ClickHouseSession, table: &ObjectRef) -> DbResult<TableDef> {
     let db = obj_schema(s, table);
-    let rows = s
-        .rows(&format!(
-            "SELECT {TABLE_COLS} FROM system.tables WHERE database = {} AND name = {}",
-            lit(&db),
-            lit(&table.name)
-        ))
-        .await?;
-    let row = rows
-        .first()
-        .ok_or_else(|| DbError::query(format!("Table {}.{} does not exist", db, table.name)).with_code("60"))?;
+    let rows = s.rows(&format!("SELECT {TABLE_COLS} FROM system.tables WHERE database = {} AND name = {}", lit(&db), lit(&table.name))).await?;
+    let row = rows.first().ok_or_else(|| DbError::query(format!("Table {}.{} does not exist", db, table.name)).with_code("60"))?;
     let mut t = table_from_row(&db, row);
     let where_ = format!("database = {} AND table = {}", lit(&db), lit(&table.name));
     for r in s.rows(&format!("SELECT {COLUMN_COLS} FROM system.columns WHERE {where_} ORDER BY position")).await? {
@@ -582,27 +525,13 @@ pub async fn table_definition(s: &mut ClickHouseSession, table: &ObjectRef) -> D
 
 pub async fn view_definition(s: &mut ClickHouseSession, view: &ObjectRef) -> DbResult<ViewDef> {
     let db = obj_schema(s, view);
-    let rows = s
-        .rows(&format!(
-            "SELECT engine, as_select, comment, create_table_query FROM system.tables WHERE database = {} AND name = {}",
-            lit(&db),
-            lit(&view.name)
-        ))
-        .await?;
+    let rows = s.rows(&format!("SELECT engine, as_select, comment, create_table_query FROM system.tables WHERE database = {} AND name = {}", lit(&db), lit(&view.name))).await?;
     let r = rows.first().ok_or_else(|| DbError::query(format!("View {}.{} does not exist", db, view.name)))?;
     let materialized = text(r.first()) == "MaterializedView";
-    let mut v = ViewDef {
-        schema: Some(db.clone()),
-        name: view.name.clone(),
-        materialized,
-        definition: text(r.get(1)),
-        comment: opt(r.get(2)),
-        ..Default::default()
-    };
-    if materialized
-        && let Some(to) = mv_target(&text(r.get(3))) {
-            v.options.insert("to".into(), to);
-        }
+    let mut v = ViewDef { schema: Some(db.clone()), name: view.name.clone(), materialized, definition: text(r.get(1)), comment: opt(r.get(2)), ..Default::default() };
+    if materialized && let Some(to) = mv_target(&text(r.get(3))) {
+        v.options.insert("to".into(), to);
+    }
     let where_ = format!("database = {} AND table = {}", lit(&db), lit(&view.name));
     for r in s.rows(&format!("SELECT {COLUMN_COLS} FROM system.columns WHERE {where_} ORDER BY position")).await? {
         v.columns.push(column_from_row(&r));
@@ -611,12 +540,7 @@ pub async fn view_definition(s: &mut ClickHouseSession, view: &ObjectRef) -> DbR
 }
 
 pub async fn routine_definition(s: &mut ClickHouseSession, routine: &ObjectRef) -> DbResult<RoutineDef> {
-    let v = s
-        .scalar(&format!(
-            "SELECT create_query FROM system.functions WHERE origin = 'SQLUserDefined' AND name = {}",
-            lit(&routine.name)
-        ))
-        .await?;
+    let v = s.scalar(&format!("SELECT create_query FROM system.functions WHERE origin = 'SQLUserDefined' AND name = {}", lit(&routine.name))).await?;
     if v.is_null() {
         return Err(DbError::query(format!("Function {} does not exist", routine.name)));
     }
@@ -664,27 +588,17 @@ pub async fn object_ddl(s: &mut ClickHouseSession, obj: &ObjectRef) -> DbResult<
             let ddl = crate::ddl::ClickHouseDdl::new();
             use dbiji_core::ddl::DdlGenerator;
             Ok(match obj.kind {
-                ObjectKind::Column => t
-                    .column(&obj.name)
-                    .map(|c| ddl.add_column(&t, c).join(";\n"))
-                    .ok_or_else(|| DbError::query(format!("Column {} not found", obj.name)))?,
-                ObjectKind::Index => t
-                    .indexes
-                    .iter()
-                    .find(|i| i.name == obj.name)
-                    .map(|i| ddl.create_index(&t, i))
-                    .ok_or_else(|| DbError::query(format!("Index {} not found", obj.name)))?,
+                ObjectKind::Column => t.column(&obj.name).map(|c| ddl.add_column(&t, c).join(";\n")).ok_or_else(|| DbError::query(format!("Column {} not found", obj.name)))?,
+                ObjectKind::Index => {
+                    t.indexes.iter().find(|i| i.name == obj.name).map(|i| ddl.create_index(&t, i)).ok_or_else(|| DbError::query(format!("Index {} not found", obj.name)))?
+                }
                 ObjectKind::CheckConstraint => t
                     .checks
                     .iter()
                     .find(|c| c.name.as_deref() == Some(obj.name.as_str()))
                     .map(|c| ddl.add_check(&t, c))
                     .ok_or_else(|| DbError::query(format!("Constraint {} not found", obj.name)))?,
-                _ => t
-                    .primary_key
-                    .as_ref()
-                    .map(|k| format!("PRIMARY KEY ({})", k.columns.join(", ")))
-                    .unwrap_or_default(),
+                _ => t.primary_key.as_ref().map(|k| format!("PRIMARY KEY ({})", k.columns.join(", "))).unwrap_or_default(),
             })
         }
         other => Err(DbError::unsupported(format!("DDL of {} objects is not available in ClickHouse", other.label()))),
@@ -716,19 +630,8 @@ pub async fn object_properties(s: &mut ClickHouseSession, obj: &ObjectRef) -> Db
                 ))
                 .await?;
             let Some(r) = rows.first() else { return Ok(Vec::new()) };
-            let labels = [
-                "Engine",
-                "Engine (full)",
-                "Partition key",
-                "Sorting key",
-                "Primary key",
-                "Sampling key",
-                "Total rows",
-                "Total bytes",
-                "Comment",
-                "Metadata modified",
-                "UUID",
-            ];
+            let labels =
+                ["Engine", "Engine (full)", "Partition key", "Sorting key", "Primary key", "Sampling key", "Total rows", "Total bytes", "Comment", "Metadata modified", "UUID"];
             let mut props = Vec::new();
             for (i, l) in labels.iter().enumerate() {
                 if let Some(v) = opt(r.get(i)) {
@@ -739,18 +642,9 @@ pub async fn object_properties(s: &mut ClickHouseSession, obj: &ObjectRef) -> Db
             Ok(props)
         }
         ObjectKind::Database | ObjectKind::Schema => {
-            let rows = s
-                .rows(&format!(
-                    "SELECT engine, data_path, metadata_path, toString(uuid) FROM system.databases WHERE name = {}",
-                    lit(&obj.name)
-                ))
-                .await?;
+            let rows = s.rows(&format!("SELECT engine, data_path, metadata_path, toString(uuid) FROM system.databases WHERE name = {}", lit(&obj.name))).await?;
             let Some(r) = rows.first() else { return Ok(Vec::new()) };
-            Ok(["Engine", "Data path", "Metadata path", "UUID"]
-                .iter()
-                .enumerate()
-                .filter_map(|(i, l)| opt(r.get(i)).map(|v| Property::new(*l, v)))
-                .collect())
+            Ok(["Engine", "Data path", "Metadata path", "UUID"].iter().enumerate().filter_map(|(i, l)| opt(r.get(i)).map(|v| Property::new(*l, v))).collect())
         }
         _ => Ok(Vec::new()),
     }
@@ -778,9 +672,10 @@ pub async fn object_statistics(s: &mut ClickHouseSession, obj: &ObjectRef) -> Db
         }
     }
     if let (Some(c), Some(u)) = (int(r.get(3)), int(r.get(4)))
-        && c > 0 {
-            props.push(Property::new("Compression ratio", format!("{:.2}", u as f64 / c as f64)));
-        }
+        && c > 0
+    {
+        props.push(Property::new("Compression ratio", format!("{:.2}", u as f64 / c as f64)));
+    }
     if let Some(m) = opt(r.get(5)) {
         props.push(Property::new("Last modification", m));
     }
@@ -812,17 +707,14 @@ pub async fn object_dependencies(s: &mut ClickHouseSession, obj: &ObjectRef) -> 
         }
     }
     if text(r.get(3)) == "MaterializedView"
-        && let Some(target) = mv_target(&text(r.get(2))) {
-            let (d, n) = match target.split_once('.') {
-                Some((d, n)) => (Some(d.trim_matches('`').to_string()), n.trim_matches('`').to_string()),
-                None => (Some(db.clone()), target.trim_matches('`').to_string()),
-            };
-            out.push(Dependency {
-                direction: DependencyDirection::DependsOn,
-                target: ObjectRef::new(ObjectKind::Table, d, n),
-                kind: Some("materialized view target".into()),
-            });
-        }
+        && let Some(target) = mv_target(&text(r.get(2)))
+    {
+        let (d, n) = match target.split_once('.') {
+            Some((d, n)) => (Some(d.trim_matches('`').to_string()), n.trim_matches('`').to_string()),
+            None => (Some(db.clone()), target.trim_matches('`').to_string()),
+        };
+        out.push(Dependency { direction: DependencyDirection::DependsOn, target: ObjectRef::new(ObjectKind::Table, d, n), kind: Some("materialized view target".into()) });
+    }
     Ok(out)
 }
 
@@ -838,12 +730,7 @@ pub async fn search_metadata(s: &mut ClickHouseSession, search: &MetadataSearch)
     };
     let limit = search.limit.max(1);
     let mut out: Vec<ObjectInfo> = Vec::new();
-    let table_kinds: Vec<ObjectKind> = search
-        .kinds
-        .iter()
-        .copied()
-        .filter(|k| matches!(k, ObjectKind::Table | ObjectKind::View | ObjectKind::MaterializedView))
-        .collect();
+    let table_kinds: Vec<ObjectKind> = search.kinds.iter().copied().filter(|k| matches!(k, ObjectKind::Table | ObjectKind::View | ObjectKind::MaterializedView)).collect();
     if !table_kinds.is_empty() {
         let comment_cond = if search.search_comments { format!(" OR comment {op} {pat}") } else { String::new() };
         let rows = s
@@ -864,9 +751,7 @@ pub async fn search_metadata(s: &mut ClickHouseSession, search: &MetadataSearch)
             if !table_kinds.contains(&kind) {
                 continue;
             }
-            let mut info = ObjectInfo::new(ObjectRef::new(kind, Some(text(r.first())), text(r.get(1))))
-                .with_detail(engine)
-                .with_comment(opt(r.get(3)));
+            let mut info = ObjectInfo::new(ObjectRef::new(kind, Some(text(r.first())), text(r.get(1)))).with_detail(engine).with_comment(opt(r.get(3)));
             info.row_estimate = int(r.get(4));
             out.push(info);
         }
@@ -882,20 +767,11 @@ pub async fn search_metadata(s: &mut ClickHouseSession, search: &MetadataSearch)
             .await?;
         for r in rows {
             let parent = ObjectRef::table(Some(text(r.first())), text(r.get(1)));
-            out.push(
-                ObjectInfo::new(ObjectRef::child(ObjectKind::Column, &parent, text(r.get(2))))
-                    .with_detail(text(r.get(3)))
-                    .with_comment(opt(r.get(4))),
-            );
+            out.push(ObjectInfo::new(ObjectRef::child(ObjectKind::Column, &parent, text(r.get(2)))).with_detail(text(r.get(3))).with_comment(opt(r.get(4))));
         }
     }
     if search.kinds.contains(&ObjectKind::Function) && out.len() < limit {
-        let rows = s
-            .rows(&format!(
-                "SELECT name FROM system.functions WHERE origin = 'SQLUserDefined' AND name {op} {pat} ORDER BY name LIMIT {}",
-                limit - out.len()
-            ))
-            .await?;
+        let rows = s.rows(&format!("SELECT name FROM system.functions WHERE origin = 'SQLUserDefined' AND name {op} {pat} ORDER BY name LIMIT {}", limit - out.len())).await?;
         for r in rows {
             out.push(ObjectInfo::new(ObjectRef::new(ObjectKind::Function, None, text(r.first()))));
         }
@@ -909,10 +785,7 @@ pub async fn search_metadata(s: &mut ClickHouseSession, search: &MetadataSearch)
             ))
             .await?;
         for r in rows {
-            out.push(
-                ObjectInfo::new(ObjectRef::new(ObjectKind::Type, Some(text(r.first())), text(r.get(1))))
-                    .with_detail(format!("Dictionary {}", text(r.get(2)))),
-            );
+            out.push(ObjectInfo::new(ObjectRef::new(ObjectKind::Type, Some(text(r.first())), text(r.get(1)))).with_detail(format!("Dictionary {}", text(r.get(2)))));
         }
     }
     out.truncate(limit);
@@ -921,18 +794,8 @@ pub async fn search_metadata(s: &mut ClickHouseSession, search: &MetadataSearch)
 
 pub async fn schema_snapshot(s: &mut ClickHouseSession, schema: &SchemaRef, opts: &SnapshotOptions) -> DbResult<SchemaSnapshot> {
     let db = schema_of(s, schema);
-    let mut snap = SchemaSnapshot {
-        kind: Some(DbKind::ClickHouse),
-        database: None,
-        schema: Some(db.clone()),
-        ..Default::default()
-    };
-    let rows = s
-        .rows(&format!(
-            "SELECT {TABLE_COLS} FROM system.tables WHERE database = {} AND is_temporary = 0 AND name NOT LIKE '.inner%' ORDER BY name",
-            lit(&db)
-        ))
-        .await?;
+    let mut snap = SchemaSnapshot { kind: Some(DbKind::ClickHouse), database: None, schema: Some(db.clone()), ..Default::default() };
+    let rows = s.rows(&format!("SELECT {TABLE_COLS} FROM system.tables WHERE database = {} AND is_temporary = 0 AND name NOT LIKE '.inner%' ORDER BY name", lit(&db))).await?;
     let mut tables: BTreeMap<String, TableDef> = BTreeMap::new();
     let mut views: BTreeMap<String, ViewDef> = BTreeMap::new();
     for r in &rows {
@@ -952,9 +815,10 @@ pub async fn schema_snapshot(s: &mut ClickHouseSession, schema: &SchemaRef, opts
                         v.definition = text(r.get(11));
                     }
                     if v.materialized
-                        && let Some(to) = mv_target(&text(r.get(10))) {
-                            v.options.insert("to".into(), to);
-                        }
+                        && let Some(to) = mv_target(&text(r.get(10)))
+                    {
+                        v.options.insert("to".into(), to);
+                    }
                     views.insert(name, v);
                 }
             }
@@ -976,12 +840,7 @@ pub async fn schema_snapshot(s: &mut ClickHouseSession, schema: &SchemaRef, opts
         }
     }
     if opts.columns {
-        let rows = s
-            .rows(&format!(
-                "SELECT {COLUMN_COLS} FROM system.columns WHERE database = {} ORDER BY table, position",
-                lit(&db)
-            ))
-            .await?;
+        let rows = s.rows(&format!("SELECT {COLUMN_COLS} FROM system.columns WHERE database = {} ORDER BY table, position", lit(&db))).await?;
         for r in rows {
             let table = text(r.first());
             let mut c = column_from_row(&r);
@@ -1010,10 +869,7 @@ pub async fn schema_snapshot(s: &mut ClickHouseSession, schema: &SchemaRef, opts
         }
     }
     if opts.routines {
-        let rows = s
-            .rows("SELECT name FROM system.functions WHERE origin = 'SQLUserDefined' ORDER BY name")
-            .await
-            .unwrap_or_default();
+        let rows = s.rows("SELECT name FROM system.functions WHERE origin = 'SQLUserDefined' ORDER BY name").await.unwrap_or_default();
         for r in rows {
             let name = text(r.first());
             if let Ok(rd) = routine_definition(s, &ObjectRef::new(ObjectKind::Function, None, name)).await {
@@ -1022,25 +878,11 @@ pub async fn schema_snapshot(s: &mut ClickHouseSession, schema: &SchemaRef, opts
         }
     }
     if opts.types {
-        let rows = s
-            .rows(&format!("SELECT name, type FROM system.dictionaries WHERE database = {} ORDER BY name", lit(&db)))
-            .await
-            .unwrap_or_default();
+        let rows = s.rows(&format!("SELECT name, type FROM system.dictionaries WHERE database = {} ORDER BY name", lit(&db))).await.unwrap_or_default();
         for r in rows {
             let name = text(r.first());
-            let def = s
-                .scalar(&format!("SHOW CREATE DICTIONARY {}", qualified(Some(&db), &name)))
-                .await
-                .map(|v| v.to_text().into_owned())
-                .unwrap_or_default();
-            snap.types.push(TypeDef {
-                schema: Some(db.clone()),
-                name,
-                category: "dictionary".into(),
-                elements: Vec::new(),
-                definition: def,
-                comment: None,
-            });
+            let def = s.scalar(&format!("SHOW CREATE DICTIONARY {}", qualified(Some(&db), &name))).await.map(|v| v.to_text().into_owned()).unwrap_or_default();
+            snap.types.push(TypeDef { schema: Some(db.clone()), name, category: "dictionary".into(), elements: Vec::new(), definition: def, comment: None });
         }
     }
     snap.tables = tables.into_values().collect();
@@ -1097,29 +939,20 @@ fn names_list<T>(items: &[T], name: impl Fn(&T) -> &str) -> String {
 
 pub async fn server_metrics(s: &mut ClickHouseSession) -> DbResult<Vec<Metric>> {
     let mut out = Vec::new();
-    let rows = s
-        .rows(&format!("SELECT metric, value FROM system.metrics WHERE metric IN ({})", names_list(GAUGES, |g| g.0)))
-        .await?;
+    let rows = s.rows(&format!("SELECT metric, value FROM system.metrics WHERE metric IN ({})", names_list(GAUGES, |g| g.0))).await?;
     for (name, group, key, label) in GAUGES {
         if let Some(v) = rows.iter().find(|r| text(r.first()) == *name).and_then(|r| r.get(1)).and_then(Value::as_f64) {
             let unit = if *name == "MemoryTracking" { "bytes" } else { "" };
             out.push(Metric::gauge(group, key, label, v, unit));
         }
     }
-    let rows = s
-        .rows(&format!("SELECT event, value FROM system.events WHERE event IN ({})", names_list(COUNTERS, |c| c.0)))
-        .await?;
+    let rows = s.rows(&format!("SELECT event, value FROM system.events WHERE event IN ({})", names_list(COUNTERS, |c| c.0))).await?;
     for (name, group, key, label, unit) in COUNTERS {
         let v = rows.iter().find(|r| text(r.first()) == *name).and_then(|r| r.get(1)).and_then(Value::as_f64);
         // events that never happened are absent: report 0
         out.push(Metric::counter(group, key, label, v.unwrap_or(0.0), unit));
     }
-    let rows = s
-        .rows(&format!(
-            "SELECT metric, value FROM system.asynchronous_metrics WHERE metric IN ({})",
-            names_list(ASYNC_GAUGES, |c| c.0)
-        ))
-        .await?;
+    let rows = s.rows(&format!("SELECT metric, value FROM system.asynchronous_metrics WHERE metric IN ({})", names_list(ASYNC_GAUGES, |c| c.0))).await?;
     for (name, group, key, label, unit) in ASYNC_GAUGES {
         if let Some(v) = rows.iter().find(|r| text(r.first()) == *name).and_then(|r| r.get(1)).and_then(Value::as_f64) {
             out.push(Metric::gauge(group, key, label, v, unit));
@@ -1146,9 +979,7 @@ mod tests {
 
     #[test]
     fn engine_full_split() {
-        let (e, ttl, st) = split_engine_full(
-            "ReplacingMergeTree(ver) PARTITION BY toYYYYMM(ts) ORDER BY (id, ts) TTL ts + toIntervalDay(30) SETTINGS index_granularity = 8192",
-        );
+        let (e, ttl, st) = split_engine_full("ReplacingMergeTree(ver) PARTITION BY toYYYYMM(ts) ORDER BY (id, ts) TTL ts + toIntervalDay(30) SETTINGS index_granularity = 8192");
         assert_eq!(e, "ReplacingMergeTree(ver)");
         assert_eq!(ttl.as_deref(), Some("ts + toIntervalDay(30)"));
         assert_eq!(st.as_deref(), Some("index_granularity = 8192"));

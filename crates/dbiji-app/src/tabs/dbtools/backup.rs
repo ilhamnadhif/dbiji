@@ -3,8 +3,8 @@
 //! command line preview, live log output, cancellation and "save as task".
 
 use super::{
-    ToolFlavor, dialog_near, error_lines, file_safe, home_dir, is_unknown_setting_error, join_args, join_list, newer_tool_warning, spawn_blocking,
-    split_args, split_list, tool_version,
+    ToolFlavor, dialog_near, error_lines, file_safe, home_dir, is_unknown_setting_error, join_args, join_list, newer_tool_warning, spawn_blocking, split_args, split_list,
+    tool_version,
 };
 use crate::backend::Job;
 use crate::command::AppCommand;
@@ -35,6 +35,21 @@ fn format_label(f: BackupFormat) -> &'static str {
     }
 }
 
+/// Formats offered for a tool flavor; SQLite has a SQL dump and a file copy.
+fn formats(flavor: ToolFlavor) -> &'static [BackupFormat] {
+    match flavor {
+        ToolFlavor::Sqlite => &[BackupFormat::Plain, BackupFormat::Custom],
+        _ => &[BackupFormat::Plain, BackupFormat::Custom, BackupFormat::Tar, BackupFormat::Directory],
+    }
+}
+
+fn flavor_format_label(flavor: ToolFlavor, f: BackupFormat) -> &'static str {
+    match (flavor, f) {
+        (ToolFlavor::Sqlite, BackupFormat::Custom) => tr("Database file copy"),
+        _ => format_label(f),
+    }
+}
+
 /// Usual file extension of a backup format.
 fn format_extension(f: BackupFormat) -> &'static str {
     match f {
@@ -46,8 +61,10 @@ fn format_extension(f: BackupFormat) -> &'static str {
 }
 
 /// Swap the default extension of `from` for the one of `to`.
-fn retarget_extension(path: &str, from: BackupFormat, to: BackupFormat) -> String {
-    let (old, new) = (format_extension(from), format_extension(to));
+/// A SQLite file copy is a `.db` file.
+fn retarget_extension_for(flavor: ToolFlavor, path: &str, from: BackupFormat, to: BackupFormat) -> String {
+    let ext_of = |f| if flavor == ToolFlavor::Sqlite && f == BackupFormat::Custom { "db" } else { format_extension(f) };
+    let (old, new) = (ext_of(from), ext_of(to));
     if path.trim().is_empty() {
         return path.to_string();
     }
@@ -64,11 +81,11 @@ fn browse_row(ui: &mut Ui, value: &mut String, hint: &str, pick: impl FnOnce(&st
     let mut changed = false;
     ui.horizontal(|ui| {
         changed |= ui.add(egui::TextEdit::singleline(value).desired_width(340.0).hint_text(hint)).changed();
-        if ui.button(format!("{} {}", icon::FOLDER_OPEN, tr("Browse…"))).clicked() {
-            if let Some(p) = pick(value.as_str()) {
-                *value = p.display().to_string();
-                changed = true;
-            }
+        if ui.button(format!("{} {}", icon::FOLDER_OPEN, tr("Browse…"))).clicked()
+            && let Some(p) = pick(value.as_str())
+        {
+            *value = p.display().to_string();
+            changed = true;
         }
     });
     changed
@@ -178,20 +195,21 @@ impl BackupForm {
     /// The option form; returns true when something changed.
     pub fn ui(&mut self, ui: &mut Ui, flavor: ToolFlavor, id: &str) -> bool {
         let mut changed = false;
-        let pg = flavor != ToolFlavor::MySql;
-        let my = flavor != ToolFlavor::Postgres;
+        let sqlite = flavor == ToolFlavor::Sqlite;
+        let pg = matches!(flavor, ToolFlavor::Postgres | ToolFlavor::Other);
+        let my = matches!(flavor, ToolFlavor::MySql | ToolFlavor::Other);
         egui::Grid::new((id, "backup_form")).num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
             ui.label(tr("Output file"));
             let directory = self.format == BackupFormat::Directory;
             changed |= browse_row(ui, &mut self.output, tr("File to write"), |cur| if directory { dialog_near(cur).pick_folder() } else { dialog_near(cur).save_file() });
             ui.end_row();
-            if pg {
+            if pg || sqlite {
                 ui.label(tr("Format"));
-                egui::ComboBox::from_id_salt((id, "format")).selected_text(format_label(self.format)).width(200.0).show_ui(ui, |ui| {
-                    for f in [BackupFormat::Plain, BackupFormat::Custom, BackupFormat::Tar, BackupFormat::Directory] {
+                egui::ComboBox::from_id_salt((id, "format")).selected_text(flavor_format_label(flavor, self.format)).width(200.0).show_ui(ui, |ui| {
+                    for &f in formats(flavor) {
                         let old = self.format;
-                        if ui.selectable_value(&mut self.format, f, format_label(f)).changed() {
-                            self.output = retarget_extension(&self.output, old, f);
+                        if ui.selectable_value(&mut self.format, f, flavor_format_label(flavor, f)).changed() {
+                            self.output = retarget_extension_for(flavor, &self.output, old, f);
                             changed = true;
                         }
                     }
@@ -201,15 +219,23 @@ impl BackupForm {
             ui.label(tr("Database"));
             changed |= ui.add(egui::TextEdit::singleline(&mut self.database).desired_width(220.0).hint_text(tr("(connection database)"))).changed();
             ui.end_row();
-            ui.label(if flavor == ToolFlavor::MySql { tr("Databases") } else { tr("Schemas") });
-            changed |= ui.add(egui::TextEdit::singleline(&mut self.schemas).desired_width(340.0).hint_text(tr("comma separated; empty = all"))).changed();
-            ui.end_row();
+            if !sqlite {
+                ui.label(if flavor == ToolFlavor::MySql { tr("Databases") } else { tr("Schemas") });
+                changed |= ui.add(egui::TextEdit::singleline(&mut self.schemas).desired_width(340.0).hint_text(tr("comma separated; empty = all"))).changed();
+                ui.end_row();
+            }
             ui.label(tr("Tables"));
             changed |= ui.add(egui::TextEdit::singleline(&mut self.tables).desired_width(340.0).hint_text(tr("comma separated; empty = all"))).changed();
             ui.end_row();
             ui.label(tr("Content"));
             ui.horizontal(|ui| {
-                let mut mode = if self.schema_only { 1 } else if self.data_only { 2 } else { 0 };
+                let mut mode = if self.schema_only {
+                    1
+                } else if self.data_only {
+                    2
+                } else {
+                    0
+                };
                 let before = mode;
                 ui.radio_value(&mut mode, 0, tr("Schema and data"));
                 ui.radio_value(&mut mode, 1, tr("Schema only"));
@@ -221,6 +247,11 @@ impl BackupForm {
                 }
             });
             ui.end_row();
+            if sqlite {
+                // sqlite3 has no further dump options.
+                changed |= tool_row(ui, &mut self.tool_path, &mut self.extra_args);
+                return;
+            }
             ui.label(tr("Options"));
             ui.vertical(|ui| {
                 changed |= ui.checkbox(&mut self.clean, tr("Drop objects before creating them")).changed();
@@ -336,7 +367,8 @@ impl RestoreForm {
     /// The option form; returns true when something changed.
     pub fn ui(&mut self, ui: &mut Ui, flavor: ToolFlavor, id: &str) -> bool {
         let mut changed = false;
-        let pg = flavor != ToolFlavor::MySql;
+        let sqlite = flavor == ToolFlavor::Sqlite;
+        let pg = matches!(flavor, ToolFlavor::Postgres | ToolFlavor::Other);
         egui::Grid::new((id, "restore_form")).num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
             ui.label(tr("Backup file"));
             let directory = self.format == BackupFormat::Directory;
@@ -346,11 +378,11 @@ impl RestoreForm {
             }
             changed |= picked;
             ui.end_row();
-            if pg {
+            if pg || sqlite {
                 ui.label(tr("Format"));
-                egui::ComboBox::from_id_salt((id, "rformat")).selected_text(format_label(self.format)).width(200.0).show_ui(ui, |ui| {
-                    for f in [BackupFormat::Plain, BackupFormat::Custom, BackupFormat::Tar, BackupFormat::Directory] {
-                        changed |= ui.selectable_value(&mut self.format, f, format_label(f)).changed();
+                egui::ComboBox::from_id_salt((id, "rformat")).selected_text(flavor_format_label(flavor, self.format)).width(200.0).show_ui(ui, |ui| {
+                    for &f in formats(flavor) {
+                        changed |= ui.selectable_value(&mut self.format, f, flavor_format_label(flavor, f)).changed();
                     }
                 });
                 ui.end_row();
@@ -358,6 +390,10 @@ impl RestoreForm {
             ui.label(tr("Target database"));
             changed |= ui.add(egui::TextEdit::singleline(&mut self.database).desired_width(220.0).hint_text(tr("(connection database)"))).changed();
             ui.end_row();
+            if sqlite {
+                changed |= tool_row(ui, &mut self.tool_path, &mut self.extra_args);
+                return;
+            }
             ui.label(tr("Options"));
             ui.vertical(|ui| {
                 if pg {
@@ -385,7 +421,10 @@ pub enum ToolOutcome {
     /// The tool reported errors but the run counts as completed: either it
     /// exited successfully, or every error was about a setting the server
     /// does not know (`only_settings`).
-    Warnings { errors: Vec<String>, only_settings: bool },
+    Warnings {
+        errors: Vec<String>,
+        only_settings: bool,
+    },
     Failed(String),
     Cancelled,
 }
@@ -497,10 +536,10 @@ impl BackupTab {
         };
         self.backup.database = database.clone().unwrap_or_default();
         self.restore_form.database = database.clone().unwrap_or_default();
-        if flavor == ToolFlavor::Postgres {
-            if let Some(s) = schema_name {
-                self.backup.schemas = s;
-            }
+        if flavor == ToolFlavor::Postgres
+            && let Some(s) = schema_name
+        {
+            self.backup.schemas = s;
         }
         let stamp = chrono::Local::now().format("%Y%m%d-%H%M");
         let base = format!("{}-{}-{stamp}", file_safe(&cfg.name), file_safe(database.as_deref().unwrap_or("all")));
@@ -552,10 +591,10 @@ impl BackupTab {
     /// Version line of the tool, probed once per program in the background.
     fn tool_version_line(&mut self, cx: &AppContext, program: &str) -> Option<String> {
         let entry = self.versions.entry(program.to_string()).or_insert_with(|| ToolVersion::Loading(cx.backend.spawn(tool_version(program.to_string()))));
-        if let ToolVersion::Loading(job) = entry {
-            if let Some(v) = job.poll() {
-                *entry = ToolVersion::Done(v);
-            }
+        if let ToolVersion::Loading(job) = entry
+            && let Some(v) = job.poll()
+        {
+            *entry = ToolVersion::Done(v);
         }
         match entry {
             ToolVersion::Done(v) => v.clone(),
@@ -654,32 +693,32 @@ impl BackupTab {
     }
 
     fn poll(&mut self, cx: &mut AppContext) {
-        if let Some(run) = self.run.as_mut() {
-            if let Some(result) = run.job.as_mut().and_then(|j| j.poll()) {
-                run.job = None;
-                run.ended = Some(Instant::now());
-                let lines = run.log.lock().clone();
-                let outcome = classify(&result, &lines);
-                let state = match &outcome {
-                    ToolOutcome::Succeeded => OpState::Succeeded(if self.restore { tr("Restore completed").to_string() } else { tr("Backup completed").to_string() }),
-                    ToolOutcome::Warnings { errors, .. } => OpState::Succeeded(trf("Completed with {} warning(s)", &[&errors.len()])),
-                    ToolOutcome::Failed(e) => OpState::Failed(e.lines().next().unwrap_or_default().to_string()),
-                    ToolOutcome::Cancelled => OpState::Cancelled,
-                };
-                cx.ops.finish(run.op.id, state);
-                run.outcome = Some(outcome);
-            }
+        if let Some(run) = self.run.as_mut()
+            && let Some(result) = run.job.as_mut().and_then(|j| j.poll())
+        {
+            run.job = None;
+            run.ended = Some(Instant::now());
+            let lines = run.log.lock().clone();
+            let outcome = classify(&result, &lines);
+            let state = match &outcome {
+                ToolOutcome::Succeeded => OpState::Succeeded(if self.restore { tr("Restore completed").to_string() } else { tr("Backup completed").to_string() }),
+                ToolOutcome::Warnings { errors, .. } => OpState::Succeeded(trf("Completed with {} warning(s)", &[&errors.len()])),
+                ToolOutcome::Failed(e) => OpState::Failed(e.lines().next().unwrap_or_default().to_string()),
+                ToolOutcome::Cancelled => OpState::Cancelled,
+            };
+            cx.ops.finish(run.op.id, state);
+            run.outcome = Some(outcome);
         }
-        if let Some(j) = self.save_job.as_mut() {
-            if let Some(r) = j.poll() {
-                self.save_job = None;
-                match r {
-                    Ok(t) => {
-                        cx.toasts.success(trf("Saved as task \"{}\"", &[&t.name]));
-                        self.saved_task = Some(t.name);
-                    }
-                    Err(e) => cx.toasts.error(tr("Cannot save the task"), Some(e.full_text())),
+        if let Some(j) = self.save_job.as_mut()
+            && let Some(r) = j.poll()
+        {
+            self.save_job = None;
+            match r {
+                Ok(t) => {
+                    cx.toasts.success(trf("Saved as task \"{}\"", &[&t.name]));
+                    self.saved_task = Some(t.name);
                 }
+                Err(e) => cx.toasts.error(tr("Cannot save the task"), Some(e.full_text())),
             }
         }
     }
@@ -739,7 +778,10 @@ impl BackupTab {
                             ui.ctx().request_repaint_after(Duration::from_millis(200));
                             ui.weak(tool.as_str())
                         } else {
-                            ui.label(RichText::new(trf("{} was not found. Install the client tools or set the tool path.", &[&tool])).color(crate::theme::error_color(ui.visuals().dark_mode)))
+                            ui.label(
+                                RichText::new(trf("{} was not found. Install the client tools or set the tool path.", &[&tool]))
+                                    .color(crate::theme::error_color(ui.visuals().dark_mode)),
+                            )
                         }
                     }
                 };
@@ -812,12 +854,12 @@ impl BackupTab {
             }
             if let (Some(ToolOutcome::Succeeded | ToolOutcome::Warnings { .. }), Some(p)) = (&run.outcome, &run.output) {
                 let dir = if p.is_dir() { Some(p.clone()) } else { p.parent().map(|d| d.to_path_buf()) };
-                if let Some(dir) = dir {
-                    if ui.button(format!("{} {}", icon::FOLDER_OPEN, tr("Open folder"))).clicked() {
-                        cx.backend.spawn_detached(async move {
-                            let _ = open::that_detached(dir);
-                        });
-                    }
+                if let Some(dir) = dir
+                    && ui.button(format!("{} {}", icon::FOLDER_OPEN, tr("Open folder"))).clicked()
+                {
+                    cx.backend.spawn_detached(async move {
+                        let _ = open::that_detached(dir);
+                    });
                 }
             }
         });
@@ -993,17 +1035,22 @@ mod tests {
         let r = RestoreOptions { input: "/tmp/x.dump".into(), format: BackupFormat::Custom, clean: true, exit_on_error: true, ..Default::default() };
         assert_eq!(RestoreForm::from_options(&r).to_options(), r);
         assert!(!RestoreForm::default().exit_on_error);
-        assert_eq!(retarget_extension("/tmp/a.sql", BackupFormat::Plain, BackupFormat::Custom), "/tmp/a.dump");
-        assert_eq!(retarget_extension("/tmp/a.dump", BackupFormat::Custom, BackupFormat::Directory), "/tmp/a");
-        assert_eq!(retarget_extension("/tmp/a", BackupFormat::Directory, BackupFormat::Tar), "/tmp/a.tar");
-        assert_eq!(retarget_extension("/tmp/a.bak", BackupFormat::Plain, BackupFormat::Custom), "/tmp/a.bak");
+        assert_eq!(retarget_extension_for(ToolFlavor::Other, "/tmp/a.sql", BackupFormat::Plain, BackupFormat::Custom), "/tmp/a.dump");
+        assert_eq!(retarget_extension_for(ToolFlavor::Other, "/tmp/a.dump", BackupFormat::Custom, BackupFormat::Directory), "/tmp/a");
+        assert_eq!(retarget_extension_for(ToolFlavor::Other, "/tmp/a", BackupFormat::Directory, BackupFormat::Tar), "/tmp/a.tar");
+        assert_eq!(retarget_extension_for(ToolFlavor::Other, "/tmp/a.bak", BackupFormat::Plain, BackupFormat::Custom), "/tmp/a.bak");
+        assert_eq!(retarget_extension_for(ToolFlavor::Sqlite, "/tmp/a.sql", BackupFormat::Plain, BackupFormat::Custom), "/tmp/a.db");
+        assert_eq!(retarget_extension_for(ToolFlavor::Sqlite, "/tmp/a.db", BackupFormat::Custom, BackupFormat::Plain), "/tmp/a.sql");
     }
 
     #[test]
     fn outcome_classification() {
         let lines = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         let failed: DbResult<()> = Err(DbError::io("pg_restore exited with exit status: 1"));
-        let settings = lines(&["pg_restore: error: could not execute query: ERROR:  unrecognized configuration parameter \"transaction_timeout\"", "Command was: SET transaction_timeout = 0;"]);
+        let settings = lines(&[
+            "pg_restore: error: could not execute query: ERROR:  unrecognized configuration parameter \"transaction_timeout\"",
+            "Command was: SET transaction_timeout = 0;",
+        ]);
         assert!(matches!(classify(&failed, &settings), ToolOutcome::Warnings { only_settings: true, .. }));
         let real = lines(&["pg_restore: error: could not execute query: ERROR:  relation \"t\" already exists"]);
         assert!(matches!(classify(&failed, &real), ToolOutcome::Failed(_)));

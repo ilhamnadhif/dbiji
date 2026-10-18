@@ -112,11 +112,7 @@ impl RowSource for Generated {
 /// Export `rows` generated rows; returns (summary, peak heap growth in bytes, seconds).
 async fn export(format: ExportFormat, rows: u64, to_file: bool) -> (ExportSummary, usize, f64) {
     let dir = tempfile::tempdir().unwrap();
-    let target = if to_file {
-        ExportTarget::path(dir.path().join(format!("bench.{}", format.extension())))
-    } else {
-        ExportTarget::writer(std::io::sink())
-    };
+    let target = if to_file { ExportTarget::path(dir.path().join(format!("bench.{}", format.extension()))) } else { ExportTarget::writer(std::io::sink()) };
     let mut src = Generated::new(rows);
     let mut sink = create_sink(format, &ExportOptions::default(), target, None).unwrap();
     let progress = Progress::new();
@@ -159,13 +155,7 @@ async fn streaming_exports_have_bounded_memory() {
 #[tokio::test]
 #[ignore = "benchmark: run with --release --ignored --nocapture"]
 async fn benchmark_one_million_rows() {
-    for (format, to_file) in [
-        (ExportFormat::Csv, false),
-        (ExportFormat::Csv, true),
-        (ExportFormat::JsonLines, true),
-        (ExportFormat::Sql, true),
-        (ExportFormat::Parquet, true),
-    ] {
+    for (format, to_file) in [(ExportFormat::Csv, false), (ExportFormat::Csv, true), (ExportFormat::JsonLines, true), (ExportFormat::Sql, true), (ExportFormat::Parquet, true)] {
         let (s, peak, secs) = export(format, 1_000_000, to_file).await;
         assert_eq!(s.rows, 1_000_000);
         println!(

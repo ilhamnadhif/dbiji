@@ -16,13 +16,7 @@ pub struct TableResponse {
 }
 
 /// Virtualised, striped, resizable table of text cells.
-pub fn simple_table(
-    ui: &mut Ui,
-    id_salt: impl std::hash::Hash + std::fmt::Debug,
-    headers: &[&str],
-    rows: &[Vec<String>],
-    selected: Option<usize>,
-) -> TableResponse {
+pub fn simple_table(ui: &mut Ui, id_salt: impl std::hash::Hash + std::fmt::Debug, headers: &[&str], rows: &[Vec<String>], selected: Option<usize>) -> TableResponse {
     let mut out = TableResponse::default();
     let row_h = ui.text_style_height(&egui::TextStyle::Body) + 4.0;
     let mut tb = TableBuilder::new(ui)

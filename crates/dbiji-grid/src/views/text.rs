@@ -34,12 +34,7 @@ fn cell_text(v: &Value, null_text: &str) -> String {
 
 /// Render rows `0..limit` of `columns` as an aligned text table.
 /// Returns the lines and the longest line length (characters).
-pub fn render_text_table(
-    model: &ResultModel,
-    columns: &[usize],
-    limit: usize,
-    null_text: &str,
-) -> (Vec<String>, usize) {
+pub fn render_text_table(model: &ResultModel, columns: &[usize], limit: usize, null_text: &str) -> (Vec<String>, usize) {
     let n = model.row_count().min(limit);
     let headers: Vec<String> = columns.iter().map(|&c| cell_text(&Value::text(model.column_name(c)), "")).collect();
     let mut cells: Vec<Vec<String>> = Vec::with_capacity(n);
@@ -91,12 +86,7 @@ pub struct TextView<'a> {
 
 impl<'a> TextView<'a> {
     /// New text view.
-    pub fn new(
-        model: &'a ResultModel,
-        grid: &'a DataGridState,
-        options: &'a GridOptions,
-        state: &'a mut TextViewState,
-    ) -> Self {
+    pub fn new(model: &'a ResultModel, grid: &'a DataGridState, options: &'a GridOptions, state: &'a mut TextViewState) -> Self {
         TextView { model, grid, options, state }
     }
 
@@ -119,10 +109,7 @@ impl<'a> TextView<'a> {
             if state.truncated {
                 ui.weak(trf(
                     "Showing the first {} of {} rows",
-                    &[
-                        &crate::format::group_thousands(&MAX_TEXT_ROWS.to_string()),
-                        &crate::format::group_thousands(&model.row_count().to_string()),
-                    ],
+                    &[&crate::format::group_thousands(&MAX_TEXT_ROWS.to_string()), &crate::format::group_thousands(&model.row_count().to_string())],
                 ));
             }
         });

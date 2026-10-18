@@ -18,7 +18,7 @@ use std::path::PathBuf;
 pub(super) enum EditorAction {
     None,
     Cancel,
-    Save(TaskDef),
+    Save(Box<TaskDef>),
 }
 
 pub(super) struct TaskEditor {
@@ -49,9 +49,7 @@ pub(super) fn credential_warning(cx: &AppContext, conn: &str) -> Option<&'static
     let cfg = cx.conns.config(conn)?;
     match cfg.auth {
         AuthMethod::Prompt => Some(tr("This connection asks for its password at every connect; tasks can only use saved passwords.")),
-        AuthMethod::Password if !cfg.save_password && !cfg.kind.is_file_based() => {
-            Some(tr("This connection does not save its password; the task cannot connect without it."))
-        }
+        AuthMethod::Password if !cfg.save_password && !cfg.kind.is_file_based() => Some(tr("This connection does not save its password; the task cannot connect without it.")),
         _ => None,
     }
 }
@@ -228,10 +226,10 @@ impl TaskEditor {
             }
             ui.horizontal(|ui| {
                 let can_save = problem.is_none() && !self.saving;
-                if ui.add_enabled(can_save, egui::Button::new(format!("{} {}", icon::FLOPPY_DISK, tr("Save")))).clicked() {
-                    if let Ok(t) = &built {
-                        action = EditorAction::Save(t.clone());
-                    }
+                if ui.add_enabled(can_save, egui::Button::new(format!("{} {}", icon::FLOPPY_DISK, tr("Save")))).clicked()
+                    && let Ok(t) = &built
+                {
+                    action = EditorAction::Save(Box::new(t.clone()));
                 }
                 if ui.button(tr("Cancel")).clicked() {
                     action = EditorAction::Cancel;
@@ -415,21 +413,16 @@ impl TaskEditor {
                 }
                 ui.horizontal(|ui| {
                     let candidates: Vec<&TaskDef> = tasks.iter().filter(|t| Some(&t.id) != own_id.as_ref()).collect();
-                    let label = self
-                        .add_step
-                        .as_ref()
-                        .and_then(|id| candidates.iter().find(|t| &t.id == id))
-                        .map(|t| t.path())
-                        .unwrap_or_else(|| tr("Choose a task…").to_string());
+                    let label = self.add_step.as_ref().and_then(|id| candidates.iter().find(|t| &t.id == id)).map(|t| t.path()).unwrap_or_else(|| tr("Choose a task…").to_string());
                     egui::ComboBox::from_id_salt("task_add_step").selected_text(label).width(280.0).show_ui(ui, |ui| {
                         for t in &candidates {
                             ui.selectable_value(&mut self.add_step, Some(t.id.clone()), format!("{} {}", kind_icon(&t.kind), t.path()));
                         }
                     });
-                    if ui.add_enabled(self.add_step.is_some(), egui::Button::new(format!("{} {}", icon::PLUS, tr("Add step")))).clicked() {
-                        if let Some(id) = self.add_step.take() {
-                            steps.push(id);
-                        }
+                    if ui.add_enabled(self.add_step.is_some(), egui::Button::new(format!("{} {}", icon::PLUS, tr("Add step")))).clicked()
+                        && let Some(id) = self.add_step.take()
+                    {
+                        steps.push(id);
                     }
                 });
                 ui.checkbox(parallel, tr("Run the steps in parallel"));

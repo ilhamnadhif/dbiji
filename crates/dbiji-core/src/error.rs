@@ -53,15 +53,7 @@ pub struct DbError {
 
 impl DbError {
     pub fn new(kind: ErrorKind, message: impl Into<String>) -> Self {
-        Self {
-            kind,
-            message: message.into(),
-            code: None,
-            detail: None,
-            hint: None,
-            position: None,
-            context: None,
-        }
+        Self { kind, message: message.into(), code: None, detail: None, hint: None, position: None, context: None }
     }
 
     pub fn connection(message: impl Into<String>) -> Self {
@@ -172,13 +164,7 @@ impl From<std::io::Error> for DbError {
     fn from(e: std::io::Error) -> Self {
         use std::io::ErrorKind as K;
         let kind = match e.kind() {
-            K::ConnectionRefused
-            | K::ConnectionReset
-            | K::ConnectionAborted
-            | K::NotConnected
-            | K::BrokenPipe
-            | K::AddrNotAvailable
-            | K::UnexpectedEof => ErrorKind::Connection,
+            K::ConnectionRefused | K::ConnectionReset | K::ConnectionAborted | K::NotConnected | K::BrokenPipe | K::AddrNotAvailable | K::UnexpectedEof => ErrorKind::Connection,
             K::TimedOut => ErrorKind::Timeout,
             _ => ErrorKind::Io,
         };

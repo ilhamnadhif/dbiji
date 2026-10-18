@@ -40,23 +40,12 @@ pub trait SessionFactory: Send + Sync {
 /// On failure or cancellation the sink is aborted (partial files are deleted
 /// unless `keep_partial_file` is set) and the error is returned; cancellation
 /// yields an error of kind [`ErrorKind::Cancelled`] within one batch.
-pub async fn run_export(
-    source: &mut dyn RowSource,
-    sink: &mut dyn RowSink,
-    progress: &Progress,
-    cancel: &CancellationToken,
-) -> DbResult<ExportSummary> {
+pub async fn run_export(source: &mut dyn RowSource, sink: &mut dyn RowSink, progress: &Progress, cancel: &CancellationToken) -> DbResult<ExportSummary> {
     run_export_batched(source, sink, DEFAULT_BATCH_SIZE, progress, cancel).await
 }
 
 /// [`run_export`] with an explicit batch size.
-pub async fn run_export_batched(
-    source: &mut dyn RowSource,
-    sink: &mut dyn RowSink,
-    batch_size: usize,
-    progress: &Progress,
-    cancel: &CancellationToken,
-) -> DbResult<ExportSummary> {
+pub async fn run_export_batched(source: &mut dyn RowSource, sink: &mut dyn RowSink, batch_size: usize, progress: &Progress, cancel: &CancellationToken) -> DbResult<ExportSummary> {
     let started = Instant::now();
     if let Some(total) = source.total_rows() {
         progress.add_total_rows(total);
@@ -87,13 +76,7 @@ pub async fn run_export_batched(
 }
 
 /// Copy all rows; returns the number of bytes already reported to `progress`.
-async fn pump(
-    source: &mut dyn RowSource,
-    sink: &mut dyn RowSink,
-    batch_size: usize,
-    progress: &Progress,
-    cancel: &CancellationToken,
-) -> DbResult<u64> {
+async fn pump(source: &mut dyn RowSource, sink: &mut dyn RowSink, batch_size: usize, progress: &Progress, cancel: &CancellationToken) -> DbResult<u64> {
     if cancel.is_cancelled() {
         return Err(DbError::cancelled());
     }
@@ -126,11 +109,7 @@ async fn pump(
 
 /// Await `fut` unless `cancel` fires first; on cancellation the statement
 /// running on the session is cancelled out of band (best effort).
-pub(crate) async fn cancellable<T>(
-    fut: impl Future<Output = DbResult<T>>,
-    cancel: &CancellationToken,
-    handle: Option<Arc<dyn CancelHandle>>,
-) -> DbResult<T> {
+pub(crate) async fn cancellable<T>(fut: impl Future<Output = DbResult<T>>, cancel: &CancellationToken, handle: Option<Arc<dyn CancelHandle>>) -> DbResult<T> {
     tokio::select! {
         biased;
         _ = cancel.cancelled() => {
@@ -184,9 +163,7 @@ impl ExportItem {
     fn sql(&self, dialect: &dyn Dialect) -> String {
         match self {
             ExportItem::Query { sql, .. } => sql.clone(),
-            ExportItem::Table { table, where_clause } => {
-                dialect.select_table(table, None, where_clause.as_deref(), None, None)
-            }
+            ExportItem::Table { table, where_clause } => dialect.select_table(table, None, where_clause.as_deref(), None, None),
         }
     }
 }
@@ -283,29 +260,14 @@ impl ExportJobSummary {
 
 /// Characters not allowed in file names on the supported platforms.
 fn sanitize_file_name(name: &str) -> String {
-    let s: String =
-        name.chars()
-            .map(|c| {
-                if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control() {
-                    '_'
-                } else {
-                    c
-                }
-            })
-            .collect();
+    let s: String = name.chars().map(|c| if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control() { '_' } else { c }).collect();
     let s = s.trim().trim_matches('.').to_string();
     if s.is_empty() { "export".into() } else { s }
 }
 
 /// Expand a file name pattern for one item (see [`ExportJob::file_name_pattern`]).
 /// `index` is 1-based.
-pub fn expand_file_name(
-    pattern: &str,
-    item: &ExportItem,
-    index: usize,
-    format: ExportFormat,
-    timestamp: NaiveDateTime,
-) -> String {
+pub fn expand_file_name(pattern: &str, item: &ExportItem, index: usize, format: ExportFormat, timestamp: NaiveDateTime) -> String {
     let pattern = if pattern.trim().is_empty() { DEFAULT_FILE_NAME_PATTERN } else { pattern };
     let table = item.table();
     let ext = format.extension();
@@ -357,12 +319,7 @@ fn plan_files(job: &ExportJob, timestamp: NaiveDateTime) -> Vec<PathBuf> {
 ///
 /// SQL scripts are written in the dialect of the source connection; use
 /// [`run_export_job_with`] to target another database product.
-pub async fn run_export_job(
-    job: ExportJob,
-    factory: Arc<dyn SessionFactory>,
-    progress: Arc<Progress>,
-    cancel: CancellationToken,
-) -> DbResult<ExportJobSummary> {
+pub async fn run_export_job(job: ExportJob, factory: Arc<dyn SessionFactory>, progress: Arc<Progress>, cancel: CancellationToken) -> DbResult<ExportJobSummary> {
     run_export_job_with(job, factory, None, progress, cancel).await
 }
 
@@ -386,8 +343,7 @@ pub async fn run_export_job_with(
         return Ok(ExportJobSummary::default());
     }
     if !job.output_folder.as_os_str().is_empty() && !job.output_folder.exists() {
-        std::fs::create_dir_all(&job.output_folder)
-            .map_err(|e| DbError::io(format!("Cannot create folder {}: {e}", job.output_folder.display())))?;
+        std::fs::create_dir_all(&job.output_folder).map_err(|e| DbError::io(format!("Cannot create folder {}: {e}", job.output_folder.display())))?;
     }
     let files = plan_files(&job, chrono::Local::now().naive_local());
     progress.set_items_total(job.items.len() as u64);
@@ -403,8 +359,7 @@ pub async fn run_export_job_with(
 
     let mut set = tokio::task::JoinSet::new();
     for _ in 0..workers {
-        let (job, files, next, results, open_error) =
-            (job.clone(), files.clone(), next.clone(), results.clone(), open_error.clone());
+        let (job, files, next, results, open_error) = (job.clone(), files.clone(), next.clone(), results.clone(), open_error.clone());
         let (factory, dialect, progress, stop) = (factory.clone(), dialect.clone(), progress.clone(), stop.clone());
         let output_dialect = output_dialect.clone();
         set.spawn(async move {
@@ -427,16 +382,9 @@ pub async fn run_export_job_with(
                 let name = item.name();
                 progress.item_started(&name);
                 let t0 = Instant::now();
-                let outcome =
-                    export_item(session.as_mut(), item, &files[i], &job, (&dialect, &output_dialect), &progress, &stop)
-                        .await;
+                let outcome = export_item(session.as_mut(), item, &files[i], &job, (&dialect, &output_dialect), &progress, &stop).await;
                 progress.item_finished(&name);
-                let mut summary = ExportItemSummary {
-                    name: name.clone(),
-                    file: Some(files[i].clone()),
-                    duration_ms: t0.elapsed().as_millis() as u64,
-                    ..Default::default()
-                };
+                let mut summary = ExportItemSummary { name: name.clone(), file: Some(files[i].clone()), duration_ms: t0.elapsed().as_millis() as u64, ..Default::default() };
                 match outcome {
                     Ok(s) => {
                         summary.rows = s.rows;
@@ -546,8 +494,7 @@ async fn export_item(
     let cursor = cancellable(session.execute(&sql, &[], &ExecOptions::default()), cancel, handle.clone()).await?;
     let source = cancellable(CursorSource::new(cursor), cancel, handle.clone()).await?;
     let mut source = source.with_table(item.table().cloned()).with_total_rows(total);
-    let mut sink =
-        create_sink(job.format, &job.options, ExportTarget::Path(path.to_path_buf()), Some(output_dialect.clone()))?;
+    let mut sink = create_sink(job.format, &job.options, ExportTarget::Path(path.to_path_buf()), Some(output_dialect.clone()))?;
     if let Some(def) = &table_def {
         sink.set_table_definition(def);
     }
@@ -570,10 +517,7 @@ mod tests {
         let ts = NaiveDate::from_ymd_opt(2026, 10, 18).unwrap().and_hms_opt(9, 8, 7).unwrap();
         let t = ExportItem::Table { table: ObjectRef::table(Some("public".into()), "users"), where_clause: None };
         assert_eq!(expand_file_name("${table}_${timestamp}", &t, 1, ExportFormat::Csv, ts), "users_20261018090807.csv");
-        assert_eq!(
-            expand_file_name("${schema}.${table}-${index}.${extension}", &t, 3, ExportFormat::Xlsx, ts),
-            "public.users-3.xlsx"
-        );
+        assert_eq!(expand_file_name("${schema}.${table}-${index}.${extension}", &t, 3, ExportFormat::Xlsx, ts), "public.users-3.xlsx");
         let q = ExportItem::Query { sql: "select 1".into(), name: Some("a/b".into()) };
         assert_eq!(expand_file_name("${table}_${date}", &q, 1, ExportFormat::JsonLines, ts), "a_b_20261018.jsonl");
         assert_eq!(expand_file_name("", &q, 1, ExportFormat::Sql, ts), "a_b_20261018090807.sql");
@@ -582,30 +526,20 @@ mod tests {
     #[test]
     fn planned_files_are_unique() {
         let job = ExportJob {
-            items: vec![
-                ExportItem::Query { sql: "a".into(), name: None },
-                ExportItem::Query { sql: "b".into(), name: None },
-                ExportItem::Query { sql: "c".into(), name: None },
-            ],
+            items: vec![ExportItem::Query { sql: "a".into(), name: None }, ExportItem::Query { sql: "b".into(), name: None }, ExportItem::Query { sql: "c".into(), name: None }],
             file_name_pattern: "${table}".into(),
             output_folder: PathBuf::from("out"),
             ..Default::default()
         };
         let ts = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap().and_hms_opt(0, 0, 0).unwrap();
         let files = plan_files(&job, ts);
-        assert_eq!(
-            files,
-            vec![PathBuf::from("out/query.csv"), PathBuf::from("out/query_2.csv"), PathBuf::from("out/query_3.csv")]
-        );
+        assert_eq!(files, vec![PathBuf::from("out/query.csv"), PathBuf::from("out/query_2.csv"), PathBuf::from("out/query_3.csv")]);
     }
 
     #[test]
     fn job_serde() {
         let job = ExportJob {
-            items: vec![ExportItem::Table {
-                table: ObjectRef::table(Some("s".into()), "t"),
-                where_clause: Some("id > 5".into()),
-            }],
+            items: vec![ExportItem::Table { table: ObjectRef::table(Some("s".into()), "t"), where_clause: Some("id > 5".into()) }],
             format: ExportFormat::Parquet,
             threads: 4,
             ..Default::default()

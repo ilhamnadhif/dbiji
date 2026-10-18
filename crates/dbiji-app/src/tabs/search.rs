@@ -75,11 +75,7 @@ pub fn match_predicate(d: &dyn Dialect, column: &str, text: &str, case_sensitive
         DbKind::DuckDb => format!("CAST({c} AS VARCHAR) {} {} ESCAPE {esc}", if case_sensitive { "LIKE" } else { "ILIKE" }, lit(&like_contains(text, kind))),
         DbKind::MySql | DbKind::MariaDb => {
             let p = lit(&like_contains(text, kind));
-            if case_sensitive {
-                format!("CAST({c} AS BINARY) LIKE CAST({p} AS BINARY) ESCAPE {esc}")
-            } else {
-                format!("LOWER({c}) LIKE LOWER({p}) ESCAPE {esc}")
-            }
+            if case_sensitive { format!("CAST({c} AS BINARY) LIKE CAST({p} AS BINARY) ESCAPE {esc}") } else { format!("LOWER({c}) LIKE LOWER({p}) ESCAPE {esc}") }
         }
         DbKind::SqlServer => {
             let p = lit(&like_contains(text, kind));
@@ -105,11 +101,7 @@ pub fn match_predicate(d: &dyn Dialect, column: &str, text: &str, case_sensitive
         }
         DbKind::Generic => {
             let p = lit(&like_contains(text, kind));
-            if case_sensitive {
-                format!("{c} LIKE {p} ESCAPE {esc}")
-            } else {
-                format!("LOWER({c}) LIKE LOWER({p}) ESCAPE {esc}")
-            }
+            if case_sensitive { format!("{c} LIKE {p} ESCAPE {esc}") } else { format!("LOWER({c}) LIKE LOWER({p}) ESCAPE {esc}") }
         }
     }
 }
@@ -130,7 +122,10 @@ pub fn data_count_sql(d: &dyn Dialect, table: &ObjectRef, columns: &[String], te
 
 /// Text columns of a snapshot's tables and views.
 fn text_columns(snap: &SchemaSnapshot) -> Vec<(ObjectRef, Vec<String>)> {
-    let tables = snap.tables.iter().map(|t| (ObjectRef::table(snap.schema.clone(), t.name.clone()), t.columns.iter().filter(|c| c.kind.is_textual()).map(|c| c.name.clone()).collect::<Vec<_>>()));
+    let tables = snap
+        .tables
+        .iter()
+        .map(|t| (ObjectRef::table(snap.schema.clone(), t.name.clone()), t.columns.iter().filter(|c| c.kind.is_textual()).map(|c| c.name.clone()).collect::<Vec<_>>()));
     let views = snap.views.iter().map(|v| {
         let kind = if v.materialized { ObjectKind::MaterializedView } else { ObjectKind::View };
         (ObjectRef::new(kind, snap.schema.clone(), v.name.clone()), v.columns.iter().filter(|c| c.kind.is_textual()).map(|c| c.name.clone()).collect::<Vec<_>>())
@@ -292,8 +287,7 @@ impl SearchTab {
                 v
             }
         };
-        let targets: Vec<(String, String, SessionHandle)> =
-            ids.iter().filter_map(|id| cx.conns.live(id).map(|l| (id.clone(), l.config.name.clone(), l.main.clone()))).collect();
+        let targets: Vec<(String, String, SessionHandle)> = ids.iter().filter_map(|id| cx.conns.live(id).map(|l| (id.clone(), l.config.name.clone(), l.main.clone()))).collect();
         if targets.is_empty() {
             self.notice = Some(tr("No connection is open.").to_string());
             return;
@@ -346,9 +340,9 @@ impl SearchTab {
         let target = match obj.parent_table() {
             Some(mut parent) if obj.kind.is_table_child() => {
                 let is_view = cx.conns.live(&hit.conn).is_some_and(|l| {
-                    [ObjectKind::View, ObjectKind::MaterializedView].iter().any(|k| {
-                        l.meta.objects.get(&(parent.schema_ref(), *k)).and_then(|x| x.get()).is_some_and(|v| v.iter().any(|o| o.obj.name == parent.name))
-                    })
+                    [ObjectKind::View, ObjectKind::MaterializedView]
+                        .iter()
+                        .any(|k| l.meta.objects.get(&(parent.schema_ref(), *k)).and_then(|x| x.get()).is_some_and(|v| v.iter().any(|o| o.obj.name == parent.name)))
                 });
                 if is_view {
                     parent.kind = ObjectKind::View;
@@ -363,7 +357,8 @@ impl SearchTab {
     fn metadata_ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
         let mut go = false;
         ui.horizontal(|ui| {
-            let r = ui.add(egui::TextEdit::singleline(&mut self.pattern).hint_text(tr("Name or pattern, e.g. cust* or *_id")).desired_width(260.0).id_salt(("ms_pattern", self.uid)));
+            let r =
+                ui.add(egui::TextEdit::singleline(&mut self.pattern).hint_text(tr("Name or pattern, e.g. cust* or *_id")).desired_width(260.0).id_salt(("ms_pattern", self.uid)));
             if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 go = true;
             }
@@ -537,11 +532,8 @@ impl SearchTab {
             }
         };
         self.data_requested = false;
-        let tables: Vec<(ObjectRef, Vec<String>)> = text_columns(&snap)
-            .into_iter()
-            .filter(|(t, _)| self.chosen.as_ref().is_none_or(|c| c.contains(&t.name)))
-            .map(|(t, c)| (t.with_database(db.clone()), c))
-            .collect();
+        let tables: Vec<(ObjectRef, Vec<String>)> =
+            text_columns(&snap).into_iter().filter(|(t, _)| self.chosen.as_ref().is_none_or(|c| c.contains(&t.name))).map(|(t, c)| (t.with_database(db.clone()), c)).collect();
         if tables.is_empty() {
             self.notice = Some(tr("Choose at least one table with text columns.").to_string());
             return;
@@ -605,10 +597,10 @@ impl SearchTab {
         if let Some(res) = r.job.poll() {
             let p = r.state.lock();
             let cancelled = matches!(&res, Err(e) if e.kind == ErrorKind::Cancelled);
-            if let Err(e) = &res {
-                if !cancelled {
-                    self.notice = Some(e.full_text());
-                }
+            if let Err(e) = &res
+                && !cancelled
+            {
+                self.notice = Some(e.full_text());
             }
             self.data_done = Some((p.done, r.started.elapsed(), cancelled));
             drop(p);

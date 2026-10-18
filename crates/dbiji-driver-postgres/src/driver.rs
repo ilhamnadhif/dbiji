@@ -118,12 +118,7 @@ impl CockroachDriver {
     /// Create the driver.
     pub fn new() -> Self {
         CockroachDriver {
-            info: DriverInfo {
-                kind: DbKind::CockroachDb,
-                name: "CockroachDB",
-                description: "CockroachDB via the PostgreSQL protocol",
-                capabilities: capabilities(true),
-            },
+            info: DriverInfo { kind: DbKind::CockroachDb, name: "CockroachDB", description: "CockroachDB via the PostgreSQL protocol", capabilities: capabilities(true) },
             dialect: Arc::new(PgDialect::cockroach()),
         }
     }

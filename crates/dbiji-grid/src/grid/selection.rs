@@ -136,14 +136,8 @@ impl Selection {
         let r = CellRange::span(self.anchor, p);
         match self.ranges.last_mut() {
             Some(last) if !last.is_whole_rows() && !last.is_whole_columns() => *last = r,
-            Some(last) if last.is_whole_rows() => {
-                *last =
-                    CellRange { r0: self.anchor.row.min(p.row), r1: self.anchor.row.max(p.row), c0: 0, c1: usize::MAX }
-            }
-            Some(last) => {
-                *last =
-                    CellRange { r0: 0, r1: usize::MAX, c0: self.anchor.col.min(p.col), c1: self.anchor.col.max(p.col) }
-            }
+            Some(last) if last.is_whole_rows() => *last = CellRange { r0: self.anchor.row.min(p.row), r1: self.anchor.row.max(p.row), c0: 0, c1: usize::MAX },
+            Some(last) => *last = CellRange { r0: 0, r1: usize::MAX, c0: self.anchor.col.min(p.col), c1: self.anchor.col.max(p.col) },
             None => self.ranges.push(r),
         }
         self.active = p;
@@ -204,8 +198,7 @@ impl Selection {
 
     /// Selected rows (sorted, unique), at most `limit`.
     pub fn rows(&self, nrows: usize, limit: usize) -> Vec<usize> {
-        let mut spans: Vec<(usize, usize)> =
-            self.ranges.iter().filter(|r| r.r0 < nrows).map(|r| (r.r0, r.r1.min(nrows.saturating_sub(1)))).collect();
+        let mut spans: Vec<(usize, usize)> = self.ranges.iter().filter(|r| r.r0 < nrows).map(|r| (r.r0, r.r1.min(nrows.saturating_sub(1)))).collect();
         spans.sort_unstable();
         let mut out = Vec::new();
         let mut next = 0usize;
@@ -247,12 +240,7 @@ impl Selection {
     pub fn bounds(&self, nrows: usize, ncols: usize) -> Option<CellRange> {
         let mut it = self.ranges.iter().filter_map(|r| r.clamped(nrows, ncols));
         let first = it.next()?;
-        Some(it.fold(first, |a, b| CellRange {
-            r0: a.r0.min(b.r0),
-            r1: a.r1.max(b.r1),
-            c0: a.c0.min(b.c0),
-            c1: a.c1.max(b.c1),
-        }))
+        Some(it.fold(first, |a, b| CellRange { r0: a.r0.min(b.r0), r1: a.r1.max(b.r1), c0: a.c0.min(b.c0), c1: a.c1.max(b.c1) }))
     }
 
     /// Keep the selection within the data size.

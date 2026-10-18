@@ -110,7 +110,13 @@ fn trigger_parts(tgtype: i32) -> (String, Vec<String>, bool) {
     let row = tgtype & 1 != 0;
     let before = tgtype & 2 != 0;
     let instead = tgtype & 64 != 0;
-    let timing = if instead { "INSTEAD OF" } else if before { "BEFORE" } else { "AFTER" };
+    let timing = if instead {
+        "INSTEAD OF"
+    } else if before {
+        "BEFORE"
+    } else {
+        "AFTER"
+    };
     let mut ev = Vec::new();
     if tgtype & 4 != 0 {
         ev.push("INSERT".to_string());
@@ -212,12 +218,7 @@ impl PgSession {
     }
 
     /// Load complete table definitions in batches.
-    pub(crate) async fn load_tables(
-        &self,
-        schema: &str,
-        filter: TableFilter<'_>,
-        opts: &SnapshotOptions,
-    ) -> DbResult<Vec<LoadedTable>> {
+    pub(crate) async fn load_tables(&self, schema: &str, filter: TableFilter<'_>, opts: &SnapshotOptions) -> DbResult<Vec<LoadedTable>> {
         let size = if opts.statistics && !self.is_cockroach() { "pg_catalog.pg_total_relation_size(c.oid)" } else { "NULL::int8" };
         let am = if self.is_cockroach() { "NULL::text" } else { "am.amname::text" };
         let am_join = if self.is_cockroach() { "" } else { "LEFT JOIN pg_catalog.pg_am am ON am.oid = c.relam" };
@@ -341,24 +342,14 @@ impl PgSession {
                 .await?;
             for r in rows {
                 if let Some(&i) = pos.get(&(r.i(0)? as u32)) {
-                    tables[i].def.partitions.push(PartitionDef {
-                        name: r.s(1)?,
-                        bound: r.os(2)?.unwrap_or_else(|| "DEFAULT".into()),
-                        row_estimate: r.oi(3)?.filter(|n| *n >= 0),
-                    });
+                    tables[i].def.partitions.push(PartitionDef { name: r.s(1)?, bound: r.os(2)?.unwrap_or_else(|| "DEFAULT".into()), row_estimate: r.oi(3)?.filter(|n| *n >= 0) });
                 }
             }
         }
         Ok(tables)
     }
 
-    async fn load_constraints(
-        &self,
-        oids: &[u32],
-        pos: &HashMap<u32, usize>,
-        tables: &mut [LoadedTable],
-        opts: &SnapshotOptions,
-    ) -> DbResult<()> {
+    async fn load_constraints(&self, oids: &[u32], pos: &HashMap<u32, usize>, tables: &mut [LoadedTable], opts: &SnapshotOptions) -> DbResult<()> {
         let rows = self
             .q(
                 "SELECT con.conrelid::int8, con.conname::text, con.contype::text, \
@@ -390,10 +381,7 @@ impl PgSession {
             match contype.as_str() {
                 "p" => t.def.primary_key = Some(KeyDef { name: Some(name), columns: cols }),
                 "u" => t.def.unique_keys.push(KeyDef { name: Some(name), columns: cols }),
-                "c" => t.def.checks.push(CheckDef {
-                    name: Some(name),
-                    expression: r.os(10)?.unwrap_or_default(),
-                }),
+                "c" => t.def.checks.push(CheckDef { name: Some(name), expression: r.os(10)?.unwrap_or_default() }),
                 "f" => t.def.foreign_keys.push(ForeignKeyDef {
                     name: Some(name),
                     schema: t.def.schema.clone(),
@@ -448,13 +436,7 @@ impl PgSession {
         Ok(())
     }
 
-    async fn load_indexes(
-        &self,
-        oids: &[u32],
-        pos: &HashMap<u32, usize>,
-        tables: &mut [LoadedTable],
-        opts: &SnapshotOptions,
-    ) -> DbResult<()> {
+    async fn load_indexes(&self, oids: &[u32], pos: &HashMap<u32, usize>, tables: &mut [LoadedTable], opts: &SnapshotOptions) -> DbResult<()> {
         let sql = "SELECT x.indrelid::int8, i.relname::text, x.indisunique, x.indisprimary, am.amname::text, \
              pg_catalog.pg_get_indexdef(x.indexrelid), pg_catalog.pg_get_expr(x.indpred, x.indrelid), \
              ARRAY(SELECT CASE WHEN x.indkey[k] = 0 THEN pg_catalog.pg_get_indexdef(x.indexrelid, k + 1, true) \
@@ -495,11 +477,7 @@ impl PgSession {
             let columns = names
                 .into_iter()
                 .enumerate()
-                .map(|(k, n)| IndexColumn {
-                    name: n,
-                    is_expression: exprs.get(k).copied().unwrap_or(false),
-                    descending: descs.get(k).copied().unwrap_or(false),
-                })
+                .map(|(k, n)| IndexColumn { name: n, is_expression: exprs.get(k).copied().unwrap_or(false), descending: descs.get(k).copied().unwrap_or(false) })
                 .collect();
             tables[i].def.indexes.push(IndexDef {
                 name: r.s(1)?,
@@ -516,13 +494,7 @@ impl PgSession {
         Ok(())
     }
 
-    async fn load_triggers(
-        &self,
-        oids: &[u32],
-        pos: &HashMap<u32, usize>,
-        tables: &mut [LoadedTable],
-        opts: &SnapshotOptions,
-    ) -> DbResult<()> {
+    async fn load_triggers(&self, oids: &[u32], pos: &HashMap<u32, usize>, tables: &mut [LoadedTable], opts: &SnapshotOptions) -> DbResult<()> {
         let parent = if self.pg_major() >= 13 { " AND t.tgparentid = 0" } else { "" };
         let sql = format!(
             "SELECT t.tgrelid::int8, t.tgname::text, t.tgtype::int8, t.tgenabled::text, pg_catalog.pg_get_triggerdef(t.oid), \
@@ -564,20 +536,13 @@ impl PgSession {
 
     pub(crate) async fn load_one_table(&self, table: &ObjectRef) -> DbResult<LoadedTable> {
         let schema = require_schema(table.schema.as_deref())?;
-        let (oid, relkind) = self
-            .rel_oid(schema, &table.name)
-            .await?
-            .ok_or_else(|| not_found("Table", schema, &table.name))?;
+        let (oid, relkind) = self.rel_oid(schema, &table.name).await?.ok_or_else(|| not_found("Table", schema, &table.name))?;
         if !matches!(relkind.as_str(), "r" | "p" | "f") {
             return Err(DbError::query(format!("{schema}.{} is not a table", table.name)));
         }
         let mut opts = SnapshotOptions::full();
         opts.statistics = true;
-        self.load_tables(schema, TableFilter::Oids(&[oid]), &opts)
-            .await?
-            .into_iter()
-            .next()
-            .ok_or_else(|| not_found("Table", schema, &table.name))
+        self.load_tables(schema, TableFilter::Oids(&[oid]), &opts).await?.into_iter().next().ok_or_else(|| not_found("Table", schema, &table.name))
     }
 
     /// Definition of a view or materialized view.
@@ -588,14 +553,7 @@ impl PgSession {
     }
 
     /// Views of a schema (or one view).
-    pub(crate) async fn load_views(
-        &self,
-        schema: &str,
-        name: Option<&str>,
-        definitions: bool,
-        columns: bool,
-        comments: bool,
-    ) -> DbResult<Vec<ViewDef>> {
+    pub(crate) async fn load_views(&self, schema: &str, name: Option<&str>, definitions: bool, columns: bool, comments: bool) -> DbResult<Vec<ViewDef>> {
         let def = if definitions { "pg_catalog.pg_get_viewdef(c.oid, true)" } else { "NULL::text" };
         let am = if self.is_cockroach() { "NULL::text" } else { "am.amname::text" };
         let am_join = if self.is_cockroach() { "" } else { "LEFT JOIN pg_catalog.pg_am am ON am.oid = c.relam" };
@@ -681,24 +639,13 @@ impl PgSession {
             None => true,
             Some(w) => *w == normalize_signature(sig) || *w == oid.to_string(),
         });
-        found.map(|(_, _, r)| r).ok_or_else(|| {
-            DbError::query(format!(
-                "Routine {schema}.{}{} does not exist",
-                routine.name,
-                routine.signature.as_deref().unwrap_or("")
-            ))
-            .with_code("42883")
-        })
+        found
+            .map(|(_, _, r)| r)
+            .ok_or_else(|| DbError::query(format!("Routine {schema}.{}{} does not exist", routine.name, routine.signature.as_deref().unwrap_or(""))).with_code("42883"))
     }
 
     /// Routines of a schema (or overloads of one name): `(oid, "(argtypes)", def)`.
-    pub(crate) async fn load_routines(
-        &self,
-        schema: &str,
-        name: Option<&str>,
-        definitions: bool,
-        comments: bool,
-    ) -> DbResult<Vec<(u32, String, RoutineDef)>> {
+    pub(crate) async fn load_routines(&self, schema: &str, name: Option<&str>, definitions: bool, comments: bool) -> DbResult<Vec<(u32, String, RoutineDef)>> {
         let def = if definitions { "CASE WHEN p.prokind <> 'a' THEN pg_catalog.pg_get_functiondef(p.oid) END" } else { "NULL::text" };
         let filter = if name.is_some() { " AND p.proname = $2" } else { "" };
         let sql = format!(
@@ -819,31 +766,19 @@ impl PgSession {
         if kind == "h" {
             parts.push("HYPOTHETICAL".into());
         }
-        Ok(format!(
-            "CREATE OR REPLACE AGGREGATE {}({}) (\n    {}\n)",
-            qualified(r.schema.as_deref(), &r.name),
-            r.arguments,
-            parts.join(",\n    ")
-        ))
+        Ok(format!("CREATE OR REPLACE AGGREGATE {}({}) (\n    {}\n)", qualified(r.schema.as_deref(), &r.name), r.arguments, parts.join(",\n    ")))
     }
 
     /// Definition of a sequence.
     pub(crate) async fn sequence_definition_impl(&self, seq: &ObjectRef) -> DbResult<SequenceDef> {
         let schema = require_schema(seq.schema.as_deref())?;
-        self.load_sequences(schema, Some(&seq.name), true)
-            .await?
-            .into_iter()
-            .next()
-            .ok_or_else(|| not_found("Sequence", schema, &seq.name))
+        self.load_sequences(schema, Some(&seq.name), true).await?.into_iter().next().ok_or_else(|| not_found("Sequence", schema, &seq.name))
     }
 
     /// Sequences of a schema (or one sequence).
     pub(crate) async fn load_sequences(&self, schema: &str, name: Option<&str>, comments: bool) -> DbResult<Vec<SequenceDef>> {
-        let last = if self.is_cockroach() {
-            "NULL::int8"
-        } else {
-            "CASE WHEN pg_catalog.has_sequence_privilege(c.oid, 'SELECT,USAGE') THEN pg_catalog.pg_sequence_last_value(c.oid) END"
-        };
+        let last =
+            if self.is_cockroach() { "NULL::int8" } else { "CASE WHEN pg_catalog.has_sequence_privilege(c.oid, 'SELECT,USAGE') THEN pg_catalog.pg_sequence_last_value(c.oid) END" };
         let filter = if name.is_some() { " AND c.relname = $2" } else { "" };
         let sql = format!(
             "SELECT c.relname::text, pg_catalog.format_type(s.seqtypid, NULL), s.seqstart, s.seqincrement, s.seqmin, s.seqmax, \
@@ -948,11 +883,7 @@ impl PgSession {
                 }
                 "c" => {
                     let attrs = r.ss(7)?;
-                    let def = if attrs.is_empty() {
-                        format!("CREATE TYPE {qn} AS ()")
-                    } else {
-                        format!("CREATE TYPE {qn} AS (\n    {}\n)", attrs.join(",\n    "))
-                    };
+                    let def = if attrs.is_empty() { format!("CREATE TYPE {qn} AS ()") } else { format!("CREATE TYPE {qn} AS (\n    {}\n)", attrs.join(",\n    ")) };
                     ("composite", attrs, def)
                 }
                 "d" => {
@@ -981,11 +912,7 @@ impl PgSession {
                         parts.push(format!("SUBTYPE_DIFF = {d}"));
                     }
                     if let Some(m) = r.os(12)? {
-                        let default_name = if tname.contains("range") {
-                            tname.replacen("range", "multirange", 1)
-                        } else {
-                            format!("{tname}_multirange")
-                        };
+                        let default_name = if tname.contains("range") { tname.replacen("range", "multirange", 1) } else { format!("{tname}_multirange") };
                         if m != default_name {
                             parts.push(format!("MULTIRANGE_TYPE_NAME = {}", qualified(Some(schema), &m)));
                         }
@@ -1090,28 +1017,16 @@ impl PgSession {
             }
             ObjectKind::Type | ObjectKind::Domain => {
                 let schema = require_schema(obj.schema.as_deref())?;
-                let t = self
-                    .load_types(schema, Some(&obj.name), true)
-                    .await?
-                    .into_iter()
-                    .next()
-                    .ok_or_else(|| not_found("Type", schema, &obj.name))?;
+                let t = self.load_types(schema, Some(&obj.name), true).await?.into_iter().next().ok_or_else(|| not_found("Type", schema, &obj.name))?;
                 ddl.create_type(&t)
             }
             ObjectKind::Index => self.child_ddl(obj, "index").await?,
             ObjectKind::Trigger => self.child_ddl(obj, "trigger").await?,
-            ObjectKind::PrimaryKey | ObjectKind::UniqueKey | ObjectKind::CheckConstraint | ObjectKind::ForeignKey => {
-                self.child_ddl(obj, "constraint").await?
-            }
+            ObjectKind::PrimaryKey | ObjectKind::UniqueKey | ObjectKind::CheckConstraint | ObjectKind::ForeignKey => self.child_ddl(obj, "constraint").await?,
             ObjectKind::Column => {
                 let parent = obj.parent_table().ok_or_else(|| DbError::config("A column needs its table"))?;
                 let t = self.load_one_table(&parent).await?;
-                let c = t
-                    .def
-                    .columns
-                    .iter()
-                    .find(|c| c.name == obj.name)
-                    .ok_or_else(|| DbError::query(format!("Column {} does not exist", obj.display_path())))?;
+                let c = t.def.columns.iter().find(|c| c.name == obj.name).ok_or_else(|| DbError::query(format!("Column {} does not exist", obj.display_path())))?;
                 ddl.add_column(&t.def, c)
             }
             ObjectKind::Extension => {
@@ -1125,12 +1040,8 @@ impl PgSession {
                     )
                     .await?
                     .ok_or_else(|| DbError::query(format!("Extension {} does not exist", obj.name)))?;
-                let mut s = vec![format!(
-                    "CREATE EXTENSION IF NOT EXISTS {} WITH SCHEMA {} VERSION {}",
-                    quote_ident(&obj.name),
-                    quote_ident(&row.s(1)?),
-                    string_literal(&row.s(0)?)
-                )];
+                let mut s =
+                    vec![format!("CREATE EXTENSION IF NOT EXISTS {} WITH SCHEMA {} VERSION {}", quote_ident(&obj.name), quote_ident(&row.s(1)?), string_literal(&row.s(0)?))];
                 if let Some(c) = row.os(2)? {
                     s.push(format!("COMMENT ON EXTENSION {} IS {}", quote_ident(&obj.name), string_literal(&c)));
                 }
@@ -1240,10 +1151,7 @@ impl PgSession {
             .ok_or_else(|| DbError::query(format!("Database {name} does not exist")))?;
         let json: serde_json::Value = serde_json::from_str(&row.s(0)?).unwrap_or(serde_json::Value::Null);
         let get = |k: &str| json.get(k).and_then(|v| v.as_str()).map(str::to_string).filter(|s| !s.is_empty());
-        let mut opts = vec![
-            format!("OWNER = {}", quote_ident(&row.s(1)?)),
-            format!("ENCODING = {}", string_literal(&row.s(2)?)),
-        ];
+        let mut opts = vec![format!("OWNER = {}", quote_ident(&row.s(1)?)), format!("ENCODING = {}", string_literal(&row.s(2)?))];
         let provider = get("datlocprovider");
         if let Some(c) = get("datcollate") {
             opts.push(format!("LC_COLLATE = {}", string_literal(&c)));
@@ -1280,11 +1188,7 @@ impl PgSession {
     }
 
     /// Everything in one schema.
-    pub(crate) async fn schema_snapshot_impl(
-        &self,
-        schema: &dbiji_core::SchemaRef,
-        opts: &SnapshotOptions,
-    ) -> DbResult<SchemaSnapshot> {
+    pub(crate) async fn schema_snapshot_impl(&self, schema: &dbiji_core::SchemaRef, opts: &SnapshotOptions) -> DbResult<SchemaSnapshot> {
         let name = require_schema(schema.schema.as_deref())?;
         let mut snap = SchemaSnapshot {
             kind: Some(self.kind),
@@ -1295,12 +1199,7 @@ impl PgSession {
             schema: Some(name.to_string()),
             ..Default::default()
         };
-        snap.tables = self
-            .load_tables(name, TableFilter::AllInSchema, opts)
-            .await?
-            .into_iter()
-            .map(|t| t.def)
-            .collect();
+        snap.tables = self.load_tables(name, TableFilter::AllInSchema, opts).await?.into_iter().map(|t| t.def).collect();
         if opts.views {
             snap.views = self.load_views(name, None, opts.view_definitions, opts.columns, opts.comments).await?;
         }
@@ -1344,10 +1243,7 @@ mod tests {
         let none = [Some(1), Some(1), Some(1), Some(i32::MAX as i64), Some(1)];
         assert_eq!(identity_text("a", "integer", &none, false), "GENERATED ALWAYS AS IDENTITY");
         let custom = [Some(100), Some(5), Some(1), Some(i64::MAX), Some(1)];
-        assert_eq!(
-            identity_text("d", "bigint", &custom, false),
-            "GENERATED BY DEFAULT AS IDENTITY (START WITH 100 INCREMENT BY 5)"
-        );
+        assert_eq!(identity_text("d", "bigint", &custom, false), "GENERATED BY DEFAULT AS IDENTITY (START WITH 100 INCREMENT BY 5)");
     }
 
     #[test]

@@ -4,8 +4,8 @@
 //! can be saved as a task.
 
 use super::{
-    MessageLog, Running, TaskSaver, combo, connection_combo, connection_name, current_schema, error_text, next_uid,
-    not_connected, on_error_options, progress_ui, schema_combo, schema_tables, section, steps_ui, table_def_of,
+    MessageLog, Running, TaskSaver, combo, connection_combo, connection_name, current_schema, error_text, next_uid, not_connected, on_error_options, progress_ui, schema_combo,
+    schema_tables, section, steps_ui, table_def_of,
 };
 use crate::cx::AppContext;
 use crate::tabs::TabView;
@@ -95,13 +95,7 @@ impl MigrationTab {
                 if picker_schema.is_none() {
                     picker_schema = Some(o.schema_ref()).filter(|s| s.schema.is_some());
                 }
-                tables.push(TableEntry {
-                    enabled: true,
-                    source: o,
-                    target_name: String::new(),
-                    column_names: BTreeMap::new(),
-                    column_types: BTreeMap::new(),
-                });
+                tables.push(TableEntry { enabled: true, source: o, target_name: String::new(), column_names: BTreeMap::new(), column_types: BTreeMap::new() });
             }
         }
         MigrationTab {
@@ -153,13 +147,7 @@ impl MigrationTab {
     /// Add a source table.
     pub fn add_table(&mut self, table: ObjectRef) {
         if !self.tables.iter().any(|t| t.source == table) {
-            self.tables.push(TableEntry {
-                enabled: true,
-                source: table,
-                target_name: String::new(),
-                column_names: BTreeMap::new(),
-                column_types: BTreeMap::new(),
-            });
+            self.tables.push(TableEntry { enabled: true, source: table, target_name: String::new(), column_names: BTreeMap::new(), column_types: BTreeMap::new() });
         }
     }
 
@@ -174,32 +162,18 @@ impl MigrationTab {
         let enabled: Vec<&TableEntry> = self.tables.iter().filter(|t| t.enabled).collect();
         job.tables = enabled.iter().map(|t| t.source.clone()).collect();
         job.target_schema = self.target_schema.as_ref().and_then(|s| s.schema.clone());
-        job.table_names = enabled
-            .iter()
-            .filter(|t| !t.target_name.trim().is_empty())
-            .map(|t| (t.source.name.clone(), t.target_name.trim().to_string()))
-            .collect();
+        job.table_names = enabled.iter().filter(|t| !t.target_name.trim().is_empty()).map(|t| (t.source.name.clone(), t.target_name.trim().to_string())).collect();
         job.column_names = enabled
             .iter()
             .map(|t| {
-                let names: BTreeMap<String, String> = t
-                    .column_names
-                    .iter()
-                    .filter(|(_, v)| !v.trim().is_empty())
-                    .map(|(k, v)| (k.clone(), v.trim().to_string()))
-                    .collect();
+                let names: BTreeMap<String, String> = t.column_names.iter().filter(|(_, v)| !v.trim().is_empty()).map(|(k, v)| (k.clone(), v.trim().to_string())).collect();
                 (t.source.name.clone(), names)
             })
             .filter(|(_, m)| !m.is_empty())
             .collect();
         job.column_types = enabled
             .iter()
-            .flat_map(|t| {
-                t.column_types
-                    .iter()
-                    .filter(|(_, v)| !v.trim().is_empty())
-                    .map(|(c, v)| (format!("{}.{c}", t.source.name), v.trim().to_string()))
-            })
+            .flat_map(|t| t.column_types.iter().filter(|(_, v)| !v.trim().is_empty()).map(|(c, v)| (format!("{}.{c}", t.source.name), v.trim().to_string())))
             .collect();
         job
     }
@@ -240,19 +214,13 @@ impl MigrationTab {
         let dst_db = self.target_schema.as_ref().and_then(|s| s.database.clone());
         let src: Arc<dyn SessionFactory> = Arc::new(AppSessionFactory::from_live(src_live, src_db.as_deref()));
         let dst: Arc<dyn SessionFactory> = Arc::new(AppSessionFactory::from_live(dst_live, dst_db.as_deref()));
-        self.table_runs = job
-            .tables
-            .iter()
-            .map(|t| TableRun { name: t.display_path(), state: TableState::Pending, rows: 0, base: 0 })
-            .collect();
+        self.table_runs = job.tables.iter().map(|t| TableRun { name: t.display_path(), state: TableState::Pending, rows: 0, base: 0 }).collect();
         self.error = None;
         self.result = None;
         self.log.clear();
         self.page = PAGE_RUN;
         let title = trf("Migrate {} table(s) to {}", &[&job.tables.len(), &connection_name(cx, &target)]);
-        self.run = Some(Running::spawn(cx, title, move |progress, cancel| async move {
-            run_migration(job, src, dst, &progress, &cancel).await
-        }));
+        self.run = Some(Running::spawn(cx, title, move |progress, cancel| async move { run_migration(job, src, dst, &progress, &cancel).await }));
     }
 
     pub fn is_running(&self) -> bool {
@@ -293,11 +261,7 @@ impl MigrationTab {
     fn task_kind(&self, cx: &AppContext) -> DbResult<TaskKind> {
         self.validate(cx).map_err(DbError::config)?;
         let target = self.target_conn.clone().ok_or_else(|| DbError::config(tr("Choose the target connection.")))?;
-        Ok(TaskKind::Migration {
-            source_connection_id: self.conn.clone(),
-            target_connection_id: target,
-            config: migration_task_config(&self.job())?,
-        })
+        Ok(TaskKind::Migration { source_connection_id: self.conn.clone(), target_connection_id: target, config: migration_task_config(&self.job())? })
     }
 
     fn tables_error(&self) -> Option<String> {
@@ -315,11 +279,7 @@ impl MigrationTab {
             let target_schema = self.target_schema.as_ref().and_then(|s| s.schema.clone()).or(default.clone());
             for t in self.tables.iter().filter(|t| t.enabled) {
                 let source_schema = t.source.schema.clone().or(default.clone());
-                let name = if t.target_name.trim().is_empty() {
-                    apply_case(self.options.name_case, &t.source.name)
-                } else {
-                    t.target_name.trim().to_string()
-                };
+                let name = if t.target_name.trim().is_empty() { apply_case(self.options.name_case, &t.source.name) } else { t.target_name.trim().to_string() };
                 if source_schema == target_schema && name == t.source.name {
                     return Some(trf("The target of {} is the table itself; choose another schema or name.", &[&t.source.display_path()]));
                 }
@@ -460,11 +420,8 @@ impl MigrationTab {
             Some(Err(e)) => crate::widgets::error_box(ui, &e.full_text()),
             Some(Ok(list)) => {
                 let filter = self.picker_filter.to_lowercase();
-                let shown: Vec<ObjectRef> = list
-                    .iter()
-                    .filter(|o| !o.is_system && (filter.is_empty() || o.obj.name.to_lowercase().contains(&filter)))
-                    .map(|o| o.obj.clone())
-                    .collect();
+                let shown: Vec<ObjectRef> =
+                    list.iter().filter(|o| !o.is_system && (filter.is_empty() || o.obj.name.to_lowercase().contains(&filter))).map(|o| o.obj.clone()).collect();
                 ui.horizontal(|ui| {
                     ui.weak(trf("{} tables", &[&shown.len()]));
                     if !shown.is_empty() && ui.button(tr("Add all shown")).clicked() {
@@ -473,21 +430,18 @@ impl MigrationTab {
                         }
                     }
                 });
-                egui::ScrollArea::vertical().id_salt(("mig_pick", self.uid)).max_height(240.0).auto_shrink([false, true]).show(
-                    ui,
-                    |ui| {
-                        for o in &shown {
-                            let already = self.tables.iter().any(|t| t.source == *o);
-                            ui.horizontal(|ui| {
-                                if ui.add_enabled(!already, egui::Button::new(icon::PLUS).small()).clicked() {
-                                    self.add_table(o.clone());
-                                }
-                                let text = RichText::new(format!("{} {}", icon::TABLE, o.name));
-                                ui.label(if already { text.weak() } else { text });
-                            });
-                        }
-                    },
-                );
+                egui::ScrollArea::vertical().id_salt(("mig_pick", self.uid)).max_height(240.0).auto_shrink([false, true]).show(ui, |ui| {
+                    for o in &shown {
+                        let already = self.tables.iter().any(|t| t.source == *o);
+                        ui.horizontal(|ui| {
+                            if ui.add_enabled(!already, egui::Button::new(icon::PLUS).small()).clicked() {
+                                self.add_table(o.clone());
+                            }
+                            let text = RichText::new(format!("{} {}", icon::TABLE, o.name));
+                            ui.label(if already { text.weak() } else { text });
+                        });
+                    }
+                });
             }
         }
     }
@@ -517,11 +471,12 @@ impl MigrationTab {
                 ui.end_row();
             }
             ui.label(tr("Names"));
-            combo(ui, ("mig_case", id), &mut self.options.name_case, &[
-                (NameCase::Keep, tr("Keep them as they are").to_string()),
-                (NameCase::Lower, tr("lower case").to_string()),
-                (NameCase::Upper, tr("UPPER CASE").to_string()),
-            ]);
+            combo(
+                ui,
+                ("mig_case", id),
+                &mut self.options.name_case,
+                &[(NameCase::Keep, tr("Keep them as they are").to_string()), (NameCase::Lower, tr("lower case").to_string()), (NameCase::Upper, tr("UPPER CASE").to_string())],
+            );
             ui.end_row();
         });
         if let (Some(t), Some(src)) = (&self.target_conn, cx.conns.config(&self.conn).map(|c| c.kind)) {
@@ -529,10 +484,7 @@ impl MigrationTab {
             if let Some(dst) = dst
                 && dst != src
             {
-                ui.weak(trf(
-                    "Column types are converted from {} to {}; check them on the next page.",
-                    &[&src.display_name(), &dst.display_name()],
-                ));
+                ui.weak(trf("Column types are converted from {} to {}; check them on the next page.", &[&src.display_name(), &dst.display_name()]));
             }
         }
         if let Some(e) = self.target_error(cx) {
@@ -584,8 +536,7 @@ impl MigrationTab {
                                 ui.weak(&c.data_type);
                                 let name = t.column_names.entry(c.name.clone()).or_default();
                                 ui.add(egui::TextEdit::singleline(name).hint_text(apply_case(case, &c.name)).desired_width(160.0));
-                                let mapped =
-                                    if same { c.data_type.clone() } else { dst.ddl().map_type(src_kind, &c.data_type, c.kind) };
+                                let mapped = if same { c.data_type.clone() } else { dst.ddl().map_type(src_kind, &c.data_type, c.kind) };
                                 let ty = t.column_types.entry(c.name.clone()).or_default();
                                 ui.add(egui::TextEdit::singleline(ty).hint_text(mapped).desired_width(180.0));
                                 ui.end_row();
@@ -606,12 +557,17 @@ impl MigrationTab {
             ui.checkbox(&mut o.create_tables, tr("Create the tables that do not exist"));
             ui.end_row();
             ui.label(tr("Existing rows"));
-            combo(ui, ("mig_mode", id), &mut o.mode, &[
-                (MigrationMode::Append, tr("Keep them and add the new rows").to_string()),
-                (MigrationMode::Truncate, tr("Delete them first").to_string()),
-                (MigrationMode::Replace, tr("Insert or replace rows by primary key").to_string()),
-                (MigrationMode::DropAndCreate, tr("Drop and create the tables again").to_string()),
-            ]);
+            combo(
+                ui,
+                ("mig_mode", id),
+                &mut o.mode,
+                &[
+                    (MigrationMode::Append, tr("Keep them and add the new rows").to_string()),
+                    (MigrationMode::Truncate, tr("Delete them first").to_string()),
+                    (MigrationMode::Replace, tr("Insert or replace rows by primary key").to_string()),
+                    (MigrationMode::DropAndCreate, tr("Drop and create the tables again").to_string()),
+                ],
+            );
             ui.end_row();
             ui.label(tr("Rows per batch"));
             ui.add(egui::DragValue::new(&mut o.batch_size).range(1..=100_000));
@@ -650,11 +606,13 @@ impl MigrationTab {
                     ui.label(&t.name);
                     match t.state {
                         TableState::Pending => ui.weak(tr("waiting")),
-                        TableState::Running => ui.horizontal(|ui| {
-                            ui.spinner();
-                            ui.label(tr("copying"))
-                        })
-                        .inner,
+                        TableState::Running => {
+                            ui.horizontal(|ui| {
+                                ui.spinner();
+                                ui.label(tr("copying"))
+                            })
+                            .inner
+                        }
                         TableState::Done => ui.label(RichText::new(tr("done")).color(crate::theme::success_color(dark))),
                         TableState::Failed => ui.label(RichText::new(tr("failed")).color(crate::theme::error_color(dark))),
                     };
@@ -776,11 +734,7 @@ impl MigrationTab {
                 self.page -= 1;
             }
             let reachable = self.reachable(cx);
-            if self.page < PAGE_RUN
-                && ui
-                    .add_enabled(self.page < reachable && !running, egui::Button::new(format!("{} {}", tr("Next"), icon::CARET_RIGHT)))
-                    .clicked()
-            {
+            if self.page < PAGE_RUN && ui.add_enabled(self.page < reachable && !running, egui::Button::new(format!("{} {}", tr("Next"), icon::CARET_RIGHT))).clicked() {
                 self.page += 1;
             }
             ui.separator();
@@ -792,10 +746,7 @@ impl MigrationTab {
                     self.start(cx);
                 }
             }
-            if ui
-                .add_enabled(ok && !self.saver.is_saving(), egui::Button::new(format!("{} {}", icon::FLOPPY_DISK, tr("Save as task…"))))
-                .clicked()
-            {
+            if ui.add_enabled(ok && !self.saver.is_saving(), egui::Button::new(format!("{} {}", icon::FLOPPY_DISK, tr("Save as task…")))).clicked() {
                 let target = self.target_conn.as_ref().map(|t| connection_name(cx, t)).unwrap_or_default();
                 self.saver.open(trf("Migrate to {}", &[&target]));
             }
@@ -914,10 +865,7 @@ mod tests {
 
     #[test]
     fn job_from_entries() {
-        let mut tab = MigrationTab::new(
-            "src".into(),
-            vec![ObjectRef::table(Some("public".into()), "users"), ObjectRef::table(Some("public".into()), "orders")],
-        );
+        let mut tab = MigrationTab::new("src".into(), vec![ObjectRef::table(Some("public".into()), "users"), ObjectRef::table(Some("public".into()), "orders")]);
         tab.set_target("dst".into(), Some("archive".into()));
         tab.set_target_name("users", "app_users");
         tab.set_column_type("users", "id", "BIGINT");

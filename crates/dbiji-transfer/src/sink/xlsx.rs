@@ -133,8 +133,7 @@ impl XlsxSink {
         self.sheet_index = self.sheet_no as usize - 1;
         self.next_row = u32::from(header);
         self.rows_in_sheet = 0;
-        self.widths =
-            self.headers.iter().map(|h| h.chars().count() + if self.opts.autofilter { 3 } else { 0 }).collect();
+        self.widths = self.headers.iter().map(|h| h.chars().count() + if self.opts.autofilter { 3 } else { 0 }).collect();
         Ok(())
     }
 
@@ -176,10 +175,7 @@ impl XlsxSink {
                 Ok(vec![path])
             }
             ExportTarget::Writer(mut w) => {
-                let tmp = tempfile::Builder::new()
-                    .suffix(".xlsx")
-                    .tempfile()
-                    .map_err(|e| DbError::io(format!("Cannot create temporary file: {e}")))?;
+                let tmp = tempfile::Builder::new().suffix(".xlsx").tempfile().map_err(|e| DbError::io(format!("Cannot create temporary file: {e}")))?;
                 let tmp_path = tmp.path().to_path_buf();
                 guarded(|| workbook.save(&tmp_path))?;
                 let mut f = std::fs::File::open(&tmp_path).map_err(|e| file_error("Cannot read", &tmp_path, e))?;
@@ -192,23 +188,14 @@ impl XlsxSink {
 }
 
 /// Write one cell; returns the approximate display width in characters.
-fn write_cell(
-    ws: &mut Worksheet,
-    row: u32,
-    col: u16,
-    v: &Value,
-    f: &Formats,
-    truncated: &mut u64,
-) -> Result<usize, XlsxError> {
+fn write_cell(ws: &mut Worksheet, row: u32, col: u16, v: &Value, f: &Formats, truncated: &mut u64) -> Result<usize, XlsxError> {
     Ok(match v {
         Value::Null => 0,
         Value::Bool(b) => {
             ws.write_boolean(row, col, *b)?;
             5
         }
-        Value::Int(i) if i.unsigned_abs() <= EXCEL_MAX_EXACT as u64 => {
-            write_int(ws, row, col, *i as f64, f, i.to_string().len())?
-        }
+        Value::Int(i) if i.unsigned_abs() <= EXCEL_MAX_EXACT as u64 => write_int(ws, row, col, *i as f64, f, i.to_string().len())?,
         Value::UInt(u) if *u <= EXCEL_MAX_EXACT as u64 => write_int(ws, row, col, *u as f64, f, u.to_string().len())?,
         Value::Float(x) if x.is_finite() => {
             match &f.number {
@@ -254,15 +241,7 @@ fn write_int(ws: &mut Worksheet, row: u32, col: u16, x: f64, f: &Formats, len: u
     Ok(len)
 }
 
-fn write_datetime(
-    ws: &mut Worksheet,
-    row: u32,
-    col: u16,
-    dt: NaiveDateTime,
-    original: &Value,
-    f: &Formats,
-    truncated: &mut u64,
-) -> Result<usize, XlsxError> {
+fn write_datetime(ws: &mut Worksheet, row: u32, col: u16, dt: NaiveDateTime, original: &Value, f: &Formats, truncated: &mut u64) -> Result<usize, XlsxError> {
     match excel_serial(dt) {
         Some(serial) => {
             ws.write_number_with_format(row, col, serial, &f.datetime)?;
@@ -316,10 +295,7 @@ fn excel_exact_number(s: &str) -> Option<f64> {
 
 /// Excel sheet names: at most 31 characters, none of `[]:*?/\`, not quoted.
 pub(crate) fn sanitize_sheet_name(name: &str) -> String {
-    let cleaned: String = name
-        .chars()
-        .map(|c| if matches!(c, '[' | ']' | ':' | '*' | '?' | '/' | '\\') || c.is_control() { '_' } else { c })
-        .collect();
+    let cleaned: String = name.chars().map(|c| if matches!(c, '[' | ']' | ':' | '*' | '?' | '/' | '\\') || c.is_control() { '_' } else { c }).collect();
     let cleaned = cleaned.trim().trim_matches('\'').trim();
     let cut: String = cleaned.chars().take(31).collect();
     if cut.is_empty() || cut.eq_ignore_ascii_case("history") { "Sheet1".into() } else { cut }
@@ -328,10 +304,7 @@ pub(crate) fn sanitize_sheet_name(name: &str) -> String {
 impl RowSink for XlsxSink {
     fn begin(&mut self, columns: &[ColumnMeta], table: Option<&ObjectRef>) -> DbResult<()> {
         if columns.len() > EXCEL_MAX_COLS {
-            return Err(DbError::unsupported(format!(
-                "Excel supports at most {EXCEL_MAX_COLS} columns, the result has {}",
-                columns.len()
-            )));
+            return Err(DbError::unsupported(format!("Excel supports at most {EXCEL_MAX_COLS} columns, the result has {}", columns.len())));
         }
         self.ncols = columns.len();
         self.headers = columns.iter().map(|c| c.name.clone()).collect();
@@ -388,22 +361,13 @@ impl RowSink for XlsxSink {
         let files = self.save()?;
         let mut warnings = Vec::new();
         if self.truncated > 0 {
-            warnings.push(format!(
-                "{} text value(s) longer than {EXCEL_MAX_STRING} characters were truncated",
-                self.truncated
-            ));
+            warnings.push(format!("{} text value(s) longer than {EXCEL_MAX_STRING} characters were truncated", self.truncated));
         }
         if self.sheet_no > 1 {
             warnings.push(format!("The data was split into {} sheets", self.sheet_no));
         }
         let bytes = files.iter().filter_map(|p| std::fs::metadata(p).ok()).map(|m| m.len()).sum();
-        Ok(ExportSummary {
-            rows: self.rows,
-            bytes,
-            files,
-            warnings,
-            duration_ms: self.started.elapsed().as_millis() as u64,
-        })
+        Ok(ExportSummary { rows: self.rows, bytes, files, warnings, duration_ms: self.started.elapsed().as_millis() as u64 })
     }
 
     fn abort(&mut self) {

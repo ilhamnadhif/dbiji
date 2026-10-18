@@ -300,12 +300,7 @@ impl TypeParser {
                 ChType::Map(Box::new(k), Box::new(v))
             }
             "tuple" => ChType::Tuple(self.args(|p| p.named_elem())),
-            "nested" => ChType::Nested(
-                self.args(|p| p.named_elem())
-                    .into_iter()
-                    .map(|(n, t)| (n.unwrap_or_default(), t))
-                    .collect(),
-            ),
+            "nested" => ChType::Nested(self.args(|p| p.named_elem()).into_iter().map(|(n, t)| (n.unwrap_or_default(), t)).collect()),
             "variant" => ChType::Variant(self.args(|p| p.ty())),
             "dynamic" => {
                 self.args(|p| p.skip_arg());
@@ -433,8 +428,7 @@ fn simple_type(name: &str) -> Option<ChType> {
         "float32" | "float" | "real" | "single" => ChType::Float(32),
         "float64" | "double" => ChType::Float(64),
         "bfloat16" => ChType::Float(16),
-        "string" | "text" | "varchar" | "char" | "blob" | "longtext" | "longblob" | "mediumtext"
-        | "tinytext" | "bytea" | "varbinary" | "binary" | "clob" => ChType::String,
+        "string" | "text" | "varchar" | "char" | "blob" | "longtext" | "longblob" | "mediumtext" | "tinytext" | "bytea" | "varbinary" | "binary" | "clob" => ChType::String,
         "uuid" => ChType::Uuid,
         "date" => ChType::Date,
         "date32" => ChType::Date32,
@@ -462,9 +456,10 @@ pub fn parse_type(type_name: &str) -> ChType {
     let mut p = TypeParser { toks, pos: 0 };
     let t = p.ty();
     if let ChType::Other(s) = &t
-        && s.is_empty() {
-            return ChType::Other(type_name.to_string());
-        }
+        && s.is_empty()
+    {
+        return ChType::Other(type_name.to_string());
+    }
     t
 }
 
@@ -504,12 +499,7 @@ impl ChType {
             ChType::Ipv4 | ChType::Ipv6 => DataKind::Network,
             ChType::Enum(_) => DataKind::Enum,
             ChType::Array(_) => DataKind::Array,
-            ChType::Tuple(_)
-            | ChType::Map(..)
-            | ChType::Nested(_)
-            | ChType::Json
-            | ChType::Variant(_)
-            | ChType::Dynamic => DataKind::Json,
+            ChType::Tuple(_) | ChType::Map(..) | ChType::Nested(_) | ChType::Json | ChType::Variant(_) | ChType::Dynamic => DataKind::Json,
             ChType::Geo(_) => DataKind::Geometry,
             ChType::AggregateState | ChType::Nothing => DataKind::Other,
             ChType::Other(_) => DataKind::Other,
@@ -562,9 +552,10 @@ pub fn strip_nullable(type_name: &str) -> (String, bool) {
         return (inner.to_string(), true);
     }
     if let Some(inner) = strip_wrapper(t, "LowCardinality")
-        && let Some(innermost) = strip_wrapper(inner, "Nullable") {
-            return (format!("LowCardinality({innermost})"), true);
-        }
+        && let Some(innermost) = strip_wrapper(inner, "Nullable")
+    {
+        return (format!("LowCardinality({innermost})"), true);
+    }
     (t.to_string(), false)
 }
 
@@ -614,12 +605,10 @@ pub fn make_nullable(type_name: &str) -> String {
         | ChType::Dynamic
         | ChType::AggregateState
         | ChType::Geo(_) => t.to_string(),
-        ChType::LowCardinality(inner) if !matches!(*inner, ChType::Nullable(_)) => {
-            match strip_wrapper(t, "LowCardinality") {
-                Some(i) => format!("LowCardinality(Nullable({i}))"),
-                None => t.to_string(),
-            }
-        }
+        ChType::LowCardinality(inner) if !matches!(*inner, ChType::Nullable(_)) => match strip_wrapper(t, "LowCardinality") {
+            Some(i) => format!("LowCardinality(Nullable({i}))"),
+            None => t.to_string(),
+        },
         ChType::LowCardinality(_) => t.to_string(),
         _ => format!("Nullable({t})"),
     }
@@ -660,12 +649,10 @@ pub fn json_to_value(ty: &ChType, j: Json) -> Value {
             Some(t) => Value::decimal(t),
             None => fallback(j),
         },
-        ChType::String | ChType::FixedString(_) | ChType::Enum(_) | ChType::Ipv4 | ChType::Ipv6 => {
-            match j {
-                Json::String(s) => Value::Text(s.into_boxed_str()),
-                other => fallback(other),
-            }
-        }
+        ChType::String | ChType::FixedString(_) | ChType::Enum(_) | ChType::Ipv4 | ChType::Ipv6 => match j {
+            Json::String(s) => Value::Text(s.into_boxed_str()),
+            other => fallback(other),
+        },
         ChType::Uuid => match &j {
             Json::String(s) => match uuid::Uuid::parse_str(s) {
                 Ok(u) => Value::Uuid(u),
@@ -694,9 +681,7 @@ pub fn json_to_value(ty: &ChType, j: Json) -> Value {
             _ => fallback(j),
         },
         ChType::Array(inner) => match j {
-            Json::Array(items) => {
-                Value::Array(items.into_iter().map(|v| json_to_value(inner, v)).collect::<Vec<_>>().into_boxed_slice())
-            }
+            Json::Array(items) => Value::Array(items.into_iter().map(|v| json_to_value(inner, v)).collect::<Vec<_>>().into_boxed_slice()),
             other => fallback(other),
         },
         ChType::Geo(kind) => match geo_wkt(*kind, &j) {
@@ -821,56 +806,23 @@ mod tests {
         assert_eq!(parse_type("UInt64"), ChType::Int { bits: 64, signed: false });
         assert_eq!(parse_type("Decimal(18, 3)"), ChType::Decimal { precision: 18, scale: 3 });
         assert_eq!(parse_type("Decimal64(4)"), ChType::Decimal { precision: 18, scale: 4 });
-        assert_eq!(
-            parse_type("DateTime64(6, 'Asia/Jakarta')"),
-            ChType::DateTime64 { precision: 6, tz: Some("Asia/Jakarta".into()) }
-        );
+        assert_eq!(parse_type("DateTime64(6, 'Asia/Jakarta')"), ChType::DateTime64 { precision: 6, tz: Some("Asia/Jakarta".into()) });
         assert_eq!(parse_type("DateTime('UTC')"), ChType::DateTime(Some("UTC".into())));
         assert_eq!(parse_type("DateTime"), ChType::DateTime(None));
-        assert_eq!(
-            parse_type("Array(Nullable(Int32))"),
-            ChType::Array(Box::new(ChType::Nullable(Box::new(ChType::Int { bits: 32, signed: true }))))
-        );
-        assert_eq!(
-            parse_type("Map(String, Array(UInt8))"),
-            ChType::Map(
-                Box::new(ChType::String),
-                Box::new(ChType::Array(Box::new(ChType::Int { bits: 8, signed: false })))
-            )
-        );
-        assert_eq!(
-            parse_type("Tuple(a UInt8, b String)"),
-            ChType::Tuple(vec![
-                (Some("a".into()), ChType::Int { bits: 8, signed: false }),
-                (Some("b".into()), ChType::String)
-            ])
-        );
-        assert_eq!(
-            parse_type("Tuple(UInt8, String)"),
-            ChType::Tuple(vec![(None, ChType::Int { bits: 8, signed: false }), (None, ChType::String)])
-        );
-        assert_eq!(
-            parse_type("Enum8('a' = 1, 'it''s' = -2)"),
-            ChType::Enum(vec![("a".into(), 1), ("it's".into(), -2)])
-        );
-        assert_eq!(
-            parse_type("LowCardinality(Nullable(String))"),
-            ChType::LowCardinality(Box::new(ChType::Nullable(Box::new(ChType::String))))
-        );
+        assert_eq!(parse_type("Array(Nullable(Int32))"), ChType::Array(Box::new(ChType::Nullable(Box::new(ChType::Int { bits: 32, signed: true })))));
+        assert_eq!(parse_type("Map(String, Array(UInt8))"), ChType::Map(Box::new(ChType::String), Box::new(ChType::Array(Box::new(ChType::Int { bits: 8, signed: false })))));
+        assert_eq!(parse_type("Tuple(a UInt8, b String)"), ChType::Tuple(vec![(Some("a".into()), ChType::Int { bits: 8, signed: false }), (Some("b".into()), ChType::String)]));
+        assert_eq!(parse_type("Tuple(UInt8, String)"), ChType::Tuple(vec![(None, ChType::Int { bits: 8, signed: false }), (None, ChType::String)]));
+        assert_eq!(parse_type("Enum8('a' = 1, 'it''s' = -2)"), ChType::Enum(vec![("a".into(), 1), ("it's".into(), -2)]));
+        assert_eq!(parse_type("LowCardinality(Nullable(String))"), ChType::LowCardinality(Box::new(ChType::Nullable(Box::new(ChType::String)))));
         assert_eq!(parse_type("FixedString(16)"), ChType::FixedString(16));
         assert_eq!(parse_type("IntervalDay"), ChType::Interval);
         assert_eq!(parse_type("Point"), ChType::Geo(GeoKind::Point));
         assert_eq!(parse_type("JSON(max_dynamic_paths=10, a.b UInt32)"), ChType::Json);
         assert_eq!(parse_type("Object('json')"), ChType::Json);
         assert_eq!(parse_type("AggregateFunction(uniq, UInt64)"), ChType::AggregateState);
-        assert_eq!(
-            parse_type("SimpleAggregateFunction(sum, UInt64)"),
-            ChType::SimpleAggregate(Box::new(ChType::Int { bits: 64, signed: false }))
-        );
-        assert_eq!(
-            parse_type("SimpleAggregateFunction(anyLast, Nullable(String))").kind(),
-            DataKind::Text
-        );
+        assert_eq!(parse_type("SimpleAggregateFunction(sum, UInt64)"), ChType::SimpleAggregate(Box::new(ChType::Int { bits: 64, signed: false })));
+        assert_eq!(parse_type("SimpleAggregateFunction(anyLast, Nullable(String))").kind(), DataKind::Text);
         assert_eq!(parse_type("Nested(a UInt8, b String)").kind(), DataKind::Json);
         assert_eq!(parse_type("Variant(String, UInt64)").kind(), DataKind::Json);
         assert_eq!(parse_type("Dynamic(max_types=8)"), ChType::Dynamic);
@@ -896,10 +848,7 @@ mod tests {
     #[test]
     fn nullable_helpers() {
         assert_eq!(strip_nullable("Nullable(String)"), ("String".to_string(), true));
-        assert_eq!(
-            strip_nullable("LowCardinality(Nullable(String))"),
-            ("LowCardinality(String)".to_string(), true)
-        );
+        assert_eq!(strip_nullable("LowCardinality(Nullable(String))"), ("LowCardinality(String)".to_string(), true));
         assert_eq!(strip_nullable("Array(Nullable(Int8))"), ("Array(Nullable(Int8))".to_string(), false));
         assert_eq!(make_nullable("String"), "Nullable(String)");
         assert_eq!(make_nullable("LowCardinality(String)"), "LowCardinality(Nullable(String))");
@@ -929,41 +878,21 @@ mod tests {
         assert_eq!(conv("Bool", "true"), Value::Bool(true));
         assert_eq!(conv("Nullable(String)", "null"), Value::Null);
         assert_eq!(conv("String", "\"a\\nb\""), Value::text("a\nb"));
-        assert_eq!(
-            conv("UUID", "\"61f0c404-5cb3-11e7-907b-a6006ad3dba0\""),
-            Value::Uuid(uuid::Uuid::parse_str("61f0c404-5cb3-11e7-907b-a6006ad3dba0").unwrap())
-        );
-        assert_eq!(
-            conv("Date", "\"2020-02-02\""),
-            Value::Date(NaiveDate::from_ymd_opt(2020, 2, 2).unwrap())
-        );
+        assert_eq!(conv("UUID", "\"61f0c404-5cb3-11e7-907b-a6006ad3dba0\""), Value::Uuid(uuid::Uuid::parse_str("61f0c404-5cb3-11e7-907b-a6006ad3dba0").unwrap()));
+        assert_eq!(conv("Date", "\"2020-02-02\""), Value::Date(NaiveDate::from_ymd_opt(2020, 2, 2).unwrap()));
         assert_eq!(
             conv("DateTime64(6, 'Asia/Jakarta')", "\"2024-01-02 03:04:05.123456\""),
-            Value::DateTime(
-                NaiveDate::from_ymd_opt(2024, 1, 2).unwrap().and_hms_micro_opt(3, 4, 5, 123_456).unwrap()
-            )
+            Value::DateTime(NaiveDate::from_ymd_opt(2024, 1, 2).unwrap().and_hms_micro_opt(3, 4, 5, 123_456).unwrap())
         );
         assert!(matches!(conv("DateTime", "\"2024-01-01T20:04:05Z\""), Value::DateTimeTz(_)));
-        assert_eq!(
-            conv("Time64(3)", "\"12:00:00.123\""),
-            Value::Time(NaiveTime::from_hms_milli_opt(12, 0, 0, 123).unwrap())
-        );
+        assert_eq!(conv("Time64(3)", "\"12:00:00.123\""), Value::Time(NaiveTime::from_hms_milli_opt(12, 0, 0, 123).unwrap()));
         assert_eq!(conv("Time", "\"-01:00:00\""), Value::text("-01:00:00"));
-        assert_eq!(
-            conv("Array(Nullable(Int32))", "[null, 1]"),
-            Value::Array(vec![Value::Null, Value::Int(1)].into_boxed_slice())
-        );
+        assert_eq!(conv("Array(Nullable(Int32))", "[null, 1]"), Value::Array(vec![Value::Null, Value::Int(1)].into_boxed_slice()));
         assert_eq!(conv("Map(String, UInt8)", "{\"a\":1}"), Value::json("{\"a\":1}"));
         assert_eq!(conv("Tuple(a UInt8, b String)", "{\"a\":1,\"b\":\"x\"}"), Value::json("{\"a\":1,\"b\":\"x\"}"));
         assert_eq!(conv("Point", "[1.5,2.5]"), Value::text("POINT(1.5 2.5)"));
-        assert_eq!(
-            conv("Polygon", "[[[0,0],[1,0],[1,1]]]"),
-            Value::text("POLYGON((0 0, 1 0, 1 1))")
-        );
-        assert_eq!(
-            conv("MultiPolygon", "[[[[0,0],[1,0],[1,1]]],[[[5,5],[6,5],[6,6]]]]"),
-            Value::text("MULTIPOLYGON(((0 0, 1 0, 1 1)), ((5 5, 6 5, 6 6)))")
-        );
+        assert_eq!(conv("Polygon", "[[[0,0],[1,0],[1,1]]]"), Value::text("POLYGON((0 0, 1 0, 1 1))"));
+        assert_eq!(conv("MultiPolygon", "[[[[0,0],[1,0],[1,1]]],[[[5,5],[6,5],[6,6]]]]"), Value::text("MULTIPOLYGON(((0 0, 1 0, 1 1)), ((5 5, 6 5, 6 6)))"));
         assert_eq!(conv("LowCardinality(Nullable(String))", "\"lc\""), Value::text("lc"));
         assert_eq!(conv("Enum8('a' = 1)", "\"a\""), Value::text("a"));
         assert_eq!(conv("IntervalDay", "\"3\""), Value::Int(3));

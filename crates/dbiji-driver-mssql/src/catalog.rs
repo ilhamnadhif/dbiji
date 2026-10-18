@@ -52,25 +52,12 @@ fn schema_name(schema: Option<&str>) -> String {
 const MS_DESC: &str = "N'MS_Description'";
 
 /// Full type text from catalog columns.
-pub fn format_type(
-    type_name: &str,
-    type_schema: &str,
-    is_user_defined: bool,
-    max_length: i64,
-    precision: i64,
-    scale: i64,
-) -> String {
+pub fn format_type(type_name: &str, type_schema: &str, is_user_defined: bool, max_length: i64, precision: i64, scale: i64) -> String {
     if is_user_defined {
-        return if type_schema.is_empty() || type_schema == "sys" {
-            quote(type_name)
-        } else {
-            format!("{}.{}", quote(type_schema), quote(type_name))
-        };
+        return if type_schema.is_empty() || type_schema == "sys" { quote(type_name) } else { format!("{}.{}", quote(type_schema), quote(type_name)) };
     }
     let lower = type_name.to_ascii_lowercase();
-    let len = |divide: i64| -> String {
-        if max_length == -1 { "max".into() } else { (max_length / divide).to_string() }
-    };
+    let len = |divide: i64| -> String { if max_length == -1 { "max".into() } else { (max_length / divide).to_string() } };
     match lower.as_str() {
         "varchar" | "char" | "varbinary" | "binary" => format!("{lower}({})", len(1)),
         "nvarchar" | "nchar" => format!("{lower}({})", len(2)),
@@ -83,14 +70,7 @@ pub fn format_type(
 
 fn type_from_row(r: &Row, at: usize) -> String {
     // at: type name, type schema, is_user_defined, max_length, precision, scale
-    format_type(
-        &text(r.get(at)),
-        &text(r.get(at + 1)),
-        truthy(r.get(at + 2)),
-        int(r.get(at + 3)).unwrap_or(0),
-        int(r.get(at + 4)).unwrap_or(0),
-        int(r.get(at + 5)).unwrap_or(0),
-    )
+    format_type(&text(r.get(at)), &text(r.get(at + 1)), truthy(r.get(at + 2)), int(r.get(at + 3)).unwrap_or(0), int(r.get(at + 4)).unwrap_or(0), int(r.get(at + 5)).unwrap_or(0))
 }
 
 fn kind_for_type_code(code: &str) -> Option<ObjectKind> {
@@ -162,15 +142,12 @@ pub async fn list_databases(s: &mut SqlServerSession) -> DbResult<Vec<DatabaseIn
     let sizes: BTreeMap<String, i64> = if s.is_azure_db() {
         BTreeMap::new()
     } else {
-        s.rows(
-            "SELECT DB_NAME(database_id), SUM(CAST(size AS bigint)) * 8192 FROM sys.master_files GROUP BY database_id",
-            &[],
-        )
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|r| Some((text(r.first()), int(r.get(1))?)))
-        .collect()
+        s.rows("SELECT DB_NAME(database_id), SUM(CAST(size AS bigint)) * 8192 FROM sys.master_files GROUP BY database_id", &[])
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|r| Some((text(r.first()), int(r.get(1))?)))
+            .collect()
     };
     Ok(rows
         .into_iter()
@@ -207,13 +184,7 @@ pub async fn list_schemas(s: &mut SqlServerSession, db: Option<&str>) -> DbResul
         .await?;
     Ok(rows
         .into_iter()
-        .map(|r| SchemaInfo {
-            name: text(r.first()),
-            is_system: truthy(r.get(1)),
-            owner: opt(r.get(2)),
-            comment: opt(r.get(3)),
-            is_current: truthy(r.get(4)) && db.is_none(),
-        })
+        .map(|r| SchemaInfo { name: text(r.first()), is_system: truthy(r.get(1)), owner: opt(r.get(2)), comment: opt(r.get(3)), is_current: truthy(r.get(4)) && db.is_none() })
         .collect())
 }
 
@@ -226,11 +197,8 @@ pub async fn list_objects(s: &mut SqlServerSession, schema: &SchemaRef, kind: Ob
         ObjectKind::Table | ObjectKind::View => {
             let view = kind == ObjectKind::View;
             let src = if view { "sys.views" } else { "sys.tables" };
-            let rows_expr = if view {
-                "NULL".to_string()
-            } else {
-                format!("(SELECT SUM(p.rows) FROM {d}sys.partitions p WHERE p.object_id = t.object_id AND p.index_id IN (0, 1))")
-            };
+            let rows_expr =
+                if view { "NULL".to_string() } else { format!("(SELECT SUM(p.rows) FROM {d}sys.partitions p WHERE p.object_id = t.object_id AND p.index_id IN (0, 1))") };
             let rows = s
                 .rows(
                     &format!(
@@ -293,11 +261,7 @@ pub async fn list_objects(s: &mut SqlServerSession, schema: &SchemaRef, kind: Ob
                 .await?;
             Ok(rows
                 .into_iter()
-                .map(|r| {
-                    ObjectInfo::new(mk(kind, text(r.first())))
-                        .with_detail(format!("{} increment {}", text(r.get(1)), text(r.get(2))))
-                        .with_comment(opt(r.get(3)))
-                })
+                .map(|r| ObjectInfo::new(mk(kind, text(r.first()))).with_detail(format!("{} increment {}", text(r.get(1)), text(r.get(2)))).with_comment(opt(r.get(3))))
                 .collect())
         }
         ObjectKind::Synonym => {
@@ -332,10 +296,7 @@ pub async fn list_objects(s: &mut SqlServerSession, schema: &SchemaRef, kind: Ob
                     } else if truthy(r.get(7)) {
                         "CLR type".to_string()
                     } else {
-                        format!(
-                            "alias of {}",
-                            format_type(&text(r.get(2)), "sys", false, int(r.get(3)).unwrap_or(0), int(r.get(4)).unwrap_or(0), int(r.get(5)).unwrap_or(0))
-                        )
+                        format!("alias of {}", format_type(&text(r.get(2)), "sys", false, int(r.get(3)).unwrap_or(0), int(r.get(4)).unwrap_or(0), int(r.get(5)).unwrap_or(0)))
                     };
                     ObjectInfo::new(mk(kind, text(r.first()))).with_detail(detail)
                 })
@@ -383,9 +344,7 @@ pub async fn list_children(s: &mut SqlServerSession, parent: &ObjectRef, kind: O
                     if truthy(r.get(9)) {
                         detail.push_str(" (computed)");
                     }
-                    ObjectInfo::new(ObjectRef::child(ObjectKind::Column, parent, text(r.first())))
-                        .with_detail(detail)
-                        .with_comment(opt(r.get(10)))
+                    ObjectInfo::new(ObjectRef::child(ObjectKind::Column, parent, text(r.first()))).with_detail(detail).with_comment(opt(r.get(10)))
                 })
                 .collect())
         }
@@ -448,13 +407,7 @@ pub async fn list_children(s: &mut SqlServerSession, parent: &ObjectRef, kind: O
                     &params,
                 )
                 .await?;
-            Ok(rows
-                .into_iter()
-                .map(|r| {
-                    ObjectInfo::new(ObjectRef::child(kind, parent, text(r.first())))
-                        .with_detail(format!("{} ({})", text(r.get(1)), text(r.get(2))))
-                })
-                .collect())
+            Ok(rows.into_iter().map(|r| ObjectInfo::new(ObjectRef::child(kind, parent, text(r.first()))).with_detail(format!("{} ({})", text(r.get(1)), text(r.get(2))))).collect())
         }
         ObjectKind::ForeignKey => {
             let rows = s
@@ -504,10 +457,7 @@ pub async fn list_children(s: &mut SqlServerSession, parent: &ObjectRef, kind: O
                 .await?;
             Ok(rows
                 .into_iter()
-                .map(|r| {
-                    ObjectInfo::new(ObjectRef::child(ObjectKind::CheckConstraint, parent, text(r.first())))
-                        .with_detail(strip_outer_parens(&text(r.get(1))))
-                })
+                .map(|r| ObjectInfo::new(ObjectRef::child(ObjectKind::CheckConstraint, parent, text(r.first()))).with_detail(strip_outer_parens(&text(r.get(1)))))
                 .collect())
         }
         ObjectKind::Trigger => {
@@ -578,11 +528,7 @@ async fn database_collation(s: &mut SqlServerSession, db: Option<&str>) -> Optio
 
 /// Load columns of the objects in scope, keyed by object id. Also returns
 /// per-object options (default constraint names, identity specs).
-async fn load_columns(
-    s: &mut SqlServerSession,
-    scope: &Scope,
-    db_collation: Option<&str>,
-) -> DbResult<BTreeMap<i64, (Vec<ColumnDef>, BTreeMap<String, String>)>> {
+async fn load_columns(s: &mut SqlServerSession, scope: &Scope, db_collation: Option<&str>) -> DbResult<BTreeMap<i64, (Vec<ColumnDef>, BTreeMap<String, String>)>> {
     let d = &scope.db;
     let sql = format!(
         "SELECT c.object_id, c.column_id, c.name, ty.name, ts.name, ty.is_user_defined, c.max_length, c.precision, c.scale, \
@@ -644,19 +590,8 @@ async fn load_columns(
 }
 
 /// Batched loader of table definitions for a schema (or one table).
-async fn load_tables(
-    s: &mut SqlServerSession,
-    db: Option<&str>,
-    schema: &str,
-    table: Option<&str>,
-    opts: &SnapshotOptions,
-) -> DbResult<Vec<TableDef>> {
-    let scope = Scope {
-        db: dbp(db),
-        schema: schema.to_string(),
-        table: table.map(str::to_string),
-        object_types: "'U'",
-    };
+async fn load_tables(s: &mut SqlServerSession, db: Option<&str>, schema: &str, table: Option<&str>, opts: &SnapshotOptions) -> DbResult<Vec<TableDef>> {
+    let scope = Scope { db: dbp(db), schema: schema.to_string(), table: table.map(str::to_string), object_types: "'U'" };
     let d = scope.db.clone();
     let filter = scope.filter();
     let params = scope.params();
@@ -919,9 +854,7 @@ pub async fn table_definition(s: &mut SqlServerSession, table: &ObjectRef) -> Db
     let mut opts = SnapshotOptions::full();
     opts.statistics = true;
     let mut tables = load_tables(s, table.database.as_deref(), &schema, Some(&table.name), &opts).await?;
-    tables
-        .pop()
-        .ok_or_else(|| DbError::query(format!("Table {schema}.{} does not exist", table.name)).with_code("208"))
+    tables.pop().ok_or_else(|| DbError::query(format!("Table {schema}.{} does not exist", table.name)).with_code("208"))
 }
 
 // ------------------------------------------------------------ other objects
@@ -1095,11 +1028,7 @@ async fn sequences(s: &mut SqlServerSession, db: Option<&str>, schema: &str, nam
         .into_iter()
         .map(|r| {
             let ty = text(r.get(1));
-            let data_type = if matches!(ty.as_str(), "decimal" | "numeric") {
-                format!("{ty}({},{})", int(r.get(11)).unwrap_or(18), int(r.get(12)).unwrap_or(0))
-            } else {
-                ty
-            };
+            let data_type = if matches!(ty.as_str(), "decimal" | "numeric") { format!("{ty}({},{})", int(r.get(11)).unwrap_or(18), int(r.get(12)).unwrap_or(0)) } else { ty };
             SequenceDef {
                 schema: Some(schema.to_string()),
                 name: text(r.first()),
@@ -1157,11 +1086,7 @@ async fn user_types(s: &mut SqlServerSession, db: Option<&str>, schema: &str, na
             let cols = table_type_columns(s, db, table_oid).await.unwrap_or_default();
             let tmp = TableDef { name: tname.clone(), schema: Some(schema.to_string()), columns: cols.clone(), ..Default::default() };
             let lines: Vec<String> = cols.iter().map(|c| crate::ddl::column_definition(&tmp, c)).collect();
-            (
-                "table".to_string(),
-                format!("CREATE TYPE {qname} AS TABLE (\n    {}\n)", lines.join(",\n    ")),
-                cols.iter().map(|c| format!("{} {}", c.name, c.data_type)).collect(),
-            )
+            ("table".to_string(), format!("CREATE TYPE {qname} AS TABLE (\n    {}\n)", lines.join(",\n    ")), cols.iter().map(|c| format!("{} {}", c.name, c.data_type)).collect())
         } else if truthy(r.get(2)) {
             ("clr".to_string(), String::new(), Vec::new())
         } else {
@@ -1220,10 +1145,7 @@ pub async fn object_ddl(s: &mut SqlServerSession, obj: &ObjectRef) -> DbResult<S
                 .await?
                 .pop()
                 .ok_or_else(|| DbError::query(format!("{} {schema}.{} does not exist", obj.kind.label(), obj.name)))?;
-            let def = m
-                .definition
-                .clone()
-                .ok_or_else(|| DbError::unsupported(format!("The definition of {schema}.{} is encrypted", obj.name)))?;
+            let def = m.definition.clone().ok_or_else(|| DbError::unsupported(format!("The definition of {schema}.{} is encrypted", obj.name)))?;
             let mut stmts = vec![def.trim().to_string()];
             if let Some(c) = &m.comment {
                 let l1 = if obj.kind == ObjectKind::View {
@@ -1261,10 +1183,7 @@ pub async fn object_ddl(s: &mut SqlServerSession, obj: &ObjectRef) -> DbResult<S
         }
         ObjectKind::Sequence => Ok(go_join(vec![ddl.create_sequence(&sequence_definition(s, obj).await?)])),
         ObjectKind::Type => {
-            let t = user_types(s, db, &schema, Some(&obj.name))
-                .await?
-                .pop()
-                .ok_or_else(|| DbError::query(format!("Type {schema}.{} does not exist", obj.name)))?;
+            let t = user_types(s, db, &schema, Some(&obj.name)).await?.pop().ok_or_else(|| DbError::query(format!("Type {schema}.{} does not exist", obj.name)))?;
             if t.definition.is_empty() {
                 return Err(DbError::unsupported("DDL of CLR types is not available"));
             }
@@ -1287,9 +1206,7 @@ pub async fn object_ddl(s: &mut SqlServerSession, obj: &ObjectRef) -> DbResult<S
             let d = dbp(obj.database.as_deref());
             let owner = s
                 .scalar(
-                    &format!(
-                        "SELECT p.name FROM {d}sys.schemas sc JOIN {d}sys.database_principals p ON p.principal_id = sc.principal_id WHERE sc.name = @P1"
-                    ),
+                    &format!("SELECT p.name FROM {d}sys.schemas sc JOIN {d}sys.database_principals p ON p.principal_id = sc.principal_id WHERE sc.name = @P1"),
                     &[Value::text(obj.name.clone())],
                 )
                 .await?;
@@ -1307,44 +1224,23 @@ pub async fn object_ddl(s: &mut SqlServerSession, obj: &ObjectRef) -> DbResult<S
             }
             Ok(go_join(vec![stmt]))
         }
-        ObjectKind::Column
-        | ObjectKind::Index
-        | ObjectKind::PrimaryKey
-        | ObjectKind::UniqueKey
-        | ObjectKind::ForeignKey
-        | ObjectKind::CheckConstraint => {
+        ObjectKind::Column | ObjectKind::Index | ObjectKind::PrimaryKey | ObjectKind::UniqueKey | ObjectKind::ForeignKey | ObjectKind::CheckConstraint => {
             let parent = obj.parent_table().ok_or_else(|| DbError::config("Missing owning table"))?;
             let t = table_definition(s, &parent).await?;
             let not_found = || DbError::query(format!("{} {} not found", obj.kind.label(), obj.name));
             let stmt = match obj.kind {
                 ObjectKind::Column => t.column(&obj.name).map(|c| ddl.add_column(&t, c)).ok_or_else(not_found)?,
-                ObjectKind::Index => {
-                    t.indexes.iter().find(|i| i.name == obj.name).map(|i| vec![ddl.create_index(&t, i)]).ok_or_else(not_found)?
+                ObjectKind::Index => t.indexes.iter().find(|i| i.name == obj.name).map(|i| vec![ddl.create_index(&t, i)]).ok_or_else(not_found)?,
+                ObjectKind::PrimaryKey => {
+                    t.primary_key.as_ref().filter(|k| k.name.as_deref() == Some(obj.name.as_str())).map(|k| vec![ddl.add_primary_key(&t, k)]).ok_or_else(not_found)?
                 }
-                ObjectKind::PrimaryKey => t
-                    .primary_key
-                    .as_ref()
-                    .filter(|k| k.name.as_deref() == Some(obj.name.as_str()))
-                    .map(|k| vec![ddl.add_primary_key(&t, k)])
-                    .ok_or_else(not_found)?,
-                ObjectKind::UniqueKey => t
-                    .unique_keys
-                    .iter()
-                    .find(|k| k.name.as_deref() == Some(obj.name.as_str()))
-                    .map(|k| vec![ddl.add_unique_key(&t, k)])
-                    .ok_or_else(not_found)?,
-                ObjectKind::ForeignKey => t
-                    .foreign_keys
-                    .iter()
-                    .find(|k| k.name.as_deref() == Some(obj.name.as_str()))
-                    .map(|k| vec![ddl.add_foreign_key(&t, k)])
-                    .ok_or_else(not_found)?,
-                _ => t
-                    .checks
-                    .iter()
-                    .find(|k| k.name.as_deref() == Some(obj.name.as_str()))
-                    .map(|k| vec![ddl.add_check(&t, k)])
-                    .ok_or_else(not_found)?,
+                ObjectKind::UniqueKey => {
+                    t.unique_keys.iter().find(|k| k.name.as_deref() == Some(obj.name.as_str())).map(|k| vec![ddl.add_unique_key(&t, k)]).ok_or_else(not_found)?
+                }
+                ObjectKind::ForeignKey => {
+                    t.foreign_keys.iter().find(|k| k.name.as_deref() == Some(obj.name.as_str())).map(|k| vec![ddl.add_foreign_key(&t, k)]).ok_or_else(not_found)?
+                }
+                _ => t.checks.iter().find(|k| k.name.as_deref() == Some(obj.name.as_str())).map(|k| vec![ddl.add_check(&t, k)]).ok_or_else(not_found)?,
             };
             Ok(go_join(stmt))
         }
@@ -1414,38 +1310,15 @@ pub async fn object_properties(s: &mut SqlServerSession, obj: &ObjectRef) -> DbR
                 )
                 .await?;
             let Some(r) = rows.first() else { return Ok(Vec::new()) };
-            let labels = [
-                "Object ID",
-                "Type",
-                "Created",
-                "Modified",
-                "System object",
-                "ANSI NULLS",
-                "QUOTED_IDENTIFIER",
-                "Schema bound",
-                "Lock escalation",
-            ];
-            Ok(labels
-                .iter()
-                .enumerate()
-                .filter_map(|(i, l)| if i == 2 || i == 3 { date_text(r.get(i)) } else { opt(r.get(i)) }.map(|v| Property::new(*l, v)))
-                .collect())
+            let labels = ["Object ID", "Type", "Created", "Modified", "System object", "ANSI NULLS", "QUOTED_IDENTIFIER", "Schema bound", "Lock escalation"];
+            Ok(labels.iter().enumerate().filter_map(|(i, l)| if i == 2 || i == 3 { date_text(r.get(i)) } else { opt(r.get(i)) }.map(|v| Property::new(*l, v))).collect())
         }
         _ => Ok(Vec::new()),
     }
 }
 
 fn kind_for_type_code_matches(k: ObjectKind) -> bool {
-    matches!(
-        k,
-        ObjectKind::Table
-            | ObjectKind::View
-            | ObjectKind::Procedure
-            | ObjectKind::Function
-            | ObjectKind::Aggregate
-            | ObjectKind::Sequence
-            | ObjectKind::Synonym
-    )
+    matches!(k, ObjectKind::Table | ObjectKind::View | ObjectKind::Procedure | ObjectKind::Function | ObjectKind::Aggregate | ObjectKind::Sequence | ObjectKind::Synonym)
 }
 
 fn human_bytes(n: i64) -> String {
@@ -1607,19 +1480,9 @@ pub async fn search_metadata(s: &mut SqlServerSession, search: &MetadataSearch) 
         schema_filter = format!(" AND sc.name IN ({})", list.join(", "));
     }
     let mut out = Vec::new();
-    let codes: Vec<&str> = search
-        .kinds
-        .iter()
-        .filter(|k| **k != ObjectKind::Column)
-        .map(|k| type_codes(*k))
-        .filter(|c| !c.is_empty())
-        .collect();
+    let codes: Vec<&str> = search.kinds.iter().filter(|k| **k != ObjectKind::Column).map(|k| type_codes(*k)).filter(|c| !c.is_empty()).collect();
     if !codes.is_empty() {
-        let comment = if search.search_comments {
-            format!(" OR CAST(ep.value AS nvarchar(4000)) COLLATE {collate} LIKE @P1 ESCAPE '\\'")
-        } else {
-            String::new()
-        };
+        let comment = if search.search_comments { format!(" OR CAST(ep.value AS nvarchar(4000)) COLLATE {collate} LIKE @P1 ESCAPE '\\'") } else { String::new() };
         let rows = s
             .rows(
                 &format!(
@@ -1644,11 +1507,7 @@ pub async fn search_metadata(s: &mut SqlServerSession, search: &MetadataSearch) 
         }
     }
     if search.kinds.contains(&ObjectKind::Column) && out.len() < limit {
-        let comment = if search.search_comments {
-            format!(" OR CAST(ep.value AS nvarchar(4000)) COLLATE {collate} LIKE @P1 ESCAPE '\\'")
-        } else {
-            String::new()
-        };
+        let comment = if search.search_comments { format!(" OR CAST(ep.value AS nvarchar(4000)) COLLATE {collate} LIKE @P1 ESCAPE '\\'") } else { String::new() };
         let rows = s
             .rows(
                 &format!(
@@ -1667,11 +1526,7 @@ pub async fn search_metadata(s: &mut SqlServerSession, search: &MetadataSearch) 
             .await?;
         for r in rows {
             let parent = ObjectRef::table(opt(r.first()), text(r.get(1)));
-            out.push(
-                ObjectInfo::new(ObjectRef::child(ObjectKind::Column, &parent, text(r.get(2))))
-                    .with_detail(type_from_row(&r, 3))
-                    .with_comment(opt(r.get(9))),
-            );
+            out.push(ObjectInfo::new(ObjectRef::child(ObjectKind::Column, &parent, text(r.get(2)))).with_detail(type_from_row(&r, 3)).with_comment(opt(r.get(9))));
         }
     }
     out.truncate(limit);
@@ -1681,12 +1536,7 @@ pub async fn search_metadata(s: &mut SqlServerSession, search: &MetadataSearch) 
 pub async fn schema_snapshot(s: &mut SqlServerSession, schema: &SchemaRef, opts: &SnapshotOptions) -> DbResult<SchemaSnapshot> {
     let sc = schema_name(schema.schema.as_deref());
     let db = schema.database.as_deref();
-    let mut snap = SchemaSnapshot {
-        kind: Some(DbKind::SqlServer),
-        database: schema.database.clone(),
-        schema: Some(sc.clone()),
-        ..Default::default()
-    };
+    let mut snap = SchemaSnapshot { kind: Some(DbKind::SqlServer), database: schema.database.clone(), schema: Some(sc.clone()), ..Default::default() };
     snap.tables = load_tables(s, db, &sc, None, opts).await?;
     if opts.views {
         let mods = modules(s, db, &sc, None, &[ObjectKind::View]).await?;
@@ -1702,11 +1552,7 @@ pub async fn schema_snapshot(s: &mut SqlServerSession, schema: &SchemaRef, opts:
                 schema: Some(sc.clone()),
                 name: m.name.clone(),
                 materialized: false,
-                definition: if opts.view_definitions {
-                    view_select(&full).map(str::to_string).unwrap_or(full)
-                } else {
-                    String::new()
-                },
+                definition: if opts.view_definitions { view_select(&full).map(str::to_string).unwrap_or(full) } else { String::new() },
                 columns: cols.remove(&m.object_id).map(|(c, _)| c).unwrap_or_default(),
                 comment: if opts.comments { m.comment } else { None },
                 options: Default::default(),

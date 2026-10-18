@@ -150,17 +150,10 @@ mod tests {
     fn arrays() {
         let a = Value::Array(vec![Value::Int(1), Value::Null, Value::Int(3)].into_boxed_slice());
         assert_eq!(txt(&a, &Type::INT4_ARRAY).as_deref(), Some("{1,NULL,3}"));
-        let t = Value::Array(
-            vec![Value::text("a b"), Value::text(""), Value::text("q\"x"), Value::text("null"), Value::text("plain")]
-                .into_boxed_slice(),
-        );
+        let t = Value::Array(vec![Value::text("a b"), Value::text(""), Value::text("q\"x"), Value::text("null"), Value::text("plain")].into_boxed_slice());
         assert_eq!(txt(&t, &Type::TEXT_ARRAY).as_deref(), Some("{\"a b\",\"\",\"q\\\"x\",\"null\",plain}"));
         let nested = Value::Array(
-            vec![
-                Value::Array(vec![Value::Int(1), Value::Int(2)].into_boxed_slice()),
-                Value::Array(vec![Value::Int(3), Value::Int(4)].into_boxed_slice()),
-            ]
-            .into_boxed_slice(),
+            vec![Value::Array(vec![Value::Int(1), Value::Int(2)].into_boxed_slice()), Value::Array(vec![Value::Int(3), Value::Int(4)].into_boxed_slice())].into_boxed_slice(),
         );
         assert_eq!(txt(&nested, &Type::INT4_ARRAY).as_deref(), Some("{{1,2},{3,4}}"));
         let b = Value::Array(vec![Value::bytes(vec![1u8])].into_boxed_slice());

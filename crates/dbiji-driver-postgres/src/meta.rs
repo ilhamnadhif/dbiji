@@ -11,9 +11,7 @@ use dbiji_core::{DbError, DbResult, SchemaRef};
 
 /// System schemas (hidden unless "show system objects" is on).
 pub(crate) fn is_system_schema(name: &str) -> bool {
-    matches!(name, "pg_catalog" | "information_schema" | "crdb_internal" | "pg_extension")
-        || name.starts_with("pg_toast")
-        || name.starts_with("pg_temp_")
+    matches!(name, "pg_catalog" | "information_schema" | "crdb_internal" | "pg_extension") || name.starts_with("pg_toast") || name.starts_with("pg_temp_")
 }
 
 const DESC_CLASS: &str = "'pg_catalog.pg_class'::regclass";
@@ -79,11 +77,7 @@ fn split_routine_identity(identity: &str, schema: Option<&str>) -> (String, Opti
 
 impl PgSession {
     pub(crate) async fn list_databases_impl(&self) -> DbResult<Vec<DatabaseInfo>> {
-        let size = if self.is_cockroach() {
-            "NULL::int8"
-        } else {
-            "CASE WHEN d.datname = current_database() THEN pg_catalog.pg_database_size(d.oid) END"
-        };
+        let size = if self.is_cockroach() { "NULL::int8" } else { "CASE WHEN d.datname = current_database() THEN pg_catalog.pg_database_size(d.oid) END" };
         let sql = format!(
             "SELECT d.datname::text, d.datname = current_database(), pg_catalog.pg_get_userbyid(d.datdba)::text, \
              pg_catalog.shobj_description(d.oid, 'pg_database'), pg_catalog.pg_encoding_to_char(d.encoding)::text, {size} \
@@ -122,13 +116,7 @@ impl PgSession {
         let mut out = Vec::with_capacity(rows.len());
         for r in rows {
             let name = r.s(0)?;
-            out.push(SchemaInfo {
-                is_system: is_system_schema(&name),
-                is_current: r.b(1)?,
-                owner: r.os(2)?,
-                comment: some_nonempty(r.os(3)?),
-                name,
-            });
+            out.push(SchemaInfo { is_system: is_system_schema(&name), is_current: r.b(1)?, owner: r.os(2)?, comment: some_nonempty(r.os(3)?), name });
         }
         // user schemas first, then system schemas
         out.sort_by(|a, b| a.is_system.cmp(&b.is_system).then_with(|| a.name.cmp(&b.name)));
@@ -154,9 +142,7 @@ impl PgSession {
         }
         let name = require_schema(schema.schema.as_deref())?;
         let system = is_system_schema(name);
-        let mk = |kind: ObjectKind, obj_name: String| {
-            ObjectRef::new(kind, Some(name.to_string()), obj_name).with_database(schema.database.clone())
-        };
+        let mk = |kind: ObjectKind, obj_name: String| ObjectRef::new(kind, Some(name.to_string()), obj_name).with_database(schema.database.clone());
         match kind {
             ObjectKind::Table | ObjectKind::View | ObjectKind::MaterializedView | ObjectKind::ForeignTable | ObjectKind::Sequence => {
                 let partition_filter = match kind {
@@ -170,9 +156,7 @@ impl PgSession {
                     ObjectKind::ForeignTable => {
                         "(SELECT s.srvname::text FROM pg_catalog.pg_foreign_table ft JOIN pg_catalog.pg_foreign_server s ON s.oid = ft.ftserver WHERE ft.ftrelid = c.oid)"
                     }
-                    ObjectKind::Sequence if !self.is_cockroach() => {
-                        "(SELECT pg_catalog.format_type(s.seqtypid, NULL) FROM pg_catalog.pg_sequence s WHERE s.seqrelid = c.oid)"
-                    }
+                    ObjectKind::Sequence if !self.is_cockroach() => "(SELECT pg_catalog.format_type(s.seqtypid, NULL) FROM pg_catalog.pg_sequence s WHERE s.seqrelid = c.oid)",
                     _ => "NULL::text",
                 };
                 let sql = format!(
@@ -420,26 +404,25 @@ impl PgSession {
                     let name = r.s(0)?;
                     // "CREATE [CONSTRAINT] TRIGGER name BEFORE ..." -> "BEFORE ..."
                     let def = r.s(5)?;
-                    let summary = def
-                        .find(&format!(" {} ", quote_ident(&name)))
-                        .map(|i| def[i + quote_ident(&name).len() + 2..].to_string());
+                    let summary = def.find(&format!(" {} ", quote_ident(&name))).map(|i| def[i + quote_ident(&name).len() + 2..].to_string());
                     let mut detail = match summary {
                         Some(s) => s,
                         None => {
                             let tgtype = r.i(1)?;
-                            let timing = if tgtype & 64 != 0 { "INSTEAD OF" } else if tgtype & 2 != 0 { "BEFORE" } else { "AFTER" };
+                            let timing = if tgtype & 64 != 0 {
+                                "INSTEAD OF"
+                            } else if tgtype & 2 != 0 {
+                                "BEFORE"
+                            } else {
+                                "AFTER"
+                            };
                             let mut ev = Vec::new();
                             for (bit, e) in [(4, "INSERT"), (16, "UPDATE"), (8, "DELETE"), (32, "TRUNCATE")] {
                                 if tgtype & bit != 0 {
                                     ev.push(e);
                                 }
                             }
-                            format!(
-                                "{timing} {} FOR EACH {} EXECUTE FUNCTION {}",
-                                ev.join(" OR "),
-                                if tgtype & 1 != 0 { "ROW" } else { "STATEMENT" },
-                                r.s(4)?
-                            )
+                            format!("{timing} {} FOR EACH {} EXECUTE FUNCTION {}", ev.join(" OR "), if tgtype & 1 != 0 { "ROW" } else { "STATEMENT" }, r.s(4)?)
                         }
                     };
                     if r.s(2)? == "D" {
@@ -480,13 +463,7 @@ impl PgSession {
     pub(crate) async fn object_identity(&self, obj: &ObjectRef) -> DbResult<Option<(u32, u32)>> {
         let class = |name: &'static str| format!("'pg_catalog.{name}'::regclass::oid::int8");
         let (sql, params): (String, Vec<String>) = match obj.kind {
-            ObjectKind::Table
-            | ObjectKind::View
-            | ObjectKind::MaterializedView
-            | ObjectKind::ForeignTable
-            | ObjectKind::Sequence
-            | ObjectKind::Partition
-            | ObjectKind::Index => (
+            ObjectKind::Table | ObjectKind::View | ObjectKind::MaterializedView | ObjectKind::ForeignTable | ObjectKind::Sequence | ObjectKind::Partition | ObjectKind::Index => (
                 format!(
                     "SELECT {}, c.oid::int8 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
                      WHERE n.nspname = $1 AND c.relname = $2",
@@ -516,25 +493,15 @@ impl PgSession {
                 ),
                 vec![require_schema(obj.schema.as_deref())?.to_string(), obj.name.clone()],
             ),
-            ObjectKind::Schema => (
-                format!("SELECT {}, n.oid::int8 FROM pg_catalog.pg_namespace n WHERE n.nspname = $1", class("pg_namespace")),
-                vec![obj.name.clone()],
-            ),
-            ObjectKind::Extension => (
-                format!("SELECT {}, e.oid::int8 FROM pg_catalog.pg_extension e WHERE e.extname = $1", class("pg_extension")),
-                vec![obj.name.clone()],
-            ),
+            ObjectKind::Schema => (format!("SELECT {}, n.oid::int8 FROM pg_catalog.pg_namespace n WHERE n.nspname = $1", class("pg_namespace")), vec![obj.name.clone()]),
+            ObjectKind::Extension => (format!("SELECT {}, e.oid::int8 FROM pg_catalog.pg_extension e WHERE e.extname = $1", class("pg_extension")), vec![obj.name.clone()]),
             ObjectKind::Trigger => (
                 format!(
                     "SELECT {}, t.oid::int8 FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid \
                      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = $1 AND c.relname = $2 AND t.tgname = $3",
                     class("pg_trigger")
                 ),
-                vec![
-                    require_schema(obj.schema.as_deref())?.to_string(),
-                    obj.table.clone().unwrap_or_default(),
-                    obj.name.clone(),
-                ],
+                vec![require_schema(obj.schema.as_deref())?.to_string(), obj.table.clone().unwrap_or_default(), obj.name.clone()],
             ),
             ObjectKind::PrimaryKey | ObjectKind::UniqueKey | ObjectKind::CheckConstraint | ObjectKind::ForeignKey => (
                 format!(
@@ -542,16 +509,9 @@ impl PgSession {
                      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = $1 AND c.relname = $2 AND con.conname = $3",
                     class("pg_constraint")
                 ),
-                vec![
-                    require_schema(obj.schema.as_deref())?.to_string(),
-                    obj.table.clone().unwrap_or_default(),
-                    obj.name.clone(),
-                ],
+                vec![require_schema(obj.schema.as_deref())?.to_string(), obj.table.clone().unwrap_or_default(), obj.name.clone()],
             ),
-            ObjectKind::Database => (
-                format!("SELECT {}, d.oid::int8 FROM pg_catalog.pg_database d WHERE d.datname = $1", class("pg_database")),
-                vec![obj.name.clone()],
-            ),
+            ObjectKind::Database => (format!("SELECT {}, d.oid::int8 FROM pg_catalog.pg_database d WHERE d.datname = $1", class("pg_database")), vec![obj.name.clone()]),
             _ => return Ok(None),
         };
         let p: Vec<P<'_>> = params.iter().map(|s| P::Name(s.as_str())).collect();
@@ -642,11 +602,7 @@ impl PgSession {
                 .await?;
             for r in rows {
                 let dir = if r.s(0)? == "D" { DependencyDirection::DependsOn } else { DependencyDirection::UsedBy };
-                out.push(Dependency {
-                    direction: dir,
-                    target: ObjectRef::table(Some(r.s(1)?), r.s(2)?),
-                    kind: Some(format!("foreign key {}", r.s(3)?)),
-                });
+                out.push(Dependency { direction: dir, target: ObjectRef::table(Some(r.s(1)?), r.s(2)?), kind: Some(format!("foreign key {}", r.s(3)?)) });
             }
         }
         Ok(out)
@@ -656,13 +612,7 @@ impl PgSession {
         let g = |group: &str, name: &str, v: String| Property::grouped(group, name, v);
         let mut props = Vec::new();
         match obj.kind {
-            ObjectKind::Table
-            | ObjectKind::Partition
-            | ObjectKind::ForeignTable
-            | ObjectKind::View
-            | ObjectKind::MaterializedView
-            | ObjectKind::Sequence
-            | ObjectKind::Index => {
+            ObjectKind::Table | ObjectKind::Partition | ObjectKind::ForeignTable | ObjectKind::View | ObjectKind::MaterializedView | ObjectKind::Sequence | ObjectKind::Index => {
                 let schema = require_schema(obj.schema.as_deref())?;
                 let sizes = if self.is_cockroach() {
                     "NULL::text, NULL::text, NULL::text, NULL::text"
@@ -821,16 +771,16 @@ impl PgSession {
                             &[P::Oid(r.i(0)? as u32)],
                         )
                         .await?
-                    {
-                        props.push(g("Index", "Definition", r.s(0)?));
-                        props.push(g("Index", "Table", r.s(7)?));
-                        props.push(g("Index", "Method", r.s(6)?));
-                        props.push(g("Index", "Unique", r.b(1)?.to_string()));
-                        props.push(g("Index", "Primary", r.b(2)?.to_string()));
-                        props.push(g("Index", "Exclusion", r.b(3)?.to_string()));
-                        props.push(g("Index", "Valid", r.b(4)?.to_string()));
-                        props.push(g("Index", "Clustered", r.b(5)?.to_string()));
-                    }
+                {
+                    props.push(g("Index", "Definition", r.s(0)?));
+                    props.push(g("Index", "Table", r.s(7)?));
+                    props.push(g("Index", "Method", r.s(6)?));
+                    props.push(g("Index", "Unique", r.b(1)?.to_string()));
+                    props.push(g("Index", "Primary", r.b(2)?.to_string()));
+                    props.push(g("Index", "Exclusion", r.b(3)?.to_string()));
+                    props.push(g("Index", "Valid", r.b(4)?.to_string()));
+                    props.push(g("Index", "Clustered", r.b(5)?.to_string()));
+                }
             }
             ObjectKind::Function | ObjectKind::Procedure | ObjectKind::Aggregate => {
                 let Some((_, oid)) = self.object_identity(obj).await? else {
@@ -1065,7 +1015,17 @@ impl PgSession {
                     .to_string(),
                 ));
                 if let Some(c) = some_nonempty(r.os(8)?) {
-                    props.push(g("Storage", "Compression", if c == "p" { "pglz".into() } else if c == "l" { "lz4".into() } else { c }));
+                    props.push(g(
+                        "Storage",
+                        "Compression",
+                        if c == "p" {
+                            "pglz".into()
+                        } else if c == "l" {
+                            "lz4".into()
+                        } else {
+                            c
+                        },
+                    ));
                 }
                 if let Some(c) = some_nonempty(r.os(10)?) {
                     props.push(g("General", "Comment", c));
@@ -1213,11 +1173,7 @@ impl PgSession {
                 add("Activity", catalog::query_tabular(client, "SELECT * FROM pg_catalog.pg_stat_user_functions WHERE funcid = $1", &[P::Oid(oid)]).await?, &skip);
             }
             ObjectKind::Database => {
-                add(
-                    "Activity",
-                    catalog::query_tabular(client, "SELECT * FROM pg_catalog.pg_stat_database WHERE datname = $1", &[P::Name(&obj.name)]).await?,
-                    &skip,
-                );
+                add("Activity", catalog::query_tabular(client, "SELECT * FROM pg_catalog.pg_stat_database WHERE datname = $1", &[P::Name(&obj.name)]).await?, &skip);
             }
             _ => {}
         }
@@ -1237,18 +1193,11 @@ impl PgSession {
         } else {
             "n.nspname = ANY($3::name[])".to_string()
         };
-        let comment_or = |_unused: &str| -> String {
-            if search.search_comments { format!(" OR d.description {op} $1") } else { String::new() }
-        };
+        let comment_or = |_unused: &str| -> String { if search.search_comments { format!(" OR d.description {op} $1") } else { String::new() } };
         let wants = |k: ObjectKind| search.kinds.is_empty() || search.kinds.contains(&k);
         let mut parts: Vec<String> = Vec::new();
-        let rel_kinds: Vec<(&str, ObjectKind)> = vec![
-            ("r','p", ObjectKind::Table),
-            ("v", ObjectKind::View),
-            ("m", ObjectKind::MaterializedView),
-            ("f", ObjectKind::ForeignTable),
-            ("S", ObjectKind::Sequence),
-        ];
+        let rel_kinds: Vec<(&str, ObjectKind)> =
+            vec![("r','p", ObjectKind::Table), ("v", ObjectKind::View), ("m", ObjectKind::MaterializedView), ("f", ObjectKind::ForeignTable), ("S", ObjectKind::Sequence)];
         for (rk, kind) in rel_kinds {
             if wants(kind) {
                 let partition = if kind == ObjectKind::Table { " AND NOT coalesce(c.relispartition, false)" } else { "" };
@@ -1426,13 +1375,7 @@ mod tests {
 
     #[test]
     fn routine_identities() {
-        assert_eq!(
-            split_routine_identity("public.f(integer, text)", Some("public")),
-            ("f".to_string(), Some("(integer, text)".to_string()))
-        );
-        assert_eq!(
-            split_routine_identity("\"My Schema\".\"Fn\"(integer)", Some("My Schema")),
-            ("Fn".to_string(), Some("(integer)".to_string()))
-        );
+        assert_eq!(split_routine_identity("public.f(integer, text)", Some("public")), ("f".to_string(), Some("(integer, text)".to_string())));
+        assert_eq!(split_routine_identity("\"My Schema\".\"Fn\"(integer)", Some("My Schema")), ("Fn".to_string(), Some("(integer)".to_string())));
     }
 }

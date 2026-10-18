@@ -44,10 +44,7 @@ mod util;
 #[cfg(test)]
 mod tests;
 
-pub use data::{
-    CompareStrategy, DataCompareJob, DataCompareOptions, DataCompareProgress, DataDiff, RowDiff, RowDiffKind, RowProvider,
-    TableSpec, run_data_compare,
-};
+pub use data::{CompareStrategy, DataCompareJob, DataCompareOptions, DataCompareProgress, DataDiff, RowDiff, RowDiffKind, RowProvider, TableSpec, run_data_compare};
 pub use diff::schema_diff;
 pub use liquibase::{LiquibaseOptions, liquibase_changelog};
 pub use model::{DiffItem, DiffStatus, DiffSummary, PropertyChange, SchemaDiff, StatusCounts};
@@ -63,12 +60,6 @@ use dbiji_core::ddl::SchemaSnapshot;
 /// in `diff` (remove items from the diff to exclude them), in dependency-safe
 /// order, qualified with the target schema. Comments and transaction wrapping
 /// follow `opts`. See [`migration_plan`] for the structured form.
-pub fn migration_script(
-    diff: &SchemaDiff,
-    source: &SchemaSnapshot,
-    target: &SchemaSnapshot,
-    target_dialect: &dyn Dialect,
-    opts: &ScriptOptions,
-) -> Vec<String> {
+pub fn migration_script(diff: &SchemaDiff, source: &SchemaSnapshot, target: &SchemaSnapshot, target_dialect: &dyn Dialect, opts: &ScriptOptions) -> Vec<String> {
     migration_plan(diff, source, target, target_dialect, opts).script(opts.include_comments)
 }

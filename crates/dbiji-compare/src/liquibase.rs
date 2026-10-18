@@ -148,7 +148,6 @@ fn column(x: &mut Xml, c: &ColumnDef, pk: Option<&KeyDef>) {
     }
 }
 
-
 struct Gen<'a> {
     xml: Xml,
     n: usize,
@@ -242,10 +241,7 @@ impl Gen<'_> {
             let inline_pk = pk.filter(|k| k.columns.len() == 1);
             let schema = self.schema_attr();
             self.change_set(&step.description, |x| {
-                x.open(
-                    "createTable",
-                    vec![("tableName", s(t.name.clone())), ("schemaName", schema.clone()), ("remarks", t.comment.clone().filter(|c| !c.is_empty()))],
-                );
+                x.open("createTable", vec![("tableName", s(t.name.clone())), ("schemaName", schema.clone()), ("remarks", t.comment.clone().filter(|c| !c.is_empty()))]);
                 for c in &t.columns {
                     column(x, c, inline_pk);
                 }
@@ -276,20 +272,14 @@ impl Gen<'_> {
     fn add_pk(&mut self, table: &str, k: &KeyDef) {
         let schema = self.schema_attr();
         self.change_set(&format!("Add primary key on {table}"), |x| {
-            x.empty(
-                "addPrimaryKey",
-                vec![("tableName", s(table)), ("schemaName", schema), ("columnNames", s(k.columns.join(", "))), ("constraintName", k.name.clone())],
-            );
+            x.empty("addPrimaryKey", vec![("tableName", s(table)), ("schemaName", schema), ("columnNames", s(k.columns.join(", "))), ("constraintName", k.name.clone())]);
         });
     }
 
     fn add_unique(&mut self, table: &str, k: &KeyDef) {
         let schema = self.schema_attr();
         self.change_set(&format!("Add unique key on {table}"), |x| {
-            x.empty(
-                "addUniqueConstraint",
-                vec![("tableName", s(table)), ("schemaName", schema), ("columnNames", s(k.columns.join(", "))), ("constraintName", k.name.clone())],
-            );
+            x.empty("addUniqueConstraint", vec![("tableName", s(table)), ("schemaName", schema), ("columnNames", s(k.columns.join(", "))), ("constraintName", k.name.clone())]);
         });
     }
 
@@ -302,7 +292,13 @@ impl Gen<'_> {
             self.change_set(&format!("Rename column {table}.{old} to {new}"), |x| {
                 x.empty(
                     "renameColumn",
-                    vec![("tableName", s(table.clone())), ("schemaName", schema.clone()), ("oldColumnName", s(old.clone())), ("newColumnName", s(new.clone())), ("columnDataType", ty)],
+                    vec![
+                        ("tableName", s(table.clone())),
+                        ("schemaName", schema.clone()),
+                        ("oldColumnName", s(old.clone())),
+                        ("newColumnName", s(new.clone())),
+                        ("columnDataType", ty),
+                    ],
                 );
             });
         }
@@ -344,8 +340,7 @@ impl Gen<'_> {
                 self.change_set(&format!("Set remarks of {table}.{}", tc.name), |x| x.empty("setColumnRemarks", a));
             }
         }
-        let added: Vec<&ColumnDef> =
-            to.columns.iter().filter(|tc| !from.columns.iter().any(|fc| new_name(&fc.name) == tc.name)).collect();
+        let added: Vec<&ColumnDef> = to.columns.iter().filter(|tc| !from.columns.iter().any(|fc| new_name(&fc.name) == tc.name)).collect();
         for c in added {
             self.change_set(&format!("Add column {table}.{}", c.name), |x| {
                 x.open("addColumn", vec![("tableName", s(table.clone())), ("schemaName", schema.clone())]);

@@ -70,9 +70,7 @@ pub fn build_config(params: &ConnectParams, host: &str, port: u16, level: Encryp
         }
         _ => {
             if user.is_empty() {
-                return Err(DbError::config(
-                    "SQL Server authentication needs a user name (integrated authentication is not supported)",
-                ));
+                return Err(DbError::config("SQL Server authentication needs a user name (integrated authentication is not supported)"));
             }
             config.authentication(AuthMethod::sql_server(&user, password));
         }
@@ -92,10 +90,7 @@ pub fn build_config(params: &ConnectParams, host: &str, port: u16, level: Encryp
         // also covers servers that force encryption when TLS was disabled
         config.trust_cert();
     }
-    if let (Some(cert), Some(key)) = (
-        params.ssl.client_cert.as_deref().filter(|c| !c.is_empty()),
-        params.ssl.client_key.as_deref().filter(|c| !c.is_empty()),
-    ) {
+    if let (Some(cert), Some(key)) = (params.ssl.client_cert.as_deref().filter(|c| !c.is_empty()), params.ssl.client_key.as_deref().filter(|c| !c.is_empty())) {
         config.client_certificate(cert, key);
     }
     Ok(config)
@@ -133,9 +128,7 @@ async fn connect_once(params: &ConnectParams, host: &str, port: u16, level: Encr
     let tcp = tcp_connect(params, &config, host, port, instance).await.map_err(|e| (e, None))?;
     match Client::connect(config, tcp.compat_write()).await {
         Ok(c) => Ok(c),
-        Err(tiberius::error::Error::Routing { host, port }) => {
-            Err((DbError::connection(format!("redirected to {host}:{port}")), Some((host, port))))
-        }
+        Err(tiberius::error::Error::Routing { host, port }) => Err((DbError::connection(format!("redirected to {host}:{port}")), Some((host, port)))),
         Err(e) => {
             let mut err = map_error(e, None);
             if err.kind == ErrorKind::Connection && err.message.contains("Protocol error") {

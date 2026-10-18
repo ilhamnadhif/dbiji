@@ -24,8 +24,8 @@ mod types;
 
 pub use client::AiClient;
 pub use config::{
-    ANTHROPIC_BASE_URL, ANTHROPIC_MODEL_PRESETS, AiConfig, AiProviderKind, DEFAULT_ANTHROPIC_MODEL, EFFORT_LEVELS, LM_STUDIO_BASE_URL,
-    OLLAMA_BASE_URL, OPENAI_BASE_URL, RetryPolicy, SERVER_FALLBACK_MODELS,
+    ANTHROPIC_BASE_URL, ANTHROPIC_MODEL_PRESETS, AiConfig, AiProviderKind, DEFAULT_ANTHROPIC_MODEL, EFFORT_LEVELS, LM_STUDIO_BASE_URL, OLLAMA_BASE_URL, OPENAI_BASE_URL,
+    RetryPolicy, SERVER_FALLBACK_MODELS,
 };
 pub use prompts::{SchemaContext, SchemaContextBuilder, extract_sql_blocks, system_prompt};
 pub use protocol::{ANTHROPIC_VERSION, FALLBACK_BETA};

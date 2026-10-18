@@ -38,14 +38,11 @@ impl GridFrame<'_> {
             ui.add_space(4.0);
             Grid::new(self.id.with("copy_grid")).num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
                 ui.label(tr("Format"));
-                ComboBox::from_id_salt(self.id.with("copy_format")).selected_text(opts.format.label()).show_ui(
-                    ui,
-                    |ui| {
-                        for f in CopyFormat::ALL {
-                            ui.selectable_value(&mut opts.format, f, f.label());
-                        }
-                    },
-                );
+                ComboBox::from_id_salt(self.id.with("copy_format")).selected_text(opts.format.label()).show_ui(ui, |ui| {
+                    for f in CopyFormat::ALL {
+                        ui.selectable_value(&mut opts.format, f, f.label());
+                    }
+                });
                 ui.end_row();
                 ui.label(tr("Options"));
                 ui.horizontal(|ui| {
@@ -117,23 +114,17 @@ impl GridFrame<'_> {
         let Some((title, sql)) = self.state.rt.sql_window.clone() else { return };
         let mut open = true;
         let mut copy = false;
-        Window::new(title)
-            .id(self.id.with("sql_window"))
-            .open(&mut open)
-            .default_size([560.0, 320.0])
-            .resizable(true)
-            .collapsible(false)
-            .show(ui.ctx(), |ui| {
-                ui.horizontal(|ui| {
-                    if ui.button(format!("{}  {}", egui_phosphor::regular::COPY, tr("Copy"))).clicked() {
-                        copy = true;
-                    }
-                });
-                ScrollArea::both().show(ui, |ui| {
-                    let mut s = sql.as_str();
-                    ui.add(TextEdit::multiline(&mut s).code_editor().desired_width(f32::INFINITY));
-                });
+        Window::new(title).id(self.id.with("sql_window")).open(&mut open).default_size([560.0, 320.0]).resizable(true).collapsible(false).show(ui.ctx(), |ui| {
+            ui.horizontal(|ui| {
+                if ui.button(format!("{}  {}", egui_phosphor::regular::COPY, tr("Copy"))).clicked() {
+                    copy = true;
+                }
             });
+            ScrollArea::both().show(ui, |ui| {
+                let mut s = sql.as_str();
+                ui.add(TextEdit::multiline(&mut s).code_editor().desired_width(f32::INFINITY));
+            });
+        });
         if copy {
             ui.ctx().copy_text(sql);
             self.notify(tr("SQL copied to the clipboard"), false);
@@ -146,11 +137,7 @@ impl GridFrame<'_> {
     fn virtual_dialog(&mut self, ui: &mut Ui) {
         let Some(mut dlg) = self.state.rt.virtual_dialog.take() else { return };
         let names: Vec<String> = self.model.columns().iter().map(|c| c.name.clone()).collect();
-        let check = if dlg.expression.trim().is_empty() {
-            None
-        } else {
-            Some(Expr::compile(&dlg.expression, &names).map_err(|e| e.display_with_position(&dlg.expression)))
-        };
+        let check = if dlg.expression.trim().is_empty() { None } else { Some(Expr::compile(&dlg.expression, &names).map_err(|e| e.display_with_position(&dlg.expression))) };
         let mut apply = false;
         let mut close = false;
         let resp = Modal::new(self.id.with("virtual_dialog")).show(ui.ctx(), |ui| {
@@ -161,13 +148,7 @@ impl GridFrame<'_> {
                 ui.add(TextEdit::singleline(&mut dlg.name).desired_width(300.0));
                 ui.end_row();
                 ui.label(tr("Expression"));
-                ui.add(
-                    TextEdit::multiline(&mut dlg.expression)
-                        .code_editor()
-                        .desired_rows(3)
-                        .desired_width(300.0)
-                        .hint_text("price * quantity"),
-                );
+                ui.add(TextEdit::multiline(&mut dlg.expression).code_editor().desired_rows(3).desired_width(300.0).hint_text("price * quantity"));
                 ui.end_row();
             });
             match &check {
@@ -188,10 +169,7 @@ impl GridFrame<'_> {
             });
             ui.horizontal(|ui| {
                 let ok = matches!(check, Some(Ok(_)));
-                if ui
-                    .add_enabled(ok, egui::Button::new(if dlg.editing.is_some() { tr("Save") } else { tr("Add") }))
-                    .clicked()
-                {
+                if ui.add_enabled(ok, egui::Button::new(if dlg.editing.is_some() { tr("Save") } else { tr("Add") })).clicked() {
                     apply = true;
                 }
                 if ui.button(tr("Cancel")).clicked() {

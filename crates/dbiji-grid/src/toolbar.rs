@@ -91,11 +91,7 @@ pub fn parse_order_by(text: &str, columns: &[String]) -> Result<Vec<SortKey>, St
         } else {
             (p, false)
         };
-        let unquoted = name
-            .strip_prefix('[')
-            .and_then(|n| n.strip_suffix(']'))
-            .or_else(|| name.strip_prefix('"').and_then(|n| n.strip_suffix('"')))
-            .unwrap_or(name);
+        let unquoted = name.strip_prefix('[').and_then(|n| n.strip_suffix(']')).or_else(|| name.strip_prefix('"').and_then(|n| n.strip_suffix('"'))).unwrap_or(name);
         let col = columns
             .iter()
             .position(|c| c == unquoted)
@@ -175,18 +171,9 @@ impl<'a> FilterBar<'a> {
             } else {
                 tr("Client side filter expression (see help)")
             });
-            let hint = if server {
-                tr("WHERE condition, e.g. status = 'open'")
-            } else {
-                tr("Filter, e.g. amount > 100 and city = 'Bandung'")
-            };
+            let hint = if server { tr("WHERE condition, e.g. status = 'open'") } else { tr("Filter, e.g. amount > 100 and city = 'Bandung'") };
             let width = flexible * 0.62;
-            let filter_resp = ui.add(
-                TextEdit::singleline(&mut state.filter_text)
-                    .hint_text(hint)
-                    .desired_width(width)
-                    .font(egui::TextStyle::Monospace),
-            );
+            let filter_resp = ui.add(TextEdit::singleline(&mut state.filter_text).hint_text(hint).desired_width(width).font(egui::TextStyle::Monospace));
             if filter_resp.changed() {
                 state.rt.filter_error = None;
             }
@@ -198,12 +185,7 @@ impl<'a> FilterBar<'a> {
             }
             history_button(ui, "filter_history", &state.filter_history.clone(), &mut state.filter_text, &mut apply);
             ui.label(tr("ORDER BY"));
-            let order_resp = ui.add(
-                TextEdit::singleline(&mut state.order_text)
-                    .hint_text(tr("column [DESC], …"))
-                    .desired_width(flexible * 0.38)
-                    .font(egui::TextStyle::Monospace),
-            );
+            let order_resp = ui.add(TextEdit::singleline(&mut state.order_text).hint_text(tr("column [DESC], …")).desired_width(flexible * 0.38).font(egui::TextStyle::Monospace));
             if order_resp.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
                 apply = true;
             }
@@ -216,12 +198,7 @@ impl<'a> FilterBar<'a> {
             }
             let mut client = grid.mode == DataMode::Client;
             let label = if client { tr("Client") } else { tr("Server") };
-            if ui
-                .toggle_value(&mut client, label)
-                .on_hover_text(tr(
-                    "Sort and filter fetched rows in DBiji (client) or re-run the query with WHERE / ORDER BY (server)",
-                ))
-                .changed()
+            if ui.toggle_value(&mut client, label).on_hover_text(tr("Sort and filter fetched rows in DBiji (client) or re-run the query with WHERE / ORDER BY (server)")).changed()
             {
                 grid.mode = if client { DataMode::Client } else { DataMode::Server };
             }
@@ -236,10 +213,7 @@ impl<'a> FilterBar<'a> {
             grid.sort.clear();
             match grid.mode {
                 DataMode::Client => model.clear_view(),
-                DataMode::Server => actions.push(GridAction::ServerQueryChanged {
-                    where_clause: Some(String::new()),
-                    order_by: Some(String::new()),
-                }),
+                DataMode::Server => actions.push(GridAction::ServerQueryChanged { where_clause: Some(String::new()), order_by: Some(String::new()) }),
             }
         }
         if apply {
@@ -247,10 +221,7 @@ impl<'a> FilterBar<'a> {
             ToolbarState::push_history(&mut state.order_history, &state.order_text.clone());
             match grid.mode {
                 DataMode::Server => {
-                    actions.push(GridAction::ServerQueryChanged {
-                        where_clause: Some(state.filter_text.trim().to_string()),
-                        order_by: Some(state.order_text.trim().to_string()),
-                    });
+                    actions.push(GridAction::ServerQueryChanged { where_clause: Some(state.filter_text.trim().to_string()), order_by: Some(state.order_text.trim().to_string()) });
                     grid.sort.clear();
                 }
                 DataMode::Client => {
@@ -258,9 +229,7 @@ impl<'a> FilterBar<'a> {
                     let filter = if state.filter_text.trim().is_empty() {
                         Ok(None)
                     } else {
-                        ClientFilter::parse(&state.filter_text, &names)
-                            .map(Some)
-                            .map_err(|e| e.display_with_position(&state.filter_text))
+                        ClientFilter::parse(&state.filter_text, &names).map(Some).map_err(|e| e.display_with_position(&state.filter_text))
                     };
                     let sort = parse_order_by(&state.order_text, &names);
                     match (filter, sort) {
@@ -269,10 +238,7 @@ impl<'a> FilterBar<'a> {
                             if !state.order_text.trim().is_empty() || !sort.is_empty() {
                                 grid.sort = sort.clone();
                             }
-                            let spec = crate::view::ViewSpec {
-                                sort: if state.order_text.trim().is_empty() { grid.sort.clone() } else { sort },
-                                filter,
-                            };
+                            let spec = crate::view::ViewSpec { sort: if state.order_text.trim().is_empty() { grid.sort.clone() } else { sort }, filter };
                             let ctx = ui.ctx().clone();
                             model.start_client_view(spec, Box::new(move || ctx.request_repaint()));
                         }
@@ -326,9 +292,7 @@ impl<'a> ResultToolbar<'a> {
                 None => icon::TIMER.to_string(),
                 Some(s) => format!("{} {}", icon::TIMER, auto_label(s)),
             };
-            let resp = ui
-                .add(Button::new(label).selected(state.auto_refresh_secs.is_some()))
-                .on_hover_text(tr("Auto refresh"));
+            let resp = ui.add(Button::new(label).selected(state.auto_refresh_secs.is_some())).on_hover_text(tr("Auto refresh"));
             Popup::menu(&resp).show(|ui| {
                 for choice in AUTO_REFRESH_CHOICES {
                     let text = match choice {
@@ -356,62 +320,41 @@ impl<'a> ResultToolbar<'a> {
             });
             ui.separator();
             let fetching = model.fetch.fetching;
-            if ui
-                .add_enabled(model.fetch.has_more && !fetching, Button::new(icon::CARET_DOUBLE_DOWN))
-                .on_hover_text(tr("Fetch next page"))
-                .clicked()
-            {
+            if ui.add_enabled(model.fetch.has_more && !fetching, Button::new(icon::CARET_DOUBLE_DOWN)).on_hover_text(tr("Fetch next page")).clicked() {
                 actions.push(GridAction::FetchMore);
             }
-            if ui
-                .add_enabled(model.fetch.has_more && !fetching, Button::new(icon::ARROW_LINE_DOWN))
-                .on_hover_text(tr("Fetch all rows"))
-                .clicked()
-            {
+            if ui.add_enabled(model.fetch.has_more && !fetching, Button::new(icon::ARROW_LINE_DOWN)).on_hover_text(tr("Fetch all rows")).clicked() {
                 actions.push(GridAction::FetchAll);
             }
-            if ui
-                .add_enabled(!model.fetch.counting, Button::new(icon::HASH))
-                .on_hover_text(tr("Calculate total row count"))
-                .clicked()
-            {
+            if ui.add_enabled(!model.fetch.counting, Button::new(icon::HASH)).on_hover_text(tr("Calculate total row count")).clicked() {
                 actions.push(GridAction::CountTotal);
             }
             ui.separator();
             let pending = model.pending_counts().total();
             let editable = model.is_editable();
-            let save_label =
-                if pending > 0 { format!("{} {}", icon::FLOPPY_DISK, pending) } else { icon::FLOPPY_DISK.to_string() };
-            if ui
-                .add_enabled(pending > 0, Button::new(save_label))
-                .on_hover_text(trf("Save {} pending change(s) (Cmd+S)", &[&pending]))
-                .clicked()
-            {
+            let save_label = if pending > 0 { format!("{} {}", icon::FLOPPY_DISK, pending) } else { icon::FLOPPY_DISK.to_string() };
+            if ui.add_enabled(pending > 0, Button::new(save_label)).on_hover_text(trf("Save {} pending change(s) (Cmd+S)", &[&pending])).clicked() {
                 actions.push(GridAction::SaveChanges);
             }
-            let cancel =
-                ui.add_enabled(pending > 0, Button::new(icon::X_CIRCLE)).on_hover_text(tr("Discard pending changes"));
+            let cancel = ui.add_enabled(pending > 0, Button::new(icon::X_CIRCLE)).on_hover_text(tr("Discard pending changes"));
             if cancel.clicked() {
                 state.rt.confirm_discard = true;
             }
             if state.rt.confirm_discard {
                 let mut open = true;
-                Popup::from_response(&cancel)
-                    .open_bool(&mut open)
-                    .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
-                    .show(|ui| {
-                        ui.label(trf("Discard {} pending change(s)?", &[&pending]));
-                        ui.horizontal(|ui| {
-                            if ui.button(tr("Discard")).clicked() {
-                                model.discard_changes();
-                                actions.push(GridAction::ChangesDiscarded);
-                                state.rt.confirm_discard = false;
-                            }
-                            if ui.button(tr("Keep")).clicked() {
-                                state.rt.confirm_discard = false;
-                            }
-                        });
+                Popup::from_response(&cancel).open_bool(&mut open).close_behavior(PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
+                    ui.label(trf("Discard {} pending change(s)?", &[&pending]));
+                    ui.horizontal(|ui| {
+                        if ui.button(tr("Discard")).clicked() {
+                            model.discard_changes();
+                            actions.push(GridAction::ChangesDiscarded);
+                            state.rt.confirm_discard = false;
+                        }
+                        if ui.button(tr("Keep")).clicked() {
+                            state.rt.confirm_discard = false;
+                        }
                     });
+                });
                 if !open {
                     state.rt.confirm_discard = false;
                 }
@@ -425,22 +368,14 @@ impl<'a> ResultToolbar<'a> {
             if ui.add_enabled(editable, Button::new(icon::ROWS_PLUS_BOTTOM)).on_hover_text(tr("Add row")).clicked() {
                 notify(grid::add_row(model, grid), &mut actions);
             }
-            if ui
-                .add_enabled(editable, Button::new(icon::COPY_SIMPLE))
-                .on_hover_text(tr("Duplicate selected rows"))
-                .clicked()
-            {
+            if ui.add_enabled(editable, Button::new(icon::COPY_SIMPLE)).on_hover_text(tr("Duplicate selected rows")).clicked() {
                 notify(grid::duplicate_selected(model, grid), &mut actions);
             }
             if ui.add_enabled(editable, Button::new(icon::TRASH)).on_hover_text(tr("Delete selected rows")).clicked() {
                 notify(grid::delete_selected(model, grid), &mut actions);
             }
             if !editable && let Some(r) = model.read_only_reason() {
-                ui.label(
-                    RichText::new(format!("{} {}", icon::LOCK_SIMPLE, r.short_label()))
-                        .color(ui.visuals().warn_fg_color),
-                )
-                .on_hover_text(r.message());
+                ui.label(RichText::new(format!("{} {}", icon::LOCK_SIMPLE, r.short_label())).color(ui.visuals().warn_fg_color)).on_hover_text(r.message());
             }
             ui.separator();
             if ui.button(icon::EXPORT).on_hover_text(tr("Export…")).clicked() {
@@ -454,9 +389,7 @@ impl<'a> ResultToolbar<'a> {
                 (ResultViewKind::Json, icon::BRACKETS_CURLY, tr("JSON")),
                 (ResultViewKind::Xml, icon::BRACKETS_ANGLE, tr("XML")),
             ] {
-                if ui.add(Button::new(ic).selected(state.view == kind)).on_hover_text(tip).clicked()
-                    && state.view != kind
-                {
+                if ui.add(Button::new(ic).selected(state.view == kind)).on_hover_text(tip).clicked() && state.view != kind {
                     state.view = kind;
                     actions.push(GridAction::SwitchView(kind));
                 }
@@ -555,10 +488,7 @@ mod tests {
         assert_eq!(duration_text(Duration::from_millis(120)), "120 ms");
         assert_eq!(duration_text(Duration::from_millis(1250)), "1.25 s");
         assert_eq!(duration_text(Duration::from_secs(125)), "2 min 5 s");
-        let mut m = ResultModel::from_rows(
-            vec![dbiji_core::ColumnMeta::new("a", "int", dbiji_core::DataKind::Int)],
-            vec![vec![dbiji_core::Value::Int(1)]; 1234],
-        );
+        let mut m = ResultModel::from_rows(vec![dbiji_core::ColumnMeta::new("a", "int", dbiji_core::DataKind::Int)], vec![vec![dbiji_core::Value::Int(1)]; 1234]);
         m.fetch.has_more = true;
         m.fetch.total_count = Some(5000);
         m.fetch.elapsed = Some(Duration::from_millis(42));

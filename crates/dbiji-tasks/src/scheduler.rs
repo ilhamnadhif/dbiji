@@ -89,14 +89,7 @@ impl Scheduler {
     }
 
     /// Scheduler with a custom clock (see [`crate::TokioClock`] for tests).
-    pub fn with_clock(
-        store: Arc<TaskStore>,
-        log: Arc<RunLog>,
-        executor: Arc<dyn TaskExecutor>,
-        options: SchedulerOptions,
-        handle: Handle,
-        clock: Arc<dyn Clock>,
-    ) -> Scheduler {
+    pub fn with_clock(store: Arc<TaskStore>, log: Arc<RunLog>, executor: Arc<dyn TaskExecutor>, options: SchedulerOptions, handle: Handle, clock: Arc<dyn Clock>) -> Scheduler {
         let engine = Engine::new(store, log, executor, clock, handle.clone());
         Scheduler {
             inner: Arc::new(Inner {
@@ -254,9 +247,10 @@ fn sync_tasks(inner: &Inner) {
 async fn run_loop(inner: Arc<Inner>) {
     let engine = Arc::clone(&inner.engine);
     if inner.options.mark_interrupted_on_start
-        && let Err(e) = engine.log.mark_interrupted(std::process::id()) {
-            tracing::warn!("cannot update the task run log: {e}");
-        }
+        && let Err(e) = engine.log.mark_interrupted(std::process::id())
+    {
+        tracing::warn!("cannot update the task run log: {e}");
+    }
     let mut changes = engine.store.subscribe();
     changes.borrow_and_update();
     initial_schedule(&inner);
@@ -297,12 +291,7 @@ async fn run_loop(inner: Arc<Inner>) {
         }
         let sleep_for = {
             let st = inner.state.lock();
-            st.next_due
-                .values()
-                .min()
-                .map(|t| (*t - now).to_std().unwrap_or(Duration::ZERO))
-                .unwrap_or(inner.options.max_sleep)
-                .min(inner.options.max_sleep)
+            st.next_due.values().min().map(|t| (*t - now).to_std().unwrap_or(Duration::ZERO)).unwrap_or(inner.options.max_sleep).min(inner.options.max_sleep)
         };
         tokio::select! {
             _ = inner.shutdown.cancelled() => break,

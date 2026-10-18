@@ -121,9 +121,7 @@ impl MetadataCache {
         if entry.is_not_loaded() {
             let s = session.clone();
             let schema = schema.clone();
-            *entry = Loadable::Loading(backend.spawn(async move {
-                s.lock().await.schema_snapshot(&schema, &SnapshotOptions::light()).await.map(Arc::new)
-            }));
+            *entry = Loadable::Loading(backend.spawn(async move { s.lock().await.schema_snapshot(&schema, &SnapshotOptions::light()).await.map(Arc::new) }));
         }
     }
 

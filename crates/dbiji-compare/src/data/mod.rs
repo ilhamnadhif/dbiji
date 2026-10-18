@@ -317,9 +317,7 @@ fn target_keys(job: &DataCompareJob) -> Vec<String> {
 }
 
 fn key_positions(meta: &[ColumnMeta], keys: &[String], side: &str) -> DbResult<Vec<usize>> {
-    keys.iter()
-        .map(|k| find_column(meta, k).ok_or_else(|| DbError::config(trf("Key column {} not found in the {} result", &[k, &side]))))
-        .collect()
+    keys.iter().map(|k| find_column(meta, k).ok_or_else(|| DbError::config(trf("Key column {} not found in the {} result", &[k, &side])))).collect()
 }
 
 fn layout(job: &DataCompareJob, src: &[ColumnMeta], tgt: &[ColumnMeta], diff: &mut DataDiff) -> DbResult<Layout> {
@@ -403,12 +401,7 @@ impl Engine<'_> {
     }
 
     fn key_where(&self, t_row: &Row) -> String {
-        self.lay
-            .tgt_keys
-            .iter()
-            .map(|&k| format!("{} = {}", self.dst.quote_ident(&self.tgt_meta[k].name), self.lit(k, cell(t_row, k))))
-            .collect::<Vec<_>>()
-            .join(" AND ")
+        self.lay.tgt_keys.iter().map(|&k| format!("{} = {}", self.dst.quote_ident(&self.tgt_meta[k].name), self.lit(k, cell(t_row, k)))).collect::<Vec<_>>().join(" AND ")
     }
 
     fn sample(&mut self, kind: RowDiffKind, key: Vec<Value>, source: Option<&Row>, target: Option<&Row>, columns: Vec<String>) {
@@ -517,10 +510,7 @@ async fn next_sorted(
                     return Err(DbError::query(trf("Duplicate key in the {} table: {}", &[&side, &key_text(&key)])));
                 }
                 Ordering::Less => {
-                    return Err(DbError::query(trf(
-                        "The {} rows are not sorted by key (use the hash join strategy): {}",
-                        &[&side, &key_text(&key)],
-                    )));
+                    return Err(DbError::query(trf("The {} rows are not sorted by key (use the hash join strategy): {}", &[&side, &key_text(&key)])));
                 }
             }
         }
@@ -664,12 +654,7 @@ async fn compare_open(
 }
 
 /// Read the source into memory keyed by the canonical key text.
-async fn load_source(
-    job: &DataCompareJob,
-    src: &mut Stream,
-    cancel: &CancellationToken,
-    skipped: &mut u64,
-) -> DbResult<HashMap<String, (Vec<Value>, Row)>> {
+async fn load_source(job: &DataCompareJob, src: &mut Stream, cancel: &CancellationToken, skipped: &mut u64) -> DbResult<HashMap<String, (Vec<Value>, Row)>> {
     let o = &job.options;
     let idx = key_positions(&src.meta, &job.source.key_columns, "source")?;
     let mut map: HashMap<String, (Vec<Value>, Row)> = HashMap::new();

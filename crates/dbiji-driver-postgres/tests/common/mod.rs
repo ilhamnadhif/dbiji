@@ -71,10 +71,7 @@ where
     let res = AssertUnwindSafe(body(params.clone(), schema.clone())).catch_unwind().await;
     let mut s = connect(params).await;
     // the schema itself plus the ones a test derived from its name (e.g. `<schema>_copy`)
-    let derived = query_all(&mut *s, &format!("SELECT nspname::text FROM pg_namespace WHERE nspname LIKE '{schema}\\_%'"), &[])
-        .await
-        .map(|r| r.1)
-        .unwrap_or_default();
+    let derived = query_all(&mut *s, &format!("SELECT nspname::text FROM pg_namespace WHERE nspname LIKE '{schema}\\_%'"), &[]).await.map(|r| r.1).unwrap_or_default();
     for name in derived.iter().filter_map(|r| r.first().and_then(|v| v.as_str()).map(str::to_string)) {
         let _ = execute_update(&mut *s, &format!("DROP SCHEMA IF EXISTS \"{name}\" CASCADE"), &[]).await;
     }
@@ -115,7 +112,6 @@ pub fn rss_kib() -> Option<u64> {
     let out = std::process::Command::new("ps").args(["-o", "rss=", "-p", &std::process::id().to_string()]).output().ok()?;
     String::from_utf8_lossy(&out.stdout).trim().parse().ok()
 }
-
 
 pub fn tls_dir() -> Option<std::path::PathBuf> {
     std::env::var("DBIJI_TEST_PG_TLS_DIR").ok().filter(|s| !s.is_empty()).map(std::path::PathBuf::from)

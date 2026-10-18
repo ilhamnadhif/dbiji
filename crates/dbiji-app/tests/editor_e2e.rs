@@ -46,9 +46,10 @@ fn servers() -> Vec<(&'static str, String)> {
     let mut out = vec![("sqlite", format!("sqlite://{}", file.display()))];
     for (name, var) in [("postgres", "DBIJI_TEST_PG"), ("cockroach", "DBIJI_TEST_COCKROACH"), ("mysql", "DBIJI_TEST_MYSQL"), ("mariadb", "DBIJI_TEST_MARIADB")] {
         if let Ok(url) = std::env::var(var)
-            && !url.trim().is_empty() {
-                out.push((name, url));
-            }
+            && !url.trim().is_empty()
+        {
+            out.push((name, url));
+        }
     }
     out
 }
@@ -65,9 +66,9 @@ impl H {
         if password.is_none() {
             cfg.auth = dbiji_core::config::AuthMethod::None;
         }
-    if password.is_none() {
-        cfg.auth = dbiji_core::config::AuthMethod::None;
-    }
+        if password.is_none() {
+            cfg.auth = dbiji_core::config::AuthMethod::None;
+        }
         let secrets = Arc::new(MemorySecrets::default());
         if let Some(pw) = &password {
             secrets.set(&secret_key(&cfg.id, SecretSlot::Password), pw).unwrap();
@@ -87,20 +88,7 @@ impl H {
         let services = Services::ephemeral(&dir);
         let settings = Settings::default();
         let (keymap, _) = Keymap::from_config(&settings.keymap, dbiji_app::keys::IS_MAC);
-        H {
-            backend,
-            ctx,
-            cm,
-            services,
-            settings,
-            keymap,
-            toasts: Toasts::default(),
-            ops: Operations::default(),
-            commands: Vec::new(),
-            time: 0.0,
-            id,
-            _dir: tempdir::Dir(dir),
-        }
+        H { backend, ctx, cm, services, settings, keymap, toasts: Toasts::default(), ops: Operations::default(), commands: Vec::new(), time: 0.0, id, _dir: tempdir::Dir(dir) }
     }
 
     fn with_cx<R>(&mut self, f: impl FnOnce(&mut AppContext) -> R) -> R {

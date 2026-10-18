@@ -427,11 +427,11 @@ impl DebuggerTab {
             }
         };
         self.pending_start = false;
-        if let Some(live) = cx.conns.live(&self.conn) {
-            if !live.driver.info().capabilities.debugger {
-                self.unsupported = Some(tr("The debugger is not available for this database.").to_string());
-                return;
-            }
+        if let Some(live) = cx.conns.live(&self.conn)
+            && !live.driver.info().capabilities.debugger
+        {
+            self.unsupported = Some(tr("The debugger is not available for this database.").to_string());
+            return;
         }
         let dialect = session.dialect();
         let args: Vec<String> = self.args.iter().map(|a| a.literal(dialect.as_ref())).collect();
@@ -540,10 +540,10 @@ impl DebuggerTab {
         let stopped = self.stopped();
         ui.horizontal(|ui| {
             ui.label(RichText::new(format!("{} {}", crate::nav::kind_icon(self.routine.kind), self.routine.display_path())).strong());
-            if let Loadable::Loaded(d) = &self.def {
-                if let Some(l) = &d.language {
-                    ui.weak(l.as_str());
-                }
+            if let Loadable::Loaded(d) = &self.def
+                && let Some(l) = &d.language
+            {
+                ui.weak(l.as_str());
             }
             ui.separator();
             let can_start = self.dbg.is_none() && !busy && self.unsupported.is_none();
@@ -768,7 +768,13 @@ impl DebuggerTab {
                 let dark = ui.visuals().dark_mode;
                 for m in &self.messages {
                     let t = RichText::new(m).monospace();
-                    let t = if m.starts_with("ERROR") { t.color(crate::theme::error_color(dark)) } else if m.starts_with("WARNING") { t.color(crate::theme::warning_color(dark)) } else { t };
+                    let t = if m.starts_with("ERROR") {
+                        t.color(crate::theme::error_color(dark))
+                    } else if m.starts_with("WARNING") {
+                        t.color(crate::theme::warning_color(dark))
+                    } else {
+                        t
+                    };
                     ui.add(egui::Label::new(t).extend());
                 }
             });

@@ -53,10 +53,7 @@ pub fn bind(sql: &str, params: &[Value], dialect: &dyn Dialect) -> DbResult<Stri
             }
             '?' => {
                 let Some(v) = params.get(used) else {
-                    return Err(DbError::config(format!(
-                        "The statement has more '?' placeholders than the {} bound parameters",
-                        params.len()
-                    )));
+                    return Err(DbError::config(format!("The statement has more '?' placeholders than the {} bound parameters", params.len())));
                 };
                 out.push_str(&dialect.literal(v, None));
                 used += 1;
@@ -65,10 +62,7 @@ pub fn bind(sql: &str, params: &[Value], dialect: &dyn Dialect) -> DbResult<Stri
         }
     }
     if used != params.len() {
-        return Err(DbError::config(format!(
-            "The statement has {used} '?' placeholders but {} parameters were bound",
-            params.len()
-        )));
+        return Err(DbError::config(format!("The statement has {used} '?' placeholders but {} parameters were bound", params.len())));
     }
     Ok(out)
 }
@@ -91,12 +85,7 @@ mod tests {
     #[test]
     fn binds_values() {
         let d = ClickHouseDialect::new();
-        let sql = bind(
-            "SELECT * FROM t WHERE a = ? AND b = '?' AND `c?` = ? -- ?\n AND d = ? /* ? */",
-            &[Value::Int(1), Value::text("it's"), Value::Null],
-            &d,
-        )
-        .unwrap();
+        let sql = bind("SELECT * FROM t WHERE a = ? AND b = '?' AND `c?` = ? -- ?\n AND d = ? /* ? */", &[Value::Int(1), Value::text("it's"), Value::Null], &d).unwrap();
         assert_eq!(sql, "SELECT * FROM t WHERE a = 1 AND b = '?' AND `c?` = 'it\\'s' -- ?\n AND d = NULL /* ? */");
     }
 

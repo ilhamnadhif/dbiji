@@ -213,10 +213,10 @@ impl TabView for ChangePasswordTab {
             if busy {
                 ui.spinner();
                 ui.ctx().request_repaint_after(Duration::from_millis(100));
-            } else if let Some(p) = &problem {
-                if !self.new_password.is_empty() || !self.confirm.is_empty() || p != tr("Enter the new password.") {
-                    ui.label(RichText::new(p).color(crate::theme::warning_color(ui.visuals().dark_mode)));
-                }
+            } else if let Some(p) = &problem
+                && (!self.new_password.is_empty() || !self.confirm.is_empty() || p != tr("Enter the new password."))
+            {
+                ui.label(RichText::new(p).color(crate::theme::warning_color(ui.visuals().dark_mode)));
             }
         });
         let dark = ui.visuals().dark_mode;

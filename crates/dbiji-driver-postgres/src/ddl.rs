@@ -140,12 +140,7 @@ fn fk_clause(fk: &ForeignKeyDef) -> String {
     if let Some(n) = &fk.name {
         s.push_str(&format!("CONSTRAINT {} ", quote_ident(n)));
     }
-    s.push_str(&format!(
-        "FOREIGN KEY ({}) REFERENCES {} ({})",
-        ident_list(&fk.columns),
-        qualified(fk.ref_schema.as_deref(), &fk.ref_table),
-        ident_list(&fk.ref_columns)
-    ));
+    s.push_str(&format!("FOREIGN KEY ({}) REFERENCES {} ({})", ident_list(&fk.columns), qualified(fk.ref_schema.as_deref(), &fk.ref_table), ident_list(&fk.ref_columns)));
     if fk.on_update != FkAction::NoAction {
         s.push_str(&format!(" ON UPDATE {}", fk.on_update.sql()));
     }
@@ -258,10 +253,7 @@ impl PgDdl {
                 }
                 for label in &from.elements {
                     if !to.elements.contains(label) {
-                        out.push(format!(
-                            "-- enum label {} of {name} cannot be removed without recreating the type",
-                            string_literal(label)
-                        ));
+                        out.push(format!("-- enum label {} of {name} cannot be removed without recreating the type", string_literal(label)));
                     }
                 }
             }
@@ -373,11 +365,7 @@ impl DdlGenerator for PgDdl {
                     body.push(fk_clause(fk));
                 }
             }
-            let mut s = if body.is_empty() {
-                format!("{head} {name} ()")
-            } else {
-                format!("{head} {name} (\n    {}\n)", body.join(",\n    "))
-            };
+            let mut s = if body.is_empty() { format!("{head} {name} ()") } else { format!("{head} {name} (\n    {}\n)", body.join(",\n    ")) };
             if let Some(inh) = t.options.get("inherits").filter(|i| !i.is_empty()) {
                 s.push_str(&format!(" INHERITS ({inh})"));
             }
@@ -439,11 +427,7 @@ impl DdlGenerator for PgDdl {
             if from.schema != to.schema
                 && let Some(s) = &to.schema
             {
-                out.push(format!(
-                    "ALTER TABLE {} SET SCHEMA {}",
-                    qualified(from.schema.as_deref(), &to.name),
-                    quote_ident(s)
-                ));
+                out.push(format!("ALTER TABLE {} SET SCHEMA {}", qualified(from.schema.as_deref(), &to.name), quote_ident(s)));
             }
         }
         let t = tname(to);
@@ -504,10 +488,7 @@ impl DdlGenerator for PgDdl {
             if fc.generated != tc.generated {
                 match (&fc.generated, &tc.generated) {
                     (Some(_), None) => out.push(format!("ALTER TABLE {t} ALTER COLUMN {col} DROP EXPRESSION")),
-                    (_, Some(g)) => out.push(format!(
-                        "ALTER TABLE {t} ALTER COLUMN {col} SET EXPRESSION AS ({})",
-                        g.strip_suffix(" VIRTUAL").unwrap_or(g)
-                    )),
+                    (_, Some(g)) => out.push(format!("ALTER TABLE {t} ALTER COLUMN {col} SET EXPRESSION AS ({})", g.strip_suffix(" VIRTUAL").unwrap_or(g))),
                     (None, None) => {}
                 }
             }
@@ -539,10 +520,7 @@ impl DdlGenerator for PgDdl {
                 out.push(format!("ALTER TABLE {t} ALTER COLUMN {col} SET DEFAULT {d}"));
             }
             if fc.nullable != tc.nullable {
-                out.push(format!(
-                    "ALTER TABLE {t} ALTER COLUMN {col} {} NOT NULL",
-                    if tc.nullable { "DROP" } else { "SET" }
-                ));
+                out.push(format!("ALTER TABLE {t} ALTER COLUMN {col} {} NOT NULL", if tc.nullable { "DROP" } else { "SET" }));
             }
             match (&from_identity, &to_identity) {
                 (None, Some(id)) => {
@@ -593,11 +571,7 @@ impl DdlGenerator for PgDdl {
             match from.triggers.iter().find(|x| x.name == tr.name) {
                 Some(old) if old.definition == tr.definition => {
                     if old.enabled != tr.enabled {
-                        out.push(format!(
-                            "ALTER TABLE {t} {} TRIGGER {}",
-                            if tr.enabled { "ENABLE" } else { "DISABLE" },
-                            quote_ident(&tr.name)
-                        ));
+                        out.push(format!("ALTER TABLE {t} {} TRIGGER {}", if tr.enabled { "ENABLE" } else { "DISABLE" }, quote_ident(&tr.name)));
                     }
                     if old.comment != tr.comment {
                         out.push(comment_sql("TRIGGER", &format!("{} ON {t}", quote_ident(&tr.name)), tr.comment.as_deref()));
@@ -616,11 +590,7 @@ impl DdlGenerator for PgDdl {
             let old: Vec<String> = opt(from, "with").split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
             let new: Vec<String> = opt(to, "with").split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
             let new_keys: Vec<&str> = new.iter().map(|s| s.split('=').next().unwrap_or("").trim()).collect();
-            let reset: Vec<&str> = old
-                .iter()
-                .map(|s| s.split('=').next().unwrap_or("").trim())
-                .filter(|k| !new_keys.contains(k))
-                .collect();
+            let reset: Vec<&str> = old.iter().map(|s| s.split('=').next().unwrap_or("").trim()).filter(|k| !new_keys.contains(k)).collect();
             if !reset.is_empty() {
                 out.push(format!("ALTER TABLE {t} RESET ({})", reset.join(", ")));
             }
@@ -677,12 +647,7 @@ impl DdlGenerator for PgDdl {
                 return replace_on_target(&def, &tname(table)).unwrap_or(def);
             }
         }
-        let mut s = format!(
-            "CREATE {}INDEX {} ON {}",
-            if index.unique { "UNIQUE " } else { "" },
-            quote_ident(&index.name),
-            tname(table)
-        );
+        let mut s = format!("CREATE {}INDEX {} ON {}", if index.unique { "UNIQUE " } else { "" }, quote_ident(&index.name), tname(table));
         if let Some(m) = index.method.as_deref().filter(|m| !m.is_empty() && !m.eq_ignore_ascii_case("btree")) {
             s.push_str(&format!(" USING {}", quote_ident(&m.to_ascii_lowercase())));
         }
@@ -690,11 +655,7 @@ impl DdlGenerator for PgDdl {
             .columns
             .iter()
             .map(|c| {
-                let mut x = if c.is_expression {
-                    if is_wrapped(&c.name) { c.name.clone() } else { format!("({})", c.name) }
-                } else {
-                    quote_ident(&c.name)
-                };
+                let mut x = if c.is_expression { if is_wrapped(&c.name) { c.name.clone() } else { format!("({})", c.name) } } else { quote_ident(&c.name) };
                 if c.descending {
                     x.push_str(" DESC");
                 }
@@ -748,10 +709,7 @@ impl DdlGenerator for PgDdl {
     }
 
     fn drop_foreign_key(&self, table: &TableDef, fk: &ForeignKeyDef) -> String {
-        let name = fk
-            .name
-            .clone()
-            .unwrap_or_else(|| format!("{}_{}_fkey", table.name, fk.columns.join("_")));
+        let name = fk.name.clone().unwrap_or_else(|| format!("{}_{}_fkey", table.name, fk.columns.join("_")));
         format!("ALTER TABLE {} DROP CONSTRAINT {}", tname(table), quote_ident(&name))
     }
 
@@ -788,12 +746,8 @@ impl DdlGenerator for PgDdl {
         let name = qualified(view.schema.as_deref(), &view.name);
         let select = strip_semicolon(view.definition.trim());
         let mut out = Vec::new();
-        let with_opts: Vec<String> = view
-            .options
-            .iter()
-            .filter(|(k, _)| !matches!(k.as_str(), "check_option" | "tablespace" | "using" | "populated"))
-            .map(|(k, v)| format!("{k}={v}"))
-            .collect();
+        let with_opts: Vec<String> =
+            view.options.iter().filter(|(k, _)| !matches!(k.as_str(), "check_option" | "tablespace" | "using" | "populated")).map(|(k, v)| format!("{k}={v}")).collect();
         if view.materialized {
             if or_replace {
                 out.push(format!("DROP MATERIALIZED VIEW IF EXISTS {name}"));
@@ -837,11 +791,7 @@ impl DdlGenerator for PgDdl {
     }
 
     fn drop_view(&self, view: &ViewDef) -> String {
-        format!(
-            "DROP {}VIEW {}",
-            if view.materialized { "MATERIALIZED " } else { "" },
-            qualified(view.schema.as_deref(), &view.name)
-        )
+        format!("DROP {}VIEW {}", if view.materialized { "MATERIALIZED " } else { "" }, qualified(view.schema.as_deref(), &view.name))
     }
 
     fn create_sequence(&self, seq: &SequenceDef) -> String {
@@ -871,11 +821,7 @@ impl DdlGenerator for PgDdl {
     fn alter_sequence(&self, from: &SequenceDef, to: &SequenceDef) -> Vec<String> {
         let mut out = Vec::new();
         if from.name != to.name {
-            out.push(format!(
-                "ALTER SEQUENCE {} RENAME TO {}",
-                qualified(from.schema.as_deref(), &from.name),
-                quote_ident(&to.name)
-            ));
+            out.push(format!("ALTER SEQUENCE {} RENAME TO {}", qualified(from.schema.as_deref(), &from.name), quote_ident(&to.name)));
         }
         let name = qualified(to.schema.as_deref(), &to.name);
         let mut parts = Vec::new();
@@ -936,11 +882,7 @@ impl DdlGenerator for PgDdl {
                 Some(ObjectKind::Aggregate) => "AGGREGATE",
                 _ => "FUNCTION",
             };
-            out.push(comment_sql(
-                what,
-                &format!("{}({})", qualified(routine.schema.as_deref(), &routine.name), routine.arguments),
-                Some(c),
-            ));
+            out.push(comment_sql(what, &format!("{}({})", qualified(routine.schema.as_deref(), &routine.name), routine.arguments), Some(c)));
         }
         out
     }
@@ -1095,8 +1037,7 @@ pub(crate) fn map_type(source: DbKind, data_type: &str, kind: DataKind) -> Strin
             "json" => "jsonb".into(),
             "uuid" => "uuid".into(),
             "inet4" | "inet6" => "inet".into(),
-            "geometry" | "point" | "linestring" | "polygon" | "multipoint" | "multilinestring"
-            | "multipolygon" | "geometrycollection" => "geometry".into(),
+            "geometry" | "point" | "linestring" | "polygon" | "multipoint" | "multilinestring" | "multipolygon" | "geometrycollection" => "geometry".into(),
             _ => default_type_for(kind).to_string(),
         },
         DbKind::Sqlite => {
@@ -1215,11 +1156,7 @@ fn map_clickhouse(raw: &str, kind: DataKind) -> String {
     match base.as_str() {
         "nullable" | "lowcardinality" | "simpleaggregatefunction" => match inner_raw {
             Some(i) => {
-                let inner = if base == "simpleaggregatefunction" {
-                    i.split_once(',').map(|(_, x)| x.trim().to_string()).unwrap_or(i)
-                } else {
-                    i
-                };
+                let inner = if base == "simpleaggregatefunction" { i.split_once(',').map(|(_, x)| x.trim().to_string()).unwrap_or(i) } else { i };
                 map_clickhouse(&inner, DataKind::guess_from_type_name(&inner))
             }
             None => default_type_for(kind).to_string(),
@@ -1241,7 +1178,11 @@ fn map_clickhouse(raw: &str, kind: DataKind) -> String {
         "uuid" => "uuid".into(),
         "date" | "date32" => "date".into(),
         "datetime" => {
-            if args.is_some() { "timestamptz".into() } else { "timestamp".into() }
+            if args.is_some() {
+                "timestamptz".into()
+            } else {
+                "timestamp".into()
+            }
         }
         "datetime64" => {
             let parts: Vec<String> = args.unwrap_or_default().split(',').map(|s| s.trim().to_string()).collect();
@@ -1375,11 +1316,7 @@ mod tests {
         t.columns.push(ColumnDef::new("id", "bigint").not_null());
         t.columns.push(ColumnDef::new("created", "date").not_null());
         t.partitioning = Some(PartitioningDef { strategy: "RANGE".into(), key: "created".into() });
-        t.partitions.push(PartitionDef {
-            name: "events_2024".into(),
-            bound: "FOR VALUES FROM ('2024-01-01') TO ('2025-01-01')".into(),
-            row_estimate: None,
-        });
+        t.partitions.push(PartitionDef { name: "events_2024".into(), bound: "FOR VALUES FROM ('2024-01-01') TO ('2025-01-01')".into(), row_estimate: None });
         t.partitions.push(PartitionDef { name: "events_default".into(), bound: "DEFAULT".into(), row_estimate: None });
         t.options.insert("with".into(), "fillfactor=70".into());
         let s = ddl.create_table(&t, true);
@@ -1436,10 +1373,7 @@ mod tests {
         to.columns[0].auto_increment = true;
         to.columns[0].nullable = false;
         let s = ddl.alter_table(&from, &to, &[]);
-        assert_eq!(s, vec![
-            "ALTER TABLE t ALTER COLUMN id SET NOT NULL".to_string(),
-            "ALTER TABLE t ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY".to_string(),
-        ]);
+        assert_eq!(s, vec!["ALTER TABLE t ALTER COLUMN id SET NOT NULL".to_string(), "ALTER TABLE t ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY".to_string(),]);
         let mut always = to.clone();
         always.columns[0].default = Some("GENERATED ALWAYS AS IDENTITY".into());
         let s = ddl.alter_table(&to, &always, &[]);
@@ -1461,7 +1395,8 @@ mod tests {
         assert_eq!(s[1], "CREATE MATERIALIZED VIEW s.mv AS\nSELECT 1");
         assert_eq!(ddl.drop_view(&mv), "DROP MATERIALIZED VIEW s.mv");
 
-        let seq = SequenceDef { schema: Some("s".into()), name: "q".into(), data_type: Some("integer".into()), increment: Some(5), start: Some(10), cycle: true, ..Default::default() };
+        let seq =
+            SequenceDef { schema: Some("s".into()), name: "q".into(), data_type: Some("integer".into()), increment: Some(5), start: Some(10), cycle: true, ..Default::default() };
         assert_eq!(ddl.create_sequence(&seq), "CREATE SEQUENCE s.q AS integer INCREMENT BY 5 START WITH 10 CYCLE");
         let mut seq2 = seq.clone();
         seq2.increment = Some(1);
@@ -1484,19 +1419,18 @@ mod tests {
         let e1 = TypeDef { schema: Some("s".into()), name: "mood".into(), category: "enum".into(), elements: vec!["sad".into(), "happy".into()], ..Default::default() };
         let mut e2 = e1.clone();
         e2.elements = vec!["sad".into(), "ok".into(), "happy".into(), "great".into()];
-        assert_eq!(ddl.alter_type(&e1, &e2), vec![
-            "ALTER TYPE s.mood ADD VALUE IF NOT EXISTS 'ok' AFTER 'sad'".to_string(),
-            "ALTER TYPE s.mood ADD VALUE IF NOT EXISTS 'great' AFTER 'happy'".to_string(),
-        ]);
+        assert_eq!(
+            ddl.alter_type(&e1, &e2),
+            vec!["ALTER TYPE s.mood ADD VALUE IF NOT EXISTS 'ok' AFTER 'sad'".to_string(), "ALTER TYPE s.mood ADD VALUE IF NOT EXISTS 'great' AFTER 'happy'".to_string(),]
+        );
         assert_eq!(ddl.drop_type(&e1).unwrap(), "DROP TYPE s.mood");
         let c1 = TypeDef { schema: None, name: "pt".into(), category: "composite".into(), elements: vec!["x integer".into(), "y integer".into()], ..Default::default() };
         let mut c2 = c1.clone();
         c2.elements = vec!["x bigint".into(), "z text".into()];
-        assert_eq!(ddl.alter_type(&c1, &c2), vec![
-            "ALTER TYPE pt ALTER ATTRIBUTE x TYPE bigint".to_string(),
-            "ALTER TYPE pt DROP ATTRIBUTE y".to_string(),
-            "ALTER TYPE pt ADD ATTRIBUTE z text".to_string(),
-        ]);
+        assert_eq!(
+            ddl.alter_type(&c1, &c2),
+            vec!["ALTER TYPE pt ALTER ATTRIBUTE x TYPE bigint".to_string(), "ALTER TYPE pt DROP ATTRIBUTE y".to_string(), "ALTER TYPE pt ADD ATTRIBUTE z text".to_string(),]
+        );
     }
 
     #[test]

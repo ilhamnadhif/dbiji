@@ -3,8 +3,8 @@
 //! (`auto_generators`) and can be changed per column.
 
 use super::{
-    MessageLog, Running, combo, connection_name, error_text, next_uid, not_connected, number_edit, on_error_options,
-    opt_number, parsed_edit, progress_ui, reload_table_def, section, table_def_of,
+    MessageLog, Running, combo, connection_name, error_text, next_uid, not_connected, number_edit, on_error_options, opt_number, parsed_edit, progress_ui, reload_table_def,
+    section, table_def_of,
 };
 use crate::command::AppCommand;
 use crate::cx::AppContext;
@@ -209,10 +209,12 @@ impl MockDataTab {
             });
             ui.end_row();
             ui.label(tr("Existing rows"));
-            combo(ui, ("mock_mode", id), &mut c.mode, &[
-                (MockMode::Append, tr("Keep them and add the new rows").to_string()),
-                (MockMode::TruncateFirst, tr("Delete them first").to_string()),
-            ]);
+            combo(
+                ui,
+                ("mock_mode", id),
+                &mut c.mode,
+                &[(MockMode::Append, tr("Keep them and add the new rows").to_string()), (MockMode::TruncateFirst, tr("Delete them first").to_string())],
+            );
             ui.end_row();
             ui.label(tr("On error"));
             combo(ui, ("mock_err", id), &mut c.on_error, &on_error_options());
@@ -324,11 +326,7 @@ impl MockDataTab {
 }
 
 fn describe(s: &MockSummary) -> String {
-    if s.rows_failed > 0 {
-        trf("{} rows generated, {} rejected", &[&s.rows_inserted, &s.rows_failed])
-    } else {
-        trf("{} rows generated", &[&s.rows_inserted])
-    }
+    if s.rows_failed > 0 { trf("{} rows generated, {} rejected", &[&s.rows_inserted, &s.rows_failed]) } else { trf("{} rows generated", &[&s.rows_inserted]) }
 }
 
 /// Generators offered for a column, with their default settings.
@@ -347,10 +345,7 @@ fn choices(col: &ColumnDef, auto: Option<&GeneratorKind>, current: &GeneratorKin
         (GeneratorKind::FloatRange { min: 0.0, max: 1000.0, decimals: 2 }, tr("Floating point numbers").to_string()),
         (GeneratorKind::Bool { true_ratio: 0.5 }, tr("True / false").to_string()),
         (GeneratorKind::DateRange { from: five_years, to: today }, tr("Dates").to_string()),
-        (
-            GeneratorKind::DateTimeRange { from: now - ChronoDuration::days(730), to: now },
-            tr("Timestamps").to_string(),
-        ),
+        (GeneratorKind::DateTimeRange { from: now - ChronoDuration::days(730), to: now }, tr("Timestamps").to_string()),
         (GeneratorKind::Uuid, tr("UUID").to_string()),
         (GeneratorKind::Text { min: 5.min(limit), max: limit.min(40) }, tr("Lorem ipsum text").to_string()),
         (GeneratorKind::Word, tr("Word").to_string()),
@@ -394,16 +389,9 @@ fn text_limit(c: &ColumnDef) -> Option<usize> {
     inner.split(',').next()?.trim().parse::<usize>().ok().filter(|n| *n > 0)
 }
 
-fn generator_combo(
-    ui: &mut Ui,
-    id: impl std::hash::Hash + std::fmt::Debug,
-    col: &ColumnDef,
-    value: &mut GeneratorKind,
-    auto: Option<&GeneratorKind>,
-) {
+fn generator_combo(ui: &mut Ui, id: impl std::hash::Hash + std::fmt::Debug, col: &ColumnDef, value: &mut GeneratorKind, auto: Option<&GeneratorKind>) {
     let options = choices(col, auto, value);
-    let current =
-        options.iter().find(|(g, _)| discriminant(g) == discriminant(value)).map(|(_, l)| l.clone()).unwrap_or_default();
+    let current = options.iter().find(|(g, _)| discriminant(g) == discriminant(value)).map(|(_, l)| l.clone()).unwrap_or_default();
     egui::ComboBox::from_id_salt(id).selected_text(current).width(190.0).height(420.0).show_ui(ui, |ui| {
         for (g, label) in options {
             let selected = discriminant(&g) == discriminant(value);
@@ -502,8 +490,7 @@ fn params_ui(ui: &mut Ui, g: &mut GeneratorKind) {
             }
         }
         GeneratorKind::Pattern { pattern } => {
-            ui.add(egui::TextEdit::singleline(pattern).desired_width(140.0))
-                .on_hover_text(tr("# digit, ? upper case letter, * letter or digit, \\ escapes the next character"));
+            ui.add(egui::TextEdit::singleline(pattern).desired_width(140.0)).on_hover_text(tr("# digit, ? upper case letter, * letter or digit, \\ escapes the next character"));
         }
         GeneratorKind::ForeignKey { table, column, .. } => {
             ui.weak(format!("{}.{column}", table.display_path()));

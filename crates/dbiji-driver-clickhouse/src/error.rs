@@ -142,9 +142,7 @@ fn syntax_position(message: &str) -> Option<usize> {
 pub fn transport_error(e: ureq::Error, url_for_message: &str) -> DbError {
     match e {
         ureq::Error::Timeout(t) => DbError::timeout(format!("Request to {url_for_message} timed out ({t})")),
-        ureq::Error::HostNotFound => {
-            DbError::connection(format!("Host not found for {url_for_message}"))
-        }
+        ureq::Error::HostNotFound => DbError::connection(format!("Host not found for {url_for_message}")),
         ureq::Error::ConnectionFailed => DbError::connection(format!("Could not connect to {url_for_message}")),
         ureq::Error::Io(io) => {
             let kind = match io.kind() {
@@ -181,10 +179,7 @@ mod tests {
 
     #[test]
     fn to_db_error() {
-        let err = exception_to_error(
-            "Code: 60. DB::Exception: Unknown table expression identifier 'nope' in scope SELECT * FROM nope. (UNKNOWN_TABLE) (version 24.3.1.1)",
-            None,
-        );
+        let err = exception_to_error("Code: 60. DB::Exception: Unknown table expression identifier 'nope' in scope SELECT * FROM nope. (UNKNOWN_TABLE) (version 24.3.1.1)", None);
         assert_eq!(err.kind, ErrorKind::Query);
         assert_eq!(err.code.as_deref(), Some("60 UNKNOWN_TABLE"));
         assert!(err.message.contains("'nope'"));

@@ -3,19 +3,19 @@
 
 pub mod admin;
 pub mod ai;
+pub mod compare;
 pub mod data_compare;
 pub mod dbtools;
-pub mod search;
-pub mod table_designer;
-pub mod tasks;
-pub mod transfer;
-pub mod compare;
 pub mod er;
 pub mod history;
 pub mod object;
 pub mod query_builder;
+pub mod search;
 pub mod settings;
 pub mod sql_editor;
+pub mod table_designer;
+pub mod tasks;
+pub mod transfer;
 pub mod welcome;
 
 use crate::cx::AppContext;

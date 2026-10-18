@@ -797,9 +797,9 @@ impl Worker {
         for span in &statements {
             let kind = lexer::classify(span.text);
             let fail = |w: &Worker, e: DbError, reply: Reply<Option<ResultHeader>>| {
-                let _ = reply.send(Err(e));
                 w.end_command();
                 w.sync_state();
+                let _ = reply.send(Err(e));
             };
             let mut stmt = match self.conn.prepare(span.text) {
                 Ok(s) => s,

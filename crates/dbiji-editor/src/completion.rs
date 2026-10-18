@@ -367,6 +367,14 @@ pub(crate) fn show_popup(
                             };
                             let (rect, resp) =
                                 ui.allocate_exact_size(vec2(width, row_h), Sense::CLICK);
+                            resp.widget_info(|| {
+                                egui::WidgetInfo::selected(
+                                    egui::WidgetType::SelectableLabel,
+                                    true,
+                                    i == selected,
+                                    &entry.label,
+                                )
+                            });
                             if i == selected {
                                 ui.painter().rect_filled(rect, 3.0, theme.selection);
                             } else if resp.hovered() {

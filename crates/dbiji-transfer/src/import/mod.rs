@@ -156,13 +156,7 @@ impl ImportMapping {
                     skip: c.generated.is_some(),
                     nullable: c.nullable,
                 },
-                None => ColumnMapping {
-                    source_index: i,
-                    target_name: s.name.clone(),
-                    skip: true,
-                    nullable: true,
-                    ..Default::default()
-                },
+                None => ColumnMapping { source_index: i, target_name: s.name.clone(), skip: true, nullable: true, ..Default::default() },
             })
             .collect();
         let target = ObjectRef::table(table.schema.clone(), table.name.clone());
@@ -221,13 +215,7 @@ pub async fn run_import(
     Ok(summary)
 }
 
-async fn import_rows(
-    source: &mut dyn RowSource,
-    session: &mut dyn Session,
-    mapping: &ImportMapping,
-    progress: &Progress,
-    cancel: &CancellationToken,
-) -> DbResult<ImportSummary> {
+async fn import_rows(source: &mut dyn RowSource, session: &mut dyn Session, mapping: &ImportMapping, progress: &Progress, cancel: &CancellationToken) -> DbResult<ImportSummary> {
     let dialect = session.dialect();
     let src_cols = source.columns().to_vec();
     let active: Vec<&ColumnMapping> = mapping.columns.iter().filter(|c| !c.skip).collect();
@@ -257,15 +245,7 @@ async fn import_rows(
     }
     let kinds: Vec<DataKind> = active
         .iter()
-        .map(|c| {
-            c.target_kind.unwrap_or_else(|| {
-                if c.target_type.trim().is_empty() {
-                    src_cols[c.source_index].kind
-                } else {
-                    dialect.type_kind(&c.target_type)
-                }
-            })
-        })
+        .map(|c| c.target_kind.unwrap_or_else(|| if c.target_type.trim().is_empty() { src_cols[c.source_index].kind } else { dialect.type_kind(&c.target_type) }))
         .collect();
     let item = mapping.target.display_path();
     if let Some(total) = source.total_rows() {
@@ -276,11 +256,7 @@ async fn import_rows(
     if mapping.create_table {
         let mut def = TableDef::new(mapping.target.schema.clone(), mapping.target.name.clone());
         for (i, (c, kind)) in active.iter().zip(&kinds).enumerate() {
-            let data_type = if c.target_type.trim().is_empty() {
-                dialect.ddl().default_type_for(*kind)
-            } else {
-                c.target_type.clone()
-            };
+            let data_type = if c.target_type.trim().is_empty() { dialect.ddl().default_type_for(*kind) } else { c.target_type.clone() };
             def.columns.push(ColumnDef {
                 name: c.target_name.clone(),
                 data_type,
@@ -309,29 +285,15 @@ async fn import_rows(
             .key_columns
             .iter()
             .map(|k| {
-                active
-                    .iter()
-                    .position(|c| c.target_name.eq_ignore_ascii_case(k))
-                    .ok_or_else(|| DbError::config(format!("Key column '{k}' is not among the imported columns")))
+                active.iter().position(|c| c.target_name.eq_ignore_ascii_case(k)).ok_or_else(|| DbError::config(format!("Key column '{k}' is not among the imported columns")))
             })
             .collect::<DbResult<_>>()?
     } else {
         Vec::new()
     };
-    let target = TableTarget {
-        table_sql: dialect.qualified_ref(&mapping.target),
-        columns: active.iter().map(|c| dialect.quote_ident(&c.target_name)).collect(),
-        key_index,
-    };
+    let target = TableTarget { table_sql: dialect.qualified_ref(&mapping.target), columns: active.iter().map(|c| dialect.quote_ident(&c.target_name)).collect(), key_index };
     let handle = session.cancel_handle();
-    let mut writer = BatchWriter::new(
-        session,
-        target,
-        mapping.transaction,
-        mapping.on_error,
-        mapping.rows_per_statement,
-        item.clone(),
-    );
+    let mut writer = BatchWriter::new(session, target, mapping.transaction, mapping.on_error, mapping.rows_per_statement, item.clone());
     writer.begin().await?;
     let outcome = async {
         if mapping.mode == ImportMode::TruncateFirst {
@@ -460,9 +422,7 @@ impl ImportSourceConfig {
     pub async fn open(&self) -> DbResult<Box<dyn RowSource>> {
         Ok(match self {
             ImportSourceConfig::Csv { path, options } => Box::new(csv::CsvSource::open(path, options.clone())?),
-            ImportSourceConfig::Xlsx { path, options } => {
-                Box::new(xlsx::XlsxSource::open(path, options.clone()).await?)
-            }
+            ImportSourceConfig::Xlsx { path, options } => Box::new(xlsx::XlsxSource::open(path, options.clone()).await?),
             ImportSourceConfig::Xml { path, options } => Box::new(xml::XmlSource::open(path, options.clone())?),
             ImportSourceConfig::Json { path, options } => Box::new(json::JsonSource::open(path, options.clone())?),
         })
@@ -487,12 +447,7 @@ pub struct ImportJob {
 
 /// Run a saved import: open the file and a session, complete an automatic
 /// mapping when needed, and import.
-pub async fn run_import_job(
-    job: ImportJob,
-    factory: Arc<dyn SessionFactory>,
-    progress: Arc<Progress>,
-    cancel: CancellationToken,
-) -> DbResult<ImportSummary> {
+pub async fn run_import_job(job: ImportJob, factory: Arc<dyn SessionFactory>, progress: Arc<Progress>, cancel: CancellationToken) -> DbResult<ImportSummary> {
     let source = job.source.open().await?;
     let mut source = PeekableSource::new(source);
     let mut session = cancellable(factory.open(), &cancel, None).await?;

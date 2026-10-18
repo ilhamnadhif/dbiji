@@ -87,10 +87,7 @@ fn identity_clause(t: &TableDef, c: &ColumnDef) -> String {
 }
 
 fn default_name(t: &TableDef, column: &str) -> String {
-    t.options
-        .get(&default_constraint_key(column))
-        .cloned()
-        .unwrap_or_else(|| format!("DF_{}_{}", t.name, column))
+    t.options.get(&default_constraint_key(column)).cloned().unwrap_or_else(|| format!("DF_{}_{}", t.name, column))
 }
 
 /// Column definition for `CREATE TABLE` / `ADD`.
@@ -125,13 +122,7 @@ fn col_list(cols: &[String]) -> String {
 
 /// Clustered / nonclustered keyword of the index backing `key`.
 fn key_kind(t: &TableDef, key: &KeyDef, primary: bool) -> &'static str {
-    let backing = t.indexes.iter().find(|i| {
-        if primary {
-            i.primary
-        } else {
-            i.unique && (key.name.as_deref() == Some(i.name.as_str()))
-        }
-    });
+    let backing = t.indexes.iter().find(|i| if primary { i.primary } else { i.unique && (key.name.as_deref() == Some(i.name.as_str())) });
     match backing.and_then(|i| i.method.as_deref()).map(str::to_ascii_uppercase).as_deref() {
         Some("CLUSTERED") => " CLUSTERED",
         Some("NONCLUSTERED") => " NONCLUSTERED",
@@ -188,11 +179,7 @@ fn ext_property(op: &str, schema: Option<&str>, level1_type: &str, level1: &str,
     if let Some(v) = value {
         s.push_str(&format!(", @value = {}", nstring(v)));
     }
-    s.push_str(&format!(
-        ", @level0type = N'SCHEMA', @level0name = {}, @level1type = N'{level1_type}', @level1name = {}",
-        nstring(schema_or_dbo(schema)),
-        nstring(level1)
-    ));
+    s.push_str(&format!(", @level0type = N'SCHEMA', @level0name = {}, @level1type = N'{level1_type}', @level1name = {}", nstring(schema_or_dbo(schema)), nstring(level1)));
     if let Some((ty, name)) = level2 {
         s.push_str(&format!(", @level2type = N'{ty}', @level2name = {}", nstring(name)));
     }
@@ -278,10 +265,7 @@ pub fn create_index_sql(t: &TableDef, idx: &IndexDef) -> String {
         "NONCLUSTERED" => "NONCLUSTERED ",
         _ => "",
     };
-    let mut s = format!(
-        "CREATE {}{clustered}INDEX {name} ON {table} ({cols})",
-        if idx.unique { "UNIQUE " } else { "" }
-    );
+    let mut s = format!("CREATE {}{clustered}INDEX {name} ON {table} ({cols})", if idx.unique { "UNIQUE " } else { "" });
     if !idx.include.is_empty() {
         s.push_str(&format!(" INCLUDE ({})", col_list(&idx.include)));
     }
@@ -306,9 +290,7 @@ fn table_comments(t: &TableDef) -> Vec<String> {
 
 /// Indexes of `t` whose key or included columns contain `column`.
 fn indexes_using<'a>(t: &'a TableDef, column: &str) -> Vec<&'a IndexDef> {
-    secondary_indexes(t)
-        .filter(|i| i.columns.iter().any(|c| c.name == column) || i.include.iter().any(|c| c == column))
-        .collect()
+    secondary_indexes(t).filter(|i| i.columns.iter().any(|c| c.name == column) || i.include.iter().any(|c| c == column)).collect()
 }
 
 fn check_mentions(check: &CheckDef, column: &str) -> bool {
@@ -384,9 +366,7 @@ impl DdlGenerator for MsSqlDdl {
         // Columns whose type / nullability / collation change, or are dropped.
         let altered: Vec<&str> = pairs
             .iter()
-            .filter(|(f, tc)| {
-                f.data_type != tc.data_type || f.nullable != tc.nullable || f.collation != tc.collation || f.generated != tc.generated
-            })
+            .filter(|(f, tc)| f.data_type != tc.data_type || f.nullable != tc.nullable || f.collation != tc.collation || f.generated != tc.generated)
             .map(|(f, _)| f.name.as_str())
             .collect();
         let mut touched: Vec<&str> = altered.iter().copied().chain(dropped.iter().map(|c| c.name.as_str())).collect();
@@ -479,11 +459,7 @@ impl DdlGenerator for MsSqlDdl {
         // 6. renamed columns
         for (f, tc) in &pairs {
             if f.name != tc.name {
-                out.push(format!(
-                    "EXEC sp_rename {}, {}, N'COLUMN'",
-                    nstring(&format!("{}.{}", full_quoted(to.schema.as_deref(), &to.name), quote(&f.name))),
-                    nstring(&tc.name)
-                ));
+                out.push(format!("EXEC sp_rename {}, {}, N'COLUMN'", nstring(&format!("{}.{}", full_quoted(to.schema.as_deref(), &to.name), quote(&f.name))), nstring(&tc.name)));
             }
         }
         // 7. altered columns
@@ -495,10 +471,7 @@ impl DdlGenerator for MsSqlDdl {
                 continue;
             }
             if f.auto_increment != tc.auto_increment {
-                out.push(format!(
-                    "-- SQL Server cannot add or remove IDENTITY on the existing column {}; recreate the table",
-                    ident(&tc.name)
-                ));
+                out.push(format!("-- SQL Server cannot add or remove IDENTITY on the existing column {}; recreate the table", ident(&tc.name)));
             }
             if f.data_type != tc.data_type || f.nullable != tc.nullable || f.collation != tc.collation {
                 let mut s = format!("ALTER TABLE {t} ALTER COLUMN {} {}", ident(&tc.name), tc.data_type);
@@ -518,14 +491,10 @@ impl DdlGenerator for MsSqlDdl {
                 continue;
             }
             if let Some(d) = tc.default.as_deref().filter(|d| !d.trim().is_empty())
-                && (f.default != tc.default || altered.contains(&f.name.as_str())) {
-                    out.push(format!(
-                        "ALTER TABLE {t} ADD CONSTRAINT {} DEFAULT ({}) FOR {}",
-                        quote(&default_name(to, &tc.name)),
-                        strip_outer_parens(d),
-                        ident(&tc.name)
-                    ));
-                }
+                && (f.default != tc.default || altered.contains(&f.name.as_str()))
+            {
+                out.push(format!("ALTER TABLE {t} ADD CONSTRAINT {} DEFAULT ({}) FOR {}", quote(&default_name(to, &tc.name)), strip_outer_parens(d), ident(&tc.name)));
+            }
         }
         // 9. added columns
         for c in &added {
@@ -569,14 +538,7 @@ impl DdlGenerator for MsSqlDdl {
             } else {
                 f.comment.as_deref()
             };
-            if let Some(s) = comment_change(
-                to.schema.as_deref(),
-                "TABLE",
-                &to.name,
-                Some(("COLUMN", &tc.name)),
-                from_comment,
-                tc.comment.as_deref(),
-            ) {
+            if let Some(s) = comment_change(to.schema.as_deref(), "TABLE", &to.name, Some(("COLUMN", &tc.name)), from_comment, tc.comment.as_deref()) {
                 out.push(s);
             }
         }
@@ -705,13 +667,15 @@ impl DdlGenerator for MsSqlDdl {
     fn alter_sequence(&self, from: &SequenceDef, to: &SequenceDef) -> Vec<String> {
         let mut parts = Vec::new();
         if from.start != to.start
-            && let Some(v) = to.start {
-                parts.push(format!("RESTART WITH {v}"));
-            }
+            && let Some(v) = to.start
+        {
+            parts.push(format!("RESTART WITH {v}"));
+        }
         if from.increment != to.increment
-            && let Some(v) = to.increment {
-                parts.push(format!("INCREMENT BY {v}"));
-            }
+            && let Some(v) = to.increment
+        {
+            parts.push(format!("INCREMENT BY {v}"));
+        }
         if from.min_value != to.min_value {
             parts.push(to.min_value.map(|v| format!("MINVALUE {v}")).unwrap_or_else(|| "NO MINVALUE".into()));
         }
@@ -727,11 +691,7 @@ impl DdlGenerator for MsSqlDdl {
                 _ => "NO CACHE".into(),
             });
         }
-        if parts.is_empty() {
-            Vec::new()
-        } else {
-            vec![format!("ALTER SEQUENCE {} {}", qualified(to.schema.as_deref(), &to.name), parts.join(" "))]
-        }
+        if parts.is_empty() { Vec::new() } else { vec![format!("ALTER SEQUENCE {} {}", qualified(to.schema.as_deref(), &to.name), parts.join(" "))] }
     }
 
     fn drop_sequence(&self, seq: &SequenceDef) -> String {
@@ -953,11 +913,7 @@ pub fn map_foreign_type(source: DbKind, data_type: &str, kind: DataKind) -> Opti
         }
         "timestamp" | "timestamp without time zone" | "datetime" => {
             let p = arg(&f, 0).unwrap_or(if base == "datetime" { 0 } else { 6 }).min(7);
-            if base == "datetime" && f.args.is_empty() && source.is_mysql_family() {
-                "datetime2(0)".into()
-            } else {
-                format!("datetime2({p})")
-            }
+            if base == "datetime" && f.args.is_empty() && source.is_mysql_family() { "datetime2(0)".into() } else { format!("datetime2({p})") }
         }
         "timestamptz" | "timestamp with time zone" => format!("datetimeoffset({})", arg(&f, 0).unwrap_or(6).min(7)),
         "interval" => "nvarchar(100)".into(),
@@ -969,8 +925,8 @@ pub fn map_foreign_type(source: DbKind, data_type: &str, kind: DataKind) -> Opti
         "inet" | "cidr" | "macaddr" | "macaddr8" => "nvarchar(50)".into(),
         "enum" | "set" => "nvarchar(255)".into(),
         "year" => "smallint".into(),
-        "geometry" | "point" | "linestring" | "polygon" | "multipoint" | "multilinestring" | "multipolygon"
-        | "geometrycollection" | "box" | "circle" | "path" | "line" | "lseg" => "geometry".into(),
+        "geometry" | "point" | "linestring" | "polygon" | "multipoint" | "multilinestring" | "multipolygon" | "geometrycollection" | "box" | "circle" | "path" | "line"
+        | "lseg" => "geometry".into(),
         "geography" => "geography".into(),
         _ => return None,
     })
@@ -1006,7 +962,14 @@ mod tests {
             on_update: FkAction::Restrict,
             ..Default::default()
         });
-        t.indexes.push(IndexDef { name: "PK_orders".into(), primary: true, unique: true, method: Some("CLUSTERED".into()), columns: vec![IndexColumn::column("id")], ..Default::default() });
+        t.indexes.push(IndexDef {
+            name: "PK_orders".into(),
+            primary: true,
+            unique: true,
+            method: Some("CLUSTERED".into()),
+            columns: vec![IndexColumn::column("id")],
+            ..Default::default()
+        });
         t.indexes.push(IndexDef {
             name: "IX_orders_customer".into(),
             columns: vec![IndexColumn::column("customer_id"), IndexColumn { name: "qty".into(), is_expression: false, descending: true }],
@@ -1036,10 +999,7 @@ mod tests {
         assert!(s.contains("CONSTRAINT [CK_orders_qty] CHECK ([qty]>=(0))"), "{s}");
         assert!(s.contains("CONSTRAINT [FK_orders_customers] FOREIGN KEY (customer_id) REFERENCES dbo.customers (id) ON DELETE CASCADE"), "{s}");
         assert!(!s.contains("ON UPDATE"), "{s}");
-        assert_eq!(
-            sql[1],
-            "CREATE NONCLUSTERED INDEX [IX_orders_customer] ON dbo.orders (customer_id, qty DESC) INCLUDE (price) WHERE [customer_id] IS NOT NULL"
-        );
+        assert_eq!(sql[1], "CREATE NONCLUSTERED INDEX [IX_orders_customer] ON dbo.orders (customer_id, qty DESC) INCLUDE (price) WHERE [customer_id] IS NOT NULL");
         assert!(sql[2].starts_with("EXEC sys.sp_addextendedproperty @name = N'MS_Description', @value = N'All orders', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'orders'"), "{}", sql[2]);
         assert!(sql[3].ends_with("@level2type = N'COLUMN', @level2name = N'name'"), "{}", sql[3]);
         assert_eq!(sql.len(), 4);
@@ -1098,7 +1058,15 @@ mod tests {
         assert!(d.drop_primary_key(&t, &KeyDef::default()).contains("type = 'PK'"));
         let cs = IndexDef { name: "CCI".into(), method: Some("CLUSTERED COLUMNSTORE".into()), ..Default::default() };
         assert_eq!(d.create_index(&t, &cs), "CREATE CLUSTERED COLUMNSTORE INDEX [CCI] ON dbo.orders");
-        let seq = SequenceDef { schema: Some("dbo".into()), name: "s".into(), data_type: Some("bigint".into()), start: Some(1), increment: Some(1), cache: Some(0), ..Default::default() };
+        let seq = SequenceDef {
+            schema: Some("dbo".into()),
+            name: "s".into(),
+            data_type: Some("bigint".into()),
+            start: Some(1),
+            increment: Some(1),
+            cache: Some(0),
+            ..Default::default()
+        };
         assert_eq!(d.create_sequence(&seq), "CREATE SEQUENCE dbo.s AS bigint START WITH 1 INCREMENT BY 1 NO CYCLE NO CACHE");
         let mut seq2 = seq.clone();
         seq2.increment = Some(5);

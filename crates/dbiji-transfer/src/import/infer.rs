@@ -83,12 +83,8 @@ fn merge(a: Guess, b: Guess) -> Guess {
     match (a, b) {
         (Null, x) | (x, Null) => x,
         (Int { digits: x }, Int { digits: y }) => Int { digits: x.max(y) },
-        (Int { digits }, Decimal { int_digits, scale }) | (Decimal { int_digits, scale }, Int { digits }) => {
-            Decimal { int_digits: int_digits.max(digits), scale }
-        }
-        (Decimal { int_digits: a1, scale: s1 }, Decimal { int_digits: a2, scale: s2 }) => {
-            Decimal { int_digits: a1.max(a2), scale: s1.max(s2) }
-        }
+        (Int { digits }, Decimal { int_digits, scale }) | (Decimal { int_digits, scale }, Int { digits }) => Decimal { int_digits: int_digits.max(digits), scale },
+        (Decimal { int_digits: a1, scale: s1 }, Decimal { int_digits: a2, scale: s2 }) => Decimal { int_digits: a1.max(a2), scale: s1.max(s2) },
         (Int { .. } | Decimal { .. } | Float, Int { .. } | Decimal { .. } | Float) => Float,
         (Date, DateTime) | (DateTime, Date) => DateTime,
         (x, y) if x == y => x,
@@ -127,11 +123,7 @@ pub(crate) fn classify_text(raw: &str, opts: &InferOptions) -> Guess {
         if leading_zero {
             return Guess::Text; // codes like 007 must keep their zeros
         }
-        return if normalized.parse::<i64>().is_ok() {
-            Guess::Int { digits: count_digits(unsigned) }
-        } else {
-            Guess::Decimal { int_digits: count_digits(unsigned), scale: 0 }
-        };
+        return if normalized.parse::<i64>().is_ok() { Guess::Int { digits: count_digits(unsigned) } } else { Guess::Decimal { int_digits: count_digits(unsigned), scale: 0 } };
     }
     if is_decimal_text(&normalized) && !leading_zero {
         let lower = unsigned.to_ascii_lowercase();
@@ -141,12 +133,7 @@ pub(crate) fn classify_text(raw: &str, opts: &InferOptions) -> Guess {
         let (int_part, frac) = unsigned.split_once('.').unwrap_or((unsigned, ""));
         return Guess::Decimal { int_digits: count_digits(int_part), scale: frac.len() as u32 };
     }
-    if opts.detect_bool
-        && matches!(
-            t.to_ascii_lowercase().as_str(),
-            "true" | "false" | "t" | "f" | "yes" | "no" | "y" | "n" | "on" | "off"
-        )
-    {
+    if opts.detect_bool && matches!(t.to_ascii_lowercase().as_str(), "true" | "false" | "t" | "f" | "yes" | "no" | "y" | "n" | "on" | "off") {
         return Guess::Bool;
     }
     if opts.date_formats.iter().any(|f| NaiveDate::parse_from_str(t, f).is_ok()) {
@@ -191,9 +178,7 @@ fn classify(v: &Value, opts: &InferOptions) -> Guess {
                 Guess::Decimal { int_digits: count_digits(&u.to_string()), scale: 0 }
             }
         }
-        Value::Float(f) if f.is_finite() && f.fract() == 0.0 && f.abs() < 1e15 => {
-            Guess::Int { digits: count_digits(&format!("{}", f.abs() as i64)) }
-        }
+        Value::Float(f) if f.is_finite() && f.fract() == 0.0 && f.abs() < 1e15 => Guess::Int { digits: count_digits(&format!("{}", f.abs() as i64)) },
         Value::Float(_) => Guess::Float,
         Value::Decimal(s) => match classify_text(s, &InferOptions::default()) {
             g @ (Guess::Int { .. } | Guess::Decimal { .. } | Guess::Float) => g,
@@ -241,9 +226,7 @@ pub fn infer_columns(columns: &[ColumnMeta], sample: &[Row], opts: &InferOptions
                 }
                 Guess::Bool => (DataKind::Bool, None, None),
                 Guess::Int { digits } => (DataKind::Int, Some(digits), None),
-                Guess::Decimal { int_digits, scale } => {
-                    (DataKind::Decimal, Some((int_digits + scale).max(1)), Some(scale))
-                }
+                Guess::Decimal { int_digits, scale } => (DataKind::Decimal, Some((int_digits + scale).max(1)), Some(scale)),
                 Guess::Float => (DataKind::Float, None, None),
                 Guess::Date => (DataKind::Date, None, None),
                 Guess::DateTime => (DataKind::DateTime, None, None),
@@ -300,8 +283,7 @@ mod tests {
 
     fn infer(values: &[&str]) -> InferredColumn {
         let cols = vec![ColumnMeta::new("c", "", DataKind::Text)];
-        let rows: Vec<Row> =
-            values.iter().map(|v| vec![if v.is_empty() { Value::Null } else { Value::text(*v) }]).collect();
+        let rows: Vec<Row> = values.iter().map(|v| vec![if v.is_empty() { Value::Null } else { Value::text(*v) }]).collect();
         infer_columns(&cols, &rows, &InferOptions::default()).remove(0)
     }
 
@@ -337,12 +319,7 @@ mod tests {
 
     #[test]
     fn localized_numbers_and_custom_dates() {
-        let opts = InferOptions {
-            decimal_separator: ',',
-            thousands_separator: Some('.'),
-            date_formats: vec!["%d/%m/%Y".into()],
-            ..Default::default()
-        };
+        let opts = InferOptions { decimal_separator: ',', thousands_separator: Some('.'), date_formats: vec!["%d/%m/%Y".into()], ..Default::default() };
         assert_eq!(classify_text("1.234,5", &opts), Guess::Decimal { int_digits: 4, scale: 1 });
         assert_eq!(classify_text("31/12/2024", &opts), Guess::Date);
         assert_eq!(classify_text("1.5", &InferOptions { decimal_separator: ',', ..Default::default() }), Guess::Text);
@@ -352,10 +329,7 @@ mod tests {
     fn typed_values() {
         let cols = vec![ColumnMeta::new("n", "", DataKind::Other), ColumnMeta::new("d", "", DataKind::Other)];
         let d = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
-        let rows = vec![
-            vec![Value::Float(1.0), Value::DateTime(d.and_time(NaiveTime::MIN))],
-            vec![Value::Float(2.5), Value::Date(d)],
-        ];
+        let rows = vec![vec![Value::Float(1.0), Value::DateTime(d.and_time(NaiveTime::MIN))], vec![Value::Float(2.5), Value::Date(d)]];
         let r = infer_columns(&cols, &rows, &InferOptions::default());
         assert_eq!(r[0].kind, DataKind::Float);
         assert_eq!(r[1].kind, DataKind::Date);

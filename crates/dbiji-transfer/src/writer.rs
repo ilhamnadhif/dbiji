@@ -83,14 +83,8 @@ struct Savepoints {
 fn savepoint_sql(kind: DbKind) -> Option<Savepoints> {
     match kind {
         DbKind::DuckDb | DbKind::ClickHouse => None,
-        DbKind::SqlServer => {
-            Some(Savepoints { create: "SAVE TRANSACTION", release: None, rollback: "ROLLBACK TRANSACTION" })
-        }
-        _ => Some(Savepoints {
-            create: "SAVEPOINT",
-            release: Some("RELEASE SAVEPOINT"),
-            rollback: "ROLLBACK TO SAVEPOINT",
-        }),
+        DbKind::SqlServer => Some(Savepoints { create: "SAVE TRANSACTION", release: None, rollback: "ROLLBACK TRANSACTION" }),
+        _ => Some(Savepoints { create: "SAVEPOINT", release: Some("RELEASE SAVEPOINT"), rollback: "ROLLBACK TO SAVEPOINT" }),
     }
 }
 
@@ -129,14 +123,7 @@ pub(crate) struct BatchWriter<'a> {
 }
 
 impl<'a> BatchWriter<'a> {
-    pub(crate) fn new(
-        session: &'a mut dyn Session,
-        target: TableTarget,
-        scope: TransactionScope,
-        on_error: OnError,
-        rows_per_statement: usize,
-        item: impl Into<String>,
-    ) -> Self {
+    pub(crate) fn new(session: &'a mut dyn Session, target: TableTarget, scope: TransactionScope, on_error: OnError, rows_per_statement: usize, item: impl Into<String>) -> Self {
         let dialect = session.dialect();
         let ncols = target.columns.len().max(1);
         let rows_per_statement = rows_per_statement.clamp(1, MAX_ROWS_PER_INSERT).min((MAX_PARAMS / ncols).max(1));
@@ -151,10 +138,7 @@ impl<'a> BatchWriter<'a> {
         let mut warnings = Vec::new();
         let mut scope = scope;
         if on_error != OnError::Abort && savepoints.is_none() && scope != TransactionScope::None {
-            warnings.push(format!(
-                "{} has no savepoints: rows are committed statement by statement so failing rows can be skipped",
-                dialect.kind().display_name()
-            ));
+            warnings.push(format!("{} has no savepoints: rows are committed statement by statement so failing rows can be skipped", dialect.kind().display_name()));
             scope = TransactionScope::None;
         }
         BatchWriter {
@@ -182,9 +166,7 @@ impl<'a> BatchWriter<'a> {
     pub(crate) async fn begin(&mut self) -> DbResult<()> {
         let mode = self.session.transaction_mode();
         if mode == TransactionMode::Manual && self.session.in_transaction() {
-            return Err(DbError::config(
-                "The session has an open transaction; commit or roll it back before writing data",
-            ));
+            return Err(DbError::config("The session has an open transaction; commit or roll it back before writing data"));
         }
         self.original_mode = Some(mode);
         let wanted = match self.scope {
@@ -504,12 +486,8 @@ fn dedupe_by_key(rows: Vec<(u64, Row)>, keys: &[usize]) -> Vec<(u64, Row)> {
     if rows.len() < 2 {
         return rows;
     }
-    let key_of = |row: &Row| -> String {
-        keys.iter()
-            .map(|&k| row.get(k).map(|v| format!("{}:{}", v.variant_name(), v.to_text())).unwrap_or_default())
-            .collect::<Vec<_>>()
-            .join("\u{1}")
-    };
+    let key_of =
+        |row: &Row| -> String { keys.iter().map(|&k| row.get(k).map(|v| format!("{}:{}", v.variant_name(), v.to_text())).unwrap_or_default()).collect::<Vec<_>>().join("\u{1}") };
     let mut seen = std::collections::HashSet::new();
     let mut out: Vec<(u64, Row)> = Vec::with_capacity(rows.len());
     for (no, row) in rows.into_iter().rev() {
@@ -527,11 +505,7 @@ mod tests {
 
     #[test]
     fn dedupe_keeps_last() {
-        let rows = vec![
-            (1, vec![Value::Int(1), Value::text("a")]),
-            (2, vec![Value::Int(2), Value::text("b")]),
-            (3, vec![Value::Int(1), Value::text("c")]),
-        ];
+        let rows = vec![(1, vec![Value::Int(1), Value::text("a")]), (2, vec![Value::Int(2), Value::text("b")]), (3, vec![Value::Int(1), Value::text("c")])];
         let out = dedupe_by_key(rows, &[0]);
         assert_eq!(out.iter().map(|r| r.0).collect::<Vec<_>>(), vec![2, 3]);
     }

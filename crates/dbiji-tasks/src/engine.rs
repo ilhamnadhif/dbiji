@@ -349,14 +349,7 @@ impl Engine {
         Ok(t)
     }
 
-    async fn run_composite(
-        self: &Arc<Self>,
-        steps: &[String],
-        stop_on_error: bool,
-        parallel: bool,
-        parent: Parent,
-        ctx: &RunContext,
-    ) -> Result<RunOutcome, Failure> {
+    async fn run_composite(self: &Arc<Self>, steps: &[String], stop_on_error: bool, parallel: bool, parent: Parent, ctx: &RunContext) -> Result<RunOutcome, Failure> {
         let mut outcome = RunOutcome::default();
         let mut failures: Vec<String> = Vec::new();
         let absorb = |run: &TaskRun, outcome: &mut RunOutcome, failures: &mut Vec<String>| {
@@ -367,10 +360,7 @@ impl Engine {
             match run.status {
                 RunStatus::Succeeded | RunStatus::Skipped => true,
                 _ => {
-                    failures.push(trf(
-                        "Step {} {}: {}",
-                        &[&run.task_name, &tr(run.status.label()).to_lowercase(), &run.error.clone().unwrap_or_default()],
-                    ));
+                    failures.push(trf("Step {} {}: {}", &[&run.task_name, &tr(run.status.label()).to_lowercase(), &run.error.clone().unwrap_or_default()]));
                     false
                 }
             }

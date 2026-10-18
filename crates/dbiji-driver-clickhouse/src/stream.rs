@@ -37,9 +37,14 @@ pub enum Feed {
 enum State {
     Normal,
     /// Inside a tagged exception block.
-    Tagged { saw_tag: bool, text: String },
+    Tagged {
+        saw_tag: bool,
+        text: String,
+    },
     /// Legacy exception: collect the rest of the body.
-    Legacy { text: String },
+    Legacy {
+        text: String,
+    },
     /// The exception has been reported; ignore the rest.
     Done,
 }
@@ -116,9 +121,7 @@ impl BodyParser {
                             Feed::Nothing
                         } else {
                             self.state = State::Done;
-                            Feed::Error(DbError::connection(format!(
-                                "Malformed row in ClickHouse response ({e})"
-                            )))
+                            Feed::Error(DbError::connection(format!("Malformed row in ClickHouse response ({e})")))
                         }
                     }
                 }
@@ -130,11 +133,7 @@ impl BodyParser {
     pub fn finish(&mut self) -> Option<DbError> {
         match std::mem::replace(&mut self.state, State::Done) {
             State::Legacy { text } => Some(self.error(&text)),
-            State::Tagged { text, .. } => Some(if text.is_empty() {
-                DbError::connection("The ClickHouse response ended inside an exception block")
-            } else {
-                self.error(&text)
-            }),
+            State::Tagged { text, .. } => Some(if text.is_empty() { DbError::connection("The ClickHouse response ended inside an exception block") } else { self.error(&text) }),
             _ => None,
         }
     }
@@ -156,11 +155,7 @@ fn is_tag_trailer(line: &str, tag: Option<&str>) -> bool {
 /// Column names and types from the two header rows.
 pub fn header_columns(names: Vec<Json>, types: Vec<Json>) -> Result<Vec<(String, String)>, DbError> {
     if names.len() != types.len() {
-        return Err(DbError::connection(format!(
-            "ClickHouse sent {} column names but {} types",
-            names.len(),
-            types.len()
-        )));
+        return Err(DbError::connection(format!("ClickHouse sent {} column names but {} types", names.len(), types.len())));
     }
     names
         .into_iter()

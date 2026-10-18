@@ -111,11 +111,7 @@ fn host_of(url: &str) -> Option<String> {
     let rest = url.split_once("://").map(|(_, r)| r)?;
     let authority = rest.split('/').next()?;
     let authority = authority.rsplit('@').next()?;
-    let host = if let Some(stripped) = authority.strip_prefix('[') {
-        stripped.split(']').next()?.to_string()
-    } else {
-        authority.split(':').next()?.to_string()
-    };
+    let host = if let Some(stripped) = authority.strip_prefix('[') { stripped.split(']').next()?.to_string() } else { authority.split(':').next()?.to_string() };
     Some(host.to_ascii_lowercase())
 }
 
@@ -177,8 +173,7 @@ impl AiConfig {
 
     /// The service runs on this machine (no proxy, plain HTTP acceptable).
     pub fn is_loopback(&self) -> bool {
-        matches!(host_of(&self.base()).as_deref(), Some("localhost" | "127.0.0.1" | "::1"))
-            || host_of(&self.base()).is_some_and(|h| h.starts_with("127."))
+        matches!(host_of(&self.base()).as_deref(), Some("localhost" | "127.0.0.1" | "::1")) || host_of(&self.base()).is_some_and(|h| h.starts_with("127."))
     }
 
     fn api_key(&self) -> Option<&str> {
@@ -204,9 +199,10 @@ impl AiConfig {
         }
         if self.provider == AiProviderKind::Anthropic {
             if let Some(e) = &self.effort
-                && !EFFORT_LEVELS.contains(&e.as_str()) {
-                    return Err(DbError::config(trf("Invalid effort '{}' (use low, medium, high, xhigh or max)", &[e])));
-                }
+                && !EFFORT_LEVELS.contains(&e.as_str())
+            {
+                return Err(DbError::config(trf("Invalid effort '{}' (use low, medium, high, xhigh or max)", &[e])));
+            }
             if self.is_first_party() && self.api_key().is_none() {
                 return Err(DbError::auth(tr("An API key is required for the Anthropic API")));
             }

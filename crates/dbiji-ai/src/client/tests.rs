@@ -80,8 +80,7 @@ async fn mock(replies: Vec<Reply>) -> Mock {
             let head = String::from_utf8_lossy(&buf[..head_end]).to_string();
             let mut lines = head.split("\r\n");
             let path = lines.next().unwrap_or("").split(' ').nth(1).unwrap_or("").to_string();
-            let headers: Vec<(String, String)> =
-                lines.filter_map(|l| l.split_once(':')).map(|(k, v)| (k.trim().to_ascii_lowercase(), v.trim().to_string())).collect();
+            let headers: Vec<(String, String)> = lines.filter_map(|l| l.split_once(':')).map(|(k, v)| (k.trim().to_ascii_lowercase(), v.trim().to_string())).collect();
             let len: usize = headers.iter().find(|(k, _)| k == "content-length").and_then(|(_, v)| v.parse().ok()).unwrap_or(0);
             let mut body = buf[head_end + 4..].to_vec();
             while body.len() < len {
@@ -235,7 +234,8 @@ async fn gives_up_after_two_retries_and_maps_errors() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn rejected_fallback_beta_is_retried_without_it() {
-    let rejected = r#"{"type":"error","error":{"type":"invalid_request_error","message":"Unexpected value(s) `server-side-fallback-2026-07-01` for the `anthropic-beta` header."}}"#;
+    let rejected =
+        r#"{"type":"error","error":{"type":"invalid_request_error","message":"Unexpected value(s) `server-side-fallback-2026-07-01` for the `anthropic-beta` header."}}"#;
     let m = mock(vec![Reply::json(400, rejected), Reply::sse(&text_stream("claude-opus-5-5", &["fine"], "end_turn"))]).await;
     let cfg = anthropic_cfg(&m.base);
     let agent = agent_for(&cfg);

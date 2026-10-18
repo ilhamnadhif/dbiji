@@ -31,18 +31,14 @@ pub(crate) fn text_value(conv: &Conv, s: &str) -> Value {
             "f" => Value::Bool(false),
             _ => Value::text(s),
         },
-        Conv::Int2 | Conv::Int4 | Conv::Int8 | Conv::Oid => {
-            s.parse::<i64>().map(Value::Int).unwrap_or_else(|_| Value::text(s))
-        }
+        Conv::Int2 | Conv::Int4 | Conv::Int8 | Conv::Oid => s.parse::<i64>().map(Value::Int).unwrap_or_else(|_| Value::text(s)),
         Conv::Xid8 => match s.parse::<i64>() {
             Ok(i) => Value::Int(i),
             Err(_) => s.parse::<u64>().map(Value::UInt).unwrap_or_else(|_| Value::text(s)),
         },
         Conv::Float4 | Conv::Float8 => s.parse::<f64>().map(Value::Float).unwrap_or_else(|_| Value::text(s)),
         Conv::Numeric => {
-            if s.as_bytes().first().is_some_and(|b| b.is_ascii_digit() || *b == b'-' || *b == b'.')
-                && !s.ends_with("Infinity")
-            {
+            if s.as_bytes().first().is_some_and(|b| b.is_ascii_digit() || *b == b'-' || *b == b'.') && !s.ends_with("Infinity") {
                 Value::decimal(s)
             } else {
                 Value::text(s)
@@ -321,11 +317,7 @@ pub(crate) fn element_text(conv: &Conv, b: &[u8]) -> Option<String> {
         Conv::Inet | Conv::Cidr => {
             let inet = pt::inet_from_sql(b).ok()?;
             let full = if inet.addr().is_ipv4() { 32 } else { 128 };
-            if *conv == Conv::Inet && inet.netmask() == full {
-                inet.addr().to_string()
-            } else {
-                format!("{}/{}", inet.addr(), inet.netmask())
-            }
+            if *conv == Conv::Inet && inet.netmask() == full { inet.addr().to_string() } else { format!("{}/{}", inet.addr(), inet.netmask()) }
         }
         Conv::MacAddr | Conv::MacAddr8 => {
             let expected = if *conv == Conv::MacAddr { 6 } else { 8 };
@@ -423,9 +415,7 @@ pub(crate) fn numeric_text(b: &[u8]) -> Option<String> {
         }
         digits.push(d);
     }
-    let digit = |idx: i32| -> i16 {
-        if idx >= 0 && (idx as usize) < ndigits { digits[idx as usize] } else { 0 }
-    };
+    let digit = |idx: i32| -> i16 { if idx >= 0 && (idx as usize) < ndigits { digits[idx as usize] } else { 0 } };
     let mut s = String::with_capacity(ndigits * 4 + 4);
     if sign == 0x4000 {
         s.push('-');
@@ -475,19 +465,13 @@ fn date_from_days(days: i32) -> Result<NaiveDate, String> {
     match days {
         i32::MAX => Err("infinity".into()),
         i32::MIN => Err("-infinity".into()),
-        d => pg_epoch_date()
-            .checked_add_signed(TimeDelta::days(d as i64))
-            .ok_or_else(|| format!("(date {d})")),
+        d => pg_epoch_date().checked_add_signed(TimeDelta::days(d as i64)).ok_or_else(|| format!("(date {d})")),
     }
 }
 
 /// PostgreSQL text for a date (`0044-03-15 BC` for years before 1).
 pub(crate) fn date_text(d: NaiveDate) -> String {
-    if d.year() <= 0 {
-        format!("{:04}-{:02}-{:02} BC", 1 - d.year(), d.month(), d.day())
-    } else {
-        format!("{:04}-{:02}-{:02}", d.year(), d.month(), d.day())
-    }
+    if d.year() <= 0 { format!("{:04}-{:02}-{:02} BC", 1 - d.year(), d.month(), d.day()) } else { format!("{:04}-{:02}-{:02}", d.year(), d.month(), d.day()) }
 }
 
 fn time_from_micros(us: i64) -> Option<NaiveTime> {
@@ -509,13 +493,7 @@ fn fraction_text(micros: i64) -> String {
 fn time_text_micros(us: i64) -> String {
     let us = us.max(0);
     let secs = us / 1_000_000;
-    format!(
-        "{:02}:{:02}:{:02}{}",
-        secs / 3600,
-        (secs / 60) % 60,
-        secs % 60,
-        fraction_text(us % 1_000_000)
-    )
+    format!("{:02}:{:02}:{:02}{}", secs / 3600, (secs / 60) % 60, secs % 60, fraction_text(us % 1_000_000))
 }
 
 /// PostgreSQL text for a time of day.
@@ -550,9 +528,7 @@ fn timestamp_from_micros(us: i64) -> Result<NaiveDateTime, String> {
     match us {
         i64::MAX => Err("infinity".into()),
         i64::MIN => Err("-infinity".into()),
-        u => pg_epoch()
-            .checked_add_signed(TimeDelta::microseconds(u))
-            .ok_or_else(|| format!("(timestamp {u})")),
+        u => pg_epoch().checked_add_signed(TimeDelta::microseconds(u)).ok_or_else(|| format!("(timestamp {u})")),
     }
 }
 
@@ -560,11 +536,7 @@ fn timestamp_from_micros(us: i64) -> Result<NaiveDateTime, String> {
 pub(crate) fn timestamp_text(t: NaiveDateTime) -> String {
     let d = t.date();
     let time = time_text(t.time());
-    if d.year() <= 0 {
-        format!("{:04}-{:02}-{:02} {time} BC", 1 - d.year(), d.month(), d.day())
-    } else {
-        format!("{:04}-{:02}-{:02} {time}", d.year(), d.month(), d.day())
-    }
+    if d.year() <= 0 { format!("{:04}-{:02}-{:02} {time} BC", 1 - d.year(), d.month(), d.day()) } else { format!("{:04}-{:02}-{:02} {time}", d.year(), d.month(), d.day()) }
 }
 
 /// Interval text in the `postgres` IntervalStyle.
@@ -593,15 +565,7 @@ pub(crate) fn format_interval(micros: i64, days: i32, months: i32) -> String {
         if value == 0 {
             return;
         }
-        let _ = write!(
-            out,
-            "{}{}{} {}{}",
-            if !*is_zero { " " } else { "" },
-            if *is_before && value > 0 { "+" } else { "" },
-            value,
-            units,
-            if value != 1 { "s" } else { "" }
-        );
+        let _ = write!(out, "{}{}{} {}{}", if !*is_zero { " " } else { "" }, if *is_before && value > 0 { "+" } else { "" }, value, units, if value != 1 { "s" } else { "" });
         *is_before = value < 0;
         *is_zero = false;
     }
@@ -617,7 +581,13 @@ pub(crate) fn format_interval(micros: i64, days: i32, months: i32) -> String {
             out,
             "{}{}{:02}:{:02}:{:02}{}",
             if is_zero { "" } else { " " },
-            if minus { "-" } else if is_before { "+" } else { "" },
+            if minus {
+                "-"
+            } else if is_before {
+                "+"
+            } else {
+                ""
+            },
             hour.abs(),
             min.abs(),
             sec.abs(),
@@ -653,16 +623,13 @@ pub(crate) fn pg_float_text(f: f64) -> String {
 
 /// Quote an array element like `array_out`.
 pub(crate) fn quote_array_element(s: &str) -> String {
-    let needs = s.is_empty()
-        || s.eq_ignore_ascii_case("null")
-        || s.chars().any(|c| matches!(c, '{' | '}' | '"' | '\\' | ',') || c.is_ascii_whitespace());
+    let needs = s.is_empty() || s.eq_ignore_ascii_case("null") || s.chars().any(|c| matches!(c, '{' | '}' | '"' | '\\' | ',') || c.is_ascii_whitespace());
     if needs { format!("\"{}\"", escape_backslash_quote(s)) } else { s.to_string() }
 }
 
 /// Quote a range bound or composite field like `range_out` / `record_out`.
 fn quote_record_element(s: &str) -> String {
-    let needs = s.is_empty()
-        || s.chars().any(|c| matches!(c, '"' | '\\' | '(' | ')' | '[' | ']' | ',') || c.is_ascii_whitespace());
+    let needs = s.is_empty() || s.chars().any(|c| matches!(c, '"' | '\\' | '(' | ')' | '[' | ']' | ',') || c.is_ascii_whitespace());
     if !needs {
         return s.to_string();
     }
@@ -704,13 +671,7 @@ fn array_text(elem: &Conv, b: &[u8]) -> Option<String> {
     Some(out)
 }
 
-fn write_array_level(
-    dims: &[pt::ArrayDimension],
-    level: usize,
-    values: &[String],
-    idx: &mut usize,
-    out: &mut String,
-) -> Option<()> {
+fn write_array_level(dims: &[pt::ArrayDimension], level: usize, values: &[String], idx: &mut usize, out: &mut String) -> Option<()> {
     out.push('{');
     let len = dims.get(level)?.len.max(0) as usize;
     for i in 0..len {
@@ -810,10 +771,7 @@ mod tests {
         assert_eq!(numeric_text(&numeric_bytes(0, 0, 0xC000, 0, &[])).unwrap(), "NaN");
         assert_eq!(numeric_text(&numeric_bytes(0, 0, 0xD000, 0, &[])).unwrap(), "Infinity");
         assert!(numeric_text(&numeric_bytes(2, 0, 0, 0, &[1])).is_none());
-        assert_eq!(
-            binary_value(&Conv::Numeric, Some(&numeric_bytes(2, 0, 0, 2, &[3, 1400]))),
-            Value::decimal("3.14")
-        );
+        assert_eq!(binary_value(&Conv::Numeric, Some(&numeric_bytes(2, 0, 0, 2, &[3, 1400]))), Value::decimal("3.14"));
     }
 
     #[test]
@@ -837,15 +795,9 @@ mod tests {
         assert_eq!(text_value(&Conv::Numeric, "-12.50"), Value::decimal("-12.50"));
         assert_eq!(text_value(&Conv::Numeric, "Infinity"), Value::text("Infinity"));
         assert_eq!(text_value(&Conv::Date, "infinity"), Value::text("infinity"));
-        assert_eq!(
-            text_value(&Conv::Date, "0044-03-15 BC"),
-            Value::Date(NaiveDate::from_ymd_opt(-43, 3, 15).unwrap())
-        );
+        assert_eq!(text_value(&Conv::Date, "0044-03-15 BC"), Value::Date(NaiveDate::from_ymd_opt(-43, 3, 15).unwrap()));
         assert_eq!(text_value(&Conv::Time, "24:00:00"), Value::text("24:00:00"));
-        assert_eq!(
-            text_value(&Conv::Time, "13:14:15.5"),
-            Value::Time(NaiveTime::from_hms_milli_opt(13, 14, 15, 500).unwrap())
-        );
+        assert_eq!(text_value(&Conv::Time, "13:14:15.5"), Value::Time(NaiveTime::from_hms_milli_opt(13, 14, 15, 500).unwrap()));
         let tz = text_value(&Conv::TimestampTz, "2024-01-02 03:04:05.123456+05:30");
         match tz {
             Value::DateTimeTz(d) => {
@@ -860,15 +812,9 @@ mod tests {
         assert!(matches!(tz, Value::DateTimeTz(d) if d.offset().local_minus_utc() == -7 * 3600));
         assert_eq!(text_value(&Conv::Bytea, "\\x00ff"), Value::bytes(vec![0u8, 255]));
         assert_eq!(parse_bytea_text("a\\\\b\\001").unwrap(), b"a\\b\x01".to_vec());
-        assert_eq!(
-            text_value(&Conv::Geometry, "0101000020E6100000000000000000F03F0000000000000040"),
-            Value::text("SRID=4326;POINT(1 2)")
-        );
+        assert_eq!(text_value(&Conv::Geometry, "0101000020E6100000000000000000F03F0000000000000040"), Value::text("SRID=4326;POINT(1 2)"));
         assert_eq!(text_value(&Conv::Array(Box::new(Conv::Int4)), "{1,2}"), Value::text("{1,2}"));
-        assert_eq!(
-            text_value(&Conv::Uuid, "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"),
-            Value::Uuid(Uuid::parse_str("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11").unwrap())
-        );
+        assert_eq!(text_value(&Conv::Uuid, "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"), Value::Uuid(Uuid::parse_str("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11").unwrap()));
     }
 
     #[test]
@@ -876,10 +822,7 @@ mod tests {
         assert_eq!(binary_value(&Conv::Int4, Some(&7i32.to_be_bytes())), Value::Int(7));
         assert_eq!(binary_value(&Conv::Int4, None), Value::Null);
         assert_eq!(binary_value(&Conv::Float4, Some(&1.1f32.to_be_bytes())), Value::Float(1.1));
-        assert_eq!(
-            binary_value(&Conv::Date, Some(&0i32.to_be_bytes())),
-            Value::Date(NaiveDate::from_ymd_opt(2000, 1, 1).unwrap())
-        );
+        assert_eq!(binary_value(&Conv::Date, Some(&0i32.to_be_bytes())), Value::Date(NaiveDate::from_ymd_opt(2000, 1, 1).unwrap()));
         assert_eq!(binary_value(&Conv::Date, Some(&i32::MAX.to_be_bytes())), Value::text("infinity"));
         assert_eq!(binary_value(&Conv::Timestamp, Some(&i64::MIN.to_be_bytes())), Value::text("-infinity"));
         let ts = binary_value(&Conv::TimestampTz, Some(&1_500_000i64.to_be_bytes()));
@@ -931,11 +874,7 @@ mod tests {
         let conv = Conv::Array(Box::new(Conv::Int4));
         let a = array_bytes(23, &[(3, 1)], &[Some(1i32.to_be_bytes().to_vec()), None, Some(3i32.to_be_bytes().to_vec())]);
         assert_eq!(binary_value(&conv, Some(&a)), Value::text("{1,NULL,3}"));
-        let m = array_bytes(
-            23,
-            &[(2, 1), (2, 1)],
-            &[1, 2, 3, 4].iter().map(|i: &i32| Some(i.to_be_bytes().to_vec())).collect::<Vec<_>>(),
-        );
+        let m = array_bytes(23, &[(2, 1), (2, 1)], &[1, 2, 3, 4].iter().map(|i: &i32| Some(i.to_be_bytes().to_vec())).collect::<Vec<_>>());
         assert_eq!(binary_value(&conv, Some(&m)), Value::text("{{1,2},{3,4}}"));
         let lb = array_bytes(23, &[(2, 0)], &[Some(5i32.to_be_bytes().to_vec()), Some(6i32.to_be_bytes().to_vec())]);
         assert_eq!(binary_value(&conv, Some(&lb)), Value::text("[0:1]={5,6}"));

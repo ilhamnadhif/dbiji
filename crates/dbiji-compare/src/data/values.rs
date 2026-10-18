@@ -173,17 +173,13 @@ pub(crate) fn values_equal(a: &Value, b: &Value, o: &DataCompareOptions) -> bool
         (Null, _) | (_, Null) => false,
         _ if is_numeric_value(a) && is_numeric_value(b) => numbers_equal(a, b, o),
         // numbers delivered as text by one side
-        (Text(t), n) | (n, Text(t)) if is_numeric_value(n) && !matches!(n, Bool(_)) && self::Decimal::parse(t).is_some() => {
-            numbers_equal(&Value::Decimal(t.clone()), n, o)
-        }
+        (Text(t), n) | (n, Text(t)) if is_numeric_value(n) && !matches!(n, Bool(_)) && self::Decimal::parse(t).is_some() => numbers_equal(&Value::Decimal(t.clone()), n, o),
         (Bool(x), Text(t)) | (Text(t), Bool(x)) => dbiji_core::value::parse_bool(t) == Some(*x),
         (Text(x), Text(y)) => norm_text(x, o) == norm_text(y, o),
-        (Json(x), Json(y)) | (Json(x), Text(y)) | (Text(y), Json(x)) => {
-            match (serde_json::from_str::<serde_json::Value>(x), serde_json::from_str::<serde_json::Value>(y)) {
-                (Ok(p), Ok(q)) => p == q,
-                _ => norm_text(x, o) == norm_text(y, o),
-            }
-        }
+        (Json(x), Json(y)) | (Json(x), Text(y)) | (Text(y), Json(x)) => match (serde_json::from_str::<serde_json::Value>(x), serde_json::from_str::<serde_json::Value>(y)) {
+            (Ok(p), Ok(q)) => p == q,
+            _ => norm_text(x, o) == norm_text(y, o),
+        },
         (Bytes(x), Bytes(y)) => x == y,
         (Date(x), Date(y)) => x == y,
         (Time(x), Time(y)) => x == y,
@@ -200,12 +196,13 @@ pub(crate) fn values_equal(a: &Value, b: &Value, o: &DataCompareOptions) -> bool
 
 fn numbers_equal(a: &Value, b: &Value, o: &DataCompareOptions) -> bool {
     if o.numeric_tolerance > 0.0
-        && let (Some(x), Some(y)) = (as_f64(a), as_f64(b)) {
-            if x.is_nan() && y.is_nan() {
-                return true;
-            }
-            return (x - y).abs() <= o.numeric_tolerance || x == y;
+        && let (Some(x), Some(y)) = (as_f64(a), as_f64(b))
+    {
+        if x.is_nan() && y.is_nan() {
+            return true;
         }
+        return (x - y).abs() <= o.numeric_tolerance || x == y;
+    }
     match (numeric(a), numeric(b)) {
         (Some(x), Some(y)) => x == y,
         _ => a.to_text() == b.to_text(),

@@ -33,11 +33,7 @@ impl TableDataView {
         let Some(live) = cx.conns.live(&self.conn) else { return };
         let sql = live.dialect.select_table(&self.table, None, self.where_clause.as_deref(), None, None);
         let plan = StmtPlan { index: 0, original: sql.clone(), range: 0..sql.len(), sql, is_write: false, client: None };
-        let opts = ExecOpts {
-            fetch_size: cx.settings.results.effective_fetch_size() as usize,
-            store_budget: cx.settings.results.store_budget_bytes(),
-            ..Default::default()
-        };
+        let opts = ExecOpts { fetch_size: cx.settings.results.effective_fetch_size() as usize, store_budget: cx.settings.results.store_budget_bytes(), ..Default::default() };
         self.exec = Some(Execution::start(cx.backend, session, vec![plan], opts, None));
         self.started = true;
     }

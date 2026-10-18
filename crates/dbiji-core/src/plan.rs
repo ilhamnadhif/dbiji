@@ -40,11 +40,7 @@ impl PlanNode {
     /// Time spent in this node excluding children (EXPLAIN ANALYZE only).
     pub fn exclusive_ms(&self) -> Option<f64> {
         let total = self.actual_total_ms? * self.loops.unwrap_or(1.0);
-        let children: f64 = self
-            .children
-            .iter()
-            .filter_map(|c| c.actual_total_ms.map(|t| t * c.loops.unwrap_or(1.0)))
-            .sum();
+        let children: f64 = self.children.iter().filter_map(|c| c.actual_total_ms.map(|t| t * c.loops.unwrap_or(1.0))).sum();
         Some((total - children).max(0.0))
     }
 
@@ -62,10 +58,11 @@ impl PlanNode {
             s.push_str(" on ");
             s.push_str(r);
             if let Some(a) = &self.alias
-                && a != r {
-                    s.push(' ');
-                    s.push_str(a);
-                }
+                && a != r
+            {
+                s.push(' ');
+                s.push_str(a);
+            }
         }
         if let Some(i) = &self.index {
             s.push_str(&format!(" ({i})"));

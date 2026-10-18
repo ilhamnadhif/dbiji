@@ -46,26 +46,8 @@ pub fn schema_diff(source: &SchemaSnapshot, target: &SchemaSnapshot, opts: &Comp
     }
 
     let view_kind = |v: &ViewDef| if v.materialized { ObjectKind::MaterializedView } else { ObjectKind::View };
-    push_objects(
-        &mut items,
-        &a.views,
-        &source.views,
-        &target.views,
-        |v| (view_kind(v), v.name.clone(), None),
-        &src_schema,
-        &tgt_schema,
-        |v| Some(v.definition.clone()),
-    );
-    push_objects(
-        &mut items,
-        &a.sequences,
-        &source.sequences,
-        &target.sequences,
-        |s| (ObjectKind::Sequence, s.name.clone(), None),
-        &src_schema,
-        &tgt_schema,
-        |_| None,
-    );
+    push_objects(&mut items, &a.views, &source.views, &target.views, |v| (view_kind(v), v.name.clone(), None), &src_schema, &tgt_schema, |v| Some(v.definition.clone()));
+    push_objects(&mut items, &a.sequences, &source.sequences, &target.sequences, |s| (ObjectKind::Sequence, s.name.clone(), None), &src_schema, &tgt_schema, |_| None);
     let routine_kind = |r: &RoutineDef| match r.kind {
         Some(k @ (ObjectKind::Procedure | ObjectKind::Aggregate)) => k,
         _ => ObjectKind::Function,
@@ -150,16 +132,7 @@ fn push_objects<T>(
     for &si in &m.added {
         let (kind, name, signature) = ident(&src[si]);
         let changes = definition(&src[si]).map(|d| vec![PropertyChange::new("definition", Some(d), None)]).unwrap_or_default();
-        items.push(DiffItem {
-            kind,
-            schema: src_schema.clone(),
-            name,
-            target_name: None,
-            signature,
-            status: DiffStatus::Added,
-            changes,
-            children: Vec::new(),
-        });
+        items.push(DiffItem { kind, schema: src_schema.clone(), name, target_name: None, signature, status: DiffStatus::Added, changes, children: Vec::new() });
     }
     for &ti in &m.removed {
         let (kind, name, signature) = ident(&tgt[ti]);
@@ -182,15 +155,7 @@ fn child(kind: ObjectKind, name: String, target_name: Option<String>, status: Di
 }
 
 /// Children for one kind of sub-object; unchanged pairs are omitted.
-fn sub_children<T>(
-    out: &mut Vec<DiffItem>,
-    kind: ObjectKind,
-    m: &SubMatch,
-    src: &[T],
-    tgt: &[T],
-    name: impl Fn(&T) -> String,
-    describe: impl Fn(&T) -> String,
-) {
+fn sub_children<T>(out: &mut Vec<DiffItem>, kind: ObjectKind, m: &SubMatch, src: &[T], tgt: &[T], name: impl Fn(&T) -> String, describe: impl Fn(&T) -> String) {
     for (si, ti, changes) in &m.pairs {
         if !changes.is_empty() {
             let tn = name(&tgt[*ti]);
@@ -198,23 +163,11 @@ fn sub_children<T>(
         }
     }
     for &si in &m.added {
-        out.push(child(
-            kind,
-            name(&src[si]),
-            None,
-            DiffStatus::Added,
-            vec![PropertyChange::new("definition", Some(describe(&src[si])), None)],
-        ));
+        out.push(child(kind, name(&src[si]), None, DiffStatus::Added, vec![PropertyChange::new("definition", Some(describe(&src[si])), None)]));
     }
     for &ti in &m.removed {
         let n = name(&tgt[ti]);
-        out.push(child(
-            kind,
-            n.clone(),
-            Some(n),
-            DiffStatus::Removed,
-            vec![PropertyChange::new("definition", None, Some(describe(&tgt[ti])))],
-        ));
+        out.push(child(kind, n.clone(), Some(n), DiffStatus::Removed, vec![PropertyChange::new("definition", None, Some(describe(&tgt[ti])))]));
     }
 }
 
@@ -259,12 +212,8 @@ fn table_item(p: &TablePair<'_>, schema: Option<String>) -> DiffItem {
     let mut children = Vec::new();
     sub_children(&mut children, ObjectKind::Column, &p.columns, &s.columns, &t.columns, |c| c.name.clone(), Ctx::column_summary);
     let (spk, tpk) = (pk_vec(s), pk_vec(t));
-    sub_children(&mut children, ObjectKind::PrimaryKey, &p.primary_key, &spk, &tpk, |k| key_name("PRIMARY KEY", k), |k| {
-        format!("PRIMARY KEY ({})", k.columns.join(", "))
-    });
-    sub_children(&mut children, ObjectKind::UniqueKey, &p.unique_keys, &s.unique_keys, &t.unique_keys, |k| key_name("UNIQUE", k), |k| {
-        format!("UNIQUE ({})", k.columns.join(", "))
-    });
+    sub_children(&mut children, ObjectKind::PrimaryKey, &p.primary_key, &spk, &tpk, |k| key_name("PRIMARY KEY", k), |k| format!("PRIMARY KEY ({})", k.columns.join(", ")));
+    sub_children(&mut children, ObjectKind::UniqueKey, &p.unique_keys, &s.unique_keys, &t.unique_keys, |k| key_name("UNIQUE", k), |k| format!("UNIQUE ({})", k.columns.join(", ")));
     sub_children(
         &mut children,
         ObjectKind::CheckConstraint,
@@ -284,9 +233,17 @@ fn table_item(p: &TablePair<'_>, schema: Option<String>) -> DiffItem {
         fk_describe,
     );
     sub_children(&mut children, ObjectKind::Index, &p.indexes, &s.indexes, &t.indexes, |i| i.name.clone(), index_describe);
-    sub_children(&mut children, ObjectKind::Trigger, &p.triggers, &s.triggers, &t.triggers, |tr| tr.name.clone(), |tr| {
-        if tr.definition.is_empty() { format!("{} {}", tr.timing, tr.events.join(" OR ")) } else { tr.definition.clone() }
-    });
+    sub_children(
+        &mut children,
+        ObjectKind::Trigger,
+        &p.triggers,
+        &s.triggers,
+        &t.triggers,
+        |tr| tr.name.clone(),
+        |tr| {
+            if tr.definition.is_empty() { format!("{} {}", tr.timing, tr.events.join(" OR ")) } else { tr.definition.clone() }
+        },
+    );
     sub_children(&mut children, ObjectKind::Partition, &p.partitions, &s.partitions, &t.partitions, |x| x.name.clone(), |x| x.bound.clone());
     let unchanged = p.is_unchanged();
     DiffItem {

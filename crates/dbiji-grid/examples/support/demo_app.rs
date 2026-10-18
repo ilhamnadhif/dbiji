@@ -13,8 +13,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-const CATEGORIES: [&str; 12] =
-    ["Books", "Music", "Garden", "Toys", "Food", "Sports", "Health", "Office", "Travel", "Pets", "Tools", "Games"];
+const CATEGORIES: [&str; 12] = ["Books", "Music", "Garden", "Toys", "Food", "Sports", "Health", "Office", "Travel", "Pets", "Tools", "Games"];
 
 /// Simulated fetch running on another thread.
 struct Fetch {
@@ -77,34 +76,15 @@ impl DemoApp {
             },
         ]);
         let options = GridOptions { sql_table_name: Some("demo.big".into()), ..Default::default() };
-        DemoApp {
-            model,
-            view,
-            options,
-            total_rows,
-            ncols,
-            page: 5_000,
-            fetch: None,
-            save_preview: None,
-            log: Vec::new(),
-            dark: true,
-            fetch_all_at_start: false,
-        }
+        DemoApp { model, view, options, total_rows, ncols, page: 5_000, fetch: None, save_preview: None, log: Vec::new(), dark: true, fetch_all_at_start: false }
     }
 
     fn configure(model: &mut ResultModel, total_rows: usize, fetched: usize) {
         let target = dbiji_grid::determine_editability(model.columns(), |_| Some(vec!["id".into()]), false);
         model.set_editability(target);
-        let dict: HashMap<String, String> =
-            CATEGORIES.iter().enumerate().map(|(i, n)| ((i + 1).to_string(), n.to_string())).collect();
+        let dict: HashMap<String, String> = CATEGORIES.iter().enumerate().map(|(i, n)| ((i + 1).to_string(), n.to_string())).collect();
         model.set_dictionary(3, dict);
-        model.set_enum_values(
-            7,
-            ["Jakarta", "Bandung", "Surabaya", "Medan", "Denpasar", "Yogyakarta", "Makassar", "Semarang"]
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
-        );
+        model.set_enum_values(7, ["Jakarta", "Bandung", "Surabaya", "Medan", "Denpasar", "Yogyakarta", "Makassar", "Semarang"].iter().map(|s| s.to_string()).collect());
         model.set_foreign_keys(vec![ForeignKeyLink {
             name: Some("big_category_fk".into()),
             columns: vec![3],
@@ -195,14 +175,8 @@ impl DemoApp {
                 let (cols, rows) = if relation == 0 {
                     let id = values.first().and_then(Value::as_i64).unwrap_or(0);
                     (
-                        vec![
-                            ColumnMeta::new("id", "int4", DataKind::Int),
-                            ColumnMeta::new("name", "text", DataKind::Text),
-                        ],
-                        vec![vec![
-                            Value::Int(id),
-                            Value::text(CATEGORIES.get((id - 1).max(0) as usize).copied().unwrap_or("?")),
-                        ]],
+                        vec![ColumnMeta::new("id", "int4", DataKind::Int), ColumnMeta::new("name", "text", DataKind::Text)],
+                        vec![vec![Value::Int(id), Value::text(CATEGORIES.get((id - 1).max(0) as usize).copied().unwrap_or("?"))]],
                     )
                 } else {
                     let cust = values.first().and_then(Value::as_i64).unwrap_or(0);
@@ -212,15 +186,7 @@ impl DemoApp {
                             ColumnMeta::new("customer_id", "int8", DataKind::Int),
                             ColumnMeta::new("total", "numeric", DataKind::Decimal),
                         ],
-                        (0..3)
-                            .map(|k| {
-                                vec![
-                                    Value::Int(cust * 10 + k),
-                                    Value::Int(cust),
-                                    Value::decimal(format!("{}.95", k * 17 + 3)),
-                                ]
-                            })
-                            .collect(),
+                        (0..3).map(|k| vec![Value::Int(cust * 10 + k), Value::Int(cust), Value::decimal(format!("{}.95", k * 17 + 3))]).collect(),
                     )
                 };
                 self.view.references.set_related_rows(relation, values, cols, rows);
@@ -253,11 +219,7 @@ impl DemoApp {
                 ui.checkbox(&mut self.options.format.thousands_separator, "Thousands separator");
                 let mut cb = self.options.format.bool_style == dbiji_core::value::BoolStyle::Checkbox;
                 if ui.checkbox(&mut cb, "Checkbox booleans").changed() {
-                    self.options.format.bool_style = if cb {
-                        dbiji_core::value::BoolStyle::Checkbox
-                    } else {
-                        dbiji_core::value::BoolStyle::TrueFalse
-                    };
+                    self.options.format.bool_style = if cb { dbiji_core::value::BoolStyle::Checkbox } else { dbiji_core::value::BoolStyle::TrueFalse };
                 }
                 ui.checkbox(&mut self.options.show_row_numbers, "Row numbers");
             });
@@ -272,32 +234,27 @@ impl DemoApp {
                 }
             });
         });
-        let actions = egui::CentralPanel::default()
-            .show(ui, |ui| ResultViewer::new(&mut self.model, &mut self.view, &self.options).show(ui).actions)
-            .inner;
+        let actions = egui::CentralPanel::default().show(ui, |ui| ResultViewer::new(&mut self.model, &mut self.view, &self.options).show(ui).actions).inner;
         for a in actions {
             self.handle(a, &ctx);
         }
         if let Some(sql) = self.save_preview.clone() {
             let mut open = true;
             let mut apply = false;
-            egui::Window::new("Save changes — preview SQL").open(&mut open).default_size([560.0, 300.0]).show(
-                &ctx,
-                |ui| {
-                    egui::ScrollArea::both().max_height(240.0).show(ui, |ui| {
-                        let mut s = sql.as_str();
-                        ui.add(egui::TextEdit::multiline(&mut s).code_editor().desired_width(f32::INFINITY));
-                    });
-                    ui.horizontal(|ui| {
-                        if ui.button("Apply (simulate commit)").clicked() {
-                            apply = true;
-                        }
-                        if ui.button("Cancel").clicked() {
-                            self.save_preview = None;
-                        }
-                    });
-                },
-            );
+            egui::Window::new("Save changes — preview SQL").open(&mut open).default_size([560.0, 300.0]).show(&ctx, |ui| {
+                egui::ScrollArea::both().max_height(240.0).show(ui, |ui| {
+                    let mut s = sql.as_str();
+                    ui.add(egui::TextEdit::multiline(&mut s).code_editor().desired_width(f32::INFINITY));
+                });
+                ui.horizontal(|ui| {
+                    if ui.button("Apply (simulate commit)").clicked() {
+                        apply = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        self.save_preview = None;
+                    }
+                });
+            });
             if apply {
                 let n = self.model.pending_counts().total();
                 self.model.apply_saved();

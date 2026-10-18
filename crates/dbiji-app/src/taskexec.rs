@@ -68,7 +68,13 @@ impl AppTaskExecutor {
         r
     }
 
-    async fn tool(&self, ctx: &RunContext, connection_id: &str, restore: Option<&dbiji_core::admin::RestoreOptions>, backup: Option<&dbiji_core::admin::BackupOptions>) -> DbResult<RunOutcome> {
+    async fn tool(
+        &self,
+        ctx: &RunContext,
+        connection_id: &str,
+        restore: Option<&dbiji_core::admin::RestoreOptions>,
+        backup: Option<&dbiji_core::admin::BackupOptions>,
+    ) -> DbResult<RunOutcome> {
         // Backup tools connect themselves; open (and close) a connection
         // anyway to establish tunnels and verify the credentials.
         let c = self.open(connection_id).await?;

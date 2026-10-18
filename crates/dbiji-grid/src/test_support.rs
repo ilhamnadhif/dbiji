@@ -17,22 +17,11 @@ pub(crate) struct Ui {
 
 impl Ui {
     pub fn new() -> Self {
-        Ui {
-            ctx: egui::Context::default(),
-            time: 0.0,
-            size: vec2(900.0, 600.0),
-            repaint_delay: std::time::Duration::MAX,
-            modifiers: Modifiers::NONE,
-        }
+        Ui { ctx: egui::Context::default(), time: 0.0, size: vec2(900.0, 600.0), repaint_delay: std::time::Duration::MAX, modifiers: Modifiers::NONE }
     }
 
     /// One frame with `events`; returns the platform output.
-    pub fn run(
-        &mut self,
-        events: Vec<Event>,
-        modifiers: Modifiers,
-        mut f: impl FnMut(&mut egui::Ui),
-    ) -> egui::PlatformOutput {
+    pub fn run(&mut self, events: Vec<Event>, modifiers: Modifiers, mut f: impl FnMut(&mut egui::Ui)) -> egui::PlatformOutput {
         self.time += 1.0 / 60.0;
         // Like a real integration: only report modifier changes (any event triggers a repaint).
         let mut all = Vec::new();
@@ -41,19 +30,12 @@ impl Ui {
             self.modifiers = modifiers;
         }
         all.extend(events);
-        let input = RawInput {
-            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, self.size)),
-            time: Some(self.time),
-            events: all,
-            focused: true,
-            ..Default::default()
-        };
+        let input = RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, self.size)), time: Some(self.time), events: all, focused: true, ..Default::default() };
         let mut out = self.ctx.run_ui(input, |ui| {
             egui::CentralPanel::default().show(ui, |ui| f(ui));
         });
         out.textures_delta.clear();
-        self.repaint_delay =
-            out.viewport_output.get(&egui::ViewportId::ROOT).map_or(std::time::Duration::MAX, |v| v.repaint_delay);
+        self.repaint_delay = out.viewport_output.get(&egui::ViewportId::ROOT).map_or(std::time::Duration::MAX, |v| v.repaint_delay);
         out.platform_output
     }
 }
@@ -82,16 +64,7 @@ pub(crate) fn editable_model(n: usize) -> ResultModel {
         ColumnMeta::new("flag", "bool", DataKind::Bool).with_source(src("flag")),
         ColumnMeta::new("category", "int", DataKind::Int).with_source(src("category")),
     ];
-    let rows = (0..n)
-        .map(|i| {
-            vec![
-                Value::Int(i as i64),
-                Value::text(format!("name {i}")),
-                Value::Bool(i % 2 == 0),
-                Value::Int((i % 3) as i64 + 1),
-            ]
-        })
-        .collect();
+    let rows = (0..n).map(|i| vec![Value::Int(i as i64), Value::text(format!("name {i}")), Value::Bool(i % 2 == 0), Value::Int((i % 3) as i64 + 1)]).collect();
     let mut m = ResultModel::from_rows(cols, rows);
     let e = determine_editability(m.columns(), |_| Some(vec!["id".into()]), false);
     m.set_editability(e);
@@ -111,14 +84,7 @@ pub(crate) struct GridHarness {
 impl GridHarness {
     pub fn new(model: ResultModel) -> Self {
         let state = DataGridState::for_model(&model);
-        let mut h = GridHarness {
-            ui: Ui::new(),
-            model,
-            state,
-            options: GridOptions::default(),
-            actions: Vec::new(),
-            output: Default::default(),
-        };
+        let mut h = GridHarness { ui: Ui::new(), model, state, options: GridOptions::default(), actions: Vec::new(), output: Default::default() };
         h.frame(vec![]);
         h.frame(vec![]);
         h

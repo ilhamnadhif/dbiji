@@ -91,12 +91,7 @@ impl ConnectionDialog {
 
     fn credentials(&self) -> Credentials {
         let opt = |s: &str| if s.is_empty() { None } else { Some(Secret::new(s)) };
-        Credentials {
-            password: opt(&self.password),
-            ssh_password: opt(&self.ssh_password),
-            ssh_passphrase: opt(&self.ssh_passphrase),
-            proxy_password: opt(&self.proxy_password),
-        }
+        Credentials { password: opt(&self.password), ssh_password: opt(&self.ssh_password), ssh_passphrase: opt(&self.ssh_passphrase), proxy_password: opt(&self.proxy_password) }
     }
 
     fn validate(&self) -> Option<String> {
@@ -111,9 +106,10 @@ impl ConnectionDialog {
             return Some(tr("Enter a host name.").to_string());
         }
         if let Some(ssh) = self.cfg.ssh.as_ref().filter(|s| s.enabled)
-            && (ssh.host.trim().is_empty() || ssh.user.trim().is_empty()) {
-                return Some(tr("SSH tunnel needs a host and a user.").to_string());
-            }
+            && (ssh.host.trim().is_empty() || ssh.user.trim().is_empty())
+        {
+            return Some(tr("SSH tunnel needs a host and a user.").to_string());
+        }
         None
     }
 
@@ -135,11 +131,7 @@ impl ConnectionDialog {
         let id = self.cfg.id.clone();
         let store = |slot, value: &str, keep: bool| -> DbResult<()> {
             let key = secret_key(&id, slot);
-            if keep && !value.is_empty() {
-                cx.conns.secrets.set(&key, &Secret::new(value))
-            } else {
-                cx.conns.secrets.delete(&key)
-            }
+            if keep && !value.is_empty() { cx.conns.secrets.set(&key, &Secret::new(value)) } else { cx.conns.secrets.delete(&key) }
         };
         let ssh_save = self.cfg.ssh.as_ref().is_some_and(|s| s.enabled && s.save_credentials);
         let proxy_save = self.cfg.proxy.as_ref().is_some_and(|p| p.enabled && p.save_credentials);
@@ -165,10 +157,11 @@ impl ConnectionDialog {
     pub fn show(&mut self, ctx: &egui::Context, cx: &mut AppContext) {
         self.load_saved_secrets(cx.conns);
         if let Some(job) = self.test.as_mut()
-            && let Some(r) = job.poll() {
-                self.test_result = Some(r.map_err(|e| e.full_text()));
-                self.test = None;
-            }
+            && let Some(r) = job.poll()
+        {
+            self.test_result = Some(r.map_err(|e| e.full_text()));
+            self.test = None;
+        }
         let title = if self.is_new { tr("New connection") } else { tr("Edit connection") };
         let mut open = self.open;
         let mut close = false;
@@ -274,10 +267,7 @@ impl ConnectionDialog {
                         if ui.button(RichText::new(tr("Save")).strong()).clicked() && self.save(cx) {
                             close = true;
                         }
-                        if self.is_new
-                            && ui.button(tr("Save and connect")).clicked()
-                            && self.save(cx)
-                        {
+                        if self.is_new && ui.button(tr("Save and connect")).clicked() && self.save(cx) {
                             cx.push(crate::command::AppCommand::Connect(self.cfg.id.clone()));
                             close = true;
                         }
@@ -301,19 +291,21 @@ impl ConnectionDialog {
                         self.cfg.file_path = Some(path);
                     }
                     if ui.button(icon::FOLDER_OPEN).on_hover_text(tr("Open existing file")).clicked()
-                        && let Some(p) = rfd::FileDialog::new().pick_file() {
-                            self.cfg.file_path = Some(p.display().to_string());
-                            if self.cfg.name.is_empty() {
-                                self.cfg.name = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-                            }
+                        && let Some(p) = rfd::FileDialog::new().pick_file()
+                    {
+                        self.cfg.file_path = Some(p.display().to_string());
+                        if self.cfg.name.is_empty() {
+                            self.cfg.name = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
                         }
+                    }
                     if ui.button(icon::FILE_PLUS).on_hover_text(tr("Create new database file")).clicked()
-                        && let Some(p) = rfd::FileDialog::new().set_file_name("database.db").save_file() {
-                            self.cfg.file_path = Some(p.display().to_string());
-                            if self.cfg.name.is_empty() {
-                                self.cfg.name = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-                            }
+                        && let Some(p) = rfd::FileDialog::new().set_file_name("database.db").save_file()
+                    {
+                        self.cfg.file_path = Some(p.display().to_string());
+                        if self.cfg.name.is_empty() {
+                            self.cfg.name = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
                         }
+                    }
                 });
                 ui.end_row();
             } else {
@@ -322,10 +314,7 @@ impl ConnectionDialog {
                     ui.add(egui::TextEdit::singleline(&mut self.cfg.host).desired_width(220.0));
                     ui.label(tr("Port"));
                     let mut port = self.cfg.port.map(|p| p.to_string()).unwrap_or_default();
-                    if ui
-                        .add(egui::TextEdit::singleline(&mut port).desired_width(60.0).hint_text(kind.default_port().map(|p| p.to_string()).unwrap_or_default()))
-                        .changed()
-                    {
+                    if ui.add(egui::TextEdit::singleline(&mut port).desired_width(60.0).hint_text(kind.default_port().map(|p| p.to_string()).unwrap_or_default())).changed() {
                         self.cfg.port = port.trim().parse().ok();
                     }
                 });
@@ -449,7 +438,13 @@ impl ConnectionDialog {
         }
         ui.horizontal(|ui| {
             ui.label(tr("Network profile"));
-            let current = self.cfg.network_profile.as_ref().and_then(|id| profiles.iter().find(|(i, _)| i == id)).map(|(_, n)| n.clone()).unwrap_or_else(|| tr("(none — settings below)").to_string());
+            let current = self
+                .cfg
+                .network_profile
+                .as_ref()
+                .and_then(|id| profiles.iter().find(|(i, _)| i == id))
+                .map(|(_, n)| n.clone())
+                .unwrap_or_else(|| tr("(none — settings below)").to_string());
             egui::ComboBox::from_id_salt("net_profile").selected_text(current).show_ui(ui, |ui| {
                 ui.selectable_value(&mut self.cfg.network_profile, None, tr("(none — settings below)"));
                 for (id, name) in &profiles {
@@ -500,11 +495,7 @@ impl ConnectionDialog {
                 SslMode::VerifyFull => tr("Always encrypt and verify the certificate chain and host name."),
             });
             ui.end_row();
-            for (label, field) in [
-                (tr("CA certificate"), &mut ssl.ca_cert),
-                (tr("Client certificate"), &mut ssl.client_cert),
-                (tr("Client key"), &mut ssl.client_key),
-            ] {
+            for (label, field) in [(tr("CA certificate"), &mut ssl.ca_cert), (tr("Client certificate"), &mut ssl.client_cert), (tr("Client key"), &mut ssl.client_key)] {
                 ui.label(label);
                 ui.horizontal(|ui| {
                     let mut v = field.clone().unwrap_or_default();
@@ -512,9 +503,10 @@ impl ConnectionDialog {
                         *field = if v.is_empty() { None } else { Some(v) };
                     }
                     if ui.button(icon::FOLDER_OPEN).clicked()
-                        && let Some(p) = rfd::FileDialog::new().add_filter("PEM", &["pem", "crt", "cer", "key"]).pick_file() {
-                            *field = Some(p.display().to_string());
-                        }
+                        && let Some(p) = rfd::FileDialog::new().add_filter("PEM", &["pem", "crt", "cer", "key"]).pick_file()
+                    {
+                        *field = Some(p.display().to_string());
+                    }
                 });
                 ui.end_row();
             }
@@ -741,9 +733,10 @@ pub fn ssh_form(ui: &mut Ui, id: &str, ssh: &mut SshConfig, password: &mut Strin
                     ui.horizontal(|ui| {
                         ui.add(egui::TextEdit::singleline(key_path).desired_width(260.0));
                         if ui.button(icon::FOLDER_OPEN).clicked()
-                            && let Some(p) = rfd::FileDialog::new().pick_file() {
-                                *key_path = p.display().to_string();
-                            }
+                            && let Some(p) = rfd::FileDialog::new().pick_file()
+                        {
+                            *key_path = p.display().to_string();
+                        }
                     });
                     ui.end_row();
                     ui.label(tr("Passphrase"));
@@ -774,7 +767,6 @@ pub fn ssh_form(ui: &mut Ui, id: &str, ssh: &mut SshConfig, password: &mut Strin
         });
     });
 }
-
 
 /// Proxy settings form (connection dialog and network profiles).
 pub fn proxy_form(ui: &mut Ui, id: &str, proxy: &mut ProxyConfig, password: &mut String) {
@@ -809,4 +801,3 @@ pub fn proxy_form(ui: &mut Ui, id: &str, proxy: &mut ProxyConfig, password: &mut
         });
     });
 }
-

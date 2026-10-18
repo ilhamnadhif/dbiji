@@ -74,11 +74,7 @@ fn to_num(v: &Value) -> Option<Num> {
         Value::Decimal(s) => s.trim().parse::<f64>().ok().map(Num::Float),
         Value::Text(s) => {
             let t = s.trim();
-            if let Ok(i) = t.parse::<i64>() {
-                Some(Num::Int(i))
-            } else {
-                t.parse::<f64>().ok().filter(|f| f.is_finite()).map(Num::Float)
-            }
+            if let Ok(i) = t.parse::<i64>() { Some(Num::Int(i)) } else { t.parse::<f64>().ok().filter(|f| f.is_finite()).map(Num::Float) }
         }
         _ => None,
     }
@@ -157,9 +153,7 @@ fn uuid_parse(t: &str) -> Option<Value> {
 /// SQL `LIKE` matching: `%` matches any sequence, `_` one character and
 /// `\` escapes the next character.
 pub fn like_match(text: &str, pattern: &str, case_insensitive: bool) -> bool {
-    let fold = |s: &str| -> Vec<char> {
-        if case_insensitive { s.chars().flat_map(char::to_lowercase).collect() } else { s.chars().collect() }
-    };
+    let fold = |s: &str| -> Vec<char> { if case_insensitive { s.chars().flat_map(char::to_lowercase).collect() } else { s.chars().collect() } };
     let t = fold(text);
     // Tokenise the pattern: Some(c) literal, None for '_', and a separate marker for '%'.
     #[derive(Clone, Copy, PartialEq)]
@@ -345,10 +339,7 @@ fn binary(op: BinaryOp, a: &Value, b: &Value) -> Result<Value, EvalError> {
                     _ => "%",
                 };
                 let bad = if to_num(a).is_none() { a } else { b };
-                return Err(EvalError(trf(
-                    "Operator {} needs numbers, got '{}'",
-                    &[&sym, &truncate_for_message(&bad.to_text())],
-                )));
+                return Err(EvalError(trf("Operator {} needs numbers, got '{}'", &[&sym, &truncate_for_message(&bad.to_text())])));
             };
             arith(op, x, y)
         }
@@ -525,11 +516,7 @@ fn call<R: RowValues + ?Sized>(func: Func, args: &[Node], row: &R) -> Result<Val
             let chars: Vec<char> = s.chars().collect();
             let n = chars.len();
             let k = if k < 0 { n.saturating_sub(k.unsigned_abs() as usize) } else { (k as usize).min(n) };
-            Ok(Value::text(if func == Func::Left {
-                chars[..k].iter().collect::<String>()
-            } else {
-                chars[n - k..].iter().collect::<String>()
-            }))
+            Ok(Value::text(if func == Func::Left { chars[..k].iter().collect::<String>() } else { chars[n - k..].iter().collect::<String>() }))
         }
         Func::Abs => match &first {
             Value::Decimal(s) => Ok(Value::decimal(s.trim().trim_start_matches(['-', '+']).to_string())),
@@ -616,8 +603,7 @@ pub(crate) fn round_decimal_text(s: &str, digits: i32) -> Option<String> {
     };
     if body.contains(['e', 'E']) {
         let f: f64 = s.parse().ok()?;
-        return round_decimal_text(format!("{f:.20}").trim_end_matches('0').trim_end_matches('.'), digits)
-            .filter(|_| f.is_finite());
+        return round_decimal_text(format!("{f:.20}").trim_end_matches('0').trim_end_matches('.'), digits).filter(|_| f.is_finite());
     }
     let (int_part, frac_part) = match body.split_once('.') {
         Some((i, f)) => (i, f),

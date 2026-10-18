@@ -38,9 +38,7 @@ pub const DEFAULT_STORE_BUDGET: usize = 48 * 1024 * 1024;
 const DEFAULT_PAGE_ROWS: usize = 512;
 
 fn row_bytes(row: &Row) -> usize {
-    std::mem::size_of::<Row>()
-        + row.capacity() * std::mem::size_of::<Value>()
-        + row.iter().map(Value::heap_size).sum::<usize>()
+    std::mem::size_of::<Row>() + row.capacity() * std::mem::size_of::<Value>() + row.iter().map(Value::heap_size).sum::<usize>()
 }
 
 struct Page {
@@ -78,16 +76,7 @@ impl Default for RowStore {
 
 impl RowStore {
     pub fn new(budget_bytes: usize) -> Self {
-        RowStore {
-            page_rows: DEFAULT_PAGE_ROWS,
-            pages: Vec::new(),
-            len: 0,
-            resident: 0,
-            budget: budget_bytes.max(64 * 1024),
-            tick: 0,
-            spill: None,
-            spill_failed: false,
-        }
+        RowStore { page_rows: DEFAULT_PAGE_ROWS, pages: Vec::new(), len: 0, resident: 0, budget: budget_bytes.max(64 * 1024), tick: 0, spill: None, spill_failed: false }
     }
 
     pub fn shared(budget_bytes: usize) -> SharedRowStore {
@@ -141,19 +130,10 @@ impl RowStore {
     }
 
     pub fn push(&mut self, row: Row) {
-        let need_new = self
-            .pages
-            .last()
-            .is_none_or(|p| p.rows.as_ref().is_none_or(|r| r.len() >= self.page_rows));
+        let need_new = self.pages.last().is_none_or(|p| p.rows.as_ref().is_none_or(|r| r.len() >= self.page_rows));
         if need_new {
             self.tick += 1;
-            self.pages.push(Page {
-                rows: Some(Vec::with_capacity(self.page_rows)),
-                bytes: 0,
-                last_used: self.tick,
-                disk: None,
-                dirty: true,
-            });
+            self.pages.push(Page { rows: Some(Vec::with_capacity(self.page_rows)), bytes: 0, last_used: self.tick, disk: None, dirty: true });
         }
         let b = row_bytes(&row);
         let last = self.pages.len() - 1;
@@ -188,11 +168,7 @@ impl RowStore {
         let Some((offset, len)) = self.pages[p].disk else { return false };
         let Some(spill) = self.spill.as_mut() else { return false };
         let mut buf = vec![0u8; len as usize];
-        if let Err(e) = spill
-            .file
-            .seek(SeekFrom::Start(offset))
-            .and_then(|_| spill.file.read_exact(&mut buf))
-        {
+        if let Err(e) = spill.file.seek(SeekFrom::Start(offset)).and_then(|_| spill.file.read_exact(&mut buf)) {
             tracing::error!("row store: failed to read spilled page: {e}");
             return false;
         }
@@ -217,13 +193,7 @@ impl RowStore {
         }
         let tail = self.pages.len().saturating_sub(1);
         while self.resident > self.budget || global_resident_bytes() > global_limit() {
-            let victim = self
-                .pages
-                .iter()
-                .enumerate()
-                .filter(|(i, p)| p.rows.is_some() && Some(*i) != keep && *i != tail)
-                .min_by_key(|(_, p)| p.last_used)
-                .map(|(i, _)| i);
+            let victim = self.pages.iter().enumerate().filter(|(i, p)| p.rows.is_some() && Some(*i) != keep && *i != tail).min_by_key(|(_, p)| p.last_used).map(|(i, _)| i);
             let Some(v) = victim else { break };
             if !self.evict(v) {
                 break;

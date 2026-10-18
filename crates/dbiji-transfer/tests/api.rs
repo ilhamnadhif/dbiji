@@ -62,11 +62,6 @@ fn import_future_is_send(
 }
 
 #[allow(dead_code)]
-fn mock_future_is_send(
-    session: &'static mut dyn Session,
-    config: &'static MockConfig,
-    progress: &'static Progress,
-    cancel: &'static CancellationToken,
-) {
+fn mock_future_is_send(session: &'static mut dyn Session, config: &'static MockConfig, progress: &'static Progress, cancel: &'static CancellationToken) {
     send_future(run_mock(config, session, progress, cancel));
 }

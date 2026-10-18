@@ -32,13 +32,7 @@ pub struct ColumnDef {
 impl ColumnDef {
     pub fn new(name: impl Into<String>, data_type: impl Into<String>) -> Self {
         let data_type = data_type.into();
-        ColumnDef {
-            name: name.into(),
-            kind: DataKind::guess_from_type_name(&data_type),
-            data_type,
-            nullable: true,
-            ..Default::default()
-        }
+        ColumnDef { name: name.into(), kind: DataKind::guess_from_type_name(&data_type), data_type, nullable: true, ..Default::default() }
     }
     pub fn not_null(mut self) -> Self {
         self.nullable = false;
@@ -82,8 +76,7 @@ pub enum FkAction {
 }
 
 impl FkAction {
-    pub const ALL: [FkAction; 5] =
-        [FkAction::NoAction, FkAction::Restrict, FkAction::Cascade, FkAction::SetNull, FkAction::SetDefault];
+    pub const ALL: [FkAction; 5] = [FkAction::NoAction, FkAction::Restrict, FkAction::Cascade, FkAction::SetNull, FkAction::SetDefault];
 
     pub fn sql(self) -> &'static str {
         match self {
@@ -249,13 +242,11 @@ impl TableDef {
     /// columns are all NOT NULL, else the first unique key.
     pub fn row_key(&self) -> Option<&KeyDef> {
         if let Some(pk) = &self.primary_key
-            && !pk.columns.is_empty() {
-                return Some(pk);
-            }
-        self.unique_keys
-            .iter()
-            .find(|k| k.columns.iter().all(|c| self.column(c).is_some_and(|c| !c.nullable)))
-            .or_else(|| self.unique_keys.first())
+            && !pk.columns.is_empty()
+        {
+            return Some(pk);
+        }
+        self.unique_keys.iter().find(|k| k.columns.iter().all(|c| self.column(c).is_some_and(|c| !c.nullable))).or_else(|| self.unique_keys.first())
     }
 
     pub fn is_pk_column(&self, column: &str) -> bool {

@@ -132,7 +132,8 @@ fn parse_geometry(r: &mut Reader<'_>, out: &mut String, top: bool, depth: usize)
     let srid = if has_srid { Some(r.u32(le)? as i32) } else { None };
     let name = type_name(code).ok_or("unknown geometry type")?;
     let dims = Dims { z, m };
-    if top && let Some(s) = srid
+    if top
+        && let Some(s) = srid
         && s != 0
     {
         let _ = write!(out, "SRID={s};");
@@ -194,11 +195,7 @@ fn parse_geometry(r: &mut Reader<'_>, out: &mut String, top: bool, depth: usize)
                     let mut sub = String::new();
                     parse_geometry(r, &mut sub, false, depth + 1)?;
                     // strip the "POINT" / "POINTM" prefix and the parentheses
-                    let inner = sub
-                        .trim_start_matches("POINTM")
-                        .trim_start_matches("POINT")
-                        .trim_start_matches('(')
-                        .trim_end_matches(')');
+                    let inner = sub.trim_start_matches("POINTM").trim_start_matches("POINT").trim_start_matches('(').trim_end_matches(')');
                     if inner.trim() == "EMPTY" {
                         out.push_str("EMPTY");
                     } else {

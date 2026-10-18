@@ -3,9 +3,8 @@
 //! mapping, conversion options and a report of the rows that failed.
 
 use super::{
-    COMMON_KINDS, MessageLog, Running, TaskSaver, char_edit, combo, connection_name, current_schema, error_text, kind_label,
-    lines_edit, next_uid, not_connected, on_error_options, opt_char_edit, opt_number, opt_text, progress_ui,
-    reload_table_def, schema_combo, schema_tables, section, steps_ui, table_def_of, text_table, transaction_options,
+    COMMON_KINDS, MessageLog, Running, TaskSaver, char_edit, combo, connection_name, current_schema, error_text, kind_label, lines_edit, next_uid, not_connected, on_error_options,
+    opt_char_edit, opt_number, opt_text, progress_ui, reload_table_def, schema_combo, schema_tables, section, steps_ui, table_def_of, text_table, transaction_options,
 };
 use crate::backend::Job;
 use crate::command::AppCommand;
@@ -16,9 +15,8 @@ use dbiji_core::meta::{ObjectRef, SchemaRef};
 use dbiji_core::{ColumnMeta, DbError, DbResult, Row, tr, trf};
 use dbiji_tasks::TaskKind;
 use dbiji_transfer::{
-    BinaryEncoding, ColumnMapping, CsvHeader, CsvReadOptions, EscapeStyle, ImportJob, ImportMapping, ImportMode,
-    ImportSourceConfig, ImportSummary, InferOptions, JsonInputFormat, JsonReadOptions, OnError, PeekableSource, RowSource,
-    SessionFactory, SheetSelector, XlsxReadOptions, XmlReadOptions, infer_columns, run_import_job, xlsx_sheet_names,
+    BinaryEncoding, ColumnMapping, CsvHeader, CsvReadOptions, EscapeStyle, ImportJob, ImportMapping, ImportMode, ImportSourceConfig, ImportSummary, InferOptions, JsonInputFormat,
+    JsonReadOptions, OnError, PeekableSource, RowSource, SessionFactory, SheetSelector, XlsxReadOptions, XmlReadOptions, infer_columns, run_import_job, xlsx_sheet_names,
 };
 use egui::{RichText, Ui};
 use egui_phosphor::regular as icon;
@@ -34,20 +32,7 @@ const PAGE_RUN: usize = 3;
 const PREVIEW_ROWS: usize = 50;
 
 /// Encodings offered for input files (`auto` detects BOM / UTF-8 / windows-1252).
-const ENCODINGS: [&str; 12] = [
-    "auto",
-    "UTF-8",
-    "UTF-16LE",
-    "UTF-16BE",
-    "windows-1252",
-    "ISO-8859-1",
-    "ISO-8859-15",
-    "windows-1250",
-    "windows-1251",
-    "Shift_JIS",
-    "GBK",
-    "Big5",
-];
+const ENCODINGS: [&str; 12] = ["auto", "UTF-8", "UTF-16LE", "UTF-16BE", "windows-1252", "ISO-8859-1", "ISO-8859-15", "windows-1250", "windows-1251", "Shift_JIS", "GBK", "Big5"];
 
 /// Format of the file to import.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,8 +45,7 @@ pub enum ImportFileFormat {
 }
 
 impl ImportFileFormat {
-    pub const ALL: [ImportFileFormat; 5] =
-        [ImportFileFormat::Csv, ImportFileFormat::Tsv, ImportFileFormat::Xlsx, ImportFileFormat::Xml, ImportFileFormat::Json];
+    pub const ALL: [ImportFileFormat; 5] = [ImportFileFormat::Csv, ImportFileFormat::Tsv, ImportFileFormat::Xlsx, ImportFileFormat::Xml, ImportFileFormat::Json];
 
     /// Format for a file name extension.
     pub fn from_path(path: &Path) -> Option<ImportFileFormat> {
@@ -282,12 +266,7 @@ impl ImportTab {
 
     /// The job as it would run now.
     pub fn job(&self) -> Option<ImportJob> {
-        Some(ImportJob {
-            source: self.source_config(),
-            mapping: self.mapping()?,
-            infer: self.infer_options(),
-            sample_rows: self.sample_rows,
-        })
+        Some(ImportJob { source: self.source_config(), mapping: self.mapping()?, infer: self.infer_options(), sample_rows: self.sample_rows })
     }
 
     pub fn page(&self) -> usize {
@@ -519,11 +498,7 @@ impl ImportTab {
             let known = self.sheets.as_ref().is_some_and(|(p, _)| *p == path);
             if !known && self.sheets_job.is_none() && !path.is_empty() {
                 let p = path.clone();
-                let job = cx.backend.spawn(async move {
-                    tokio::task::spawn_blocking(move || xlsx_sheet_names(&p))
-                        .await
-                        .map_err(|e| DbError::internal(e.to_string()))?
-                });
+                let job = cx.backend.spawn(async move { tokio::task::spawn_blocking(move || xlsx_sheet_names(&p)).await.map_err(|e| DbError::internal(e.to_string()))? });
                 self.sheets_job = Some((path, job));
             }
         }
@@ -722,8 +697,7 @@ impl ImportTab {
             ui.label(RichText::new(format!("{} {w}", icon::WARNING)).color(crate::theme::warning_color(ui.visuals().dark_mode)));
         }
         let headers: Vec<String> = p.columns.iter().map(|c| c.name.clone()).collect();
-        let rows: Vec<Vec<String>> =
-            p.rows.iter().take(PREVIEW_ROWS).map(|r| r.iter().map(preview_text).collect()).collect();
+        let rows: Vec<Vec<String>> = p.rows.iter().take(PREVIEW_ROWS).map(|r| r.iter().map(preview_text).collect()).collect();
         text_table(ui, ("imp_preview", id), &headers, &rows, 260.0);
     }
 
@@ -820,14 +794,7 @@ impl ImportTab {
 
     fn sample_values(&self, index: usize) -> String {
         let Some(p) = &self.preview else { return String::new() };
-        p.rows
-            .iter()
-            .filter_map(|r| r.get(index))
-            .filter(|v| !v.is_null())
-            .take(3)
-            .map(preview_text)
-            .collect::<Vec<_>>()
-            .join(", ")
+        p.rows.iter().filter_map(|r| r.get(index)).filter(|v| !v.is_null()).take(3).map(preview_text).collect::<Vec<_>>().join(", ")
     }
 
     fn new_columns_ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
@@ -952,12 +919,8 @@ impl ImportTab {
                 ui.end_row();
             }
         });
-        let unmapped: Vec<&str> = def
-            .columns
-            .iter()
-            .filter(|col| col.generated.is_none() && !self.columns.iter().any(|c| !c.skip && c.target_name == col.name))
-            .map(|col| col.name.as_str())
-            .collect();
+        let unmapped: Vec<&str> =
+            def.columns.iter().filter(|col| col.generated.is_none() && !self.columns.iter().any(|c| !c.skip && c.target_name == col.name)).map(|col| col.name.as_str()).collect();
         if !unmapped.is_empty() {
             ui.weak(trf("Table columns without a source (default value or NULL): {}", &[&unmapped.join(", ")]));
         }
@@ -969,19 +932,21 @@ impl ImportTab {
         let o = &mut self.options;
         egui::Grid::new(("imp_opts", id)).num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
             ui.label(tr("Existing rows"));
-            combo(ui, ("imp_mode", id), &mut o.mode, &[
-                (ImportMode::Append, tr("Keep them and add the new rows").to_string()),
-                (ImportMode::TruncateFirst, tr("Delete them first").to_string()),
-                (ImportMode::Replace, tr("Insert or replace rows by key").to_string()),
-            ]);
+            combo(
+                ui,
+                ("imp_mode", id),
+                &mut o.mode,
+                &[
+                    (ImportMode::Append, tr("Keep them and add the new rows").to_string()),
+                    (ImportMode::TruncateFirst, tr("Delete them first").to_string()),
+                    (ImportMode::Replace, tr("Insert or replace rows by key").to_string()),
+                ],
+            );
             ui.end_row();
             if o.mode == ImportMode::Replace {
                 ui.label(tr("Key columns"));
                 if self.key_columns.is_empty() {
-                    ui.label(
-                        RichText::new(tr("None: mark key columns on the Target page."))
-                            .color(crate::theme::warning_color(ui.visuals().dark_mode)),
-                    );
+                    ui.label(RichText::new(tr("None: mark key columns on the Target page.")).color(crate::theme::warning_color(ui.visuals().dark_mode)));
                 } else {
                     ui.label(self.key_columns.join(", "));
                 }
@@ -1031,12 +996,17 @@ impl ImportTab {
             lines_edit(ui, &mut c.null_values, tr("one per line, e.g. NULL or \\N"), 260.0);
             ui.end_row();
             ui.label(tr("Binary values"));
-            combo(ui, ("imp_bin", id), &mut c.binary, &[
-                (None, tr("Detect").to_string()),
-                (Some(BinaryEncoding::Hex), tr("Hexadecimal").to_string()),
-                (Some(BinaryEncoding::Base64), tr("Base64").to_string()),
-                (Some(BinaryEncoding::Text), tr("As text (UTF-8)").to_string()),
-            ]);
+            combo(
+                ui,
+                ("imp_bin", id),
+                &mut c.binary,
+                &[
+                    (None, tr("Detect").to_string()),
+                    (Some(BinaryEncoding::Hex), tr("Hexadecimal").to_string()),
+                    (Some(BinaryEncoding::Base64), tr("Base64").to_string()),
+                    (Some(BinaryEncoding::Text), tr("As text (UTF-8)").to_string()),
+                ],
+            );
             ui.end_row();
             ui.label(tr("Text"));
             ui.horizontal(|ui| {
@@ -1153,8 +1123,7 @@ impl ImportTab {
                 ui.weak(trf("Only the first {} failed rows are listed.", &[&s.errors.len()]));
             }
             let headers = vec![tr("Row").to_string(), tr("Column").to_string(), tr("Error").to_string()];
-            let rows: Vec<Vec<String>> =
-                s.errors.iter().map(|e| vec![e.row.to_string(), e.column.clone().unwrap_or_default(), e.message.clone()]).collect();
+            let rows: Vec<Vec<String>> = s.errors.iter().map(|e| vec![e.row.to_string(), e.column.clone().unwrap_or_default(), e.message.clone()]).collect();
             text_table(ui, ("imp_errors", self.uid), &headers, &rows, 240.0);
             if ui.add_enabled(self.report_job.is_none(), egui::Button::new(format!("{} {}", icon::FLOPPY_DISK, tr("Save report…")))).clicked()
                 && let Some(path) = rfd::FileDialog::new().set_file_name("import-errors.csv").save_file()
@@ -1192,11 +1161,7 @@ impl ImportTab {
                 self.page -= 1;
             }
             let reachable = self.reachable();
-            if self.page < PAGE_RUN
-                && ui
-                    .add_enabled(self.page < reachable && !running, egui::Button::new(format!("{} {}", tr("Next"), icon::CARET_RIGHT)))
-                    .clicked()
-            {
+            if self.page < PAGE_RUN && ui.add_enabled(self.page < reachable && !running, egui::Button::new(format!("{} {}", tr("Next"), icon::CARET_RIGHT))).clicked() {
                 self.page += 1;
             }
             ui.separator();
@@ -1204,10 +1169,7 @@ impl ImportTab {
             if ui.add_enabled(ok, egui::Button::new(format!("{} {}", icon::PLAY, tr("Run import")))).clicked() {
                 self.start(cx);
             }
-            if ui
-                .add_enabled(ok && !self.saver.is_saving(), egui::Button::new(format!("{} {}", icon::FLOPPY_DISK, tr("Save as task…"))))
-                .clicked()
-            {
+            if ui.add_enabled(ok && !self.saver.is_saving(), egui::Button::new(format!("{} {}", icon::FLOPPY_DISK, tr("Save as task…")))).clicked() {
                 let target = self.target_ref().map(|t| t.name).unwrap_or_default();
                 self.saver.open(trf("Import {}", &[&target]));
             }
@@ -1220,11 +1182,7 @@ impl ImportTab {
 }
 
 fn describe(s: &ImportSummary) -> String {
-    if s.rows_failed > 0 {
-        trf("{} rows imported, {} failed", &[&s.rows_written, &s.rows_failed])
-    } else {
-        trf("{} rows imported", &[&s.rows_written])
-    }
+    if s.rows_failed > 0 { trf("{} rows imported, {} failed", &[&s.rows_written, &s.rows_failed]) } else { trf("{} rows imported", &[&s.rows_written]) }
 }
 
 /// Text of a preview cell (canonical text, NULL marked).
@@ -1286,11 +1244,16 @@ fn csv_reader_ui(ui: &mut Ui, id: u64, o: &mut CsvReadOptions, tsv: bool) {
         ui.end_row();
     }
     ui.label(tr("Header"));
-    combo(ui, ("csv_rd_header", id), &mut o.header, &[
-        (CsvHeader::FirstRow, tr("The first row holds the column names").to_string()),
-        (CsvHeader::None, tr("No header row").to_string()),
-        (CsvHeader::Auto, tr("Detect").to_string()),
-    ]);
+    combo(
+        ui,
+        ("csv_rd_header", id),
+        &mut o.header,
+        &[
+            (CsvHeader::FirstRow, tr("The first row holds the column names").to_string()),
+            (CsvHeader::None, tr("No header row").to_string()),
+            (CsvHeader::Auto, tr("Detect").to_string()),
+        ],
+    );
     ui.end_row();
     ui.label(tr("Skip rows"));
     ui.horizontal(|ui| {
@@ -1302,10 +1265,7 @@ fn csv_reader_ui(ui: &mut Ui, id: u64, o: &mut CsvReadOptions, tsv: bool) {
     opt_char_edit(ui, &mut o.quote_char, tr("none"));
     ui.end_row();
     ui.label(tr("Quotes inside values"));
-    combo(ui, ("csv_rd_escape", id), &mut o.escape, &[
-        (EscapeStyle::Doubled, tr("Doubled (\"\")").to_string()),
-        (EscapeStyle::Backslash, tr("Backslash (\\\")").to_string()),
-    ]);
+    combo(ui, ("csv_rd_escape", id), &mut o.escape, &[(EscapeStyle::Doubled, tr("Doubled (\"\")").to_string()), (EscapeStyle::Backslash, tr("Backslash (\\\")").to_string())]);
     ui.end_row();
     ui.label(tr("NULL text"));
     ui.add(egui::TextEdit::singleline(&mut o.null_string).hint_text(tr("empty")).desired_width(100.0));
@@ -1369,11 +1329,16 @@ fn xml_reader_ui(ui: &mut Ui, id: u64, o: &mut XmlReadOptions) {
 
 fn json_reader_ui(ui: &mut Ui, id: u64, o: &mut JsonReadOptions) {
     ui.label(tr("Structure"));
-    combo(ui, ("json_rd_fmt", id), &mut o.format, &[
-        (JsonInputFormat::Auto, tr("Detect").to_string()),
-        (JsonInputFormat::Array, tr("Array of objects").to_string()),
-        (JsonInputFormat::Lines, tr("One object per line").to_string()),
-    ]);
+    combo(
+        ui,
+        ("json_rd_fmt", id),
+        &mut o.format,
+        &[
+            (JsonInputFormat::Auto, tr("Detect").to_string()),
+            (JsonInputFormat::Array, tr("Array of objects").to_string()),
+            (JsonInputFormat::Lines, tr("One object per line").to_string()),
+        ],
+    );
     ui.end_row();
     ui.label(tr("Encoding"));
     encoding_combo(ui, ("json_rd_enc", id), &mut o.encoding);
@@ -1467,10 +1432,8 @@ mod tests {
         let m = tab.mapping().unwrap();
         assert!(!m.create_table);
         assert_eq!(m.target.name, "t");
-        let report = error_report(&ImportSummary {
-            errors: vec![dbiji_transfer::RowError { row: 3, column: Some("a".into()), message: "bad \"x\"".into() }],
-            ..Default::default()
-        });
+        let report =
+            error_report(&ImportSummary { errors: vec![dbiji_transfer::RowError { row: 3, column: Some("a".into()), message: "bad \"x\"".into() }], ..Default::default() });
         assert_eq!(report, "row,column,error\n3,\"a\",\"bad \"\"x\"\"\"\n");
     }
 }

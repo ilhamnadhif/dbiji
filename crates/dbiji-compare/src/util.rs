@@ -10,10 +10,7 @@ pub(crate) fn topo_sort(nodes: &[String], deps: &BTreeMap<String, BTreeSet<Strin
     let members: BTreeSet<&String> = nodes.iter().collect();
     let mut remaining: BTreeMap<&String, BTreeSet<&String>> = BTreeMap::new();
     for n in nodes {
-        let d: BTreeSet<&String> = deps
-            .get(n)
-            .map(|s| s.iter().filter(|x| *x != n && members.contains(x)).collect())
-            .unwrap_or_default();
+        let d: BTreeSet<&String> = deps.get(n).map(|s| s.iter().filter(|x| *x != n && members.contains(x)).collect()).unwrap_or_default();
         remaining.insert(n, d);
     }
     let mut out = Vec::with_capacity(nodes.len());

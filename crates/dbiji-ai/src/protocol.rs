@@ -68,11 +68,7 @@ pub(crate) struct Flags {
 
 impl Flags {
     pub fn initial(cfg: &AiConfig) -> Flags {
-        Flags {
-            fallback: cfg.fallback_eligible(),
-            effort: cfg.provider == AiProviderKind::Anthropic && cfg.effort.is_some(),
-            max_completion_tokens: false,
-        }
+        Flags { fallback: cfg.fallback_eligible(), effort: cfg.provider == AiProviderKind::Anthropic && cfg.effort.is_some(), max_completion_tokens: false }
     }
 }
 
@@ -115,9 +111,10 @@ pub(crate) fn build_request(cfg: &AiConfig, req: &ChatRequest, flags: Flags) -> 
                 body["system"] = json!([{"type": "text", "text": req.system, "cache_control": {"type": "ephemeral"}}]);
             }
             if flags.effort
-                && let Some(e) = &cfg.effort {
-                    body["output_config"] = json!({"effort": e});
-                }
+                && let Some(e) = &cfg.effort
+            {
+                body["output_config"] = json!({"effort": e});
+            }
             if flags.fallback {
                 body["fallbacks"] = json!("default");
             }
@@ -225,12 +222,8 @@ impl ApiError {
             .or_else(|| err["code"].as_str().map(str::to_string))
             .or_else(|| err["code"].as_i64().map(|c| c.to_string()))
             .unwrap_or_default();
-        let message = err["message"]
-            .as_str()
-            .map(str::to_string)
-            .or_else(|| err.as_str().map(str::to_string))
-            .or_else(|| v["message"].as_str().map(str::to_string))
-            .unwrap_or_else(|| {
+        let message =
+            err["message"].as_str().map(str::to_string).or_else(|| err.as_str().map(str::to_string)).or_else(|| v["message"].as_str().map(str::to_string)).unwrap_or_else(|| {
                 let t = raw.trim();
                 if t.is_empty() { String::new() } else { t.chars().take(500).collect() }
             });
@@ -240,8 +233,7 @@ impl ApiError {
 
     /// 429, 5xx, 529 and the matching error types are worth retrying.
     pub fn retryable(&self) -> bool {
-        matches!(self.status, Some(429 | 500 | 502 | 503 | 504 | 529))
-            || matches!(self.error_type.as_str(), "rate_limit_error" | "api_error" | "overloaded_error")
+        matches!(self.status, Some(429 | 500 | 502 | 503 | 504 | 529)) || matches!(self.error_type.as_str(), "rate_limit_error" | "api_error" | "overloaded_error")
     }
 
     fn text(&self) -> String {
@@ -391,10 +383,11 @@ impl StreamState {
             "content_block_delta" => {
                 let d = &v["delta"];
                 if d["type"].as_str() == Some("text_delta")
-                    && let Some(t) = d["text"].as_str() {
-                        self.text.push_str(t);
-                        on_delta(t);
-                    }
+                    && let Some(t) = d["text"].as_str()
+                {
+                    self.text.push_str(t);
+                    on_delta(t);
+                }
             }
             "message_delta" => {
                 if let Some(r) = v["delta"]["stop_reason"].as_str() {
@@ -437,10 +430,11 @@ impl StreamState {
         }
         let choice = &v["choices"][0];
         if let Some(t) = choice["delta"]["content"].as_str()
-            && !t.is_empty() {
-                self.text.push_str(t);
-                on_delta(t);
-            }
+            && !t.is_empty()
+        {
+            self.text.push_str(t);
+            on_delta(t);
+        }
         if let Some(r) = choice["finish_reason"].as_str() {
             self.stop_reason = Some(r.to_string());
         }
@@ -600,11 +594,10 @@ mod tests {
     #[test]
     fn sse_parsing() {
         let evs = feed("event: a\ndata: 1\n\n: comment\ndata: x\ndata: y\r\n\r\nid: 5\nretry: 10\nevent:b\ndata:z");
-        assert_eq!(evs, vec![
-            SseEvent { event: Some("a".into()), data: "1".into() },
-            SseEvent { event: None, data: "x\ny".into() },
-            SseEvent { event: Some("b".into()), data: "z".into() },
-        ]);
+        assert_eq!(
+            evs,
+            vec![SseEvent { event: Some("a".into()), data: "1".into() }, SseEvent { event: None, data: "x\ny".into() }, SseEvent { event: Some("b".into()), data: "z".into() },]
+        );
         assert!(feed("\n\n: only comments\n\n").is_empty());
     }
 
@@ -815,14 +808,32 @@ data: [DONE]
             assert_eq!(e.to_db_error().kind, kind, "{status}");
             assert_eq!(e.request_id.as_deref(), Some("req_h"));
         }
-        let o = ApiError::parse(AiProviderKind::OpenAiCompatible, Some(401), r#"{"error":{"message":"Incorrect API key","type":"invalid_request_error","code":"invalid_api_key"}}"#, None, None);
+        let o = ApiError::parse(
+            AiProviderKind::OpenAiCompatible,
+            Some(401),
+            r#"{"error":{"message":"Incorrect API key","type":"invalid_request_error","code":"invalid_api_key"}}"#,
+            None,
+            None,
+        );
         assert_eq!(o.to_db_error().kind, ErrorKind::Auth);
         let html = ApiError::parse(AiProviderKind::OpenAiCompatible, Some(502), "<html>bad gateway</html>", None, None);
         assert!(html.retryable());
         assert!(html.message.contains("bad gateway"));
-        let beta = ApiError::parse(AiProviderKind::Anthropic, Some(400), r#"{"type":"error","error":{"type":"invalid_request_error","message":"Unexpected value(s) `server-side-fallback-2026-07-01` for the `anthropic-beta` header."}}"#, None, None);
+        let beta = ApiError::parse(
+            AiProviderKind::Anthropic,
+            Some(400),
+            r#"{"type":"error","error":{"type":"invalid_request_error","message":"Unexpected value(s) `server-side-fallback-2026-07-01` for the `anthropic-beta` header."}}"#,
+            None,
+            None,
+        );
         assert!(beta.about_fallback() && !beta.about_effort());
-        let eff = ApiError::parse(AiProviderKind::Anthropic, Some(400), r#"{"type":"error","error":{"type":"invalid_request_error","message":"output_config.effort: not supported"}}"#, None, None);
+        let eff = ApiError::parse(
+            AiProviderKind::Anthropic,
+            Some(400),
+            r#"{"type":"error","error":{"type":"invalid_request_error","message":"output_config.effort: not supported"}}"#,
+            None,
+            None,
+        );
         assert!(eff.about_effort());
         assert_eq!(parse_retry_after("3"), Some(Duration::from_secs(3)));
         assert_eq!(parse_retry_after(" 0.5 "), Some(Duration::from_millis(500)));

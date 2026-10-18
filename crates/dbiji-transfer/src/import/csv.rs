@@ -430,12 +430,7 @@ impl CsvSource {
         let width = header.as_ref().map_or(0, Vec::len).max(sample.iter().map(Vec::len).max().unwrap_or(0));
         let mut metas: Vec<ColumnMeta> = (0..width)
             .map(|i| {
-                let name = header
-                    .as_ref()
-                    .and_then(|h| h.get(i))
-                    .map(|f| f.text.trim().to_string())
-                    .filter(|n| !n.is_empty())
-                    .unwrap_or_else(|| format!("column{}", i + 1));
+                let name = header.as_ref().and_then(|h| h.get(i)).map(|f| f.text.trim().to_string()).filter(|n| !n.is_empty()).unwrap_or_else(|| format!("column{}", i + 1));
                 ColumnMeta::new(name, "", DataKind::Text)
             })
             .collect();
@@ -464,13 +459,8 @@ impl CsvSource {
         if fields.len() != width {
             self.ragged += 1;
         }
-        let mut row: Row = fields
-            .into_iter()
-            .take(width)
-            .map(|f| {
-                if !f.quoted && f.text == self.null_string { Value::Null } else { Value::Text(f.text.into_boxed_str()) }
-            })
-            .collect();
+        let mut row: Row =
+            fields.into_iter().take(width).map(|f| if !f.quoted && f.text == self.null_string { Value::Null } else { Value::Text(f.text.into_boxed_str()) }).collect();
         row.resize(width, Value::Null);
         row
     }
@@ -542,11 +532,7 @@ impl RowSource for CsvSource {
     fn take_warnings(&mut self) -> Vec<String> {
         let mut w = std::mem::take(&mut self.warnings);
         if self.ragged > 0 {
-            w.push(format!(
-                "{} record(s) had a different number of fields than the {} columns (padded with NULL / truncated)",
-                self.ragged,
-                self.columns.len()
-            ));
+            w.push(format!("{} record(s) had a different number of fields than the {} columns (padded with NULL / truncated)", self.ragged, self.columns.len()));
             self.ragged = 0;
         }
         if self.parser.unterminated_quotes > 0 {
@@ -586,10 +572,7 @@ mod tests {
     #[test]
     fn quoting_and_line_endings() {
         let o = CsvReadOptions::default();
-        assert_eq!(
-            texts("a,b\r\n\"x,1\",\"he said \"\"hi\"\"\"\n\"multi\nline\",\n", &o),
-            vec![vec!["a", "b"], vec!["x,1", "he said \"hi\""], vec!["multi\nline", ""]]
-        );
+        assert_eq!(texts("a,b\r\n\"x,1\",\"he said \"\"hi\"\"\"\n\"multi\nline\",\n", &o), vec![vec!["a", "b"], vec!["x,1", "he said \"hi\""], vec!["multi\nline", ""]]);
         let r = parse("1,\"\",\n", &o);
         assert_eq!(r[0], vec![("1".into(), false), ("".into(), true), ("".into(), false)]);
         assert_eq!(texts("a\rb\r", &o), vec![vec!["a"], vec!["b"]]);
@@ -598,13 +581,7 @@ mod tests {
 
     #[test]
     fn multi_char_delimiter_backslash_comment_trim() {
-        let o = CsvReadOptions {
-            delimiter: "||".into(),
-            escape: EscapeStyle::Backslash,
-            comment_char: Some('#'),
-            trim: true,
-            ..Default::default()
-        };
+        let o = CsvReadOptions { delimiter: "||".into(), escape: EscapeStyle::Backslash, comment_char: Some('#'), trim: true, ..Default::default() };
         assert_eq!(texts("# comment\n a || \"b\\\"c\\\\\" ||d|e\n", &o), vec![vec!["a", "b\"c\\", "d|e"]]);
     }
 
@@ -630,12 +607,8 @@ mod tests {
     #[tokio::test]
     async fn source_header_null_ragged() {
         let csv = "id,name,note\n1,\"\",\n2,x\n3,y,z,extra\n";
-        let mut s =
-            CsvSource::from_reader(std::io::Cursor::new(csv.as_bytes().to_vec()), CsvReadOptions::default()).unwrap();
-        assert_eq!(
-            s.columns().iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
-            vec!["id", "name", "note", "column4"]
-        );
+        let mut s = CsvSource::from_reader(std::io::Cursor::new(csv.as_bytes().to_vec()), CsvReadOptions::default()).unwrap();
+        assert_eq!(s.columns().iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), vec!["id", "name", "note", "column4"]);
         let rows = s.next_batch(10).await.unwrap();
         assert_eq!(rows[0], vec![Value::text("1"), Value::text(""), Value::Null, Value::Null]);
         assert_eq!(rows[2][3], Value::text("extra"));
@@ -646,18 +619,10 @@ mod tests {
     #[tokio::test]
     async fn header_detection() {
         let with = "name,age\nann,31\nbob,42\n";
-        let s = CsvSource::from_reader(
-            std::io::Cursor::new(with.as_bytes().to_vec()),
-            CsvReadOptions { header: CsvHeader::Auto, ..Default::default() },
-        )
-        .unwrap();
+        let s = CsvSource::from_reader(std::io::Cursor::new(with.as_bytes().to_vec()), CsvReadOptions { header: CsvHeader::Auto, ..Default::default() }).unwrap();
         assert_eq!(s.columns()[1].name, "age");
         let without = "1,2\n3,4\n";
-        let mut s = CsvSource::from_reader(
-            std::io::Cursor::new(without.as_bytes().to_vec()),
-            CsvReadOptions { header: CsvHeader::Auto, ..Default::default() },
-        )
-        .unwrap();
+        let mut s = CsvSource::from_reader(std::io::Cursor::new(without.as_bytes().to_vec()), CsvReadOptions { header: CsvHeader::Auto, ..Default::default() }).unwrap();
         assert_eq!(s.columns()[0].name, "column1");
         assert_eq!(s.next_batch(10).await.unwrap().len(), 2);
     }

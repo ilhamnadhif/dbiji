@@ -129,18 +129,10 @@ impl ClientFilter {
         let node = match op {
             FilterOp::IsNull => Node::IsNull { expr: col, negated: false },
             FilterOp::IsNotNull => Node::IsNull { expr: col, negated: true },
-            FilterOp::Like | FilterOp::NotLike => Node::Like {
-                expr: col,
-                pattern: lit(Value::text(value.to_text().into_owned())),
-                negated: op == FilterOp::NotLike,
-                case_insensitive: false,
-            },
-            FilterOp::Contains => Node::Like {
-                expr: col,
-                pattern: lit(Value::text(format!("%{}%", escape_like(&value.to_text())))),
-                negated: false,
-                case_insensitive: true,
-            },
+            FilterOp::Like | FilterOp::NotLike => {
+                Node::Like { expr: col, pattern: lit(Value::text(value.to_text().into_owned())), negated: op == FilterOp::NotLike, case_insensitive: false }
+            }
+            FilterOp::Contains => Node::Like { expr: col, pattern: lit(Value::text(format!("%{}%", escape_like(&value.to_text())))), negated: false, case_insensitive: true },
             _ => {
                 let bop = match op {
                     FilterOp::Eq => crate::expr::BinaryOp::Eq,
@@ -165,11 +157,7 @@ impl ClientFilter {
     /// Combine with another filter using `AND`.
     pub fn and(self, other: ClientFilter) -> ClientFilter {
         let text = format!("({}) AND ({})", self.expr.source(), other.expr.source());
-        let node = Node::Binary(
-            crate::expr::BinaryOp::And,
-            Box::new(self.expr.node().clone()),
-            Box::new(other.expr.node().clone()),
-        );
+        let node = Node::Binary(crate::expr::BinaryOp::And, Box::new(self.expr.node().clone()), Box::new(other.expr.node().clone()));
         ClientFilter { expr: Expr::from_node(node, text) }
     }
 
@@ -205,8 +193,7 @@ fn quote_expr_ident(name: &str) -> String {
     if !name.is_empty()
         && name.chars().next().is_some_and(|c| c == '_' || c.is_alphabetic())
         && name.chars().all(|c| c == '_' || c.is_alphanumeric())
-        && !["and", "or", "not", "is", "null", "true", "false", "like", "ilike", "in", "between"]
-            .contains(&name.to_ascii_lowercase().as_str())
+        && !["and", "or", "not", "is", "null", "true", "false", "like", "ilike", "in", "between"].contains(&name.to_ascii_lowercase().as_str())
     {
         name.to_string()
     } else {
@@ -350,12 +337,7 @@ pub struct ViewContext {
 
 /// Compute a view (filter, then stable sort) over the store. Returns `None`
 /// when `cancel` was set.
-pub fn compute_view(
-    store: &SharedRowStore,
-    spec: &ViewSpec,
-    ctx: &ViewContext,
-    cancel: &AtomicBool,
-) -> Option<ViewIndex> {
+pub fn compute_view(store: &SharedRowStore, spec: &ViewSpec, ctx: &ViewContext, cancel: &AtomicBool) -> Option<ViewIndex> {
     let source_len = store.lock().len();
     // Which virtual columns must be computed per row.
     let mut needed: Vec<usize> = Vec::new();
@@ -364,12 +346,7 @@ pub fn compute_view(
     }
     needed.extend(spec.sort.iter().map(|k| k.column));
     let virt_needed: Vec<usize> = {
-        let mut v: Vec<usize> = needed
-            .iter()
-            .filter(|c| **c >= ctx.base_columns)
-            .map(|c| c - ctx.base_columns)
-            .filter(|c| *c < ctx.virtual_columns.len())
-            .collect();
+        let mut v: Vec<usize> = needed.iter().filter(|c| **c >= ctx.base_columns).map(|c| c - ctx.base_columns).filter(|c| *c < ctx.virtual_columns.len()).collect();
         v.sort_unstable();
         v.dedup();
         v
@@ -438,9 +415,7 @@ pub fn sort_cmp(a: &Value, b: &Value) -> Ordering {
         (_, Value::Null) => Ordering::Greater,
         (Value::Text(x), Value::Text(y)) => x.cmp(y),
         _ => match (a, b) {
-            (Value::Decimal(_), _) | (_, Value::Decimal(_)) => {
-                compare_values(a, b).unwrap_or_else(|| a.cmp_for_sort(b))
-            }
+            (Value::Decimal(_), _) | (_, Value::Decimal(_)) => compare_values(a, b).unwrap_or_else(|| a.cmp_for_sort(b)),
             _ => a.cmp_for_sort(b),
         },
     }
@@ -526,9 +501,7 @@ impl ViewJob {
             Ok(Some(v)) => JobPoll::Done(v),
             Ok(None) => JobPoll::Failed(tr("Sorting/filtering was cancelled").to_string()),
             Err(mpsc::TryRecvError::Empty) => JobPoll::Running,
-            Err(mpsc::TryRecvError::Disconnected) => {
-                JobPoll::Failed(trf("Sorting/filtering failed after {} ms", &[&self.started.elapsed().as_millis()]))
-            }
+            Err(mpsc::TryRecvError::Disconnected) => JobPoll::Failed(trf("Sorting/filtering failed after {} ms", &[&self.started.elapsed().as_millis()])),
         }
     }
 
@@ -638,12 +611,7 @@ mod tests {
             other => panic!("unexpected {other:?}"),
         }
         assert!(done.load(AtomicOrdering::SeqCst));
-        let cancelled = compute_view(
-            &s,
-            &ViewSpec { sort: vec![SortKey::asc(0)], filter: None },
-            &ViewContext { base_columns: 3, ..Default::default() },
-            &AtomicBool::new(true),
-        );
+        let cancelled = compute_view(&s, &ViewSpec { sort: vec![SortKey::asc(0)], filter: None }, &ViewContext { base_columns: 3, ..Default::default() }, &AtomicBool::new(true));
         assert!(cancelled.is_none());
     }
 

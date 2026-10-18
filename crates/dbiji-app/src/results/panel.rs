@@ -11,7 +11,7 @@ use dbiji_core::ddl::TableDef;
 use dbiji_core::meta::{ObjectKind, ObjectRef};
 use dbiji_core::{ColumnMeta, DbResult, Dialect, Row, Value, tr, trf};
 use dbiji_grid::model::ForeignKeyLink;
-use dbiji_grid::panels::{Relation, RelationDirection, ReferencesPanelState};
+use dbiji_grid::panels::{ReferencesPanelState, Relation, RelationDirection};
 use dbiji_grid::{EditTarget, GridAction, GridOptions, ReadOnlyReason, ResultModel, ResultViewState, ResultViewer, determine_editability};
 use egui::{RichText, Ui};
 use egui_phosphor::regular as icon;
@@ -91,10 +91,7 @@ fn rows_of(model: &ResultModel, limit: usize) -> Vec<Row> {
 /// (single-schema databases, unqualified result sources).
 fn vm_lookup<'a>(vm: &'a dbiji_config::VirtualModel, obj: &ObjectRef) -> Option<&'a dbiji_config::VirtualTable> {
     vm.get_for(obj).or_else(|| {
-        vm.tables
-            .iter()
-            .find(|e| e.key.table.eq_ignore_ascii_case(&obj.name) && (e.key.schema.is_none() || obj.schema.is_none() || e.key.schema == obj.schema))
-            .map(|e| &e.table)
+        vm.tables.iter().find(|e| e.key.table.eq_ignore_ascii_case(&obj.name) && (e.key.schema.is_none() || obj.schema.is_none() || e.key.schema == obj.schema)).map(|e| &e.table)
     })
 }
 
@@ -108,12 +105,7 @@ impl ResultPanel {
             // `SELECT * FROM table`: every column comes from the table.
             for c in &mut src.columns {
                 if c.source.is_none() {
-                    c.source = Some(dbiji_core::value::ColumnSource {
-                        database: t.database.clone(),
-                        schema: t.schema.clone(),
-                        table: t.name.clone(),
-                        column: c.name.clone(),
-                    });
+                    c.source = Some(dbiji_core::value::ColumnSource { database: t.database.clone(), schema: t.schema.clone(), table: t.name.clone(), column: c.name.clone() });
                 }
             }
         }
@@ -206,20 +198,21 @@ impl ResultPanel {
             crate::backend::Loadable::NotLoaded => self.model.fetch.counting = false,
         }
         if let Some(j) = self.save_job.as_mut()
-            && let Some(r) = j.poll() {
-                self.save_job = None;
-                match r {
-                    Ok((n, committed)) => {
-                        self.model.apply_saved();
-                        if committed {
-                            cx.toasts.success(trf("Saved: {} row(s) changed", &[&n]));
-                        } else {
-                            cx.toasts.info(tr("Changes applied inside the open transaction — commit to keep them."));
-                        }
+            && let Some(r) = j.poll()
+        {
+            self.save_job = None;
+            match r {
+                Ok((n, committed)) => {
+                    self.model.apply_saved();
+                    if committed {
+                        cx.toasts.success(trf("Saved: {} row(s) changed", &[&n]));
+                    } else {
+                        cx.toasts.info(tr("Changes applied inside the open transaction — commit to keep them."));
                     }
-                    Err(e) => cx.toasts.error(tr("Cannot save the changes"), Some(e.full_text())),
                 }
+                Err(e) => cx.toasts.error(tr("Cannot save the changes"), Some(e.full_text())),
             }
+        }
         let mut done = Vec::new();
         for (i, (col, job)) in self.dict_jobs.iter_mut().enumerate() {
             if let Some(r) = job.poll() {
@@ -234,14 +227,15 @@ impl ResultPanel {
             self.dict_jobs.remove(i);
         }
         if let Some((rel, key, job)) = self.refs_job.as_mut()
-            && let Some(r) = job.poll() {
-                let (rel, key) = (*rel, key.clone());
-                self.refs_job = None;
-                match r {
-                    Ok((cols, rows)) => self.view.references.set_related_rows(rel, key, cols, rows),
-                    Err(e) => self.status = Some((e.full_text(), true)),
-                }
+            && let Some(r) = job.poll()
+        {
+            let (rel, key) = (*rel, key.clone());
+            self.refs_job = None;
+            match r {
+                Ok((cols, rows)) => self.view.references.set_related_rows(rel, key, cols, rows),
+                Err(e) => self.status = Some((e.full_text(), true)),
             }
+        }
     }
 
     /// Work out which table the result can be edited in, its keys and foreign keys.
@@ -253,9 +247,10 @@ impl ResultPanel {
         let mut tables: Vec<ObjectRef> = Vec::new();
         for c in self.model.columns() {
             if let Some(s) = &c.source
-                && !tables.iter().any(|t| same_table(t, s.schema.as_deref(), &s.table)) {
-                    tables.push(ObjectRef::table(s.schema.clone(), s.table.clone()).with_database(s.database.clone()));
-                }
+                && !tables.iter().any(|t| same_table(t, s.schema.as_deref(), &s.table))
+            {
+                tables.push(ObjectRef::table(s.schema.clone(), s.table.clone()).with_database(s.database.clone()));
+            }
         }
         if tables.is_empty() {
             let e = Err(ReadOnlyReason::NoSourceTable);
@@ -283,7 +278,9 @@ impl ResultPanel {
         }
         let virtual_model = cx.services.projects.as_ref().and_then(|p| p.virtual_model(&self.conn).ok());
         let find = |obj: &ObjectRef| -> Option<Arc<TableDef>> {
-            defs.iter().find(|((s, n), _)| n.eq_ignore_ascii_case(&obj.name) && (obj.schema.is_none() || s.is_none() || s.as_deref() == obj.schema.as_deref())).map(|(_, d)| d.clone())
+            defs.iter()
+                .find(|((s, n), _)| n.eq_ignore_ascii_case(&obj.name) && (obj.schema.is_none() || s.is_none() || s.as_deref() == obj.schema.as_deref()))
+                .map(|(_, d)| d.clone())
         };
         let key_lookup = |obj: &ObjectRef| -> Option<Vec<String>> {
             if let Some(vk) = virtual_model.as_ref().and_then(|m| vm_lookup(m, obj)).and_then(|v| v.virtual_key.clone()).filter(|k| !k.is_empty()) {
@@ -297,9 +294,8 @@ impl ResultPanel {
         };
         let e = determine_editability(self.model.columns(), key_lookup, read_only);
         // Foreign keys of the (first) source table, mapped to result columns.
-        let col_index = |name: &str| -> Option<usize> {
-            self.model.columns().iter().position(|c| c.source.as_ref().map(|s| s.column.as_str()).unwrap_or(&c.name).eq_ignore_ascii_case(name))
-        };
+        let col_index =
+            |name: &str| -> Option<usize> { self.model.columns().iter().position(|c| c.source.as_ref().map(|s| s.column.as_str()).unwrap_or(&c.name).eq_ignore_ascii_case(name)) };
         let base = match &e {
             Ok(t) => Some(t.table.clone()),
             Err(_) => tables.first().cloned().filter(|_| tables.len() == 1),
@@ -378,13 +374,7 @@ impl ResultPanel {
         columns
             .iter()
             .zip(values)
-            .map(|(c, v)| {
-                if v.is_null() {
-                    format!("{} IS NULL", dialect.quote_ident(c))
-                } else {
-                    format!("{} = {}", dialect.quote_ident(c), dialect.literal(v, None))
-                }
-            })
+            .map(|(c, v)| if v.is_null() { format!("{} IS NULL", dialect.quote_ident(c)) } else { format!("{} = {}", dialect.quote_ident(c), dialect.literal(v, None)) })
             .collect::<Vec<_>>()
             .join(" AND ")
     }
@@ -420,11 +410,10 @@ impl ResultPanel {
 
     /// Show another table (FK navigation inside a table data view).
     fn navigate(&mut self, cx: &mut AppContext, to: Location, record: bool) {
-        if record
-            && let Some(t) = &self.table {
-                self.back.push(Location { table: t.clone(), where_clause: self.where_clause.clone() });
-                self.forward.clear();
-            }
+        if record && let Some(t) = &self.table {
+            self.back.push(Location { table: t.clone(), where_clause: self.where_clause.clone() });
+            self.forward.clear();
+        }
         self.title = to.table.name.clone();
         self.table = Some(to.table);
         self.where_clause = to.where_clause.clone();
@@ -590,17 +579,20 @@ impl ResultPanel {
                 self.mode = Mode::Grid;
             }
             if ui.button(format!("{} {}", icon::EXPORT, tr("Export chart…"))).clicked()
-                && let Some(path) = rfd::FileDialog::new().set_file_name("chart.png").add_filter("PNG", &["png"]).add_filter("SVG", &["svg"]).save_file() {
-                    let size = egui::vec2(1200.0, 700.0);
-                    let res = if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("svg")) {
-                        std::fs::write(&path, dbiji_visual::chart::export_chart_svg(&cv.data, &cv.config, size)).map_err(|e| e.to_string())
-                    } else {
-                        dbiji_visual::chart::export_chart_png(&cv.data, &cv.config, size, 2.0).map_err(|e| e.to_string()).and_then(|b| std::fs::write(&path, b).map_err(|e| e.to_string()))
-                    };
-                    if let Err(e) = res {
-                        self.status = Some((e, true));
-                    }
+                && let Some(path) = rfd::FileDialog::new().set_file_name("chart.png").add_filter("PNG", &["png"]).add_filter("SVG", &["svg"]).save_file()
+            {
+                let size = egui::vec2(1200.0, 700.0);
+                let res = if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("svg")) {
+                    std::fs::write(&path, dbiji_visual::chart::export_chart_svg(&cv.data, &cv.config, size)).map_err(|e| e.to_string())
+                } else {
+                    dbiji_visual::chart::export_chart_png(&cv.data, &cv.config, size, 2.0)
+                        .map_err(|e| e.to_string())
+                        .and_then(|b| std::fs::write(&path, b).map_err(|e| e.to_string()))
+                };
+                if let Err(e) = res {
+                    self.status = Some((e, true));
                 }
+            }
         });
         let mut rebuild = cv.generation != generation;
         egui::Panel::left("chart_cfg").resizable(true).default_size(220.0).show(ui, |ui| {
@@ -781,19 +773,21 @@ impl ResultPanel {
         if self.table.is_some() && (!self.back.is_empty() || !self.forward.is_empty()) {
             ui.horizontal(|ui| {
                 if ui.add_enabled(!self.back.is_empty(), egui::Button::new(icon::ARROW_LEFT)).on_hover_text(tr("Back")).clicked()
-                    && let Some(loc) = self.back.pop() {
-                        if let Some(t) = &self.table {
-                            self.forward.push(Location { table: t.clone(), where_clause: self.where_clause.clone() });
-                        }
-                        self.navigate(cx, loc, false);
+                    && let Some(loc) = self.back.pop()
+                {
+                    if let Some(t) = &self.table {
+                        self.forward.push(Location { table: t.clone(), where_clause: self.where_clause.clone() });
                     }
+                    self.navigate(cx, loc, false);
+                }
                 if ui.add_enabled(!self.forward.is_empty(), egui::Button::new(icon::ARROW_RIGHT)).on_hover_text(tr("Forward")).clicked()
-                    && let Some(loc) = self.forward.pop() {
-                        if let Some(t) = &self.table {
-                            self.back.push(Location { table: t.clone(), where_clause: self.where_clause.clone() });
-                        }
-                        self.navigate(cx, loc, false);
+                    && let Some(loc) = self.forward.pop()
+                {
+                    if let Some(t) = &self.table {
+                        self.back.push(Location { table: t.clone(), where_clause: self.where_clause.clone() });
                     }
+                    self.navigate(cx, loc, false);
+                }
                 if let Some(t) = &self.table {
                     ui.strong(t.display_path());
                 }

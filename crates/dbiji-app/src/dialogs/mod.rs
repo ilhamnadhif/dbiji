@@ -108,13 +108,15 @@ impl Dialogs {
             self.vault_open = open;
         }
         if let Some(d) = self.import.as_mut()
-            && !d.show(ctx, cx) {
-                self.import = None;
-            }
+            && !d.show(ctx, cx)
+        {
+            self.import = None;
+        }
         if let Some(d) = self.drop.as_mut()
-            && !d.show(ctx, cx) {
-                self.drop = None;
-            }
+            && !d.show(ctx, cx)
+        {
+            self.drop = None;
+        }
         if self.about_open {
             let mut open = true;
             egui::Window::new(tr("About DBiji")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
@@ -199,12 +201,15 @@ impl Dialogs {
                             };
                             ui.label(label);
                             let r = ui.add(egui::TextEdit::singleline(value).password(true).desired_width(220.0));
-                            if first {
-                                r.request_focus();
-                                first = false;
-                            }
+                            // Enter first: re-focusing would hide that the field lost focus.
                             if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                                 submit = true;
+                            }
+                            if first {
+                                if !submit && !ui.ctx().memory(|m| m.focused().is_some()) {
+                                    r.request_focus();
+                                }
+                                first = false;
                             }
                             ui.end_row();
                         }
@@ -221,12 +226,8 @@ impl Dialogs {
                 });
             if submit {
                 let opt = |s: &str| if s.is_empty() { None } else { Some(Secret::new(s)) };
-                let creds = Credentials {
-                    password: opt(&p.password),
-                    ssh_password: opt(&p.ssh_password),
-                    ssh_passphrase: opt(&p.ssh_passphrase),
-                    proxy_password: opt(&p.proxy_password),
-                };
+                let creds =
+                    Credentials { password: opt(&p.password), ssh_password: opt(&p.ssh_password), ssh_passphrase: opt(&p.ssh_passphrase), proxy_password: opt(&p.proxy_password) };
                 if p.save {
                     let pairs = [
                         (SecretSlot::Password, &creds.password),
@@ -246,10 +247,11 @@ impl Dialogs {
                         }
                     }
                     if let Some(cfg) = cx.conns.config_mut(&p.conn_id)
-                        && !cfg.save_password {
-                            cfg.save_password = true;
-                            cx.push(AppCommand::SaveConnections);
-                        }
+                        && !cfg.save_password
+                    {
+                        cfg.save_password = true;
+                        cx.push(AppCommand::SaveConnections);
+                    }
                 }
                 self.ready.push((p.conn_id.clone(), creds));
                 done.push(i);

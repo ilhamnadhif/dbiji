@@ -23,9 +23,10 @@ fn servers() -> Vec<(&'static str, String)> {
     let mut out = vec![("sqlite", format!("sqlite://{}", file.display()))];
     for (name, var) in [("postgres", "DBIJI_TEST_PG"), ("cockroach", "DBIJI_TEST_COCKROACH"), ("mysql", "DBIJI_TEST_MYSQL"), ("mariadb", "DBIJI_TEST_MARIADB")] {
         if let Ok(url) = std::env::var(var)
-            && !url.trim().is_empty() {
-                out.push((name, url));
-            }
+            && !url.trim().is_empty()
+        {
+            out.push((name, url));
+        }
     }
     out
 }
@@ -62,9 +63,9 @@ impl H {
         if password.is_none() {
             cfg.auth = dbiji_core::config::AuthMethod::None;
         }
-    if password.is_none() {
-        cfg.auth = dbiji_core::config::AuthMethod::None;
-    }
+        if password.is_none() {
+            cfg.auth = dbiji_core::config::AuthMethod::None;
+        }
         let secrets = Arc::new(MemorySecrets::default());
         if let Some(pw) = &password {
             secrets.set(&secret_key(&cfg.id, SecretSlot::Password), pw).unwrap();
@@ -191,7 +192,8 @@ fn edit_save_and_cancel() {
             let id_col = p.model.columns().iter().position(|c| c.name.eq_ignore_ascii_case("id")).unwrap();
             let name_col = p.model.columns().iter().position(|c| c.name.eq_ignore_ascii_case("name")).unwrap();
             let qty_col = p.model.columns().iter().position(|c| c.name.eq_ignore_ascii_case("qty")).unwrap();
-            let row_of = |p: &dbiji_app::results::panel::ResultPanel, id: i64| (0..p.model.row_count()).find(|&r| p.model.cell(r, id_col).and_then(|v| v.as_i64()) == Some(id)).unwrap();
+            let row_of =
+                |p: &dbiji_app::results::panel::ResultPanel, id: i64| (0..p.model.row_count()).find(|&r| p.model.cell(r, id_col).and_then(|v| v.as_i64()) == Some(id)).unwrap();
             let r1 = row_of(p, 1);
             p.model.set_cell(r1, name_col, "uno").unwrap();
             let r2 = row_of(p, 2);
@@ -207,11 +209,7 @@ fn edit_save_and_cancel() {
         let got = h.query(&format!("SELECT id, name, qty FROM {table} ORDER BY id"));
         assert_eq!(
             got,
-            vec![
-                vec!["1".to_string(), "uno".into(), "10".into()],
-                vec!["3".to_string(), "three".into(), "30".into()],
-                vec!["4".to_string(), "four".into(), "40".into()],
-            ],
+            vec![vec!["1".to_string(), "uno".into(), "10".into()], vec!["3".to_string(), "three".into(), "30".into()], vec!["4".to_string(), "four".into(), "40".into()],],
             "{name}: saved"
         );
 

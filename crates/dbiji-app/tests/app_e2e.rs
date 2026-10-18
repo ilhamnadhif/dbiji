@@ -20,9 +20,10 @@ fn servers() -> Vec<(&'static str, String)> {
     let mut out = Vec::new();
     for (name, var) in [("mysql", "DBIJI_TEST_MYSQL"), ("mariadb", "DBIJI_TEST_MARIADB"), ("postgres", "DBIJI_TEST_PG"), ("cockroach", "DBIJI_TEST_COCKROACH")] {
         if let Ok(url) = std::env::var(var)
-            && !url.trim().is_empty() {
-                out.push((name, url));
-            }
+            && !url.trim().is_empty()
+        {
+            out.push((name, url));
+        }
     }
     out
 }
@@ -66,11 +67,8 @@ fn connect(backend: &Backend, url: &str) -> (ConnectionManager, String) {
 
 fn run_script(backend: &Backend, cm: &ConnectionManager, id: &str, stmts: &[&str]) -> Vec<ExecEvent> {
     let session = cm.live(id).unwrap().main.clone();
-    let plans: Vec<StmtPlan> = stmts
-        .iter()
-        .enumerate()
-        .map(|(i, s)| StmtPlan { index: i, sql: s.to_string(), original: s.to_string(), range: 0..s.len(), is_write: true, client: None })
-        .collect();
+    let plans: Vec<StmtPlan> =
+        stmts.iter().enumerate().map(|(i, s)| StmtPlan { index: i, sql: s.to_string(), original: s.to_string(), range: 0..s.len(), is_write: true, client: None }).collect();
     let mut exec = Execution::start(backend, session, plans, ExecOpts { fetch_size: 200, ..Default::default() }, None);
     let mut events = Vec::new();
     wait_until(
@@ -105,9 +103,7 @@ fn execute_fetch_count_and_metadata() {
         let insert = if is_pg {
             format!("INSERT INTO {table} SELECT g, 'row ' || g, g * 1.5 FROM generate_series(1, 1000) g")
         } else {
-            format!(
-                "INSERT INTO {table} WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 1000) SELECT n, CONCAT('row ', n), n * 1.5 FROM seq"
-            )
+            format!("INSERT INTO {table} WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 1000) SELECT n, CONCAT('row ', n), n * 1.5 FROM seq")
         };
         let select = format!("SELECT * FROM {table} ORDER BY id");
         let events = run_script(&backend, &cm, &id, &[&create, &insert, &select]);
@@ -256,7 +252,9 @@ fn schema_compare_gate() {
             format!("{create} {b}"),
             format!("CREATE TABLE {a}.customer (id INT PRIMARY KEY, name VARCHAR(80) NOT NULL, email VARCHAR(120), created {dt})"),
             format!("CREATE INDEX ix_customer_name ON {a}.customer (name)"),
-            format!("CREATE TABLE {a}.orders (id INT PRIMARY KEY, customer_id INT NOT NULL, total DECIMAL(12,2) DEFAULT 0, CONSTRAINT fk_orders_customer FOREIGN KEY (customer_id) REFERENCES {a}.customer (id))"),
+            format!(
+                "CREATE TABLE {a}.orders (id INT PRIMARY KEY, customer_id INT NOT NULL, total DECIMAL(12,2) DEFAULT 0, CONSTRAINT fk_orders_customer FOREIGN KEY (customer_id) REFERENCES {a}.customer (id))"
+            ),
             format!("CREATE VIEW {a}.big_orders AS SELECT id, total FROM {a}.orders WHERE total > 100"),
             format!("CREATE TABLE {b}.customer (id INT PRIMARY KEY, name VARCHAR(20), legacy_code CHAR(3))"),
             format!("CREATE TABLE {b}.obsolete (x INT)"),

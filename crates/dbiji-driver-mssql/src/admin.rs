@@ -59,14 +59,9 @@ pub async fn list_sessions(s: &mut SqlServerSession) -> DbResult<SessionList> {
 /// `KILL <spid>` (Terminate). SQL Server cannot cancel the statement of
 /// another session without terminating it.
 pub async fn kill_session(s: &mut SqlServerSession, id: &str, mode: KillMode) -> DbResult<()> {
-    let spid: i64 = id
-        .trim()
-        .parse()
-        .map_err(|_| DbError::config(format!("'{id}' is not a SQL Server session id")))?;
+    let spid: i64 = id.trim().parse().map_err(|_| DbError::config(format!("'{id}' is not a SQL Server session id")))?;
     if mode == KillMode::CancelQuery {
-        return Err(DbError::unsupported(
-            "SQL Server cannot cancel the statement of another session without ending it; use Terminate (KILL)",
-        ));
+        return Err(DbError::unsupported("SQL Server cannot cancel the statement of another session without ending it; use Terminate (KILL)"));
     }
     if s.server_info().session_id.as_deref() == Some(spid.to_string().as_str()) {
         return Err(DbError::config("Refusing to KILL the current session"));
@@ -103,12 +98,7 @@ pub async fn list_locks(s: &mut SqlServerSession) -> DbResult<LockList> {
         "blocking_session_id",
         "wait_ms",
     ];
-    Ok(LockList {
-        data: TabularData { columns: columns.iter().map(|c| c.to_string()).collect(), rows },
-        session_column: 0,
-        blocked_by_column: Some(10),
-        granted_column: Some(9),
-    })
+    Ok(LockList { data: TabularData { columns: columns.iter().map(|c| c.to_string()).collect(), rows }, session_column: 0, blocked_by_column: Some(10), granted_column: Some(9) })
 }
 
 /// (object suffix, counter, instance or "", group, key, label, kind, unit)
@@ -168,11 +158,11 @@ pub fn metrics_from_rows(rows: &[Vec<Value>]) -> Vec<Metric> {
             });
         }
     }
-    if let (Some(hit), Some(base)) =
-        (find("Buffer Manager", "Buffer cache hit ratio", ""), find("Buffer Manager", "Buffer cache hit ratio base", ""))
-        && base > 0.0 {
-            out.push(Metric::gauge("Memory", "buffer.cache_hit_ratio", "Buffer cache hit ratio", hit / base * 100.0, "%"));
-        }
+    if let (Some(hit), Some(base)) = (find("Buffer Manager", "Buffer cache hit ratio", ""), find("Buffer Manager", "Buffer cache hit ratio base", ""))
+        && base > 0.0
+    {
+        out.push(Metric::gauge("Memory", "buffer.cache_hit_ratio", "Buffer cache hit ratio", hit / base * 100.0, "%"));
+    }
     out
 }
 

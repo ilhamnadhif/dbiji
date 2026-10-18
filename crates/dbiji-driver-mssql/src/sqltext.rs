@@ -169,8 +169,7 @@ pub fn tokenize(sql: &str) -> Vec<Tok<'_>> {
             let mut j = i + 1;
             while j < sql.len() {
                 let d = bytes[j] as char;
-                let exponent_sign =
-                    (d == '+' || d == '-') && matches!(bytes[j - 1], b'e' | b'E') && !sql[start..].starts_with("0x");
+                let exponent_sign = (d == '+' || d == '-') && matches!(bytes[j - 1], b'e' | b'E') && !sql[start..].starts_with("0x");
                 if d.is_ascii_alphanumeric() || d == '.' || exponent_sign {
                     j += 1;
                 } else {
@@ -243,11 +242,7 @@ pub fn classify(sql: &str) -> StmtClass {
     };
     if first.is("WITH") {
         // first top-level statement keyword after the CTE definitions
-        return toks
-            .iter()
-            .filter(|t| t.depth == 0 && t.start > first.start)
-            .find_map(class_of)
-            .unwrap_or(StmtClass::Other);
+        return toks.iter().filter(|t| t.depth == 0 && t.start > first.start).find_map(class_of).unwrap_or(StmtClass::Other);
     }
     if first.kind == TokKind::Punct && first.text == "(" {
         return StmtClass::Select;
@@ -257,13 +252,44 @@ pub fn classify(sql: &str) -> StmtClass {
 
 /// Session options whose `SET` only lasts for the current module scope.
 const SESSION_OPTIONS: &[&str] = &[
-    "ANSI_DEFAULTS", "ANSI_NULL_DFLT_OFF", "ANSI_NULL_DFLT_ON", "ANSI_NULLS", "ANSI_PADDING",
-    "ANSI_WARNINGS", "ARITHABORT", "ARITHIGNORE", "CONCAT_NULL_YIELDS_NULL", "CONTEXT_INFO",
-    "CURSOR_CLOSE_ON_COMMIT", "DATEFIRST", "DATEFORMAT", "DEADLOCK_PRIORITY", "FIPS_FLAGGER",
-    "FMTONLY", "FORCEPLAN", "IDENTITY_INSERT", "IMPLICIT_TRANSACTIONS", "LANGUAGE", "LOCK_TIMEOUT",
-    "NOCOUNT", "NOEXEC", "NUMERIC_ROUNDABORT", "OFFSETS", "PARSEONLY", "QUERY_GOVERNOR_COST_LIMIT",
-    "QUOTED_IDENTIFIER", "REMOTE_PROC_TRANSACTIONS", "ROWCOUNT", "SHOWPLAN_ALL", "SHOWPLAN_TEXT",
-    "SHOWPLAN_XML", "STATISTICS", "TEXTSIZE", "TRANSACTION", "XACT_ABORT", "NO_BROWSETABLE",
+    "ANSI_DEFAULTS",
+    "ANSI_NULL_DFLT_OFF",
+    "ANSI_NULL_DFLT_ON",
+    "ANSI_NULLS",
+    "ANSI_PADDING",
+    "ANSI_WARNINGS",
+    "ARITHABORT",
+    "ARITHIGNORE",
+    "CONCAT_NULL_YIELDS_NULL",
+    "CONTEXT_INFO",
+    "CURSOR_CLOSE_ON_COMMIT",
+    "DATEFIRST",
+    "DATEFORMAT",
+    "DEADLOCK_PRIORITY",
+    "FIPS_FLAGGER",
+    "FMTONLY",
+    "FORCEPLAN",
+    "IDENTITY_INSERT",
+    "IMPLICIT_TRANSACTIONS",
+    "LANGUAGE",
+    "LOCK_TIMEOUT",
+    "NOCOUNT",
+    "NOEXEC",
+    "NUMERIC_ROUNDABORT",
+    "OFFSETS",
+    "PARSEONLY",
+    "QUERY_GOVERNOR_COST_LIMIT",
+    "QUOTED_IDENTIFIER",
+    "REMOTE_PROC_TRANSACTIONS",
+    "ROWCOUNT",
+    "SHOWPLAN_ALL",
+    "SHOWPLAN_TEXT",
+    "SHOWPLAN_XML",
+    "STATISTICS",
+    "TEXTSIZE",
+    "TRANSACTION",
+    "XACT_ABORT",
+    "NO_BROWSETABLE",
 ];
 
 /// Does the batch contain statements whose effect would be lost (or that
@@ -282,9 +308,11 @@ pub fn is_scope_sensitive(sql: &str) -> bool {
             "USE" | "REVERT" | "SETUSER" => return true,
             "SET" => {
                 if let Some(n) = next
-                    && n.kind == TokKind::Word && SESSION_OPTIONS.iter().any(|o| n.text.eq_ignore_ascii_case(o)) {
-                        return true;
-                    }
+                    && n.kind == TokKind::Word
+                    && SESSION_OPTIONS.iter().any(|o| n.text.eq_ignore_ascii_case(o))
+                {
+                    return true;
+                }
             }
             "BEGIN" => {
                 if next.is_some_and(|n| n.is("TRAN") || n.is("TRANSACTION") || n.is("DISTRIBUTED")) {
@@ -324,10 +352,7 @@ pub fn is_scope_sensitive(sql: &str) -> bool {
 /// driver tracks)?
 pub fn touches_session_state(sql: &str) -> bool {
     tokenize(sql).iter().any(|t| {
-        t.kind == TokKind::Word
-            && ["TRAN", "TRANSACTION", "COMMIT", "ROLLBACK", "USE", "IMPLICIT_TRANSACTIONS", "XACT_ABORT"]
-                .iter()
-                .any(|w| t.text.eq_ignore_ascii_case(w))
+        t.kind == TokKind::Word && ["TRAN", "TRANSACTION", "COMMIT", "ROLLBACK", "USE", "IMPLICIT_TRANSACTIONS", "XACT_ABORT"].iter().any(|w| t.text.eq_ignore_ascii_case(w))
     })
 }
 
@@ -340,15 +365,18 @@ pub fn split_batches(sql: &str) -> Vec<(String, u32)> {
     let mut in_string = false;
     let mut in_bracket = false;
     for line in sql.split_inclusive('\n') {
-        if in_block == 0 && !in_string && !in_bracket
-            && let Some(count) = go_line(line) {
-                if !current.trim().is_empty() {
-                    out.push((std::mem::take(&mut current), count));
-                } else {
-                    current.clear();
-                }
-                continue;
+        if in_block == 0
+            && !in_string
+            && !in_bracket
+            && let Some(count) = go_line(line)
+        {
+            if !current.trim().is_empty() {
+                out.push((std::mem::take(&mut current), count));
+            } else {
+                current.clear();
             }
+            continue;
+        }
         // update lexical state for this line (byte-wise: all markers are
         // ASCII, so non-ASCII text never needs a char boundary)
         let b = line.as_bytes();
@@ -458,11 +486,7 @@ pub fn strip_outer_parens(expr: &str) -> String {
         }
         // does the first '(' close at the very end?
         let toks = tokenize(s);
-        let closes_at_end = toks
-            .iter()
-            .find(|t| t.kind == TokKind::Punct && t.text == ")" && t.depth == 0)
-            .map(|t| t.start == s.len() - 1)
-            .unwrap_or(false);
+        let closes_at_end = toks.iter().find(|t| t.kind == TokKind::Punct && t.text == ")" && t.depth == 0).map(|t| t.start == s.len() - 1).unwrap_or(false);
         if !closes_at_end {
             return s.to_string();
         }
@@ -564,10 +588,7 @@ mod tests {
     fn tokens() {
         let t = tokenize("SELECT [a]]b], N'it''s', @x, @@SPID, #tmp, 0x1F, 1.5e-3 /* c /* n */ */ -- x\n FROM t");
         let texts: Vec<&str> = t.iter().map(|t| t.text).collect();
-        assert_eq!(
-            texts,
-            vec!["SELECT", "[a]]b]", ",", "N'it''s'", ",", "@x", ",", "@@SPID", ",", "#tmp", ",", "0x1F", ",", "1.5e-3", "FROM", "t"]
-        );
+        assert_eq!(texts, vec!["SELECT", "[a]]b]", ",", "N'it''s'", ",", "@x", ",", "@@SPID", ",", "#tmp", ",", "0x1F", ",", "1.5e-3", "FROM", "t"]);
         assert_eq!(t[3].kind, TokKind::Str);
         assert_eq!(t[7].kind, TokKind::Variable);
         let d = tokenize("f(a, (b))");
@@ -635,10 +656,7 @@ mod tests {
 
     #[test]
     fn view_header() {
-        assert_eq!(
-            view_select("CREATE VIEW [dbo].[v] (a, b) WITH SCHEMABINDING AS\nSELECT a, b FROM t"),
-            Some("SELECT a, b FROM t")
-        );
+        assert_eq!(view_select("CREATE VIEW [dbo].[v] (a, b) WITH SCHEMABINDING AS\nSELECT a, b FROM t"), Some("SELECT a, b FROM t"));
         assert_eq!(view_select("create or alter view v as select 1 as [as]"), Some("select 1 as [as]"));
         assert_eq!(view_select("SELECT 1"), None);
     }

@@ -50,10 +50,7 @@ pub struct ReferencesPanelState {
 
 impl std::fmt::Debug for ReferencesPanelState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ReferencesPanelState")
-            .field("relations", &self.relations)
-            .field("selected", &self.selected)
-            .finish_non_exhaustive()
+        f.debug_struct("ReferencesPanelState").field("relations", &self.relations).field("selected", &self.selected).finish_non_exhaustive()
     }
 }
 
@@ -123,11 +120,7 @@ impl<'a> ReferencesPanel<'a> {
                     RelationDirection::ReferencedBy => "←",
                 };
                 let label = format!("{arrow} {}", r.table.display_path());
-                if ui
-                    .selectable_label(state.selected == Some(i), label)
-                    .on_hover_text(r.name.clone().unwrap_or_default())
-                    .clicked()
-                {
+                if ui.selectable_label(state.selected == Some(i), label).on_hover_text(r.name.clone().unwrap_or_default()).clicked() {
                     state.selected = Some(i);
                 }
             }
@@ -141,21 +134,11 @@ impl<'a> ReferencesPanel<'a> {
         let rel = state.relations[sel].clone();
         let key: Vec<Value> = rel.key_columns.iter().map(|&c| model.cell(row, c).unwrap_or_default()).collect();
         ui.horizontal(|ui| {
-            let desc = rel
-                .columns
-                .iter()
-                .zip(&key)
-                .map(|(c, v)| format!("{c} = {}", if v.is_null() { "NULL".into() } else { v.to_text().into_owned() }))
-                .collect::<Vec<_>>()
-                .join(", ");
+            let desc =
+                rel.columns.iter().zip(&key).map(|(c, v)| format!("{c} = {}", if v.is_null() { "NULL".into() } else { v.to_text().into_owned() })).collect::<Vec<_>>().join(", ");
             ui.label(RichText::new(trf("{} where {}", &[&rel.table.display_path(), &desc])).strong());
             if ui.button(format!("{} {}", egui_phosphor::regular::ARROW_SQUARE_OUT, tr("Open"))).clicked() {
-                let link = ForeignKeyLink {
-                    name: rel.name.clone(),
-                    columns: rel.key_columns.clone(),
-                    ref_table: rel.table.clone(),
-                    ref_columns: rel.columns.clone(),
-                };
+                let link = ForeignKeyLink { name: rel.name.clone(), columns: rel.key_columns.clone(), ref_table: rel.table.clone(), ref_columns: rel.columns.clone() };
                 actions.push(GridAction::NavigateForeignKey { link, values: key.clone() });
             }
         });
@@ -171,8 +154,7 @@ impl<'a> ReferencesPanel<'a> {
         match state.related.as_mut() {
             Some((r, d)) if *r == sel && d.key == key => {
                 let options = state.options.clone();
-                let resp =
-                    DataGrid::new(&mut d.model, &mut d.grid, &options).id_salt(("dbiji_references_grid", sel)).show(ui);
+                let resp = DataGrid::new(&mut d.model, &mut d.grid, &options).id_salt(("dbiji_references_grid", sel)).show(ui);
                 for a in resp.actions {
                     if let GridAction::NavigateForeignKey { .. } = a {
                         actions.push(a);

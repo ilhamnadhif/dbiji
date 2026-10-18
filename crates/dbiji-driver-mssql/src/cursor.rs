@@ -165,12 +165,7 @@ struct Described {
 
 /// Start `stmt` on `client`. Returns the cursor and the receiver through
 /// which the client comes back.
-pub(crate) fn spawn(
-    client: MsClient,
-    stmt: Statement,
-    shared: Arc<Shared>,
-    open_flag: Arc<AtomicBool>,
-) -> (ChannelCursor, oneshot::Receiver<TaskReturn>) {
+pub(crate) fn spawn(client: MsClient, stmt: Statement, shared: Arc<Shared>, open_flag: Arc<AtomicBool>) -> (ChannelCursor, oneshot::Receiver<TaskReturn>) {
     let (tx, rx) = mpsc::channel::<Event>(CHANNEL_CAPACITY);
     let (ret_tx, ret_rx) = oneshot::channel::<TaskReturn>();
     let cancel = CancellationToken::new();
@@ -236,14 +231,7 @@ fn is_fatal(e: &tiberius::error::Error) -> bool {
     }
 }
 
-async fn run(
-    mut client: MsClient,
-    stmt: &Statement,
-    shared: &Shared,
-    tx: &mpsc::Sender<Event>,
-    cancel: &CancellationToken,
-    abandon: &CancellationToken,
-) -> Option<MsClient> {
+async fn run(mut client: MsClient, stmt: &Statement, shared: &Shared, tx: &mpsc::Sender<Event>, cancel: &CancellationToken, abandon: &CancellationToken) -> Option<MsClient> {
     let mut clock = ServerClock::new(stmt.timeout);
     if let Some(n) = stmt.notice.clone() {
         let _ = tx.send(Event::Message(n)).await;
@@ -260,11 +248,7 @@ async fn run(
         }
     }
 
-    let batches: Vec<(String, u32)> = if stmt.mode == ExecMode::Batch && stmt.params.is_empty() {
-        sqltext::split_batches(&stmt.sql)
-    } else {
-        vec![(stmt.sql.clone(), 1)]
-    };
+    let batches: Vec<(String, u32)> = if stmt.mode == ExecMode::Batch && stmt.params.is_empty() { sqltext::split_batches(&stmt.sql) } else { vec![(stmt.sql.clone(), 1)] };
     let mut emitted = false;
     let mut outcome = Step::Done;
     'outer: for (batch, repeat) in &batches {
@@ -283,9 +267,7 @@ async fn run(
     match outcome {
         Step::Done => {
             if !emitted {
-                let _ = tx
-                    .send(Event::Header(ResultHeader::Update { rows_affected: None, last_insert_id: None, tag: stmt.tag.clone() }))
-                    .await;
+                let _ = tx.send(Event::Header(ResultHeader::Update { rows_affected: None, last_insert_id: None, tag: stmt.tag.clone() })).await;
             }
         }
         Step::AbandonedClean => {}
@@ -318,10 +300,9 @@ async fn run(
             let reset_note = "The connection had to be re-established; session state (temporary tables, SET options, open transaction) was lost";
             let err = match reason {
                 Interrupt::Cancelled => Some(DbError::cancelled()),
-                Interrupt::TimedOut => Some(DbError::timeout(format!(
-                    "Statement timeout of {:.1} s exceeded; the statement was cancelled",
-                    stmt.timeout.map(|t| t.as_secs_f64()).unwrap_or(0.0)
-                ))),
+                Interrupt::TimedOut => {
+                    Some(DbError::timeout(format!("Statement timeout of {:.1} s exceeded; the statement was cancelled", stmt.timeout.map(|t| t.as_secs_f64()).unwrap_or(0.0))))
+                }
                 Interrupt::Abandoned => None,
             };
             if let Some(mut e) = err {
@@ -334,21 +315,22 @@ async fn run(
     }
 
     if stmt.refresh_state
-        && let Some(cl) = client.as_mut() {
-            match tokio::time::timeout(Duration::from_secs(15), refresh_state(cl)).await {
-                Ok(Ok((tc, db))) => {
-                    shared.in_transaction.store(tc > 0, Ordering::SeqCst);
-                    shared.set_db(db);
-                }
-                Ok(Err(e)) => {
-                    tracing::debug!("state refresh failed: {e}");
-                    if is_fatal_db(&e) {
-                        client = None;
-                    }
-                }
-                Err(_) => client = None,
+        && let Some(cl) = client.as_mut()
+    {
+        match tokio::time::timeout(Duration::from_secs(15), refresh_state(cl)).await {
+            Ok(Ok((tc, db))) => {
+                shared.in_transaction.store(tc > 0, Ordering::SeqCst);
+                shared.set_db(db);
             }
+            Ok(Err(e)) => {
+                tracing::debug!("state refresh failed: {e}");
+                if is_fatal_db(&e) {
+                    client = None;
+                }
+            }
+            Err(_) => client = None,
         }
+    }
     client
 }
 
@@ -358,13 +340,7 @@ fn is_fatal_db(e: &DbError) -> bool {
 
 /// `@@TRANCOUNT` and `DB_NAME()`.
 pub(crate) async fn refresh_state(client: &mut MsClient) -> DbResult<(i64, Option<String>)> {
-    let row = client
-        .simple_query("SELECT CAST(@@TRANCOUNT AS int), DB_NAME()")
-        .await
-        .map_err(|e| map_error(e, None))?
-        .into_row()
-        .await
-        .map_err(|e| map_error(e, None))?;
+    let row = client.simple_query("SELECT CAST(@@TRANCOUNT AS int), DB_NAME()").await.map_err(|e| map_error(e, None))?.into_row().await.map_err(|e| map_error(e, None))?;
     let Some(row) = row else { return Ok((0, None)) };
     let tc: Option<i32> = row.try_get(0).map_err(|e| map_error(e, None))?;
     let db: Option<&str> = row.try_get(1).map_err(|e| map_error(e, None))?;
@@ -448,7 +424,11 @@ async fn run_batch(
     };
     match stream_results(&mut stream, stmt, sql, tx, cancel, abandon, clock, described, emitted).await {
         Step::Interrupted(Interrupt::Abandoned) => {
-            if drain(&mut stream).await { Step::AbandonedClean } else { Step::Interrupted(Interrupt::Abandoned) }
+            if drain(&mut stream).await {
+                Step::AbandonedClean
+            } else {
+                Step::Interrupted(Interrupt::Abandoned)
+            }
         }
         other => other,
     }
@@ -569,9 +549,10 @@ async fn stream_results(
         }
     }
     if !batch.is_empty()
-        && let Err(i) = send(tx, Event::Rows(batch), cancel, abandon).await {
-            return Step::Interrupted(i);
-        }
+        && let Err(i) = send(tx, Event::Rows(batch), cancel, abandon).await
+    {
+        return Step::Interrupted(i);
+    }
     Step::Done
 }
 
@@ -582,40 +563,23 @@ async fn describe(client: &mut MsClient, stmt: &Statement) -> DbResult<Vec<Descr
     let sql = "SELECT name, system_type_name, is_nullable, precision, scale, max_length, is_identity_column, \
                source_database, source_schema, source_table, source_column \
                FROM sys.dm_exec_describe_first_result_set(@P1, @P2, 1) WHERE is_hidden = 0 ORDER BY column_ordinal";
-    let params = vec![
-        Value::text(stmt.sql.clone()),
-        if decls.is_empty() { Value::Null } else { Value::text(decls) },
-    ];
+    let params = vec![Value::text(stmt.sql.clone()), if decls.is_empty() { Value::Null } else { Value::text(decls) }];
     let cmd = executesql_command(sql, &params)?;
-    let rows = cmd
-        .exec(client)
-        .await
-        .map_err(|e| map_error(e, None))?
-        .into_command_result()
-        .await
-        .map_err(|e| map_error(e, None))?;
+    let rows = cmd.exec(client).await.map_err(|e| map_error(e, None))?.into_command_result().await.map_err(|e| map_error(e, None))?;
     let mut out = Vec::new();
     if let Some(rows) = rows.to_query_result(0) {
         for r in rows {
             let text = |i: usize| -> Option<String> { r.try_get::<&str, _>(i).ok().flatten().map(str::to_string) };
-            let small = |i: usize| -> Option<u32> {
-                r.try_get::<u8, _>(i).ok().flatten().map(u32::from)
-            };
+            let small = |i: usize| -> Option<u32> { r.try_get::<u8, _>(i).ok().flatten().map(u32::from) };
             let len: Option<i16> = r.try_get(5).ok().flatten();
             let type_name = text(1).unwrap_or_default();
             let lower = type_name.to_ascii_lowercase();
-            let max_length = len.filter(|l| *l > 0).map(|l| {
-                if lower.starts_with("nchar") || lower.starts_with("nvarchar") { (l / 2) as u32 } else { l as u32 }
-            });
+            let max_length = len.filter(|l| *l > 0).map(|l| if lower.starts_with("nchar") || lower.starts_with("nvarchar") { (l / 2) as u32 } else { l as u32 });
             let table = text(9);
             out.push(Described {
                 nullable: r.try_get::<bool, _>(2).ok().flatten(),
                 precision: if lower.starts_with("decimal") || lower.starts_with("numeric") { small(3) } else { None },
-                scale: if lower.starts_with("decimal") || lower.starts_with("numeric") || lower.starts_with("datetime2") || lower.starts_with("time") {
-                    small(4)
-                } else {
-                    None
-                },
+                scale: if lower.starts_with("decimal") || lower.starts_with("numeric") || lower.starts_with("datetime2") || lower.starts_with("time") { small(4) } else { None },
                 max_length: if lower.contains("char") || lower.contains("binary") { max_length } else { None },
                 identity: r.try_get::<bool, _>(6).ok().flatten(),
                 source: match (&table, text(10)) {
@@ -663,22 +627,8 @@ pub(crate) struct ChannelCursor {
 }
 
 impl ChannelCursor {
-    pub(crate) fn new(
-        rx: mpsc::Receiver<Event>,
-        on_close: Option<Box<dyn FnOnce() + Send>>,
-        open_flag: Arc<AtomicBool>,
-    ) -> Self {
-        ChannelCursor {
-            rx,
-            in_rows: false,
-            buffer: VecDeque::new(),
-            pending_header: None,
-            pending_error: None,
-            finished: false,
-            messages: Vec::new(),
-            on_close,
-            open_flag,
-        }
+    pub(crate) fn new(rx: mpsc::Receiver<Event>, on_close: Option<Box<dyn FnOnce() + Send>>, open_flag: Arc<AtomicBool>) -> Self {
+        ChannelCursor { rx, in_rows: false, buffer: VecDeque::new(), pending_header: None, pending_error: None, finished: false, messages: Vec::new(), on_close, open_flag }
     }
 
     async fn recv(&mut self) -> Option<Event> {
@@ -764,9 +714,10 @@ impl QueryCursor for ChannelCursor {
 
     async fn close(&mut self) -> DbResult<()> {
         if let Some(f) = self.on_close.take()
-            && !self.finished {
-                f();
-            }
+            && !self.finished
+        {
+            f();
+        }
         self.buffer.clear();
         self.in_rows = false;
         self.pending_header = None;
@@ -783,9 +734,10 @@ impl QueryCursor for ChannelCursor {
 impl Drop for ChannelCursor {
     fn drop(&mut self) {
         if let Some(f) = self.on_close.take()
-            && !self.finished {
-                f();
-            }
+            && !self.finished
+        {
+            f();
+        }
         self.open_flag.store(false, Ordering::SeqCst);
     }
 }

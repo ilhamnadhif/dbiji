@@ -125,8 +125,6 @@ mod test_support;
 #[cfg(test)]
 mod ui_tests;
 
-pub use grid::{
-    DataGrid, DataGridState, DataMode, GridAction, GridOptions, GridResponse, PanelKind, ResultViewKind, SqlKind,
-};
+pub use grid::{DataGrid, DataGridState, DataMode, GridAction, GridOptions, GridResponse, PanelKind, ResultViewKind, SqlKind};
 pub use model::{EditTarget, ReadOnlyReason, ResultModel, determine_editability};
 pub use result_view::{ResultViewResponse, ResultViewState, ResultViewer};

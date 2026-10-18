@@ -103,10 +103,7 @@ impl Sim<'_> {
             }
         }
         for c in &r.calls {
-            if r.calls(&c.name, &own)
-                && !self.snap.routines.iter().any(|x| x.name.eq_ignore_ascii_case(&c.name))
-                && self.created_later(&c.name, "routine")
-            {
+            if r.calls(&c.name, &own) && !self.snap.routines.iter().any(|x| x.name.eq_ignore_ascii_case(&c.name)) && self.created_later(&c.name, "routine") {
                 return Err(format!("{what} calls routine {} before it is created", c.name));
             }
         }
@@ -173,12 +170,7 @@ impl Sim<'_> {
 
     fn views_mentioning(&self, name: &str) -> Vec<String> {
         let own = self.own();
-        self.snap
-            .views
-            .iter()
-            .filter(|v| !v.name.eq_ignore_ascii_case(name) && references(&v.definition).mentions(name, &own))
-            .map(|v| v.name.clone())
-            .collect()
+        self.snap.views.iter().filter(|v| !v.name.eq_ignore_ascii_case(name) && references(&v.definition).mentions(name, &own)).map(|v| v.name.clone()).collect()
     }
 
     fn drop_key_backing_index(t: &mut TableDef, key: &KeyDef, primary: bool) {
@@ -253,8 +245,7 @@ impl Sim<'_> {
                 let cols = set(&key.columns);
                 let users = self.fks_on(table, &cols);
                 let t = self.table(table)?;
-                let others = t.primary_key.as_ref().is_some_and(|k| set(&k.columns) == cols)
-                    || t.unique_keys.iter().filter(|k| *k != key).any(|k| set(&k.columns) == cols);
+                let others = t.primary_key.as_ref().is_some_and(|k| set(&k.columns) == cols) || t.unique_keys.iter().filter(|k| *k != key).any(|k| set(&k.columns) == cols);
                 if !users.is_empty() && !others {
                     return Err(format!("unique key {:?} of {table} is referenced by foreign keys {users:?}", key.name));
                 }
@@ -303,9 +294,7 @@ impl Sim<'_> {
                     self.snap.views.retain(|v| !gone.contains(&v.name));
                 }
                 self.snap.tables.retain(|t| t.name != name);
-                self.snap.sequences.retain(|s| {
-                    !s.owned_by.as_deref().and_then(|o| o.rsplit_once('.')).is_some_and(|(t, _)| t.rsplit('.').next() == Some(name.as_str()))
-                });
+                self.snap.sequences.retain(|s| !s.owned_by.as_deref().and_then(|o| o.rsplit_once('.')).is_some_and(|(t, _)| t.rsplit('.').next() == Some(name.as_str())));
             }
             MigrationOp::DropSequence { sequence } => {
                 let pos = self.snap.sequences.iter().position(|s| s.name == sequence.name).ok_or_else(|| format!("sequence {} does not exist", sequence.name))?;
@@ -345,11 +334,7 @@ impl Sim<'_> {
                 *s = to.clone();
             }
             MigrationOp::CreateRoutine { routine, replace } => {
-                let existing = self
-                    .snap
-                    .routines
-                    .iter()
-                    .position(|r| r.name == routine.name && args_key(&r.arguments) == args_key(&routine.arguments));
+                let existing = self.snap.routines.iter().position(|r| r.name == routine.name && args_key(&r.arguments) == args_key(&routine.arguments));
                 match (existing, replace) {
                     (Some(_), false) => return Err(format!("routine {} already exists", routine.name)),
                     (Some(p), true) => self.snap.routines[p] = routine.clone(),
@@ -392,9 +377,10 @@ impl Sim<'_> {
             }
             MigrationOp::AddUniqueKey { table, key } => {
                 if let Some(n) = &key.name
-                    && let Some(owner) = self.index_name_taken(n) {
-                        return Err(format!("name {n} already used by an index on {owner}"));
-                    }
+                    && let Some(owner) = self.index_name_taken(n)
+                {
+                    return Err(format!("name {n} already used by an index on {owner}"));
+                }
                 let t = self.table_mut(table)?;
                 if let Some(c) = key.columns.iter().find(|c| t.column(c).is_none()) {
                     return Err(format!("column {c} does not exist on {table}"));
@@ -517,12 +503,8 @@ impl Sim<'_> {
         let renamed_to = |old: &str| renamed.iter().find(|(o, _)| o == old).map(|(_, n)| n.clone()).unwrap_or_else(|| old.to_string());
         let new_names: BTreeSet<String> = to.columns.iter().map(|c| c.name.clone()).collect();
         let dropped: Vec<String> = cur_cols.iter().filter(|c| !new_names.contains(&renamed_to(c))).cloned().collect();
-        let retyped: Vec<String> = current
-            .columns
-            .iter()
-            .filter(|c| to.columns.iter().any(|n| n.name == renamed_to(&c.name) && n.data_type != c.data_type))
-            .map(|c| c.name.clone())
-            .collect();
+        let retyped: Vec<String> =
+            current.columns.iter().filter(|c| to.columns.iter().any(|n| n.name == renamed_to(&c.name) && n.data_type != c.data_type)).map(|c| c.name.clone()).collect();
         let own = self.own();
         let view_users = |col: &str| -> Vec<String> {
             self.snap
@@ -572,9 +554,7 @@ impl Sim<'_> {
             }
         }
         let dropped_owned: Vec<String> = dropped.iter().map(|c| format!("{name}.{c}")).collect();
-        self.snap.sequences.retain(|s| {
-            !s.owned_by.as_deref().is_some_and(|o| dropped_owned.iter().any(|d| o == d || o.ends_with(&format!(".{d}"))))
-        });
+        self.snap.sequences.retain(|s| !s.owned_by.as_deref().is_some_and(|o| dropped_owned.iter().any(|d| o == d || o.ends_with(&format!(".{d}")))));
         let t = self.table_mut(&name)?;
         let mut new = to.clone();
         new.name = name.clone();

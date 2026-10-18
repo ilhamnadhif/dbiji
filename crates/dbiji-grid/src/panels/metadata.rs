@@ -54,20 +54,8 @@ pub fn metadata_rows(model: &ResultModel) -> Vec<[String; 7]> {
                     ]
                 }
                 None => {
-                    let expr = model
-                        .virtual_columns()
-                        .get(c - model.base_column_count())
-                        .map(|v| v.expression.source().to_string())
-                        .unwrap_or_default();
-                    [
-                        name,
-                        tr("virtual").to_string(),
-                        format!("{:?}", DataKind::Other),
-                        String::new(),
-                        expr,
-                        String::new(),
-                        tr("computed").to_string(),
-                    ]
+                    let expr = model.virtual_columns().get(c - model.base_column_count()).map(|v| v.expression.source().to_string()).unwrap_or_default();
+                    [name, tr("virtual").to_string(), format!("{:?}", DataKind::Other), String::new(), expr, String::new(), tr("computed").to_string()]
                 }
             }
         })
@@ -91,23 +79,15 @@ impl<'a> MetadataPanel<'a> {
         let rows = metadata_rows(self.model);
         match self.model.editability() {
             Ok(t) => {
-                ui.label(
-                    RichText::new(format!("{} {}", egui_phosphor::regular::TABLE, t.table.display_path())).strong(),
-                );
+                ui.label(RichText::new(format!("{} {}", egui_phosphor::regular::TABLE, t.table.display_path())).strong());
             }
             Err(r) => {
-                ui.label(
-                    RichText::new(format!("{} {}", egui_phosphor::regular::LOCK_SIMPLE, r.short_label()))
-                        .color(ui.visuals().warn_fg_color),
-                )
-                .on_hover_text(r.message());
+                ui.label(RichText::new(format!("{} {}", egui_phosphor::regular::LOCK_SIMPLE, r.short_label())).color(ui.visuals().warn_fg_color)).on_hover_text(r.message());
             }
         }
         ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| {
             egui::Grid::new("dbiji_metadata_grid").striped(true).num_columns(8).spacing([10.0, 3.0]).show(ui, |ui| {
-                for h in
-                    ["", tr("Column"), tr("Type"), tr("Kind"), tr("Nullable"), tr("Source"), tr("Size"), tr("Flags")]
-                {
+                for h in ["", tr("Column"), tr("Type"), tr("Kind"), tr("Nullable"), tr("Source"), tr("Size"), tr("Flags")] {
                     ui.strong(h);
                 }
                 ui.end_row();
@@ -116,11 +96,7 @@ impl<'a> MetadataPanel<'a> {
                     if ui.checkbox(&mut visible, "").on_hover_text(tr("Show column")).changed() {
                         self.grid.set_column_visible(c, visible);
                     }
-                    let name = if self.model.is_virtual_column(c) {
-                        RichText::new(&r[0]).italics()
-                    } else {
-                        RichText::new(&r[0])
-                    };
+                    let name = if self.model.is_virtual_column(c) { RichText::new(&r[0]).italics() } else { RichText::new(&r[0]) };
                     if ui.selectable_label(false, name).clicked() {
                         let row = self.grid.active_cell().map_or(0, |(row, _)| row);
                         self.grid.select_cell(row, c);

@@ -85,18 +85,10 @@ impl CsvSink {
             opts.delimiter.clone()
         };
         let canonical = options.values.is_canonical();
-        let int_fast_path = canonical
-            && opts.quote_mode != QuoteMode::Always
-            && !delimiter.chars().any(|c| c.is_ascii_digit() || c == '-');
+        let int_fast_path = canonical && opts.quote_mode != QuoteMode::Always && !delimiter.chars().any(|c| c.is_ascii_digit() || c == '-');
         CsvSink {
             out,
-            style: FieldStyle {
-                delimiter,
-                quote: opts.quote_char,
-                mode: opts.quote_mode,
-                escape: opts.escape,
-                null_string: opts.null_string.clone(),
-            },
+            style: FieldStyle { delimiter, quote: opts.quote_char, mode: opts.quote_mode, escape: opts.escape, null_string: opts.null_string.clone() },
             values: options.values.clone(),
             canonical,
             int_fast_path,

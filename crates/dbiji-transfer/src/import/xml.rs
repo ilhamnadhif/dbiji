@@ -33,13 +33,7 @@ pub struct XmlReadOptions {
 
 impl Default for XmlReadOptions {
     fn default() -> Self {
-        XmlReadOptions {
-            encoding: "auto".into(),
-            record_element: None,
-            attributes_as_columns: true,
-            empty_as_null: false,
-            sample_rows: 100,
-        }
+        XmlReadOptions { encoding: "auto".into(), record_element: None, attributes_as_columns: true, empty_as_null: false, sample_rows: 100 }
     }
 }
 
@@ -156,10 +150,8 @@ impl XmlParser {
                                         continue;
                                     }
                                     let key = AsRef::<str>::as_ref(&a.key.local_name()).to_string();
-                                    let value = a
-                                        .normalized_value(XmlVersion::Implicit1_0)
-                                        .map(|v| v.into_owned())
-                                        .map_err(|err| parse_error("XML", format!("attribute {qname}"), err))?;
+                                    let value =
+                                        a.normalized_value(XmlVersion::Implicit1_0).map(|v| v.into_owned()).map_err(|err| parse_error("XML", format!("attribute {qname}"), err))?;
                                     self.record.push((key, Some(value)));
                                 }
                             }
@@ -369,10 +361,7 @@ impl RowSource for XmlSource {
     fn take_warnings(&mut self) -> Vec<String> {
         let mut w = Vec::new();
         if !self.unknown.is_empty() {
-            w.push(format!(
-                "Elements not present in the first records were ignored: {}",
-                std::mem::take(&mut self.unknown).join(", ")
-            ));
+            w.push(format!("Elements not present in the first records were ignored: {}", std::mem::take(&mut self.unknown).join(", ")));
         }
         if self.parser.reader.get_ref().get_ref().had_errors() {
             w.push("The input contained byte sequences invalid in its encoding (replaced with U+FFFD)".into());

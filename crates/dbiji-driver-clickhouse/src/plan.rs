@@ -11,10 +11,7 @@ pub fn parse_json_plan(text: &str) -> Option<Vec<PlanNode>> {
         J::Array(items) => items,
         other => vec![other],
     };
-    let roots: Vec<PlanNode> = items
-        .iter()
-        .filter_map(|item| item.get("Plan").or(Some(item)).filter(|p| p.is_object()).map(node_from_json))
-        .collect();
+    let roots: Vec<PlanNode> = items.iter().filter_map(|item| item.get("Plan").or(Some(item)).filter(|p| p.is_object()).map(node_from_json)).collect();
     if roots.is_empty() { None } else { Some(roots) }
 }
 
@@ -32,11 +29,7 @@ fn compact(v: &J) -> String {
         J::Array(items) => items
             .iter()
             .map(|i| match i {
-                J::Object(o) => o
-                    .get("Name")
-                    .or_else(|| o.get("Column"))
-                    .and_then(scalar_text)
-                    .unwrap_or_else(|| i.to_string()),
+                J::Object(o) => o.get("Name").or_else(|| o.get("Column")).and_then(scalar_text).unwrap_or_else(|| i.to_string()),
                 other => scalar_text(other).unwrap_or_else(|| other.to_string()),
             })
             .collect::<Vec<_>>()
@@ -124,12 +117,11 @@ pub fn parse_text_plan(text: &str) -> Vec<PlanNode> {
         let indent = cleaned.len() - cleaned.trim_start().len();
         let line = cleaned.trim();
         let is_property = line.contains(": ") || line.ends_with(':');
-        if is_property
-            && let Some((_, top)) = stack.last_mut() {
-                let (k, v) = line.split_once(':').unwrap_or((line, ""));
-                top.properties.push((k.trim().to_string(), v.trim().to_string()));
-                continue;
-            }
+        if is_property && let Some((_, top)) = stack.last_mut() {
+            let (k, v) = line.split_once(':').unwrap_or((line, ""));
+            top.properties.push((k.trim().to_string(), v.trim().to_string()));
+            continue;
+        }
         let (name, desc) = match line.find(" (") {
             Some(i) if line.ends_with(')') => (&line[..i], Some(&line[i + 2..line.len() - 1])),
             _ => (line, None),
@@ -166,10 +158,7 @@ fn attach(stack: &mut [(usize, PlanNode)], roots: &mut Vec<PlanNode>, node: Plan
 
 /// Build the plan from the JSON text and the human readable text.
 pub fn build_plan(json_text: Option<&str>, plain_text: Option<&str>) -> QueryPlan {
-    let roots = json_text
-        .and_then(parse_json_plan)
-        .or_else(|| plain_text.map(parse_text_plan))
-        .unwrap_or_default();
+    let roots = json_text.and_then(parse_json_plan).or_else(|| plain_text.map(parse_text_plan)).unwrap_or_default();
     let mut plan = QueryPlan { roots, raw: json_text.map(str::to_string), ..Default::default() };
     plan.text = match plain_text {
         Some(t) if !t.trim().is_empty() => t.to_string(),

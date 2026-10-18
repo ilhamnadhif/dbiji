@@ -3,8 +3,8 @@
 use crate::ddl::PgDdl;
 use crate::keywords;
 use dbiji_core::admin::MaintenanceOp;
-use dbiji_core::dialect::{Dialect, IdentCase, SqlSyntax};
 use dbiji_core::ddl::DdlGenerator;
+use dbiji_core::dialect::{Dialect, IdentCase, SqlSyntax};
 use dbiji_core::meta::{ObjectKind, ObjectRef};
 use dbiji_core::{DataKind, DbKind, Value};
 use std::collections::BTreeMap;
@@ -141,11 +141,7 @@ fn is_plain_type(t: &str) -> bool {
 fn cast_type(t: &str) -> String {
     let t = t.trim();
     let simple = t.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$');
-    if simple && t.chars().any(|c| c.is_ascii_uppercase()) {
-        format!("\"{}\"", t.replace('"', "\"\""))
-    } else {
-        t.to_string()
-    }
+    if simple && t.chars().any(|c| c.is_ascii_uppercase()) { format!("\"{}\"", t.replace('"', "\"\"")) } else { t.to_string() }
 }
 
 impl Dialect for PgDialect {
@@ -183,15 +179,19 @@ impl Dialect for PgDialect {
         };
         match value {
             Value::Null => "NULL".into(),
-            Value::Bool(b) => if *b { "TRUE".into() } else { "FALSE".into() },
+            Value::Bool(b) => {
+                if *b {
+                    "TRUE".into()
+                } else {
+                    "FALSE".into()
+                }
+            }
             Value::Int(i) => i.to_string(),
             Value::UInt(u) => u.to_string(),
             Value::Float(f) if f.is_finite() => format!("{f}"),
             Value::Float(f) => cast(string_literal(&crate::decode::pg_float_text(*f)), Some("float8")),
             Value::Decimal(s) => {
-                if dbiji_core::value::is_decimal_text(s)
-                    && s.chars().all(|c| c.is_ascii_digit() || "+-.eE".contains(c))
-                {
+                if dbiji_core::value::is_decimal_text(s) && s.chars().all(|c| c.is_ascii_digit() || "+-.eE".contains(c)) {
                     s.to_string()
                 } else {
                     cast(string_literal(s), Some("numeric"))
@@ -203,9 +203,7 @@ impl Dialect for PgDialect {
             Value::Time(t) => cast(string_literal(&crate::decode::time_text(*t)), Some("time")),
             Value::DateTime(dt) => cast(string_literal(&crate::decode::timestamp_text(*dt)), Some("timestamp")),
             Value::DateTimeTz(_) => {
-                let text = crate::params::param_text(value, &postgres_types::Type::TIMESTAMPTZ)
-                    .map(|c| c.into_owned())
-                    .unwrap_or_default();
+                let text = crate::params::param_text(value, &postgres_types::Type::TIMESTAMPTZ).map(|c| c.into_owned()).unwrap_or_default();
                 cast(string_literal(&text), Some("timestamptz"))
             }
             Value::Json(s) => cast(string_literal(s), None),
@@ -225,18 +223,9 @@ impl Dialect for PgDialect {
         if key_columns.is_empty() || columns.is_empty() || columns.len() != values.len() {
             return None;
         }
-        let updates: Vec<String> = columns
-            .iter()
-            .filter(|c| !key_columns.contains(c))
-            .map(|c| format!("{c} = EXCLUDED.{c}"))
-            .collect();
+        let updates: Vec<String> = columns.iter().filter(|c| !key_columns.contains(c)).map(|c| format!("{c} = EXCLUDED.{c}")).collect();
         let action = if updates.is_empty() { "DO NOTHING".to_string() } else { format!("DO UPDATE SET {}", updates.join(", ")) };
-        Some(format!(
-            "INSERT INTO {table} ({}) VALUES ({}) ON CONFLICT ({}) {action}",
-            columns.join(", "),
-            values.join(", "),
-            key_columns.join(", ")
-        ))
+        Some(format!("INSERT INTO {table} ({}) VALUES ({}) ON CONFLICT ({}) {action}", columns.join(", "), values.join(", "), key_columns.join(", ")))
     }
 
     fn supports_returning(&self) -> bool {
@@ -275,14 +264,7 @@ impl Dialect for PgDialect {
                 id: "reindex",
                 label: "Reindex",
                 description: "Rebuild indexes",
-                applies_to: &[
-                    ObjectKind::Table,
-                    ObjectKind::Index,
-                    ObjectKind::MaterializedView,
-                    ObjectKind::Partition,
-                    ObjectKind::Schema,
-                    ObjectKind::Database,
-                ],
+                applies_to: &[ObjectKind::Table, ObjectKind::Index, ObjectKind::MaterializedView, ObjectKind::Partition, ObjectKind::Schema, ObjectKind::Database],
                 options: &[("concurrently", "Concurrently (PostgreSQL 12+)", false), ("verbose", "Verbose", false)],
                 needs_autocommit: true,
             });
@@ -471,9 +453,7 @@ mod tests {
     #[test]
     fn upsert_sql() {
         let d = PgDialect::new();
-        let s = d
-            .upsert("public.t", &["id".into(), "name".into()], &["id".into()], &["$1".into(), "$2".into()])
-            .unwrap();
+        let s = d.upsert("public.t", &["id".into(), "name".into()], &["id".into()], &["$1".into(), "$2".into()]).unwrap();
         assert_eq!(s, "INSERT INTO public.t (id, name) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name");
         let s = d.upsert("t", &["id".into()], &["id".into()], &["1".into()]).unwrap();
         assert!(s.ends_with("ON CONFLICT (id) DO NOTHING"));

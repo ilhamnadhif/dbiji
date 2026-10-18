@@ -4,7 +4,7 @@
 use crate::backend::Job;
 use crate::command::AppCommand;
 use crate::cx::AppContext;
-use dbiji_core::ddl::{ForeignKeyDef, IndexDef, KeyDef, CheckDef, RoutineDef, SequenceDef, TableDef, TriggerDef, ViewDef};
+use dbiji_core::ddl::{CheckDef, ForeignKeyDef, IndexDef, KeyDef, RoutineDef, SequenceDef, TableDef, TriggerDef, ViewDef};
 use dbiji_core::meta::{ObjectKind, ObjectRef};
 use dbiji_core::{DbResult, Dialect, tr, trf};
 use egui::RichText;
@@ -65,21 +65,22 @@ impl DropDialog {
     /// Draw; returns false when closed.
     pub fn show(&mut self, ctx: &egui::Context, cx: &mut AppContext) -> bool {
         if let Some(j) = self.job.as_mut()
-            && let Some(r) = j.poll() {
-                self.job = None;
-                match r {
-                    Ok(n) => {
-                        cx.toasts.success(trf("{} object(s) dropped", &[&n]));
-                        let mut schemas: Vec<_> = self.objects.iter().map(|o| o.schema_ref()).collect();
-                        schemas.dedup();
-                        for s in schemas {
-                            cx.push(AppCommand::RefreshMetadata { connection: self.conn.clone(), object: None, schema: Some(s) });
-                        }
-                        return false;
+            && let Some(r) = j.poll()
+        {
+            self.job = None;
+            match r {
+                Ok(n) => {
+                    cx.toasts.success(trf("{} object(s) dropped", &[&n]));
+                    let mut schemas: Vec<_> = self.objects.iter().map(|o| o.schema_ref()).collect();
+                    schemas.dedup();
+                    for s in schemas {
+                        cx.push(AppCommand::RefreshMetadata { connection: self.conn.clone(), object: None, schema: Some(s) });
                     }
-                    Err(e) => self.error = Some(e.full_text()),
+                    return false;
                 }
+                Err(e) => self.error = Some(e.full_text()),
             }
+        }
         let Some(live) = cx.conns.live(&self.conn) else { return false };
         let dialect = live.dialect.clone();
         let session = live.main.clone();

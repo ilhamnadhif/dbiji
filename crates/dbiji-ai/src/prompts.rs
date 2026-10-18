@@ -27,18 +27,14 @@ fn dialect_notes(kind: DbKind) -> &'static str {
         DbKind::MariaDb => {
             "MariaDB: quote identifiers with backticks only when needed, use LIMIT, and prefer syntax common to MySQL and MariaDB unless a MariaDB feature is clearly better."
         }
-        DbKind::Sqlite => {
-            "SQLite: dynamic typing, LIMIT/OFFSET, strftime / date() for dates, no RIGHT/FULL JOIN on old versions, and very limited ALTER TABLE."
-        }
+        DbKind::Sqlite => "SQLite: dynamic typing, LIMIT/OFFSET, strftime / date() for dates, no RIGHT/FULL JOIN on old versions, and very limited ALTER TABLE.",
         DbKind::SqlServer => {
             "SQL Server (T-SQL): quote identifiers with [brackets] only when needed, use TOP or OFFSET ... FETCH, DATEADD / DATEDIFF / FORMAT for dates, and GETDATE() for the current time."
         }
         DbKind::ClickHouse => {
             "ClickHouse: analytical column store; use LIMIT, toDate / toStartOfInterval for time buckets, avoid row-by-row UPDATE/DELETE (they are mutations), and prefer aggregate functions such as uniq / quantile."
         }
-        DbKind::DuckDb => {
-            "DuckDB: PostgreSQL-like syntax plus conveniences such as GROUP BY ALL, QUALIFY, list functions and direct reading of files; use LIMIT."
-        }
+        DbKind::DuckDb => "DuckDB: PostgreSQL-like syntax plus conveniences such as GROUP BY ALL, QUALIFY, list functions and direct reading of files; use LIMIT.",
         DbKind::Generic => "Standard SQL: avoid vendor specific syntax.",
     }
 }
@@ -69,10 +65,7 @@ pub fn system_prompt(kind: DbKind, server_version: &str, schema_context: &str, u
     s.push_str("- Prefer read-only queries. Add a row limit when a query could return many rows, and qualify columns when several tables are joined.\n");
     s.push_str("- Before any statement that changes data or schema (INSERT, UPDATE, DELETE, MERGE, TRUNCATE, DROP, ALTER, CREATE, GRANT, REVOKE), warn clearly about its effect. Always include a WHERE clause in UPDATE and DELETE, and suggest running such statements in a transaction or after a backup.\n");
     s.push_str("- You cannot see or execute anything: never claim results, and say when an answer depends on the data.\n");
-    s.push_str(&format!(
-        "- Answer in {}. Keep SQL keywords, identifiers and code in their original form.\n\n",
-        language_name(ui_language)
-    ));
+    s.push_str(&format!("- Answer in {}. Keep SQL keywords, identifiers and code in their original form.\n\n", language_name(ui_language)));
     s.push_str("Database schema (structure only, no data):\n");
     if schema_context.trim().is_empty() {
         s.push_str("(no schema information is available)\n");
@@ -152,11 +145,84 @@ pub fn chat(text: &str) -> ChatMessage {
 // --------------------------------------------------------- schema context
 
 const STOP_WORDS: &[&str] = &[
-    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "get", "give", "how", "i", "in", "is", "it", "list", "me", "many",
-    "much", "of", "on", "or", "per", "please", "query", "select", "show", "sql", "that", "the", "their", "them", "there", "this",
-    "to", "what", "when", "where", "which", "who", "with", "all", "each", "every", "find", "count", "number", "total", "table",
-    "tables", "column", "columns", "data", "yang", "dan", "di", "ke", "dari", "untuk", "dengan", "tampilkan", "semua", "berapa",
-    "jumlah", "setiap", "per", "pada", "ada", "apa", "siapa", "mana", "buat", "berikan", "daftar", "tabel", "kolom",
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "for",
+    "from",
+    "get",
+    "give",
+    "how",
+    "i",
+    "in",
+    "is",
+    "it",
+    "list",
+    "me",
+    "many",
+    "much",
+    "of",
+    "on",
+    "or",
+    "per",
+    "please",
+    "query",
+    "select",
+    "show",
+    "sql",
+    "that",
+    "the",
+    "their",
+    "them",
+    "there",
+    "this",
+    "to",
+    "what",
+    "when",
+    "where",
+    "which",
+    "who",
+    "with",
+    "all",
+    "each",
+    "every",
+    "find",
+    "count",
+    "number",
+    "total",
+    "table",
+    "tables",
+    "column",
+    "columns",
+    "data",
+    "yang",
+    "dan",
+    "di",
+    "ke",
+    "dari",
+    "untuk",
+    "dengan",
+    "tampilkan",
+    "semua",
+    "berapa",
+    "jumlah",
+    "setiap",
+    "per",
+    "pada",
+    "ada",
+    "apa",
+    "siapa",
+    "mana",
+    "buat",
+    "berikan",
+    "daftar",
+    "tabel",
+    "kolom",
 ];
 
 fn stem(w: &str) -> String {
@@ -324,9 +390,10 @@ impl<'a> SchemaContextBuilder<'a> {
                     s.push_str(" UNIQUE");
                 }
                 if self.include_comments
-                    && let Some(cm) = c.comment.as_deref().filter(|x| !x.trim().is_empty()) {
-                        s.push_str(&format!(" /* {} */", short(cm, 80).replace("*/", "* /")));
-                    }
+                    && let Some(cm) = c.comment.as_deref().filter(|x| !x.trim().is_empty())
+                {
+                    s.push_str(&format!(" /* {} */", short(cm, 80).replace("*/", "* /")));
+                }
                 s
             })
             .collect();
@@ -336,9 +403,10 @@ impl<'a> SchemaContextBuilder<'a> {
             line.push_str(&format!(" PRIMARY KEY ({})", pk.columns.join(", ")));
         }
         if self.include_comments
-            && let Some(c) = t.comment.as_deref().filter(|x| !x.trim().is_empty()) {
-                line.push_str(&format!(" -- {}", short(c, 160)));
-            }
+            && let Some(c) = t.comment.as_deref().filter(|x| !x.trim().is_empty())
+        {
+            line.push_str(&format!(" -- {}", short(c, 160)));
+        }
         line
     }
 
@@ -353,14 +421,7 @@ impl<'a> SchemaContextBuilder<'a> {
 
     /// Text plus what was included and left out.
     pub fn build_with_stats(&self) -> SchemaContext {
-        let q_words: BTreeSet<String> = self
-            .question
-            .as_deref()
-            .map(words)
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|w| !STOP_WORDS.contains(&w.as_str()) && w.len() > 1)
-            .collect();
+        let q_words: BTreeSet<String> = self.question.as_deref().map(words).unwrap_or_default().into_iter().filter(|w| !STOP_WORDS.contains(&w.as_str()) && w.len() > 1).collect();
         let mut tables: Vec<Entry> = Vec::new();
         let mut others: Vec<Entry> = Vec::new();
         // table name (lower) -> index into `tables`, for foreign key neighbours
@@ -404,9 +465,10 @@ impl<'a> SchemaContextBuilder<'a> {
                     text.push_str(&format!(" ({})", cols.join(", ")));
                 }
                 if self.include_comments
-                    && let Some(c) = v.comment.as_deref().filter(|x| !x.trim().is_empty()) {
-                        text.push_str(&format!(" -- {}", short(c, 160)));
-                    }
+                    && let Some(c) = v.comment.as_deref().filter(|x| !x.trim().is_empty())
+                {
+                    text.push_str(&format!(" -- {}", short(c, 160)));
+                }
                 let nw: BTreeSet<String> = words(&v.name).into_iter().chain(v.columns.iter().flat_map(|c| words(&c.name))).collect();
                 let score = q_words.iter().filter(|w| nw.contains(*w)).count() as u32 * 2;
                 others.push(Entry { text, name: Self::qualified(&snap.schema, &v.name), score, order });
@@ -568,13 +630,8 @@ mod tests {
         let mut orders = TableDef::new(s.clone(), "orders");
         orders.columns = vec![ColumnDef::new("id", "bigint").not_null(), ColumnDef::new("user_id", "integer").not_null(), ColumnDef::new("total", "numeric(12,2)")];
         orders.primary_key = Some(KeyDef { name: None, columns: vec!["id".into()] });
-        orders.foreign_keys = vec![ForeignKeyDef {
-            columns: vec!["user_id".into()],
-            ref_schema: s.clone(),
-            ref_table: "users".into(),
-            ref_columns: vec!["id".into()],
-            ..Default::default()
-        }];
+        orders.foreign_keys =
+            vec![ForeignKeyDef { columns: vec!["user_id".into()], ref_schema: s.clone(), ref_table: "users".into(), ref_columns: vec!["id".into()], ..Default::default() }];
         let mut items = TableDef::new(s.clone(), "order_items");
         items.columns = vec![ColumnDef::new("order_id", "bigint").not_null(), ColumnDef::new("line", "int").not_null(), ColumnDef::new("sku", "text")];
         items.primary_key = Some(KeyDef { name: None, columns: vec!["order_id".into(), "line".into()] });

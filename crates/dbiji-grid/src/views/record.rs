@@ -31,12 +31,7 @@ pub struct RecordView<'a> {
 
 impl<'a> RecordView<'a> {
     /// New record view.
-    pub fn new(
-        model: &'a mut ResultModel,
-        grid: &'a mut DataGridState,
-        options: &'a GridOptions,
-        state: &'a mut RecordViewState,
-    ) -> Self {
+    pub fn new(model: &'a mut ResultModel, grid: &'a mut DataGridState, options: &'a GridOptions, state: &'a mut RecordViewState) -> Self {
         RecordView { model, grid, options, state }
     }
 
@@ -65,11 +60,7 @@ impl<'a> RecordView<'a> {
             if ui.add_enabled(row + 1 < nrows, Button::new(icon::CARET_RIGHT)).on_hover_text(tr("Next row")).clicked() {
                 go_to = Some(row + 1);
             }
-            if ui
-                .add_enabled(row + 1 < nrows, Button::new(icon::CARET_DOUBLE_RIGHT))
-                .on_hover_text(tr("Last row"))
-                .clicked()
-            {
+            if ui.add_enabled(row + 1 < nrows, Button::new(icon::CARET_DOUBLE_RIGHT)).on_hover_text(tr("Last row")).clicked() {
                 go_to = Some(nrows - 1);
             }
             let state_label = match model.row_state(row) {
@@ -102,11 +93,7 @@ impl<'a> RecordView<'a> {
         ui.separator();
         let theme = GridTheme::from_visuals(ui.visuals());
         let needle = state.column_filter.to_lowercase();
-        let columns: Vec<usize> = grid
-            .visible_columns()
-            .into_iter()
-            .filter(|&c| needle.is_empty() || model.column_name(c).to_lowercase().contains(&needle))
-            .collect();
+        let columns: Vec<usize> = grid.visible_columns().into_iter().filter(|&c| needle.is_empty() || model.column_name(c).to_lowercase().contains(&needle)).collect();
         let mut values: Vec<(Value, bool, bool)> = Vec::with_capacity(columns.len());
         let key = (model.generation(), row, columns.clone());
         let fresh = model.visit_rows_for(row..row + 1, std::time::Duration::from_millis(4), |_, cells| {
@@ -137,84 +124,68 @@ impl<'a> RecordView<'a> {
         let mut open_value: Option<usize> = None;
         let row_h = ui.text_style_height(&egui::TextStyle::Body) + 10.0;
         ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, row_h, columns.len(), |ui, range| {
-            egui::Grid::new("dbiji_record_grid")
-                .num_columns(2)
-                .striped(true)
-                .min_col_width(140.0)
-                .spacing([12.0, 4.0])
-                .show(ui, |ui| {
-                    for i in range {
-                        let c = columns[i];
-                        let Some((v, is_default, modified)) = values.get(i) else { continue };
-                        let meta = model.column_meta(c);
-                        let name = model.column_name(c);
-                        let mut label = RichText::new(name).strong();
-                        if model.is_virtual_column(c) {
-                            label = label.italics();
-                        }
-                        ui.label(label).on_hover_text(
-                            meta.map_or_else(|| tr("Virtual column").to_string(), |m| m.type_name.clone()),
-                        );
-                        let editing_this = state.editing.as_ref().is_some_and(|(r, col, _)| *r == row && *col == c);
-                        if editing_this {
-                            if let Some((_, _, text)) = state.editing.as_mut() {
-                                let resp = ui.add(TextEdit::singleline(text).desired_width(f32::INFINITY));
-                                if resp.lost_focus() {
-                                    if ui.input(|i| i.key_pressed(Key::Escape)) {
-                                        state.editing = None;
-                                    } else {
-                                        commit = Some((row, c, text.clone()));
-                                    }
-                                } else if !resp.has_focus() {
-                                    resp.request_focus();
-                                }
-                            }
-                        } else {
-                            let fmt = PreparedFormat::new(&options.format, grid.column_format(c));
-                            let (text, color) = if *is_default {
-                                (tr("[DEFAULT]").to_string(), theme.weak)
-                            } else if v.is_null() {
-                                (options.format.null_text.clone(), theme.weak)
-                            } else {
-                                let t = match v {
-                                    Value::Text(s) | Value::Json(s) => s.to_string(),
-                                    other => fmt.format(other).into_owned(),
-                                };
-                                let t = if t.chars().count() > 500 {
-                                    t.chars().take(500).collect::<String>() + "…"
-                                } else {
-                                    t
-                                };
-                                (t, theme.text)
-                            };
-                            let mut rt = RichText::new(text).color(color);
-                            if *modified {
-                                rt = rt.background_color(theme.modified);
-                            }
-                            let can_edit = editable && model.can_edit_cell(row, c).is_ok();
-                            let resp = ui.add(egui::Label::new(rt).truncate().sense(egui::Sense::click()));
-                            let resp = if can_edit { resp.on_hover_text(tr("Double-click to edit")) } else { resp };
-                            if resp.double_clicked() {
-                                let multi =
-                                    matches!(v, Value::Text(s) if s.contains('\n')) || matches!(v, Value::Bytes(_));
-                                if can_edit && !multi {
-                                    state.editing = Some((
-                                        row,
-                                        c,
-                                        if v.is_null() { String::new() } else { v.to_text().into_owned() },
-                                    ));
-                                    state.error = None;
-                                } else {
-                                    open_value = Some(c);
-                                }
-                            }
-                            if resp.clicked() {
-                                grid.select_cell(row, c);
-                            }
-                        }
-                        ui.end_row();
+            egui::Grid::new("dbiji_record_grid").num_columns(2).striped(true).min_col_width(140.0).spacing([12.0, 4.0]).show(ui, |ui| {
+                for i in range {
+                    let c = columns[i];
+                    let Some((v, is_default, modified)) = values.get(i) else { continue };
+                    let meta = model.column_meta(c);
+                    let name = model.column_name(c);
+                    let mut label = RichText::new(name).strong();
+                    if model.is_virtual_column(c) {
+                        label = label.italics();
                     }
-                });
+                    ui.label(label).on_hover_text(meta.map_or_else(|| tr("Virtual column").to_string(), |m| m.type_name.clone()));
+                    let editing_this = state.editing.as_ref().is_some_and(|(r, col, _)| *r == row && *col == c);
+                    if editing_this {
+                        if let Some((_, _, text)) = state.editing.as_mut() {
+                            let resp = ui.add(TextEdit::singleline(text).desired_width(f32::INFINITY));
+                            if resp.lost_focus() {
+                                if ui.input(|i| i.key_pressed(Key::Escape)) {
+                                    state.editing = None;
+                                } else {
+                                    commit = Some((row, c, text.clone()));
+                                }
+                            } else if !resp.has_focus() {
+                                resp.request_focus();
+                            }
+                        }
+                    } else {
+                        let fmt = PreparedFormat::new(&options.format, grid.column_format(c));
+                        let (text, color) = if *is_default {
+                            (tr("[DEFAULT]").to_string(), theme.weak)
+                        } else if v.is_null() {
+                            (options.format.null_text.clone(), theme.weak)
+                        } else {
+                            let t = match v {
+                                Value::Text(s) | Value::Json(s) => s.to_string(),
+                                other => fmt.format(other).into_owned(),
+                            };
+                            let t = if t.chars().count() > 500 { t.chars().take(500).collect::<String>() + "…" } else { t };
+                            (t, theme.text)
+                        };
+                        let mut rt = RichText::new(text).color(color);
+                        if *modified {
+                            rt = rt.background_color(theme.modified);
+                        }
+                        let can_edit = editable && model.can_edit_cell(row, c).is_ok();
+                        let resp = ui.add(egui::Label::new(rt).truncate().sense(egui::Sense::click()));
+                        let resp = if can_edit { resp.on_hover_text(tr("Double-click to edit")) } else { resp };
+                        if resp.double_clicked() {
+                            let multi = matches!(v, Value::Text(s) if s.contains('\n')) || matches!(v, Value::Bytes(_));
+                            if can_edit && !multi {
+                                state.editing = Some((row, c, if v.is_null() { String::new() } else { v.to_text().into_owned() }));
+                                state.error = None;
+                            } else {
+                                open_value = Some(c);
+                            }
+                        }
+                        if resp.clicked() {
+                            grid.select_cell(row, c);
+                        }
+                    }
+                    ui.end_row();
+                }
+            });
         });
         if let Some(e) = &state.error {
             ui.colored_label(theme.error, e);

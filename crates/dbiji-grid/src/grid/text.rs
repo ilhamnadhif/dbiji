@@ -112,8 +112,7 @@ impl TextBatch {
         row.size = bounds.size();
         let n_verts = self.mesh.vertices.len();
         let n_idx = self.mesh.indices.len();
-        row.visuals =
-            RowVisuals { mesh: self.mesh, mesh_bounds: bounds, glyph_index_start: 0, glyph_vertex_range: 0..n_verts };
+        row.visuals = RowVisuals { mesh: self.mesh, mesh_bounds: bounds, glyph_index_start: 0, glyph_vertex_range: 0..n_verts };
         let mut galley = (**template).clone();
         galley.rows = vec![PlacedRow { pos: Pos2::ZERO, row: Arc::new(row), ends_with_newline: false }];
         galley.elided = false;
@@ -130,9 +129,7 @@ impl GlyphCache {
     pub fn begin_frame(&mut self, painter: &Painter, font: &FontId) {
         let ppp = painter.pixels_per_point();
         let canary = painter.layout_no_wrap("M".to_string(), font.clone(), Color32::WHITE);
-        let valid = self.font.as_ref() == Some(font)
-            && self.ppp == ppp
-            && self.canary.as_ref().is_some_and(|c| Arc::ptr_eq(c, &canary));
+        let valid = self.font.as_ref() == Some(font) && self.ppp == ppp && self.canary.as_ref().is_some_and(|c| Arc::ptr_eq(c, &canary));
         if !valid {
             self.glyphs.clear();
             self.font = Some(font.clone());
@@ -165,13 +162,7 @@ impl GlyphCache {
             return None;
         }
         let offset = row.pos.to_vec2();
-        let verts = row
-            .visuals
-            .mesh
-            .vertices
-            .iter()
-            .map(|v| Vertex { pos: v.pos + offset, uv: v.uv, color: v.color })
-            .collect();
+        let verts = row.visuals.mesh.vertices.iter().map(|v| Vertex { pos: v.pos + offset, uv: v.uv, color: v.color }).collect();
         Some(GlyphInfo { advance: glyph.advance_width, verts, indices: row.visuals.mesh.indices.clone() })
     }
 
@@ -186,15 +177,7 @@ impl GlyphCache {
 
     /// Place `text` in `rect` (one line, vertically centred, elided with `…`
     /// when too wide). Returns `None` when the text needs the slow path.
-    pub fn place(
-        &mut self,
-        painter: &Painter,
-        batch: &mut TextBatch,
-        text: &str,
-        rect: Rect,
-        align: Align,
-        color: Color32,
-    ) -> Option<Placed> {
+    pub fn place(&mut self, painter: &Painter, batch: &mut TextBatch, text: &str, rect: Rect, align: Align, color: Color32) -> Option<Placed> {
         let max_w = rect.width();
         if max_w <= 1.0 || text.is_empty() {
             return Some(Placed { elided: !text.is_empty(), width: 0.0, left: rect.left() });
@@ -243,39 +226,19 @@ impl GlyphCache {
 }
 
 /// Slow path: lay out with egui (elided to one line) and paint immediately.
-pub(crate) fn place_slow(
-    painter: &Painter,
-    font: &FontId,
-    text: &str,
-    rect: Rect,
-    align: Align,
-    color: Color32,
-) -> Placed {
+pub(crate) fn place_slow(painter: &Painter, font: &FontId, text: &str, rect: Rect, align: Align, color: Color32) -> Placed {
     let (shape, placed) = layout_slow(painter, font, text, rect, align, color);
     painter.add(shape);
     placed
 }
 
 /// Slow path returning the shape instead of painting it.
-pub(crate) fn layout_slow(
-    painter: &Painter,
-    font: &FontId,
-    text: &str,
-    rect: Rect,
-    align: Align,
-    color: Color32,
-) -> (Shape, Placed) {
+pub(crate) fn layout_slow(painter: &Painter, font: &FontId, text: &str, rect: Rect, align: Align, color: Color32) -> (Shape, Placed) {
     // Bound the shaping work: no more characters than could possibly fit.
     let max_chars = ((rect.width() / (font.size * 0.2)).ceil() as usize).saturating_add(2);
-    let shown: String =
-        if text.chars().count() > max_chars { text.chars().take(max_chars).collect() } else { text.to_string() };
+    let shown: String = if text.chars().count() > max_chars { text.chars().take(max_chars).collect() } else { text.to_string() };
     let mut job = LayoutJob::single_section(shown, TextFormat::simple(font.clone(), color));
-    job.wrap = TextWrapping {
-        max_width: rect.width().max(1.0),
-        max_rows: 1,
-        break_anywhere: true,
-        overflow_character: Some('…'),
-    };
+    job.wrap = TextWrapping { max_width: rect.width().max(1.0), max_rows: 1, break_anywhere: true, overflow_character: Some('…') };
     job.halign = align;
     let galley = painter.layout_job(job);
     let w = galley.rect.width();

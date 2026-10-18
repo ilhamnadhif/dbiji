@@ -171,8 +171,7 @@ pub(crate) fn tokenize(sql: &str) -> Vec<Spanned<'_>> {
                     i += 1;
                 } else if (b == b'e' || b == b'E')
                     && (bytes.get(i + 1).is_some_and(|n| n.is_ascii_digit())
-                        || (matches!(bytes.get(i + 1), Some(b'+') | Some(b'-'))
-                            && bytes.get(i + 2).is_some_and(|n| n.is_ascii_digit())))
+                        || (matches!(bytes.get(i + 1), Some(b'+') | Some(b'-')) && bytes.get(i + 2).is_some_and(|n| n.is_ascii_digit())))
                 {
                     i += 2;
                 } else {
@@ -395,20 +394,55 @@ impl StmtInfo {
 }
 
 const NO_ROW_VERBS: &[&str] = &[
-    "ALTER", "ANALYZE", "ANALYSE", "BEGIN", "CHECKPOINT", "CLOSE", "CLUSTER", "COMMENT", "COMMIT",
-    "CREATE", "DEALLOCATE", "DECLARE", "DELETE", "DISCARD", "DO", "DROP", "END", "GRANT", "IMPORT",
-    "INSERT", "LISTEN", "LOAD", "LOCK", "MERGE", "MOVE", "NOTIFY", "PREPARE", "REASSIGN",
-    "REFRESH", "REINDEX", "RELEASE", "RESET", "REVOKE", "ROLLBACK", "ABORT", "SAVEPOINT",
-    "SECURITY", "SET", "START", "TRUNCATE", "UNLISTEN", "UPDATE", "VACUUM",
+    "ALTER",
+    "ANALYZE",
+    "ANALYSE",
+    "BEGIN",
+    "CHECKPOINT",
+    "CLOSE",
+    "CLUSTER",
+    "COMMENT",
+    "COMMIT",
+    "CREATE",
+    "DEALLOCATE",
+    "DECLARE",
+    "DELETE",
+    "DISCARD",
+    "DO",
+    "DROP",
+    "END",
+    "GRANT",
+    "IMPORT",
+    "INSERT",
+    "LISTEN",
+    "LOAD",
+    "LOCK",
+    "MERGE",
+    "MOVE",
+    "NOTIFY",
+    "PREPARE",
+    "REASSIGN",
+    "REFRESH",
+    "REINDEX",
+    "RELEASE",
+    "RESET",
+    "REVOKE",
+    "ROLLBACK",
+    "ABORT",
+    "SAVEPOINT",
+    "SECURITY",
+    "SET",
+    "START",
+    "TRUNCATE",
+    "UNLISTEN",
+    "UPDATE",
+    "VACUUM",
 ];
 
 const CTE_MAIN_VERBS: &[&str] = &["SELECT", "INSERT", "UPDATE", "DELETE", "MERGE", "VALUES", "TABLE"];
 
 /// Modifiers skipped when building `CREATE`/`ALTER`/`DROP` command tags.
-const TAG_MODIFIERS: &[&str] = &[
-    "OR", "REPLACE", "TEMP", "TEMPORARY", "UNLOGGED", "GLOBAL", "LOCAL", "UNIQUE", "RECURSIVE",
-    "TRUSTED", "PROCEDURAL", "CONSTRAINT",
-];
+const TAG_MODIFIERS: &[&str] = &["OR", "REPLACE", "TEMP", "TEMPORARY", "UNLOGGED", "GLOBAL", "LOCAL", "UNIQUE", "RECURSIVE", "TRUSTED", "PROCEDURAL", "CONSTRAINT"];
 
 /// Classify one statement (as returned by [`split_statements`]).
 pub(crate) fn classify(stmt: &str) -> StmtInfo {
@@ -451,16 +485,8 @@ fn classify_tokens(toks: &[Spanned<'_>]) -> StmtInfo {
             _ => {}
         }
     }
-    let main_verb = if verb == "WITH" {
-        top_words
-            .iter()
-            .skip(1)
-            .find(|x| CTE_MAIN_VERBS.contains(&x.as_str()))
-            .cloned()
-            .unwrap_or_else(|| "SELECT".to_string())
-    } else {
-        verb.clone()
-    };
+    let main_verb =
+        if verb == "WITH" { top_words.iter().skip(1).find(|x| CTE_MAIN_VERBS.contains(&x.as_str())).cloned().unwrap_or_else(|| "SELECT".to_string()) } else { verb.clone() };
     let has_returning = top_words.iter().any(|x| x == "RETURNING");
 
     let mut info = StmtInfo {
@@ -591,10 +617,7 @@ fn classify_tokens(toks: &[Spanned<'_>]) -> StmtInfo {
                 if w(1) == "SUBSCRIPTION" {
                     info.needs_autocommit = true;
                 }
-                if w(1) == "TABLE"
-                    && contains_seq(&top_words, &["DETACH", "PARTITION"])
-                    && top_words.iter().any(|x| x == "CONCURRENTLY")
-                {
+                if w(1) == "TABLE" && contains_seq(&top_words, &["DETACH", "PARTITION"]) && top_words.iter().any(|x| x == "CONCURRENTLY") {
                     info.needs_autocommit = true;
                 }
             }
@@ -658,11 +681,7 @@ fn classify_tokens(toks: &[Spanned<'_>]) -> StmtInfo {
         }
         "DEALLOCATE" => {
             info.may_return_rows = false;
-            info.tag = if words.iter().skip(1).take(2).any(|x| x == "ALL") {
-                "DEALLOCATE ALL".into()
-            } else {
-                "DEALLOCATE".into()
-            };
+            info.tag = if words.iter().skip(1).take(2).any(|x| x == "ALL") { "DEALLOCATE ALL".into() } else { "DEALLOCATE".into() };
         }
         v if NO_ROW_VERBS.contains(&v) => {
             info.may_return_rows = false;

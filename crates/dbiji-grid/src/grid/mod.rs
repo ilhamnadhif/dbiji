@@ -283,12 +283,7 @@ impl<'a> DataGrid<'a> {
 
     /// Text for the current selection in `opts` format (what Cmd+C copies with
     /// [`CopyOptions::plain`]).
-    pub fn copy_text(
-        model: &ResultModel,
-        state: &DataGridState,
-        options: &GridOptions,
-        opts: &CopyOptions,
-    ) -> Result<(String, usize), String> {
+    pub fn copy_text(model: &ResultModel, state: &DataGridState, options: &GridOptions, opts: &CopyOptions) -> Result<(String, usize), String> {
         let data = selection_copy_data(model, state, options)?;
         let mut opts = opts.clone();
         if opts.sql_table.trim().is_empty() {
@@ -344,21 +339,12 @@ pub(crate) fn sql_table_name(model: &ResultModel, options: &GridOptions) -> Stri
 }
 
 /// Copy data for the selection (rows × selected columns).
-pub(crate) fn selection_copy_data(
-    model: &ResultModel,
-    state: &DataGridState,
-    options: &GridOptions,
-) -> Result<CopyData, String> {
+pub(crate) fn selection_copy_data(model: &ResultModel, state: &DataGridState, options: &GridOptions) -> Result<CopyData, String> {
     selection_copy_data_limited(model, state, options, usize::MAX)
 }
 
 /// Copy data for at most `row_limit` selected rows (previews).
-pub(crate) fn selection_copy_data_limited(
-    model: &ResultModel,
-    state: &DataGridState,
-    options: &GridOptions,
-    row_limit: usize,
-) -> Result<CopyData, String> {
+pub(crate) fn selection_copy_data_limited(model: &ResultModel, state: &DataGridState, options: &GridOptions, row_limit: usize) -> Result<CopyData, String> {
     let visible = state.visible_columns();
     let nrows = model.row_count();
     let sel = state.selection();
@@ -369,10 +355,7 @@ pub(crate) fn selection_copy_data_limited(
     if cells > options.max_copy_cells && row_limit == usize::MAX {
         return Err(trf(
             "The selection has {} cells; at most {} can be copied at once. Use Export instead.",
-            &[
-                &crate::format::group_thousands(&cells.to_string()),
-                &crate::format::group_thousands(&options.max_copy_cells.to_string()),
-            ],
+            &[&crate::format::group_thousands(&cells.to_string()), &crate::format::group_thousands(&options.max_copy_cells.to_string())],
         ));
     }
     let col_pos = sel.columns(visible.len());
@@ -392,14 +375,7 @@ pub(crate) fn selection_copy_data_limited(
     let out_rows = rows
         .iter()
         .zip(values)
-        .map(|(&r, vals)| CopyRow {
-            number: r + 1,
-            cells: vals
-                .into_iter()
-                .zip(&col_pos)
-                .map(|(v, &p)| if all || sel.contains(r, p) { Some(v) } else { None })
-                .collect(),
-        })
+        .map(|(&r, vals)| CopyRow { number: r + 1, cells: vals.into_iter().zip(&col_pos).map(|(v, &p)| if all || sel.contains(r, p) { Some(v) } else { None }).collect() })
         .collect();
     Ok(CopyData { columns, rows: out_rows })
 }
@@ -446,13 +422,7 @@ pub(crate) fn paste_into(model: &mut ResultModel, state: &mut DataGridState, tex
 }
 
 /// Build a `WHERE` condition for "filter by value" in server mode.
-pub(crate) fn server_condition(
-    model: &ResultModel,
-    options: &GridOptions,
-    col: usize,
-    op: FilterOp,
-    value: &Value,
-) -> String {
+pub(crate) fn server_condition(model: &ResultModel, options: &GridOptions, col: usize, op: FilterOp, value: &Value) -> String {
     let generic = dbiji_core::dialect::GenericDialect::new();
     let d: &dyn Dialect = options.dialect.as_deref().unwrap_or(&generic);
     // Query results are filtered as `SELECT * FROM (<query>) q WHERE ...`, so
@@ -480,10 +450,7 @@ pub(crate) fn server_condition(
                 format!("{c} IS NOT NULL")
             }
         }
-        FilterOp::Contains => format!(
-            "{c} LIKE {}",
-            d.string_literal(&format!("%{}%", value.to_text().replace('%', "\\%").replace('_', "\\_")))
-        ),
+        FilterOp::Contains => format!("{c} LIKE {}", d.string_literal(&format!("%{}%", value.to_text().replace('%', "\\%").replace('_', "\\_")))),
         FilterOp::Like | FilterOp::NotLike => format!("{c} {} {}", op.sql(), d.string_literal(&value.to_text())),
         _ => format!("{c} {} {}", op.sql(), d.literal(value, type_name)),
     }
@@ -499,10 +466,7 @@ pub(crate) fn server_order_by(model: &ResultModel, options: &GridOptions, keys: 
             let name = if options.sql_table_name.is_none() {
                 model.column_name(k.column).to_string()
             } else {
-                model
-                    .column_meta(k.column)
-                    .and_then(|m| m.source.as_ref().map(|s| s.column.clone()))
-                    .unwrap_or_else(|| model.column_name(k.column).to_string())
+                model.column_meta(k.column).and_then(|m| m.source.as_ref().map(|s| s.column.clone())).unwrap_or_else(|| model.column_name(k.column).to_string())
             };
             format!("{}{}", d.quote_ident(&name), if k.descending { " DESC" } else { "" })
         })
@@ -511,20 +475,10 @@ pub(crate) fn server_order_by(model: &ResultModel, options: &GridOptions, keys: 
 }
 
 /// Apply a sort in the current mode.
-pub(crate) fn apply_sort(
-    model: &mut ResultModel,
-    state: &mut DataGridState,
-    options: &GridOptions,
-    keys: Vec<SortKey>,
-    ctx: &egui::Context,
-    actions: &mut Vec<GridAction>,
-) {
+pub(crate) fn apply_sort(model: &mut ResultModel, state: &mut DataGridState, options: &GridOptions, keys: Vec<SortKey>, ctx: &egui::Context, actions: &mut Vec<GridAction>) {
     state.sort = keys.clone();
     match state.mode {
-        DataMode::Server => actions.push(GridAction::ServerQueryChanged {
-            where_clause: None,
-            order_by: Some(server_order_by(model, options, &keys)),
-        }),
+        DataMode::Server => actions.push(GridAction::ServerQueryChanged { where_clause: None, order_by: Some(server_order_by(model, options, &keys)) }),
         DataMode::Client => {
             let mut spec = model.client_view_spec();
             spec.sort = keys;

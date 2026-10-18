@@ -25,16 +25,7 @@ pub enum DbKind {
 }
 
 impl DbKind {
-    pub const ALL: [DbKind; 8] = [
-        DbKind::Postgres,
-        DbKind::MySql,
-        DbKind::MariaDb,
-        DbKind::Sqlite,
-        DbKind::SqlServer,
-        DbKind::CockroachDb,
-        DbKind::ClickHouse,
-        DbKind::DuckDb,
-    ];
+    pub const ALL: [DbKind; 8] = [DbKind::Postgres, DbKind::MySql, DbKind::MariaDb, DbKind::Sqlite, DbKind::SqlServer, DbKind::CockroachDb, DbKind::ClickHouse, DbKind::DuckDb];
 
     pub fn display_name(self) -> &'static str {
         match self {
@@ -114,8 +105,7 @@ impl DbKind {
     pub fn from_id(id: &str) -> Option<DbKind> {
         let id = id.to_ascii_lowercase();
         Some(match id.as_str() {
-            "postgres" | "postgresql" | "pg" | "postgis" | "greenplum" | "alloydb" | "redshift"
-            | "timescale" | "timescaledb" | "yugabyte" | "yugabytedb" | "supabase" | "neon" => {
+            "postgres" | "postgresql" | "pg" | "postgis" | "greenplum" | "alloydb" | "redshift" | "timescale" | "timescaledb" | "yugabyte" | "yugabytedb" | "supabase" | "neon" => {
                 DbKind::Postgres
             }
             "cockroachdb" | "cockroach" => DbKind::CockroachDb,
@@ -236,13 +226,7 @@ pub enum SslMode {
 }
 
 impl SslMode {
-    pub const ALL: [SslMode; 5] = [
-        SslMode::Disable,
-        SslMode::Prefer,
-        SslMode::Require,
-        SslMode::VerifyCa,
-        SslMode::VerifyFull,
-    ];
+    pub const ALL: [SslMode; 5] = [SslMode::Disable, SslMode::Prefer, SslMode::Require, SslMode::VerifyCa, SslMode::VerifyFull];
     pub fn label(self) -> &'static str {
         match self {
             SslMode::Disable => "disable",
@@ -363,14 +347,7 @@ pub struct ProxyConfig {
 
 impl Default for ProxyConfig {
     fn default() -> Self {
-        ProxyConfig {
-            enabled: false,
-            kind: ProxyKind::Socks5,
-            host: String::new(),
-            port: 1080,
-            user: None,
-            save_credentials: true,
-        }
+        ProxyConfig { enabled: false, kind: ProxyKind::Socks5, host: String::new(), port: 1080, user: None, save_credentials: true }
     }
 }
 

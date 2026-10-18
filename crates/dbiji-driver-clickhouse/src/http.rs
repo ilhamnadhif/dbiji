@@ -44,11 +44,7 @@ pub struct Transport {
 
 impl std::fmt::Debug for Transport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Transport")
-            .field("url", &self.display_url)
-            .field("user", &self.user)
-            .field("session_id", &self.session_id)
-            .finish_non_exhaustive()
+        f.debug_struct("Transport").field("url", &self.display_url).field("user", &self.user).field("session_id", &self.session_id).finish_non_exhaustive()
     }
 }
 
@@ -112,12 +108,7 @@ impl Summary {
                 _ => 0,
             }
         };
-        Some(Summary {
-            read_rows: num("read_rows"),
-            written_rows: num("written_rows"),
-            result_rows: num("result_rows"),
-            elapsed_ns: num("elapsed_ns"),
-        })
+        Some(Summary { read_rows: num("read_rows"), written_rows: num("written_rows"), result_rows: num("result_rows"), elapsed_ns: num("elapsed_ns") })
     }
 }
 
@@ -133,12 +124,7 @@ struct FixedResolver {
 }
 
 impl Resolver for FixedResolver {
-    fn resolve(
-        &self,
-        _uri: &ureq::http::Uri,
-        _config: &Config,
-        _timeout: NextTimeout,
-    ) -> Result<ResolvedSocketAddrs, ureq::Error> {
+    fn resolve(&self, _uri: &ureq::http::Uri, _config: &Config, _timeout: NextTimeout) -> Result<ResolvedSocketAddrs, ureq::Error> {
         let mut out = self.empty();
         for a in self.addrs.iter().take(16) {
             out.push(*a);
@@ -170,15 +156,12 @@ fn load_pem_certs(path: &str) -> DbResult<Vec<Certificate<'static>>> {
 fn load_client_cert(cert_path: &str, key_path: &str) -> DbResult<ClientCert> {
     let certs = load_pem_certs(cert_path)?;
     let key_pem = read_file(key_path, "client key")?;
-    let key = PrivateKey::from_pem(&key_pem)
-        .map_err(|e| DbError::config(format!("Invalid client key '{key_path}': {e}")))?;
+    let key = PrivateKey::from_pem(&key_pem).map_err(|e| DbError::config(format!("Invalid client key '{key_path}': {e}")))?;
     Ok(ClientCert::new_with_certs(&certs, key))
 }
 
 fn tls_config(params: &ConnectParams, verify: bool) -> DbResult<TlsConfig> {
-    let mut b = TlsConfig::builder()
-        .provider(TlsProvider::Rustls)
-        .unversioned_rustls_crypto_provider(Arc::new(rustls::crypto::aws_lc_rs::default_provider()));
+    let mut b = TlsConfig::builder().provider(TlsProvider::Rustls).unversioned_rustls_crypto_provider(Arc::new(rustls::crypto::aws_lc_rs::default_provider()));
     if verify {
         let mut roots: Vec<Certificate<'static>> = Vec::new();
         if !params.ssl.only_custom_ca || params.ssl.ca_cert.is_none() {
@@ -194,10 +177,7 @@ fn tls_config(params: &ConnectParams, verify: bool) -> DbResult<TlsConfig> {
     } else {
         b = b.disable_verification(true);
     }
-    if let (Some(cert), Some(key)) = (
-        params.ssl.client_cert.as_deref().filter(|c| !c.is_empty()),
-        params.ssl.client_key.as_deref().filter(|c| !c.is_empty()),
-    ) {
+    if let (Some(cert), Some(key)) = (params.ssl.client_cert.as_deref().filter(|c| !c.is_empty()), params.ssl.client_key.as_deref().filter(|c| !c.is_empty())) {
         b = b.client_cert(Some(load_client_cert(cert, key)?));
     }
     Ok(b.build())
@@ -236,30 +216,21 @@ impl Transport {
         let url_host = if https { params.tls_host().to_string() } else { params.host.clone() };
         let tunnelled = https && params.tls_server_name.as_deref().is_some_and(|n| n != params.host);
         let agent = if tunnelled {
-            let addrs: Vec<SocketAddr> = (params.host.as_str(), params.port)
-                .to_socket_addrs()
-                .map_err(|e| DbError::connection(format!("Cannot resolve {}: {e}", params.host)))?
-                .collect();
+            let addrs: Vec<SocketAddr> =
+                (params.host.as_str(), params.port).to_socket_addrs().map_err(|e| DbError::connection(format!("Cannot resolve {}: {e}", params.host)))?.collect();
             Agent::with_parts(config, DefaultConnector::default(), FixedResolver { addrs })
         } else {
             Agent::new_with_config(config)
         };
 
-        let host_part = if url_host.contains(':') && !url_host.starts_with('[') {
-            format!("[{url_host}]")
-        } else {
-            url_host
-        };
+        let host_part = if url_host.contains(':') && !url_host.starts_with('[') { format!("[{url_host}]") } else { url_host };
         let mut path = params.property("path").unwrap_or("/").trim().to_string();
         if !path.starts_with('/') {
             path.insert(0, '/');
         }
         let scheme = if https { "https" } else { "http" };
         let base_url = format!("{scheme}://{host_part}:{}{path}", params.port);
-        let session_timeout = params
-            .property("session_timeout")
-            .and_then(|s| s.trim().parse().ok())
-            .unwrap_or(DEFAULT_SESSION_TIMEOUT);
+        let session_timeout = params.property("session_timeout").and_then(|s| s.trim().parse().ok()).unwrap_or(DEFAULT_SESSION_TIMEOUT);
         Ok(Transport {
             agent,
             display_url: base_url.clone(),
@@ -301,10 +272,7 @@ impl Transport {
             rb = rb.query("query_id", &req.query_id);
         }
         if req.use_session {
-            rb = rb.query("session_id", &self.session_id).query(
-                "session_timeout",
-                self.session_timeout.load(Ordering::Relaxed).to_string(),
-            );
+            rb = rb.query("session_id", &self.session_id).query("session_timeout", self.session_timeout.load(Ordering::Relaxed).to_string());
         }
         if let Some(db) = req.database.as_deref().filter(|d| !d.is_empty()) {
             rb = rb.query("database", db);
@@ -318,9 +286,7 @@ impl Transport {
             rb = rb.query(k, v);
         }
         let response = rb.send(req.sql.as_bytes()).map_err(|e| transport_error(e, &self.display_url))?;
-        let header = |name: &str| -> Option<String> {
-            response.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_string)
-        };
+        let header = |name: &str| -> Option<String> { response.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_string) };
         let head = ResponseHead {
             status: response.status().as_u16(),
             format: header("X-ClickHouse-Format"),
@@ -340,10 +306,9 @@ impl Transport {
             } else {
                 exception_to_error(&text, head.exception_code.as_deref())
             };
-            if (head.status == 401 || head.status == 403)
-                && err.kind == dbiji_core::ErrorKind::Query {
-                    err.kind = dbiji_core::ErrorKind::Auth;
-                }
+            if (head.status == 401 || head.status == 403) && err.kind == dbiji_core::ErrorKind::Query {
+                err.kind = dbiji_core::ErrorKind::Auth;
+            }
             return Err(err);
         }
         Ok((head, body.into_reader()))
@@ -354,19 +319,13 @@ impl Transport {
         let (head, body) = self.send(req)?;
         let mut text = String::new();
         let mut limited = body.take(limit);
-        limited
-            .read_to_string(&mut text)
-            .map_err(|e| DbError::connection(format!("Error reading the ClickHouse response: {e}")))?;
+        limited.read_to_string(&mut text).map_err(|e| DbError::connection(format!("Error reading the ClickHouse response: {e}")))?;
         Ok((head, text))
     }
 
     /// `KILL QUERY` for `query_id` (separate request, outside the session).
     pub fn kill_query(&self, query_id: &str, sync: bool) -> DbResult<()> {
-        let sql = format!(
-            "KILL QUERY WHERE query_id = {} {}",
-            sql_string(query_id),
-            if sync { "SYNC" } else { "ASYNC" }
-        );
+        let sql = format!("KILL QUERY WHERE query_id = {} {}", sql_string(query_id), if sync { "SYNC" } else { "ASYNC" });
         let req = QueryRequest { sql, use_session: false, skip_default_settings: true, ..Default::default() };
         let (_, text) = self.send_text(&req, 1 << 20)?;
         if let Some(i) = crate::error::find_exception_start(&text) {

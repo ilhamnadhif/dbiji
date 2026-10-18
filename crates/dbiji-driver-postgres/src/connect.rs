@@ -336,23 +336,19 @@ async fn open_stream(host: &str, port: u16, props: &Props) -> DbResult<PgStream>
     #[cfg(unix)]
     if host.starts_with('/') {
         let path = format!("{}/.s.PGSQL.{port}", host.trim_end_matches('/'));
-        let s = tokio::net::UnixStream::connect(&path)
-            .await
-            .map_err(|e| DbError::connection(format!("Cannot connect to the Unix socket {path}: {e}")))?;
+        let s = tokio::net::UnixStream::connect(&path).await.map_err(|e| DbError::connection(format!("Cannot connect to the Unix socket {path}: {e}")))?;
         return Ok(PgStream::Unix(s));
     }
     let host = if host.trim().is_empty() { "localhost" } else { host.trim() };
     let host = host.strip_prefix('[').and_then(|h| h.strip_suffix(']')).unwrap_or(host);
-    let tcp = TcpStream::connect((host, port))
-        .await
-        .map_err(|e| {
-            let mut err = DbError::from(e);
-            err.message = format!("Cannot connect to {host}:{port}: {}", err.message);
-            if err.kind == dbiji_core::ErrorKind::Io {
-                err.kind = dbiji_core::ErrorKind::Connection;
-            }
-            err
-        })?;
+    let tcp = TcpStream::connect((host, port)).await.map_err(|e| {
+        let mut err = DbError::from(e);
+        err.message = format!("Cannot connect to {host}:{port}: {}", err.message);
+        if err.kind == dbiji_core::ErrorKind::Io {
+            err.kind = dbiji_core::ErrorKind::Connection;
+        }
+        err
+    })?;
     tcp.set_nodelay(true).map_err(|e| DbError::connection(format!("Cannot configure the socket: {e}")))?;
     if props.keepalives {
         let ka = socket2::TcpKeepalive::new().with_time(props.keepalives_idle);
@@ -382,12 +378,7 @@ pub(crate) fn notice_message(n: &tokio_postgres::error::DbError) -> ServerMessag
         (None, Some(h)) => Some(format!("Hint: {h}")),
         (None, None) => None,
     };
-    ServerMessage {
-        severity: n.severity().to_string(),
-        message: n.message().to_string(),
-        code: Some(n.code().code().to_string()),
-        detail,
-    }
+    ServerMessage { severity: n.severity().to_string(), message: n.message().to_string(), code: Some(n.code().code().to_string()), detail }
 }
 
 /// Open a connection according to `params` and start its driver task.
@@ -403,12 +394,7 @@ pub(crate) async fn open(params: &ConnectParams) -> DbResult<Connected> {
     }
     let tls = tls::build(&ssl, params.tls_host())?;
     let mut config = Config::new();
-    let user = params
-        .user
-        .clone()
-        .filter(|u| !u.is_empty())
-        .or_else(|| params.kind.default_user().map(str::to_string))
-        .unwrap_or_else(|| "postgres".to_string());
+    let user = params.user.clone().filter(|u| !u.is_empty()).or_else(|| params.kind.default_user().map(str::to_string)).unwrap_or_else(|| "postgres".to_string());
     config.user(&user);
     if let Some(pw) = &params.password
         && !pw.is_empty()
@@ -444,10 +430,7 @@ pub(crate) async fn open(params: &ConnectParams) -> DbResult<Connected> {
     let (client, connection) = match tokio::time::timeout(timeout, connect).await {
         Ok(r) => r?,
         Err(_) => {
-            return Err(DbError::timeout(format!(
-                "Timed out after {}s connecting to {host}:{port}",
-                timeout.as_secs()
-            )));
+            return Err(DbError::timeout(format!("Timed out after {}s connecting to {host}:{port}", timeout.as_secs())));
         }
     };
     let shared = SessionShared::new();
@@ -457,10 +440,9 @@ pub(crate) async fn open(params: &ConnectParams) -> DbResult<Connected> {
         loop {
             match std::future::poll_fn(|cx| connection.poll_message(cx)).await {
                 Some(Ok(AsyncMessage::Notice(n))) => task_shared.push_notice(notice_message(&n)),
-                Some(Ok(AsyncMessage::Notification(n))) => task_shared.push_notice(ServerMessage::new(
-                    "NOTIFICATION",
-                    format!("{}: {} (pid {})", n.channel(), n.payload(), n.process_id()),
-                )),
+                Some(Ok(AsyncMessage::Notification(n))) => {
+                    task_shared.push_notice(ServerMessage::new("NOTIFICATION", format!("{}: {} (pid {})", n.channel(), n.payload(), n.process_id())))
+                }
                 Some(Ok(_)) => {}
                 Some(Err(e)) => {
                     task_shared.set_closed(Some(e.to_string()));
@@ -473,14 +455,7 @@ pub(crate) async fn open(params: &ConnectParams) -> DbResult<Connected> {
             }
         }
     });
-    let cancel = Arc::new(PgCancelHandle {
-        token: client.cancel_token(),
-        host: params.host.clone(),
-        port: params.port,
-        tls: tls.clone(),
-        props: props.clone(),
-        timeout,
-    });
+    let cancel = Arc::new(PgCancelHandle { token: client.cancel_token(), host: params.host.clone(), port: params.port, tls: tls.clone(), props: props.clone(), timeout });
     Ok(Connected { client, shared, cancel, task, props })
 }
 
@@ -506,10 +481,7 @@ impl PgCancelHandle {
                 Ok(c) => c,
                 Err(never) => match never {},
             };
-            self.token
-                .cancel_query_raw(CancelStream { inner: stream, shut: false }, connector)
-                .await
-                .map_err(pg)
+            self.token.cancel_query_raw(CancelStream { inner: stream, shut: false }, connector).await.map_err(pg)
         };
         match tokio::time::timeout(self.timeout, fut).await {
             Ok(r) => r,

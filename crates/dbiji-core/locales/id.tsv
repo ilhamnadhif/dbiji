@@ -2336,3 +2336,12 @@ words	kata
 … and {} more	… dan {} lagi
 … further output is not shown	… output selanjutnya tidak ditampilkan
 … {} more	… {} lagi
+Database file copy	Salinan file database
+Column types are converted from {} to {}; check them on the next page.	Tipe kolom dikonversi dari {} ke {}; periksa di halaman berikutnya.
+Foreign key {} needs a referenced table and the same number of columns on both sides.	Foreign key {} membutuhkan tabel rujukan dan jumlah kolom yang sama di kedua sisi.
+Foreign key {} on {} is dropped because the referenced key or table changes	Foreign key {} pada {} dihapus karena key atau tabel rujukannya berubah
+Imported {} connection(s), replaced {}, skipped {}	{} koneksi diimpor, {} diganti, {} dilewati
+Rows fetched into the grid cannot be saved as a task; choose to run the query again instead.	Baris yang sudah diambil ke grid tidak bisa disimpan sebagai task; pilih untuk menjalankan query lagi.
+Step {} {}: {}	Langkah {} {}: {}
+The {} rows are not sorted by key (use the hash join strategy): {}	Baris {} tidak terurut menurut key (gunakan strategi hash join): {}
+Type {} differs but is used by table columns; alter it manually	Tipe {} berbeda tetapi dipakai oleh kolom tabel; ubah secara manual

@@ -1,8 +1,8 @@
 //! Command palette (⇧⌘P): quick access to actions, connections, objects and scripts.
 
+use crate::backend::Loadable;
 use crate::command::{AppCommand, ObjectPage};
 use crate::cx::AppContext;
-use crate::backend::Loadable;
 use dbiji_core::tr;
 use egui::{Key, RichText};
 use egui_phosphor::regular as icon;
@@ -80,7 +80,12 @@ fn collect_project(cx: &AppContext, state: &mut PaletteState) -> Vec<Item> {
         items.push(Item { icon: icon::FILE_SQL, label: name.clone(), detail: tr("Script").to_string(), target: Target::Script(path.clone()) });
     }
     for b in &data.1 {
-        items.push(Item { icon: icon::BOOKMARK_SIMPLE, label: b.label.clone(), detail: tr("Bookmark").to_string(), target: Target::Bookmark(b.connection_id.clone(), b.object.clone()) });
+        items.push(Item {
+            icon: icon::BOOKMARK_SIMPLE,
+            label: b.label.clone(),
+            detail: tr("Bookmark").to_string(),
+            target: Target::Bookmark(b.connection_id.clone(), b.object.clone()),
+        });
     }
     items
 }
@@ -88,12 +93,27 @@ fn collect_project(cx: &AppContext, state: &mut PaletteState) -> Vec<Item> {
 fn collect(cx: &AppContext) -> Vec<Item> {
     let mut items = vec![
         Item { icon: icon::PLUS, label: tr("New connection").into(), detail: String::new(), target: Target::Command(|| AppCommand::NewConnection { kind: None, folder: None }) },
-        Item { icon: icon::FILE_SQL, label: tr("New SQL editor").into(), detail: String::new(), target: Target::Command(|| AppCommand::NewSqlEditor { connection: None, schema: None, text: None }) },
+        Item {
+            icon: icon::FILE_SQL,
+            label: tr("New SQL editor").into(),
+            detail: String::new(),
+            target: Target::Command(|| AppCommand::NewSqlEditor { connection: None, schema: None, text: None }),
+        },
         Item { icon: icon::GEAR, label: tr("Settings").into(), detail: String::new(), target: Target::Command(|| AppCommand::OpenSettings) },
         Item { icon: icon::CLOCK_COUNTER_CLOCKWISE, label: tr("Query history").into(), detail: String::new(), target: Target::Command(|| AppCommand::OpenHistory) },
         Item { icon: icon::LIST_CHECKS, label: tr("Tasks").into(), detail: String::new(), target: Target::Command(|| AppCommand::OpenTasks) },
-        Item { icon: icon::GIT_DIFF, label: tr("Compare schemas").into(), detail: String::new(), target: Target::Command(|| AppCommand::OpenSchemaCompare { connection: None, schema: None }) },
-        Item { icon: icon::ARROWS_LEFT_RIGHT, label: tr("Compare data").into(), detail: String::new(), target: Target::Command(|| AppCommand::OpenDataCompare { connection: None, table: None }) },
+        Item {
+            icon: icon::GIT_DIFF,
+            label: tr("Compare schemas").into(),
+            detail: String::new(),
+            target: Target::Command(|| AppCommand::OpenSchemaCompare { connection: None, schema: None }),
+        },
+        Item {
+            icon: icon::ARROWS_LEFT_RIGHT,
+            label: tr("Compare data").into(),
+            detail: String::new(),
+            target: Target::Command(|| AppCommand::OpenDataCompare { connection: None, table: None }),
+        },
         Item { icon: icon::SPARKLE, label: tr("AI assistant").into(), detail: String::new(), target: Target::Command(|| AppCommand::OpenAiAssistant { connection: None }) },
         Item { icon: icon::DOWNLOAD_SIMPLE, label: tr("Import connections").into(), detail: String::new(), target: Target::Command(|| AppCommand::ImportConnections) },
         Item { icon: icon::SIDEBAR, label: tr("Toggle navigator").into(), detail: String::new(), target: Target::Command(|| AppCommand::ToggleNavigator) },
@@ -134,15 +154,17 @@ fn collect(cx: &AppContext) -> Vec<Item> {
     items
 }
 
+/// Forget the previous query and selection (the palette is being opened).
+pub fn reset(ctx: &egui::Context) {
+    ctx.data_mut(|d| d.remove::<PaletteState>(egui::Id::new("dbiji_palette")));
+}
+
 pub fn show(ctx: &egui::Context, cx: &mut AppContext, open: &mut bool) {
     let id = egui::Id::new("dbiji_palette");
     let mut state: PaletteState = ctx.data_mut(|d| d.get_temp(id)).unwrap_or_default();
     let mut items = collect(cx);
     items.extend(collect_project(cx, &mut state));
-    let mut scored: Vec<(i32, &Item)> = items
-        .iter()
-        .filter_map(|it| fuzzy(&state.query, &format!("{} {}", it.label, it.detail)).map(|s| (s, it)))
-        .collect();
+    let mut scored: Vec<(i32, &Item)> = items.iter().filter_map(|it| fuzzy(&state.query, &format!("{} {}", it.label, it.detail)).map(|s| (s, it))).collect();
     scored.sort_by_key(|s| std::cmp::Reverse(s.0));
     scored.truncate(60);
     if state.selected >= scored.len() {
@@ -162,41 +184,42 @@ pub fn show(ctx: &egui::Context, cx: &mut AppContext, open: &mut bool) {
     if enter && !scored.is_empty() {
         chosen = Some(state.selected);
     }
-    egui::Area::new(id.with("area"))
-        .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 80.0))
-        .order(egui::Order::Foreground)
-        .show(ctx, |ui| {
-            egui::Frame::popup(ui.style()).show(ui, |ui| {
-                ui.set_width(560.0);
-                let r = ui.add(egui::TextEdit::singleline(&mut state.query).hint_text(tr("Type a command, connection or object…")).desired_width(f32::INFINITY));
-                if !state.focus_requested {
-                    r.request_focus();
-                    state.focus_requested = true;
-                }
-                if r.changed() {
-                    state.selected = 0;
-                }
-                ui.separator();
-                egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
-                    for (i, (_, it)) in scored.iter().enumerate() {
-                        let sel = i == state.selected;
-                        let resp = ui.selectable_label(sel, RichText::new(format!("{}  {}", it.icon, it.label)));
-                        if !it.detail.is_empty() {
-                            ui.weak(RichText::new(&it.detail).small());
-                        }
-                        if sel {
-                            resp.scroll_to_me(None);
-                        }
-                        if resp.clicked() {
-                            chosen = Some(i);
-                        }
+    let area = egui::Area::new(id.with("area")).anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 80.0)).order(egui::Order::Foreground).show(ctx, |ui| {
+        egui::Frame::popup(ui.style()).show(ui, |ui| {
+            ui.set_width(560.0);
+            let r = ui.add(egui::TextEdit::singleline(&mut state.query).hint_text(tr("Type a command, connection or object…")).desired_width(f32::INFINITY));
+            if !state.focus_requested {
+                r.request_focus();
+                state.focus_requested = true;
+            }
+            if r.changed() {
+                state.selected = 0;
+            }
+            ui.separator();
+            egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
+                for (i, (_, it)) in scored.iter().enumerate() {
+                    let sel = i == state.selected;
+                    let resp = ui.selectable_label(sel, RichText::new(format!("{}  {}", it.icon, it.label)));
+                    if !it.detail.is_empty() {
+                        ui.weak(RichText::new(&it.detail).small());
                     }
-                    if scored.is_empty() {
-                        ui.weak(tr("No matches"));
+                    if sel {
+                        resp.scroll_to_me(None);
                     }
-                });
+                    if resp.clicked() {
+                        chosen = Some(i);
+                    }
+                }
+                if scored.is_empty() {
+                    ui.weak(tr("No matches"));
+                }
             });
         });
+    });
+    // A click anywhere else closes the palette.
+    if ctx.input(|i| i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !area.response.rect.contains(p))) {
+        *open = false;
+    }
     if let Some(i) = chosen {
         if let Some((_, it)) = scored.get(i) {
             match &it.target {

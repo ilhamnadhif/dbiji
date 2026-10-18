@@ -49,19 +49,8 @@ impl ClickHouseDriver {
                     debugger: false,
                     cancel: true,
                     returning: false,
-                    schema_object_kinds: vec![
-                        ObjectKind::Table,
-                        ObjectKind::View,
-                        ObjectKind::MaterializedView,
-                        ObjectKind::Type,
-                        ObjectKind::Function,
-                    ],
-                    table_child_kinds: vec![
-                        ObjectKind::Column,
-                        ObjectKind::Index,
-                        ObjectKind::PrimaryKey,
-                        ObjectKind::CheckConstraint,
-                    ],
+                    schema_object_kinds: vec![ObjectKind::Table, ObjectKind::View, ObjectKind::MaterializedView, ObjectKind::Type, ObjectKind::Function],
+                    table_child_kinds: vec![ObjectKind::Column, ObjectKind::Index, ObjectKind::PrimaryKey, ObjectKind::CheckConstraint],
                 },
             },
             dialect: Arc::new(ClickHouseDialect::new()),
@@ -96,18 +85,8 @@ impl Driver for ClickHouseDriver {
     /// the TCP protocol, port 9000/9440, configurable with the `native_port`
     /// property).
     fn client_command(&self, params: &ConnectParams, script: &Path) -> DbResult<CommandSpec> {
-        let native_port = params
-            .property("native_port")
-            .and_then(|p| p.parse::<u16>().ok())
-            .unwrap_or(if params.ssl.mode.uses_tls() && params.port == 8443 { 9440 } else { 9000 });
-        let mut args = vec![
-            "client".to_string(),
-            "--host".into(),
-            params.host.clone(),
-            "--port".into(),
-            native_port.to_string(),
-            "--multiquery".into(),
-        ];
+        let native_port = params.property("native_port").and_then(|p| p.parse::<u16>().ok()).unwrap_or(if params.ssl.mode.uses_tls() && params.port == 8443 { 9440 } else { 9000 });
+        let mut args = vec!["client".to_string(), "--host".into(), params.host.clone(), "--port".into(), native_port.to_string(), "--multiquery".into()];
         if let Some(u) = &params.user {
             args.push("--user".into());
             args.push(u.clone());
@@ -123,13 +102,7 @@ impl Driver for ClickHouseDriver {
         if let Some(p) = &params.password {
             env.push(("CLICKHOUSE_PASSWORD".into(), p.clone()));
         }
-        Ok(CommandSpec {
-            program: "clickhouse".into(),
-            args,
-            env,
-            stdin_file: Some(script.to_path_buf()),
-            stdout_file: None,
-        })
+        Ok(CommandSpec { program: "clickhouse".into(), args, env, stdin_file: Some(script.to_path_buf()), stdout_file: None })
     }
 }
 

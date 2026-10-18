@@ -154,13 +154,7 @@ pub(super) struct GridFrame<'a> {
     pub focused: bool,
 }
 
-pub(super) fn show(
-    model: &mut ResultModel,
-    state: &mut DataGridState,
-    options: &GridOptions,
-    id_salt: Id,
-    ui: &mut Ui,
-) -> GridResponse {
+pub(super) fn show(model: &mut ResultModel, state: &mut DataGridState, options: &GridOptions, id_salt: Id, ui: &mut Ui) -> GridResponse {
     let id = ui.make_persistent_id(id_salt);
     model.try_sync();
     if let Some(Err(e)) = model.poll_view_job() {
@@ -168,11 +162,7 @@ pub(super) fn show(
     }
     state.sync_columns(model);
     // Rows fetched after a client sort/filter: recompute once the fetch settles.
-    if model.is_view_stale()
-        && !model.fetch.fetching
-        && !model.is_view_job_running()
-        && state.rt.auto_view_len != model.stored_row_count()
-    {
+    if model.is_view_stale() && !model.fetch.fetching && !model.is_view_job_running() && state.rt.auto_view_len != model.stored_row_count() {
         let spec = model.client_view_spec();
         if !spec.is_identity() {
             state.rt.auto_view_len = model.stored_row_count();
@@ -239,14 +229,7 @@ pub(super) fn show(
     GridResponse { response: body, actions: f.actions, active_cell, selection_changed }
 }
 
-fn compute_geometry(
-    model: &ResultModel,
-    state: &DataGridState,
-    options: &GridOptions,
-    rect: Rect,
-    text_h: f32,
-    digit_w: f32,
-) -> Geo {
+fn compute_geometry(model: &ResultModel, state: &DataGridState, options: &GridOptions, rect: Rect, text_h: f32, digit_w: f32) -> Geo {
     let nrows = model.row_count();
     let cols = state.visible_columns();
     let mut xs = Vec::with_capacity(cols.len() + 1);
@@ -273,10 +256,7 @@ fn compute_geometry(
     if !need_v && need_h {
         need_v = content_h > (avail_h - BAR) as f64;
     }
-    let body = Rect::from_min_max(
-        rect.min + vec2(rownum_w, header_h),
-        rect.max - vec2(if need_v { BAR } else { 0.0 }, if need_h { BAR } else { 0.0 }),
-    );
+    let body = Rect::from_min_max(rect.min + vec2(rownum_w, header_h), rect.max - vec2(if need_v { BAR } else { 0.0 }, if need_h { BAR } else { 0.0 }));
     Geo {
         rect,
         header: Rect::from_min_max(pos2(body.left(), rect.top()), pos2(body.right(), body.top())),
@@ -378,8 +358,7 @@ impl GridFrame<'_> {
                 let t = value.to_text();
                 if t.chars().count() > 200 { t.chars().take(200).collect::<String>() + "…" } else { t.into_owned() }
             };
-            label
-                .push_str(&trf(", selected cell: row {}, {} = {}", &[&(row + 1), &self.model.column_name(col), &text]));
+            label.push_str(&trf(", selected cell: row {}, {} = {}", &[&(row + 1), &self.model.column_name(col), &text]));
         }
         if !self.model.is_editable()
             && let Some(r) = self.model.read_only_reason()

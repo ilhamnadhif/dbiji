@@ -7,15 +7,9 @@
 use async_trait::async_trait;
 use chrono::{FixedOffset, NaiveDate, NaiveTime};
 use dbiji_core::admin::TabularData;
-use dbiji_core::ddl::{
-    ColumnDef, DdlGenerator, FkAction, ForeignKeyDef, IndexColumn, IndexDef, KeyDef, SchemaSnapshot, SnapshotOptions,
-    TableDef,
-};
+use dbiji_core::ddl::{ColumnDef, DdlGenerator, FkAction, ForeignKeyDef, IndexColumn, IndexDef, KeyDef, SchemaSnapshot, SnapshotOptions, TableDef};
 use dbiji_core::dialect::{GenericDialect, SqlSyntax};
-use dbiji_core::driver::{
-    CancelHandle, ExecOptions, MaterializedResult, MemoryCursor, QueryCursor, ResultHeader, ServerInfo, Session,
-    TransactionMode,
-};
+use dbiji_core::driver::{CancelHandle, ExecOptions, MaterializedResult, MemoryCursor, QueryCursor, ResultHeader, ServerInfo, Session, TransactionMode};
 use dbiji_core::meta::{DatabaseInfo, MetadataSearch, ObjectInfo, ObjectKind, SchemaInfo, SchemaRef};
 use dbiji_core::plan::QueryPlan;
 use dbiji_core::{ColumnMeta, DataKind, DbError, DbKind, DbResult, Dialect, ObjectRef, Row, Value};
@@ -85,10 +79,7 @@ pub fn run(conn: &Connection, sql: &str, params: &[Value]) -> DbResult<Materiali
         Ok(MaterializedResult { header: ResultHeader::Rows(cols), rows: out })
     } else {
         let n = stmt.raw_execute().map_err(err)?;
-        Ok(MaterializedResult {
-            header: ResultHeader::Update { rows_affected: Some(n as u64), last_insert_id: None, tag: None },
-            rows: Vec::new(),
-        })
+        Ok(MaterializedResult { header: ResultHeader::Update { rows_affected: Some(n as u64), last_insert_id: None, tag: None }, rows: Vec::new() })
     }
 }
 
@@ -153,20 +144,11 @@ pub fn table_def(conn: &Connection, schema: Option<String>, name: &str) -> DbRes
         let idx_name = r[1].to_text().into_owned();
         let unique = r[2].as_i64() == Some(1);
         let origin = r[3].to_text().into_owned();
-        let cols: Vec<String> = run(conn, &format!("PRAGMA index_info({})", quote(&idx_name)), &[])?
-            .rows
-            .into_iter()
-            .map(|c| c[2].to_text().into_owned())
-            .collect();
+        let cols: Vec<String> = run(conn, &format!("PRAGMA index_info({})", quote(&idx_name)), &[])?.rows.into_iter().map(|c| c[2].to_text().into_owned()).collect();
         match origin.as_str() {
             "u" => def.unique_keys.push(KeyDef { name: None, columns: cols }),
             "pk" => {}
-            _ => def.indexes.push(IndexDef {
-                name: idx_name,
-                columns: cols.into_iter().map(IndexColumn::column).collect(),
-                unique,
-                ..Default::default()
-            }),
+            _ => def.indexes.push(IndexDef { name: idx_name, columns: cols.into_iter().map(IndexColumn::column).collect(), unique, ..Default::default() }),
         }
     }
     Ok(def)
@@ -203,16 +185,9 @@ impl Dialect for SqliteTestDialect {
         }
     }
     fn upsert(&self, table: &str, columns: &[String], key_columns: &[String], values: &[String]) -> Option<String> {
-        let updates: Vec<String> =
-            columns.iter().filter(|c| !key_columns.contains(c)).map(|c| format!("{c} = excluded.{c}")).collect();
-        let action =
-            if updates.is_empty() { "NOTHING".to_string() } else { format!("UPDATE SET {}", updates.join(", ")) };
-        Some(format!(
-            "INSERT INTO {table} ({}) VALUES ({}) ON CONFLICT ({}) DO {action}",
-            columns.join(", "),
-            values.join(", "),
-            key_columns.join(", ")
-        ))
+        let updates: Vec<String> = columns.iter().filter(|c| !key_columns.contains(c)).map(|c| format!("{c} = excluded.{c}")).collect();
+        let action = if updates.is_empty() { "NOTHING".to_string() } else { format!("UPDATE SET {}", updates.join(", ")) };
+        Some(format!("INSERT INTO {table} ({}) VALUES ({}) ON CONFLICT ({}) DO {action}", columns.join(", "), values.join(", "), key_columns.join(", ")))
     }
     fn truncate_table(&self, table: &ObjectRef) -> String {
         format!("DELETE FROM {}", self.qualified_ref(table))
@@ -247,12 +222,7 @@ impl SqliteSession {
         SqliteSession {
             conn,
             dialect,
-            info: ServerInfo {
-                product: "SQLite".into(),
-                version: "3".into(),
-                version_number: (3, 0, 0),
-                session_id: None,
-            },
+            info: ServerInfo { product: "SQLite".into(), version: "3".into(), version_number: (3, 0, 0), session_id: None },
             mode: TransactionMode::Auto,
             closed: false,
             log: Arc::new(Mutex::new(Vec::new())),
@@ -390,10 +360,7 @@ impl QueryCursor for EndlessCursor {
             return Ok(None);
         }
         self.header_sent = true;
-        Ok(Some(ResultHeader::Rows(vec![
-            ColumnMeta::new("n", "int8", DataKind::Int),
-            ColumnMeta::new("label", "text", DataKind::Text),
-        ])))
+        Ok(Some(ResultHeader::Rows(vec![ColumnMeta::new("n", "int8", DataKind::Int), ColumnMeta::new("label", "text", DataKind::Text)])))
     }
     async fn fetch(&mut self, max_rows: usize) -> DbResult<Vec<Row>> {
         tokio::time::sleep(self.delay).await;
@@ -425,13 +392,7 @@ pub struct SqliteFactory {
 
 impl SqliteFactory {
     pub fn new(path: &Path, dialect: Arc<dyn Dialect>) -> Arc<Self> {
-        Arc::new(SqliteFactory {
-            path: path.to_path_buf(),
-            dialect,
-            opened: Arc::new(AtomicUsize::new(0)),
-            log: Arc::new(Mutex::new(Vec::new())),
-            fail_on: None,
-        })
+        Arc::new(SqliteFactory { path: path.to_path_buf(), dialect, opened: Arc::new(AtomicUsize::new(0)), log: Arc::new(Mutex::new(Vec::new())), fail_on: None })
     }
 
     pub fn opened(&self) -> usize {
@@ -585,9 +546,7 @@ pub fn same_value(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Float(x), Value::Float(y)) => (x.is_nan() && y.is_nan()) || x == y,
         (Value::DateTimeTz(x), Value::DateTimeTz(y)) => x == y && x.offset() == y.offset(),
-        (Value::Array(x), Value::Array(y)) => {
-            x.len() == y.len() && x.iter().zip(y.iter()).all(|(p, q)| same_value(p, q))
-        }
+        (Value::Array(x), Value::Array(y)) => x.len() == y.len() && x.iter().zip(y.iter()).all(|(p, q)| same_value(p, q)),
         _ => a == b,
     }
 }
@@ -597,27 +556,14 @@ pub fn assert_same_rows(expected: &[Row], actual: &[Row], columns: &[ColumnMeta]
     for (r, (e, a)) in expected.iter().zip(actual).enumerate() {
         assert_eq!(e.len(), a.len(), "{what}: width of row {r}");
         for (c, (x, y)) in e.iter().zip(a).enumerate() {
-            assert!(
-                same_value(x, y),
-                "{what}: row {r}, column {} differs:\n expected {x:?}\n   actual {y:?}",
-                columns.get(c).map(|m| m.name.as_str()).unwrap_or("?")
-            );
+            assert!(same_value(x, y), "{what}: row {r}, column {} differs:\n expected {x:?}\n   actual {y:?}", columns.get(c).map(|m| m.name.as_str()).unwrap_or("?"));
         }
     }
 }
 
 /// Convert raw imported rows to the kinds of `columns` (what an import mapping does).
 pub fn convert_rows(rows: Vec<Row>, columns: &[ColumnMeta], opts: &dbiji_transfer::ConvertOptions) -> Vec<Row> {
-    rows.into_iter()
-        .map(|r| {
-            r.iter()
-                .zip(columns)
-                .map(|(v, c)| {
-                    dbiji_transfer::convert_value(v, c.kind, opts).unwrap_or_else(|e| panic!("{}: {e}", c.name))
-                })
-                .collect()
-        })
-        .collect()
+    rows.into_iter().map(|r| r.iter().zip(columns).map(|(v, c)| dbiji_transfer::convert_value(v, c.kind, opts).unwrap_or_else(|e| panic!("{}: {e}", c.name))).collect()).collect()
 }
 
 /// Drain a row source.
@@ -647,16 +593,8 @@ pub async fn export_to(
     dialect: Option<Arc<dyn Dialect>>,
 ) -> dbiji_transfer::ExportSummary {
     let mut src = dbiji_transfer::VecSource::new(columns, rows);
-    let mut sink =
-        dbiji_transfer::create_sink(format, opts, dbiji_transfer::ExportTarget::path(path), dialect).unwrap();
-    dbiji_transfer::run_export(
-        &mut src,
-        sink.as_mut(),
-        &dbiji_transfer::Progress::new(),
-        &dbiji_transfer::CancellationToken::new(),
-    )
-    .await
-    .unwrap()
+    let mut sink = dbiji_transfer::create_sink(format, opts, dbiji_transfer::ExportTarget::path(path), dialect).unwrap();
+    dbiji_transfer::run_export(&mut src, sink.as_mut(), &dbiji_transfer::Progress::new(), &dbiji_transfer::CancellationToken::new()).await.unwrap()
 }
 
 /// Export `rows` into a string (text formats).
@@ -674,15 +612,7 @@ pub async fn export_string(
     if let Some(t) = table {
         src = src.with_table(t);
     }
-    let mut sink =
-        dbiji_transfer::create_sink(format, opts, dbiji_transfer::ExportTarget::path(&path), dialect).unwrap();
-    dbiji_transfer::run_export(
-        &mut src,
-        sink.as_mut(),
-        &dbiji_transfer::Progress::new(),
-        &dbiji_transfer::CancellationToken::new(),
-    )
-    .await
-    .unwrap();
+    let mut sink = dbiji_transfer::create_sink(format, opts, dbiji_transfer::ExportTarget::path(&path), dialect).unwrap();
+    dbiji_transfer::run_export(&mut src, sink.as_mut(), &dbiji_transfer::Progress::new(), &dbiji_transfer::CancellationToken::new()).await.unwrap();
     std::fs::read_to_string(&path).unwrap()
 }

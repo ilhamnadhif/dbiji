@@ -123,22 +123,10 @@ impl RowExt for Row {
         Ok(self.try_get::<_, Option<bool>>(i).map_err(|e| col_err(i, e))?.unwrap_or(false))
     }
     fn ss(&self, i: usize) -> DbResult<Vec<String>> {
-        Ok(self
-            .try_get::<_, Option<Vec<Option<String>>>>(i)
-            .map_err(|e| col_err(i, e))?
-            .unwrap_or_default()
-            .into_iter()
-            .map(Option::unwrap_or_default)
-            .collect())
+        Ok(self.try_get::<_, Option<Vec<Option<String>>>>(i).map_err(|e| col_err(i, e))?.unwrap_or_default().into_iter().map(Option::unwrap_or_default).collect())
     }
     fn bs(&self, i: usize) -> DbResult<Vec<bool>> {
-        Ok(self
-            .try_get::<_, Option<Vec<Option<bool>>>>(i)
-            .map_err(|e| col_err(i, e))?
-            .unwrap_or_default()
-            .into_iter()
-            .map(Option::unwrap_or_default)
-            .collect())
+        Ok(self.try_get::<_, Option<Vec<Option<bool>>>>(i).map_err(|e| col_err(i, e))?.unwrap_or_default().into_iter().map(Option::unwrap_or_default).collect())
     }
 }
 

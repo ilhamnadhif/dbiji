@@ -51,19 +51,11 @@ impl ReadOnlyReason {
     /// Translated explanation shown in the read-only indicator tooltip.
     pub fn message(&self) -> String {
         match self {
-            ReadOnlyReason::NoSourceTable => {
-                tr("Read-only: the result columns cannot be traced back to a table (custom query or expressions).")
-                    .to_string()
-            }
+            ReadOnlyReason::NoSourceTable => tr("Read-only: the result columns cannot be traced back to a table (custom query or expressions).").to_string(),
             ReadOnlyReason::MultipleTables => tr("Read-only: the result combines columns of several tables (join).").to_string(),
-            ReadOnlyReason::NoKey => tr(
-                "Read-only: the table has no primary or unique key in the result. Define a virtual key to enable editing.",
-            )
-            .to_string(),
+            ReadOnlyReason::NoKey => tr("Read-only: the table has no primary or unique key in the result. Define a virtual key to enable editing.").to_string(),
             ReadOnlyReason::ConnectionReadOnly => tr("Read-only: the connection is read-only.").to_string(),
-            ReadOnlyReason::ComputedColumns => {
-                tr("Read-only: a key column is computed by an expression and cannot identify rows.").to_string()
-            }
+            ReadOnlyReason::ComputedColumns => tr("Read-only: a key column is computed by an expression and cannot identify rows.").to_string(),
             ReadOnlyReason::Custom(s) => s.clone(),
         }
     }
@@ -117,17 +109,12 @@ pub fn source_table(columns: &[ColumnMeta]) -> Result<ObjectRef, ReadOnlyReason>
 ///   else a unique key, else a user defined virtual key; `None`/empty when
 ///   the table has none. It is called at most once.
 /// * `connection_read_only` short-circuits to [`ReadOnlyReason::ConnectionReadOnly`].
-pub fn determine_editability(
-    columns: &[ColumnMeta],
-    key_lookup: impl Fn(&ObjectRef) -> Option<Vec<String>>,
-    connection_read_only: bool,
-) -> Result<EditTarget, ReadOnlyReason> {
+pub fn determine_editability(columns: &[ColumnMeta], key_lookup: impl Fn(&ObjectRef) -> Option<Vec<String>>, connection_read_only: bool) -> Result<EditTarget, ReadOnlyReason> {
     if connection_read_only {
         return Err(ReadOnlyReason::ConnectionReadOnly);
     }
     let table = source_table(columns)?;
-    let column_names: Vec<Option<String>> =
-        columns.iter().map(|c| c.source.as_ref().filter(|s| s.table == table.name).map(|s| s.column.clone())).collect();
+    let column_names: Vec<Option<String>> = columns.iter().map(|c| c.source.as_ref().filter(|s| s.table == table.name).map(|s| s.column.clone())).collect();
     let key_names = key_lookup(&table).filter(|k| !k.is_empty()).ok_or(ReadOnlyReason::NoKey)?;
     let mut key_columns = Vec::with_capacity(key_names.len());
     for k in &key_names {
@@ -139,8 +126,7 @@ pub fn determine_editability(
         match pos {
             Some(p) => key_columns.push(p),
             None => {
-                let computed =
-                    columns.iter().zip(&column_names).any(|(c, n)| n.is_none() && c.name.eq_ignore_ascii_case(k));
+                let computed = columns.iter().zip(&column_names).any(|(c, n)| n.is_none() && c.name.eq_ignore_ascii_case(k));
                 return Err(if computed { ReadOnlyReason::ComputedColumns } else { ReadOnlyReason::NoKey });
             }
         }
@@ -195,10 +181,7 @@ mod tests {
         let partial = vec![ColumnMeta::new("Name", "text", DataKind::Text).with_source(src("users", "name"))];
         assert_eq!(determine_editability(&partial, pk, false), Err(ReadOnlyReason::NoKey));
         // Key column present only as an expression.
-        let computed = vec![
-            ColumnMeta::new("id", "int", DataKind::Int),
-            ColumnMeta::new("Name", "text", DataKind::Text).with_source(src("users", "name")),
-        ];
+        let computed = vec![ColumnMeta::new("id", "int", DataKind::Int), ColumnMeta::new("Name", "text", DataKind::Text).with_source(src("users", "name"))];
         assert_eq!(determine_editability(&computed, pk, false), Err(ReadOnlyReason::ComputedColumns));
         assert!(ReadOnlyReason::NoKey.virtual_key_helps());
         assert!(!ReadOnlyReason::NoKey.message().is_empty());

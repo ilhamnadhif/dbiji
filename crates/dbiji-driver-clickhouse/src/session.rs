@@ -13,10 +13,7 @@ use dbiji_core::dialect::Dialect;
 use dbiji_core::driver::{ServerInfo, parse_version_number};
 use dbiji_core::meta::*;
 use dbiji_core::plan::QueryPlan;
-use dbiji_core::{
-    CancelHandle, ConnectParams, DbError, DbKind, DbResult, ErrorKind, ExecOptions, QueryCursor, ResultHeader, Row,
-    Session, TransactionMode, Value,
-};
+use dbiji_core::{CancelHandle, ConnectParams, DbError, DbKind, DbResult, ErrorKind, ExecOptions, QueryCursor, ResultHeader, Row, Session, TransactionMode, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -39,9 +36,11 @@ fn default_settings(params: &ConnectParams) -> Vec<(String, String)> {
     }
     for (k, v) in &params.properties {
         if let Some(name) = k.strip_prefix("setting.")
-            && !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-                s.push((name.to_string(), v.clone()));
-            }
+            && !name.is_empty()
+            && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        {
+            s.push((name.to_string(), v.clone()));
+        }
     }
     s
 }
@@ -58,9 +57,7 @@ impl CancelHandle for ClickHouseCancelHandle {
         let Some((query_id, state)) = self.active.get() else { return Ok(()) };
         state.cancelled.store(true, Ordering::SeqCst);
         let transport = self.transport.clone();
-        tokio::task::spawn_blocking(move || transport.kill_query(&query_id, false))
-            .await
-            .map_err(|e| DbError::internal(format!("cancel task failed: {e}")))?
+        tokio::task::spawn_blocking(move || transport.kill_query(&query_id, false)).await.map_err(|e| DbError::internal(format!("cancel task failed: {e}")))?
     }
 }
 
@@ -109,9 +106,7 @@ pub fn use_target(sql: &str) -> Option<String> {
     if rest.is_empty() {
         return None;
     }
-    let unquoted = if (rest.starts_with('`') && rest.ends_with('`') || rest.starts_with('"') && rest.ends_with('"'))
-        && rest.len() >= 2
-    {
+    let unquoted = if (rest.starts_with('`') && rest.ends_with('`') || rest.starts_with('"') && rest.ends_with('"')) && rest.len() >= 2 {
         rest[1..rest.len() - 1].replace("\\`", "`").replace("``", "`")
     } else {
         rest.split_whitespace().next()?.to_string()
@@ -123,9 +118,7 @@ impl ClickHouseSession {
     /// Connect and probe the server.
     pub async fn connect(params: &ConnectParams) -> DbResult<ClickHouseSession> {
         let params = params.clone();
-        tokio::task::spawn_blocking(move || Self::connect_blocking(&params))
-            .await
-            .map_err(|e| DbError::internal(format!("connect task failed: {e}")))?
+        tokio::task::spawn_blocking(move || Self::connect_blocking(&params)).await.map_err(|e| DbError::internal(format!("connect task failed: {e}")))?
     }
 
     fn connect_blocking(params: &ConnectParams) -> DbResult<ClickHouseSession> {
@@ -139,9 +132,7 @@ impl ClickHouseSession {
         let (transport, probe) = match attempt(https) {
             Ok(r) => r,
             // `prefer`: fall back to plain HTTP when the port does not speak TLS.
-            Err(e) if params.ssl.mode == SslMode::Prefer
-                && matches!(e.kind, ErrorKind::Tls | ErrorKind::Connection) =>
-            {
+            Err(e) if params.ssl.mode == SslMode::Prefer && matches!(e.kind, ErrorKind::Tls | ErrorKind::Connection) => {
                 tracing::debug!("ClickHouse HTTPS attempt failed ({e}); retrying with HTTP");
                 attempt(false)?
             }
@@ -193,9 +184,7 @@ impl ClickHouseSession {
             return Err(DbError::connection("The session is closed"));
         }
         if self.cursor_open.load(Ordering::SeqCst) {
-            return Err(DbError::internal(
-                "A result set is still open on this session; close it before running another statement",
-            ));
+            return Err(DbError::internal("A result set is still open on this session; close it before running another statement"));
         }
         let permit = tokio::time::timeout(Duration::from_secs(60), self.gate.clone().acquire_owned())
             .await
@@ -203,24 +192,10 @@ impl ClickHouseSession {
             .map_err(|_| DbError::internal("session gate closed"))?;
         let keyword = first_keyword(&sql);
         let use_database = use_target(&sql);
-        let request = QueryRequest {
-            sql,
-            query_id: uuid::Uuid::new_v4().to_string(),
-            database: self.current_db(),
-            use_session,
-            extra_settings: Vec::new(),
-            skip_default_settings: false,
-        };
-        let job = Job {
-            transport: self.transport.clone(),
-            request,
-            keyword,
-            use_database,
-            database: self.database.clone(),
-            active: self.active.clone(),
-            timeout,
-            permit: Some(permit),
-        };
+        let request =
+            QueryRequest { sql, query_id: uuid::Uuid::new_v4().to_string(), database: self.current_db(), use_session, extra_settings: Vec::new(), skip_default_settings: false };
+        let job =
+            Job { transport: self.transport.clone(), request, keyword, use_database, database: self.database.clone(), active: self.active.clone(), timeout, permit: Some(permit) };
         let c = cursor::start(job, self.cursor_open.clone())?;
         Ok(Box::new(c))
     }
@@ -327,21 +302,13 @@ fn probe(transport: &Transport, params: &ConnectParams) -> DbResult<ProbeResult>
                 let mut lines = text.lines().filter(|l| !l.trim().is_empty());
                 let _names = lines.next();
                 let _types = lines.next();
-                let row = lines
-                    .next()
-                    .ok_or_else(|| DbError::connection("Unexpected response from the ClickHouse server"))?;
-                let cells = crate::json::parse_row(row.as_bytes())
-                    .map_err(|e| DbError::connection(format!("Unexpected response from the ClickHouse server: {e}")))?;
+                let row = lines.next().ok_or_else(|| DbError::connection("Unexpected response from the ClickHouse server"))?;
+                let cells = crate::json::parse_row(row.as_bytes()).map_err(|e| DbError::connection(format!("Unexpected response from the ClickHouse server: {e}")))?;
                 let text_at = |i: usize| cells.get(i).and_then(|c| c.scalar_text()).unwrap_or("").to_string();
                 if minimal {
                     transport.set_settings(Vec::new());
                 }
-                return Ok(ProbeResult {
-                    version: text_at(0),
-                    database: text_at(1),
-                    timezone: head.timezone.or_else(|| Some(text_at(2)).filter(|t| !t.is_empty())),
-                    minimal,
-                });
+                return Ok(ProbeResult { version: text_at(0), database: text_at(1), timezone: head.timezone.or_else(|| Some(text_at(2)).filter(|t| !t.is_empty())), minimal });
             }
             Err(e) if tries < 4 => {
                 let code = e.code.as_deref().unwrap_or("");
@@ -415,9 +382,7 @@ impl Session for ClickHouseSession {
     async fn set_transaction_mode(&mut self, mode: TransactionMode) -> DbResult<()> {
         match mode {
             TransactionMode::Auto => Ok(()),
-            TransactionMode::Manual => Err(DbError::unsupported(
-                "ClickHouse does not support transactions; every statement is applied immediately",
-            )),
+            TransactionMode::Manual => Err(DbError::unsupported("ClickHouse does not support transactions; every statement is applied immediately")),
         }
     }
 
@@ -512,9 +477,7 @@ impl Session for ClickHouseSession {
 
     async fn explain(&mut self, sql: &str, analyze: bool) -> DbResult<QueryPlan> {
         if analyze {
-            return Err(DbError::unsupported(
-                "ClickHouse has no EXPLAIN ANALYZE; use the query log (system.query_log) for actual statistics",
-            ));
+            return Err(DbError::unsupported("ClickHouse has no EXPLAIN ANALYZE; use the query log (system.query_log) for actual statistics"));
         }
         self.explain_impl(sql).await
     }
@@ -543,9 +506,7 @@ impl Session for ClickHouseSession {
         let rows = match self.rows(sql).await {
             Ok(r) => r,
             // queryID() is missing on old servers (UNKNOWN_FUNCTION)
-            Err(e) if e.code.as_deref().is_some_and(|c| c.starts_with("46 ")) => {
-                self.rows(&sql.replace(" WHERE query_id != queryID()", "")).await?
-            }
+            Err(e) if e.code.as_deref().is_some_and(|c| c.starts_with("46 ")) => self.rows(&sql.replace(" WHERE query_id != queryID()", "")).await?,
             Err(e) => return Err(e),
         };
         Ok(SessionList {
@@ -561,9 +522,7 @@ impl Session for ClickHouseSession {
         let sync = mode == KillMode::Terminate;
         let transport = self.transport.clone();
         let id = id.to_string();
-        tokio::task::spawn_blocking(move || transport.kill_query(&id, sync))
-            .await
-            .map_err(|e| DbError::internal(format!("kill task failed: {e}")))?
+        tokio::task::spawn_blocking(move || transport.kill_query(&id, sync)).await.map_err(|e| DbError::internal(format!("kill task failed: {e}")))?
     }
 
     async fn server_metrics(&mut self) -> DbResult<Vec<Metric>> {

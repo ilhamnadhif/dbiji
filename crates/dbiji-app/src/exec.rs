@@ -20,7 +20,10 @@ use tokio_util::sync::CancellationToken;
 /// Client-side command (FR-S8) executed by the engine instead of the server.
 #[derive(Debug, Clone)]
 pub enum ClientAction {
-    Set { name: String, value: String },
+    Set {
+        name: String,
+        value: String,
+    },
     Echo(String),
     /// Export the next result set with the given options.
     Export(std::collections::BTreeMap<String, String>),
@@ -53,14 +56,7 @@ pub struct ExecOpts {
 
 impl Default for ExecOpts {
     fn default() -> Self {
-        ExecOpts {
-            fetch_size: 200,
-            stop_on_error: true,
-            resolve_sources: true,
-            timeout: None,
-            store_budget: dbiji_core::rowstore::DEFAULT_STORE_BUDGET,
-            switch_to_manual: false,
-        }
+        ExecOpts { fetch_size: 200, stop_on_error: true, resolve_sources: true, timeout: None, store_budget: dbiji_core::rowstore::DEFAULT_STORE_BUDGET, switch_to_manual: false }
     }
 }
 
@@ -79,15 +75,7 @@ pub type HistorySink = Arc<dyn Fn(HistoryRecord) + Send + Sync>;
 
 pub enum ExecEvent {
     Started { index: usize },
-    Rows {
-        index: usize,
-        sql: String,
-        columns: Vec<ColumnMeta>,
-        store: SharedRowStore,
-        token: Option<u64>,
-        exhausted: bool,
-        elapsed: Duration,
-    },
+    Rows { index: usize, sql: String, columns: Vec<ColumnMeta>, store: SharedRowStore, token: Option<u64>, exhausted: bool, elapsed: Duration },
     Update { index: usize, rows: Option<u64>, tag: Option<String>, last_insert_id: Option<u64> },
     Message { index: Option<usize>, severity: String, text: String },
     Error { index: usize, error: DbError },
@@ -278,14 +266,7 @@ async fn run(
         }
         let elapsed = t0.elapsed();
         if let Some(h) = &history {
-            h(HistoryRecord {
-                sql: plan.original.clone(),
-                started: wall,
-                duration: elapsed,
-                rows: rows_total,
-                cancelled: cancel.is_cancelled(),
-                error: error_text,
-            });
+            h(HistoryRecord { sql: plan.original.clone(), started: wall, duration: elapsed, rows: rows_total, cancelled: cancel.is_cancelled(), error: error_text });
         }
         executed += 1;
         if !ok {

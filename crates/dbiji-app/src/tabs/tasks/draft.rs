@@ -22,8 +22,7 @@ pub enum NewTaskKind {
 }
 
 impl NewTaskKind {
-    pub const ALL: [NewTaskKind; 6] =
-        [NewTaskKind::SqlScript, NewTaskKind::Shell, NewTaskKind::Backup, NewTaskKind::Restore, NewTaskKind::SchemaCompare, NewTaskKind::Composite];
+    pub const ALL: [NewTaskKind; 6] = [NewTaskKind::SqlScript, NewTaskKind::Shell, NewTaskKind::Backup, NewTaskKind::Restore, NewTaskKind::SchemaCompare, NewTaskKind::Composite];
 
     /// Localised label.
     pub fn label(self) -> &'static str {
@@ -220,10 +219,7 @@ impl ScheduleDraft {
                 let secs = self.every.checked_mul(self.unit.secs()).ok_or_else(|| tr("The interval must be at most one year").to_string())?;
                 Schedule::Interval { every_secs: secs }
             }
-            ScheduleMode::Daily => Schedule::Daily {
-                at: self.daily_at.trim().to_string(),
-                weekdays: (0..7).filter(|i| self.weekdays[*i]).map(|i| i as u8 + 1).collect(),
-            },
+            ScheduleMode::Daily => Schedule::Daily { at: self.daily_at.trim().to_string(), weekdays: (0..7).filter(|i| self.weekdays[*i]).map(|i| i as u8 + 1).collect() },
             ScheduleMode::Once => Schedule::Once { at: parse_local_time(&self.once_at)? },
         };
         s.validate().map_err(|e| e.to_string())?;
@@ -320,11 +316,23 @@ impl CompareDraft {
 #[derive(Debug, Clone, PartialEq)]
 pub enum KindDraft {
     SqlScript(SqlScriptDraft),
-    Shell { command: String },
-    Backup { connection_id: String, form: BackupForm },
-    Restore { connection_id: String, form: RestoreForm },
+    Shell {
+        command: String,
+    },
+    Backup {
+        connection_id: String,
+        form: BackupForm,
+    },
+    Restore {
+        connection_id: String,
+        form: RestoreForm,
+    },
     SchemaCompare(CompareDraft),
-    Composite { steps: Vec<String>, stop_on_error: bool, parallel: bool },
+    Composite {
+        steps: Vec<String>,
+        stop_on_error: bool,
+        parallel: bool,
+    },
     /// Export, import and migration tasks: edited in the transfer wizards,
     /// kept as they are.
     External(TaskKind),
@@ -348,7 +356,9 @@ impl KindDraft {
             NewTaskKind::Shell => KindDraft::Shell { command: String::new() },
             NewTaskKind::Backup => KindDraft::Backup { connection_id: conn, form: BackupForm::default() },
             NewTaskKind::Restore => KindDraft::Restore { connection_id: conn, form: RestoreForm::default() },
-            NewTaskKind::SchemaCompare => KindDraft::SchemaCompare(CompareDraft { source_connection: conn.clone(), target_connection: conn, drop_removed: true, ..Default::default() }),
+            NewTaskKind::SchemaCompare => {
+                KindDraft::SchemaCompare(CompareDraft { source_connection: conn.clone(), target_connection: conn, drop_removed: true, ..Default::default() })
+            }
             NewTaskKind::Composite => KindDraft::Composite { steps: Vec::new(), stop_on_error: true, parallel: false },
         }
     }

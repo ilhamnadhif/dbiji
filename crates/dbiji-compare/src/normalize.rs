@@ -35,9 +35,7 @@ pub(crate) struct Token {
     pub end: usize,
 }
 
-const MULTI_PUNCT: &[&str] = &[
-    "->>", "#>>", "::", "<=", ">=", "<>", "!=", "||", "->", "#>", "=>", ":=", "**", "@>", "<@",
-];
+const MULTI_PUNCT: &[&str] = &["->>", "#>>", "::", "<=", ">=", "<>", "!=", "||", "->", "#>", "=>", ":=", "**", "@>", "<@"];
 
 fn is_ident_start(c: char) -> bool {
     c == '_' || c.is_alphabetic()
@@ -134,11 +132,12 @@ pub(crate) fn tokenize(text: &str) -> Vec<Token> {
             continue;
         }
         if c == '['
-            && let Some(end) = bracket_identifier_end(text, i) {
-                i = end;
-                push(&mut out, TokKind::Quoted(']'), start, i);
-                continue;
-            }
+            && let Some(end) = bracket_identifier_end(text, i)
+        {
+            i = end;
+            push(&mut out, TokKind::Quoted(']'), start, i);
+            continue;
+        }
         if c.is_ascii_digit() || (c == '.' && bytes.get(i + 1).is_some_and(u8::is_ascii_digit)) {
             i = scan_number(text, i);
             push(&mut out, TokKind::Number, start, i);
@@ -213,11 +212,7 @@ fn bracket_identifier_end(text: &str, i: usize) -> Option<usize> {
     if !(first.is_alphabetic() || first == '_' || first == '#' || first == '@') {
         return None;
     }
-    if content.chars().all(|c| c.is_alphanumeric() || " _$#@-.".contains(c)) {
-        Some(i + 1 + close + 1)
-    } else {
-        None
-    }
+    if content.chars().all(|c| c.is_alphanumeric() || " _$#@-.".contains(c)) { Some(i + 1 + close + 1) } else { None }
 }
 
 fn scan_number(text: &str, mut i: usize) -> usize {
@@ -272,11 +267,7 @@ pub(crate) fn dollar_body(token_text: &str) -> Option<(&str, &str)> {
 
 /// Content of a quoted identifier token without quotes, doubled quotes collapsed.
 pub(crate) fn unquote(token_text: &str, close: char) -> String {
-    let inner = if token_text.len() >= 2 && token_text.ends_with(close) {
-        &token_text[1..token_text.len() - close.len_utf8()]
-    } else {
-        token_text.get(1..).unwrap_or("")
-    };
+    let inner = if token_text.len() >= 2 && token_text.ends_with(close) { &token_text[1..token_text.len() - close.len_utf8()] } else { token_text.get(1..).unwrap_or("") };
     let doubled: String = [close, close].iter().collect();
     inner.replace(&doubled, &close.to_string())
 }
@@ -347,11 +338,7 @@ fn ntokens(text: &str) -> Vec<NTok> {
                 TokKind::Word => Some(NTok::Word(s.to_lowercase())),
                 TokKind::Quoted(close) => {
                     let content = unquote(s, close);
-                    if is_simple_lower_ident(&content) {
-                        Some(NTok::Word(content))
-                    } else {
-                        Some(NTok::Ident(content))
-                    }
+                    if is_simple_lower_ident(&content) { Some(NTok::Word(content)) } else { Some(NTok::Ident(content)) }
                 }
                 TokKind::Str | TokKind::Number => Some(NTok::Lit(s.to_string())),
                 TokKind::Punct => Some(NTok::Punct(s.to_string())),
@@ -424,15 +411,15 @@ fn strip_casts(toks: &mut Vec<NTok>) {
             // type words, e.g. `character varying`, `timestamp with time zone`
             while j < toks.len() && matches!(toks[j], NTok::Word(_) | NTok::Ident(_)) {
                 j += 1;
-                if !matches!(toks.get(j), Some(NTok::Word(w)) if ["varying", "precision", "with", "without", "time", "zone"].contains(&w.as_str()))
-                {
+                if !matches!(toks.get(j), Some(NTok::Word(w)) if ["varying", "precision", "with", "without", "time", "zone"].contains(&w.as_str())) {
                     break;
                 }
             }
             if toks.get(j).is_some_and(|t| t.is_punct("("))
-                && let Some(close) = matching_paren(toks, j) {
-                    j = close + 1;
-                }
+                && let Some(close) = matching_paren(toks, j)
+            {
+                j = close + 1;
+            }
             while toks.get(j).is_some_and(|t| t.is_punct("[")) && toks.get(j + 1).is_some_and(|t| t.is_punct("]")) {
                 j += 2;
             }
@@ -510,10 +497,7 @@ fn canonical_functions(toks: &mut Vec<NTok>) {
     };
     let mut i = 0;
     while i < toks.len() {
-        if let Some((pattern, canon)) = SAME
-            .iter()
-            .find(|(pattern, _)| i + pattern.len() <= toks.len() && pattern.iter().enumerate().all(|(k, p)| text_of(&toks[i + k]) == *p))
-        {
+        if let Some((pattern, canon)) = SAME.iter().find(|(pattern, _)| i + pattern.len() <= toks.len() && pattern.iter().enumerate().all(|(k, p)| text_of(&toks[i + k]) == *p)) {
             toks.splice(i..i + pattern.len(), [NTok::Word((*canon).to_string())]);
         }
         i += 1;
@@ -526,9 +510,10 @@ pub(crate) fn normalize_sql(text: &str, n: &SqlNorm) -> String {
     // routine bodies in dollar quotes are SQL too
     for t in toks.iter_mut() {
         if let NTok::Lit(lit) = t
-            && let Some((_, body)) = dollar_body(lit) {
-                *t = NTok::Lit(format!("$$ {} $$", normalize_sql(body, n)));
-            }
+            && let Some((_, body)) = dollar_body(lit)
+        {
+            *t = NTok::Lit(format!("$$ {} $$", normalize_sql(body, n)));
+        }
     }
     strip_definer(&mut toks);
     if let Some(schema) = n.own_schema.as_deref().filter(|s| !s.is_empty()) {
@@ -618,12 +603,7 @@ pub(crate) fn normalize_type(data_type: &str, aliases: bool) -> String {
     }
     let with_tz = tail.starts_with("with time zone");
     let without_tz = tail.starts_with("without time zone");
-    let rest_tail = tail
-        .strip_prefix("with time zone")
-        .or_else(|| tail.strip_prefix("without time zone"))
-        .unwrap_or(&tail)
-        .trim()
-        .to_string();
+    let rest_tail = tail.strip_prefix("with time zone").or_else(|| tail.strip_prefix("without time zone")).unwrap_or(&tail).trim().to_string();
     let base = match head.as_str() {
         "int" | "integer" | "int4" | "signed" => "integer",
         "int8" | "bigint" => "bigint",
@@ -725,11 +705,7 @@ fn qualified_name_from_literal(content: &str) -> Option<NameRef> {
 
 /// Extract names referenced by `text`.
 pub(crate) fn references(text: &str) -> References {
-    let toks: Vec<(TokKind, &str)> = tokenize(text)
-        .into_iter()
-        .filter(|t| !matches!(t.kind, TokKind::Space | TokKind::Comment))
-        .map(|t| (t.kind, &text[t.start..t.end]))
-        .collect();
+    let toks: Vec<(TokKind, &str)> = tokenize(text).into_iter().filter(|t| !matches!(t.kind, TokKind::Space | TokKind::Comment)).map(|t| (t.kind, &text[t.start..t.end])).collect();
     let name_of = |k: TokKind, s: &str| -> Option<String> {
         match k {
             TokKind::Word => Some(s.to_lowercase()),
@@ -740,12 +716,13 @@ pub(crate) fn references(text: &str) -> References {
     let mut refs = References::default();
     for (k, s) in &toks {
         if *k == TokKind::Str
-            && let Some((_, body)) = dollar_body(s) {
-                let inner = references(body);
-                refs.idents.extend(inner.idents);
-                refs.calls.extend(inner.calls);
-                refs.sequences.extend(inner.sequences);
-            }
+            && let Some((_, body)) = dollar_body(s)
+        {
+            let inner = references(body);
+            refs.idents.extend(inner.idents);
+            refs.calls.extend(inner.calls);
+            refs.sequences.extend(inner.sequences);
+        }
     }
     let mut i = 0;
     while i < toks.len() {
@@ -774,10 +751,11 @@ pub(crate) fn references(text: &str) -> References {
             refs.calls.insert(NameRef { schema: schema.clone(), name: name.clone() });
             if ["nextval", "currval", "setval"].contains(&name.as_str())
                 && let Some((TokKind::Str, lit)) = toks.get(j + 1).copied()
-                    && let Some(content) = string_content(lit)
-                        && let Some(r) = qualified_name_from_literal(&content) {
-                            refs.sequences.insert(r);
-                        }
+                && let Some(content) = string_content(lit)
+                && let Some(r) = qualified_name_from_literal(&content)
+            {
+                refs.sequences.insert(r);
+            }
         } else {
             refs.idents.insert(NameRef { schema, name });
             // a.b may also be table.column: record the qualifier as a bare name too
@@ -791,12 +769,15 @@ pub(crate) fn references(text: &str) -> References {
         i = j.max(i + 1);
     }
     for w in toks.windows(3) {
-        if w[0].0 == TokKind::Str && w[1].1 == "::" && w[2].1.eq_ignore_ascii_case("regclass")
+        if w[0].0 == TokKind::Str
+            && w[1].1 == "::"
+            && w[2].1.eq_ignore_ascii_case("regclass")
             && let Some(content) = string_content(w[0].1)
-                && let Some(r) = qualified_name_from_literal(&content) {
-                    refs.sequences.insert(r.clone());
-                    refs.idents.insert(r);
-                }
+            && let Some(r) = qualified_name_from_literal(&content)
+        {
+            refs.sequences.insert(r.clone());
+            refs.idents.insert(r);
+        }
     }
     refs
 }
@@ -809,18 +790,13 @@ pub(crate) fn rename_schema(text: &str, from: &str, to: &str) -> String {
         return text.to_string();
     }
     let toks = tokenize(text);
-    let significant: Vec<usize> =
-        (0..toks.len()).filter(|&k| !matches!(toks[k].kind, TokKind::Space | TokKind::Comment)).collect();
+    let significant: Vec<usize> = (0..toks.len()).filter(|&k| !matches!(toks[k].kind, TokKind::Space | TokKind::Comment)).collect();
     let mut replacements: Vec<(usize, usize, String)> = Vec::new();
     for (pos, &k) in significant.iter().enumerate() {
         let t = toks[k];
         let s = &text[t.start..t.end];
-        let next_is_dot = significant
-            .get(pos + 1)
-            .is_some_and(|&n| toks[n].kind == TokKind::Punct && &text[toks[n].start..toks[n].end] == ".");
-        let prev_is_dot = pos > 0
-            && toks[significant[pos - 1]].kind == TokKind::Punct
-            && &text[toks[significant[pos - 1]].start..toks[significant[pos - 1]].end] == ".";
+        let next_is_dot = significant.get(pos + 1).is_some_and(|&n| toks[n].kind == TokKind::Punct && &text[toks[n].start..toks[n].end] == ".");
+        let prev_is_dot = pos > 0 && toks[significant[pos - 1]].kind == TokKind::Punct && &text[toks[significant[pos - 1]].start..toks[significant[pos - 1]].end] == ".";
         match t.kind {
             TokKind::Word if next_is_dot && !prev_is_dot && s.eq_ignore_ascii_case(from) => {
                 replacements.push((t.start, t.end, to.to_string()));
@@ -883,8 +859,7 @@ mod tests {
     #[test]
     fn tokenizes_strings_comments_and_quotes() {
         let text = "SELECT 'it''s', \"Col\" -- c\n/* x /* y */ */ $f$ body; $f$ `b` [dbo] arr[1] $1 1.5e3";
-        let kinds: Vec<TokKind> =
-            tokenize(text).into_iter().map(|t| t.kind).filter(|k| *k != TokKind::Space).collect();
+        let kinds: Vec<TokKind> = tokenize(text).into_iter().map(|t| t.kind).filter(|k| *k != TokKind::Space).collect();
         assert_eq!(
             kinds,
             vec![
@@ -982,10 +957,7 @@ mod tests {
     fn renames_schema_qualifiers() {
         let sql = "CREATE VIEW staging.v AS SELECT * FROM staging.users JOIN \"staging\".orders ON true -- staging.x\nWHERE x = 'staging.users' AND nextval('staging.s') > 0";
         let out = rename_schema(sql, "staging", "prod");
-        assert_eq!(
-            out,
-            "CREATE VIEW prod.v AS SELECT * FROM prod.users JOIN \"prod\".orders ON true -- staging.x\nWHERE x = 'prod.users' AND nextval('prod.s') > 0"
-        );
+        assert_eq!(out, "CREATE VIEW prod.v AS SELECT * FROM prod.users JOIN \"prod\".orders ON true -- staging.x\nWHERE x = 'prod.users' AND nextval('prod.s') > 0");
         // columns qualified by a table named like the schema are not touched after a dot
         assert_eq!(rename_schema("select a.staging.c", "staging", "prod"), "select a.staging.c");
         assert_eq!(rename_schema("select 1", "a", "b"), "select 1");

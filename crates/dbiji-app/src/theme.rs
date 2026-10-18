@@ -52,11 +52,7 @@ pub fn apply_theme(ctx: &Context, choice: ThemeChoice, high_contrast: bool) {
             let v = &mut style.visuals;
             v.window_highlight_topmost = true;
             if high_contrast {
-                let (fg, bg) = if v.dark_mode {
-                    (Color32::WHITE, Color32::BLACK)
-                } else {
-                    (Color32::BLACK, Color32::WHITE)
-                };
+                let (fg, bg) = if v.dark_mode { (Color32::WHITE, Color32::BLACK) } else { (Color32::BLACK, Color32::WHITE) };
                 v.override_text_color = Some(fg);
                 v.panel_fill = bg;
                 v.window_fill = bg;

@@ -102,11 +102,7 @@ impl<T: Send + 'static> Running<T> {
 
 /// Copy the transfer counters into the operations panel while `fut` runs,
 /// so the panel stays current even when the tab is not visible.
-async fn mirror_progress<T>(
-    fut: impl Future<Output = DbResult<T>>,
-    progress: Arc<Progress>,
-    op: Arc<OpProgress>,
-) -> DbResult<T> {
+async fn mirror_progress<T>(fut: impl Future<Output = DbResult<T>>, progress: Arc<Progress>, op: Arc<OpProgress>) -> DbResult<T> {
     tokio::pin!(fut);
     let mut tick = tokio::time::interval(Duration::from_millis(250));
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -229,22 +225,19 @@ impl MessageLog {
                 ui.ctx().copy_text(self.text());
             }
         });
-        egui::ScrollArea::vertical().id_salt(id).max_height(max_height).auto_shrink([false, true]).stick_to_bottom(true).show(
-            ui,
-            |ui| {
-                for m in &self.messages {
-                    let (glyph, color) = match m.level {
-                        MessageLevel::Info => (icon::INFO, ui.visuals().weak_text_color()),
-                        MessageLevel::Warning => (icon::WARNING, crate::theme::warning_color(dark)),
-                        MessageLevel::Error => (icon::X_CIRCLE, crate::theme::error_color(dark)),
-                    };
-                    ui.horizontal_top(|ui| {
-                        ui.label(RichText::new(glyph).color(color));
-                        ui.add(egui::Label::new(RichText::new(format_message(m)).small()).wrap().selectable(true));
-                    });
-                }
-            },
-        );
+        egui::ScrollArea::vertical().id_salt(id).max_height(max_height).auto_shrink([false, true]).stick_to_bottom(true).show(ui, |ui| {
+            for m in &self.messages {
+                let (glyph, color) = match m.level {
+                    MessageLevel::Info => (icon::INFO, ui.visuals().weak_text_color()),
+                    MessageLevel::Warning => (icon::WARNING, crate::theme::warning_color(dark)),
+                    MessageLevel::Error => (icon::X_CIRCLE, crate::theme::error_color(dark)),
+                };
+                ui.horizontal_top(|ui| {
+                    ui.label(RichText::new(glyph).color(color));
+                    ui.add(egui::Label::new(RichText::new(format_message(m)).small()).wrap().selectable(true));
+                });
+            }
+        });
     }
 }
 
@@ -621,10 +614,7 @@ pub(crate) fn current_schema(cx: &AppContext, conn: &str) -> Option<SchemaRef> {
 /// Schema picker; returns true when the selection changed.
 pub(crate) fn schema_combo(ui: &mut Ui, cx: &mut AppContext, conn: &str, id: impl std::hash::Hash + std::fmt::Debug, value: &mut Option<SchemaRef>) -> bool {
     let names = schema_names(cx, conn);
-    let label = value
-        .as_ref()
-        .and_then(|s| s.schema.clone())
-        .unwrap_or_else(|| tr("(default)").to_string());
+    let label = value.as_ref().and_then(|s| s.schema.clone()).unwrap_or_else(|| tr("(default)").to_string());
     let mut changed = false;
     egui::ComboBox::from_id_salt(id).selected_text(label).width(180.0).show_ui(ui, |ui| {
         if ui.selectable_label(value.as_ref().is_none_or(|v| v.schema.is_none()), tr("(default)")).clicked() {
@@ -701,11 +691,7 @@ pub(crate) fn reload_table_def(cx: &mut AppContext, conn: &str, table: &ObjectRe
 /// Connection picker over all configured connections.
 pub(crate) fn connection_combo(ui: &mut Ui, cx: &AppContext, id: impl std::hash::Hash + std::fmt::Debug, value: &mut Option<String>) -> bool {
     let conns: Vec<(String, String)> = cx.conns.configs().iter().map(|c| (c.id.clone(), c.name.clone())).collect();
-    let current = value
-        .as_ref()
-        .and_then(|v| conns.iter().find(|(i, _)| i == v))
-        .map(|(_, n)| n.clone())
-        .unwrap_or_else(|| tr("Choose…").to_string());
+    let current = value.as_ref().and_then(|v| conns.iter().find(|(i, _)| i == v)).map(|(_, n)| n.clone()).unwrap_or_else(|| tr("Choose…").to_string());
     let mut changed = false;
     egui::ComboBox::from_id_salt(id).selected_text(current).width(200.0).show_ui(ui, |ui| {
         for (cid, name) in &conns {

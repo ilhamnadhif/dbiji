@@ -73,15 +73,7 @@ pub(crate) struct XmlSink {
 
 impl XmlSink {
     pub(crate) fn new(out: TextOutput, options: &ExportOptions) -> Self {
-        XmlSink {
-            out,
-            opts: options.xml.clone(),
-            values: options.values.clone(),
-            names: Vec::new(),
-            root: String::new(),
-            line: String::new(),
-            rows: 0,
-        }
+        XmlSink { out, opts: options.xml.clone(), values: options.values.clone(), names: Vec::new(), root: String::new(), line: String::new(), rows: 0 }
     }
 }
 
@@ -114,9 +106,7 @@ impl RowSink for XmlSink {
                 head.push_str(&format!("  <!ELEMENT {record} ({}?)*>\n", self.names.join("?,")));
             }
             for n in &self.names {
-                head.push_str(&format!(
-                    "  <!ELEMENT {n} (#PCDATA)>\n  <!ATTLIST {n} null (true|false) #IMPLIED encoding CDATA #IMPLIED>\n"
-                ));
+                head.push_str(&format!("  <!ELEMENT {n} (#PCDATA)>\n  <!ATTLIST {n} null (true|false) #IMPLIED encoding CDATA #IMPLIED>\n"));
             }
             head.push_str("]>\n");
         }
@@ -196,15 +186,7 @@ pub(crate) struct DbUnitSink {
 
 impl DbUnitSink {
     pub(crate) fn new(out: TextOutput, options: &ExportOptions) -> Self {
-        DbUnitSink {
-            out,
-            opts: options.dbunit.clone(),
-            element: String::new(),
-            names: Vec::new(),
-            line: String::new(),
-            rows: 0,
-            replaced: 0,
-        }
+        DbUnitSink { out, opts: options.dbunit.clone(), element: String::new(), names: Vec::new(), line: String::new(), rows: 0, replaced: 0 }
     }
 }
 
@@ -266,10 +248,7 @@ impl RowSink for DbUnitSink {
         self.out.write_str("</dataset>\n")?;
         let mut summary = self.out.finish(self.rows)?;
         if self.replaced > 0 {
-            summary.warnings.push(format!(
-                "{} value(s) contained characters not allowed in XML; they were replaced with U+FFFD",
-                self.replaced
-            ));
+            summary.warnings.push(format!("{} value(s) contained characters not allowed in XML; they were replaced with U+FFFD", self.replaced));
         }
         Ok(summary)
     }

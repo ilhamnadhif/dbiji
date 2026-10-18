@@ -12,8 +12,7 @@ mod editor;
 mod system;
 
 pub use draft::{
-    CompareDraft, IntervalUnit, KindDraft, NewTaskKind, ScheduleDraft, ScheduleMode, SqlScriptDraft, TaskDraft, kind_icon, kind_label, parse_local_time,
-    weekday_names,
+    CompareDraft, IntervalUnit, KindDraft, NewTaskKind, ScheduleDraft, ScheduleMode, SqlScriptDraft, TaskDraft, kind_icon, kind_label, parse_local_time, weekday_names,
 };
 pub use system::{Synced, entry_preview, scheduler_name};
 
@@ -114,14 +113,14 @@ fn load_runs(log: &RunLog, focus: Option<&str>) -> DbResult<RunSnapshot> {
         children.entry(r.parent_run_id.clone().unwrap_or_default()).or_default().push(r.clone());
     }
     for v in children.values_mut() {
-        v.sort_by(|a, b| a.started.cmp(&b.started));
+        v.sort_by_key(|a| a.started);
     }
     Ok(RunSnapshot { focus: focus.map(str::to_string), latest, history, children })
 }
 
 /// Result of a background store operation.
 enum StoreDone {
-    Saved { task: TaskDef, previous: Option<TaskDef> },
+    Saved { task: Box<TaskDef>, previous: Option<Box<TaskDef>> },
     Deleted(Vec<TaskDef>),
     Duplicated(Vec<TaskDef>),
     Toggled(Vec<TaskDef>),
@@ -144,7 +143,10 @@ enum OsDone {
     Synced(TaskDef, Synced),
     /// Entry of a deleted task removed (`true`) or absent.
     Removed(String, bool),
-    Failed { task: Option<TaskDef>, error: String },
+    Failed {
+        task: Option<TaskDef>,
+        error: String,
+    },
 }
 
 /// Folder name prompt (new folder or rename).
@@ -357,10 +359,10 @@ impl TasksTab {
         if self.focus.as_deref().is_some_and(|f| !ids.contains(f)) {
             self.focus = None;
         }
-        if let Some(f) = &self.folder {
-            if !self.folders.contains(f) {
-                self.folder = None;
-            }
+        if let Some(f) = &self.folder
+            && !self.folders.contains(f)
+        {
+            self.folder = None;
         }
     }
 
@@ -411,13 +413,13 @@ impl TasksTab {
     }
 
     fn upsert_run(&mut self, run: TaskRun) {
-        if let Some(parent) = run.parent_run_id.clone() {
-            if self.history.iter().any(|r| r.run_id == parent) {
-                let list = self.children.entry(parent).or_default();
-                match list.iter_mut().find(|r| r.run_id == run.run_id) {
-                    Some(slot) => *slot = run.clone(),
-                    None => list.push(run.clone()),
-                }
+        if let Some(parent) = run.parent_run_id.clone()
+            && self.history.iter().any(|r| r.run_id == parent)
+        {
+            let list = self.children.entry(parent).or_default();
+            match list.iter_mut().find(|r| r.run_id == run.run_id) {
+                Some(slot) => *slot = run.clone(),
+                None => list.push(run.clone()),
             }
         }
         if self.history_for.as_deref() == Some(run.task_id.as_str()) {
@@ -635,7 +637,7 @@ impl TasksTab {
                 self.selected = vec![task.id.clone()];
                 self.focus = Some(task.id.clone());
                 if task.os_scheduler || previous.as_ref().is_some_and(|p| p.os_scheduler) {
-                    self.sync_os(cx, task.clone());
+                    self.sync_os(cx, (*task).clone());
                 }
                 cx.toasts.success(trf("Task \"{}\" saved", &[&task.name]));
             }
@@ -682,7 +684,7 @@ impl TasksTab {
             JobKind::Editor,
             spawn_blocking(cx.backend, move || {
                 let task = if previous.is_some() { store.update(task)? } else { store.create(task)? };
-                Ok(StoreDone::Saved { task, previous })
+                Ok(StoreDone::Saved { task: Box::new(task), previous: previous.map(Box::new) })
             }),
         ));
     }
@@ -744,10 +746,10 @@ impl TasksTab {
             spawn_blocking(cx.backend, move || {
                 let mut deleted = Vec::new();
                 for id in &ids {
-                    if let Some(t) = store.get(id) {
-                        if store.delete(id)? {
-                            deleted.push(t);
-                        }
+                    if let Some(t) = store.get(id)
+                        && store.delete(id)?
+                    {
+                        deleted.push(t);
                     }
                 }
                 Ok(StoreDone::Deleted(deleted))
@@ -974,8 +976,7 @@ impl TasksTab {
             });
             return;
         }
-        let running: HashMap<String, RunningInfo> =
-            cx.services.scheduler.as_ref().map(|s| s.running().into_iter().map(|r| (r.task_id.clone(), r)).collect()).unwrap_or_default();
+        let running: HashMap<String, RunningInfo> = cx.services.scheduler.as_ref().map(|s| s.running().into_iter().map(|r| (r.task_id.clone(), r)).collect()).unwrap_or_default();
         let next_runs: BTreeMap<String, DateTime<Local>> = cx.services.scheduler.as_ref().map(|s| s.next_runs()).unwrap_or_default();
         let scheduling = cx.settings.tasks.scheduler_enabled;
         let show_folder = self.folder.is_none();
@@ -1083,7 +1084,8 @@ impl TasksTab {
                             ui.label(RichText::new(text).color(color));
                         } else if let Some(l) = self.latest.get(&t.id) {
                             let (glyph, color) = status_style(l.status, dark);
-                            let r = ui.label(RichText::new(format!("{glyph} {} · {} · {}", status_label(l.status), when(l.started.with_timezone(&Local)), run_duration(l))).color(color));
+                            let r = ui
+                                .label(RichText::new(format!("{glyph} {} · {} · {}", status_label(l.status), when(l.started.with_timezone(&Local)), run_duration(l))).color(color));
                             if let Some(e) = &l.error {
                                 r.on_hover_text(e);
                             }
@@ -1281,10 +1283,10 @@ impl TasksTab {
                         }
                     }
                 }
-                if ui.small_button(format!("{} {}", icon::STOP, tr("Cancel run"))).clicked() {
-                    if let Some(s) = cx.services.scheduler.as_ref() {
-                        s.cancel(&run.run_id);
-                    }
+                if ui.small_button(format!("{} {}", icon::STOP, tr("Cancel run"))).clicked()
+                    && let Some(s) = cx.services.scheduler.as_ref()
+                {
+                    s.cancel(&run.run_id);
                 }
             }
         });
@@ -1302,12 +1304,12 @@ impl TasksTab {
                             let _ = open::that_detached(p);
                         });
                     }
-                    if let Some(dir) = f.parent().map(|d| d.to_path_buf()) {
-                        if ui.small_button(icon::FOLDER_OPEN).on_hover_text(tr("Open folder")).clicked() {
-                            cx.backend.spawn_detached(async move {
-                                let _ = open::that_detached(dir);
-                            });
-                        }
+                    if let Some(dir) = f.parent().map(|d| d.to_path_buf())
+                        && ui.small_button(icon::FOLDER_OPEN).on_hover_text(tr("Open folder")).clicked()
+                    {
+                        cx.backend.spawn_detached(async move {
+                            let _ = open::that_detached(dir);
+                        });
                     }
                 });
             }
@@ -1359,7 +1361,7 @@ impl TasksTab {
             match action {
                 EditorAction::None => {}
                 EditorAction::Cancel => self.editor = None,
-                EditorAction::Save(task) => self.save_task(cx, task),
+                EditorAction::Save(task) => self.save_task(cx, *task),
             }
         }
         if let Some(ids) = self.confirm_delete.clone() {
@@ -1401,11 +1403,13 @@ impl TasksTab {
                     ui.weak(trf("Inside {}", &[parent]));
                 }
                 let r = ui.add(egui::TextEdit::singleline(&mut p.name).desired_width(260.0).hint_text(tr("Folder name")));
-                r.request_focus();
+                let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                if !enter {
+                    r.request_focus();
+                }
                 let name = p.name.trim().trim_matches('/').to_string();
                 let ok = !name.is_empty();
                 ui.horizontal(|ui| {
-                    let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                     if (ui.add_enabled(ok, egui::Button::new(tr("OK"))).clicked() || (enter && ok)) && ok {
                         match p.rename.clone() {
                             Some(old) => {

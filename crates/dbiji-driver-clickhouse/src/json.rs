@@ -101,9 +101,7 @@ impl Parser<'_> {
         }
         match self.peek() {
             None => Err(self.err("unexpected end of input")),
-            Some(b'n') if self.input[self.pos..].starts_with(b"null") => {
-                self.expect_literal(b"null", Json::Null)
-            }
+            Some(b'n') if self.input[self.pos..].starts_with(b"null") => self.expect_literal(b"null", Json::Null),
             Some(b't') => self.expect_literal(b"true", Json::Bool(true)),
             Some(b'f') => self.expect_literal(b"false", Json::Bool(false)),
             Some(b'"') => self.string().map(Json::String),
@@ -358,8 +356,7 @@ mod tests {
 
     #[test]
     fn parses_row_with_exact_numbers() {
-        let row = parse_row(br#"["18446744073709551615", 340282366920938463463374607431768211455, -1.5e3, true, null]"#)
-            .unwrap();
+        let row = parse_row(br#"["18446744073709551615", 340282366920938463463374607431768211455, -1.5e3, true, null]"#).unwrap();
         assert_eq!(row[0], Json::String("18446744073709551615".into()));
         assert_eq!(row[1], Json::Number("340282366920938463463374607431768211455".into()));
         assert_eq!(row[2], Json::Number("-1.5e3".into()));

@@ -174,10 +174,7 @@ pub(crate) enum Drag {
 impl DataGridState {
     /// Default layout for `columns`.
     pub fn new(columns: &[ColumnMeta]) -> Self {
-        let cols: Vec<ColumnState> = columns
-            .iter()
-            .map(|c| ColumnState { name: c.name.clone(), width: default_width(&c.name, c.kind), ..Default::default() })
-            .collect();
+        let cols: Vec<ColumnState> = columns.iter().map(|c| ColumnState { name: c.name.clone(), width: default_width(&c.name, c.kind), ..Default::default() }).collect();
         let order = (0..cols.len()).collect();
         DataGridState { columns: cols, order, ..Default::default() }
     }
@@ -283,8 +280,7 @@ impl DataGridState {
     /// Move the visible column at display position `from` to position `to`.
     pub fn move_visible_column(&mut self, from: usize, to: usize) {
         let visible = self.visible_columns();
-        let (Some(&moving), Some(&target)) = (visible.get(from), visible.get(to.min(visible.len().saturating_sub(1))))
-        else {
+        let (Some(&moving), Some(&target)) = (visible.get(from), visible.get(to.min(visible.len().saturating_sub(1)))) else {
             return;
         };
         if moving == target {

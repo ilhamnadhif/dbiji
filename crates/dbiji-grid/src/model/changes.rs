@@ -217,11 +217,7 @@ fn render_insert(dialect: &dyn Dialect, table: &str, i: &RowInsert, mode: Render
     let mut b = Builder { dialect, mode, params: Vec::new() };
     let specified: Vec<&ChangedValue> = i.values.iter().filter(|c| c.value != CellValue::Default).collect();
     if specified.is_empty() {
-        let sql = if dialect.kind().is_mysql_family() {
-            format!("INSERT INTO {table} () VALUES ()")
-        } else {
-            format!("INSERT INTO {table} DEFAULT VALUES")
-        };
+        let sql = if dialect.kind().is_mysql_family() { format!("INSERT INTO {table} () VALUES ()") } else { format!("INSERT INTO {table} DEFAULT VALUES") };
         return (sql, b.params);
     }
     let cols: Vec<String> = specified.iter().map(|c| dialect.quote_ident(&c.name)).collect();

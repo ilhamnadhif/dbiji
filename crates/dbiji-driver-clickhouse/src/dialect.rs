@@ -4,12 +4,12 @@ use crate::ddl::ClickHouseDdl;
 use crate::keywords;
 use crate::types::{ChType, parse_type};
 use chrono::Timelike;
+use dbiji_core::DbKind;
 use dbiji_core::admin::MaintenanceOp;
 use dbiji_core::ddl::DdlGenerator;
 use dbiji_core::dialect::{Dialect, IdentCase, SqlSyntax};
 use dbiji_core::meta::{ObjectKind, ObjectRef};
 use dbiji_core::value::{DataKind, Value, is_decimal_text};
-use dbiji_core::DbKind;
 use std::collections::BTreeMap;
 
 /// Lexical rules of ClickHouse SQL.
@@ -159,7 +159,11 @@ impl Dialect for ClickHouseDialect {
             Value::UInt(u) => u.to_string(),
             Value::Float(f) if f.is_nan() => "nan".into(),
             Value::Float(f) if f.is_infinite() => {
-                if *f > 0.0 { "inf".into() } else { "-inf".into() }
+                if *f > 0.0 {
+                    "inf".into()
+                } else {
+                    "-inf".into()
+                }
             }
             Value::Float(f) => format!("{f}"),
             Value::Decimal(s) => {
@@ -194,11 +198,7 @@ impl Dialect for ClickHouseDialect {
                             _ if utc.nanosecond() % 1000 != 0 => 9,
                             _ => 6,
                         };
-                        format!(
-                            "toDateTime64('{}{}', {precision}, 'UTC')",
-                            utc.format("%Y-%m-%d %H:%M:%S"),
-                            fraction(utc.nanosecond(), precision as usize)
-                        )
+                        format!("toDateTime64('{}{}', {precision}, 'UTC')", utc.format("%Y-%m-%d %H:%M:%S"), fraction(utc.nanosecond(), precision as usize))
                     }
                 }
             }
@@ -284,10 +284,7 @@ impl Dialect for ClickHouseDialect {
                 })
                 .collect(),
             "check" => targets.iter().map(|t| format!("CHECK TABLE {}", self.qualified_ref(t))).collect(),
-            "materialize_ttl" => targets
-                .iter()
-                .map(|t| format!("ALTER TABLE {} MATERIALIZE TTL", self.qualified_ref(t)))
-                .collect(),
+            "materialize_ttl" => targets.iter().map(|t| format!("ALTER TABLE {} MATERIALIZE TTL", self.qualified_ref(t))).collect(),
             "flush_logs" => vec!["SYSTEM FLUSH LOGS".into()],
             _ => Vec::new(),
         }
@@ -350,10 +347,7 @@ mod tests {
         assert_eq!(d.literal(&Value::DateTime(dt), Some("DateTime")), "'2024-01-02 03:04:05'");
         assert_eq!(d.literal(&Value::DateTime(dt), Some("DateTime64(3)")), "'2024-01-02 03:04:05.123'");
         let tz = dt.and_local_timezone(FixedOffset::east_opt(7 * 3600).unwrap()).unwrap();
-        assert_eq!(
-            d.literal(&Value::DateTimeTz(tz), None),
-            "toDateTime64('2024-01-01 20:04:05.123456', 6, 'UTC')"
-        );
+        assert_eq!(d.literal(&Value::DateTimeTz(tz), None), "toDateTime64('2024-01-01 20:04:05.123456', 6, 'UTC')");
         assert_eq!(d.literal(&Value::DateTimeTz(tz), Some("DateTime('Asia/Jakarta')")), "toDateTime('2024-01-01 20:04:05', 'UTC')");
         let arr = Value::Array(vec![Value::Int(1), Value::Null, Value::text("x")].into_boxed_slice());
         assert_eq!(d.literal(&arr, None), "[1, NULL, 'x']");
@@ -370,10 +364,7 @@ mod tests {
         assert_eq!(d.maintenance_sql("optimize", std::slice::from_ref(&t), &o), vec!["OPTIMIZE TABLE db.t FINAL DEDUPLICATE"]);
         assert_eq!(d.maintenance_sql("check", &[t], &BTreeMap::new()), vec!["CHECK TABLE db.t"]);
         assert!(d.maintenance_ops().iter().any(|o| o.id == "flush_logs"));
-        assert_eq!(
-            d.change_password_sql(Some("bob"), "p'w").unwrap(),
-            "ALTER USER bob IDENTIFIED BY 'p\\'w'"
-        );
+        assert_eq!(d.change_password_sql(Some("bob"), "p'w").unwrap(), "ALTER USER bob IDENTIFIED BY 'p\\'w'");
         assert!(d.change_password_sql(None, "x").is_none());
         assert!(d.upsert("t", &[], &[], &[]).is_none());
         assert_eq!(d.type_kind("Nullable(UInt8)"), DataKind::Int);

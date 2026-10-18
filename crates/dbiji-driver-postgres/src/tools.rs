@@ -105,11 +105,7 @@ pub(crate) fn connection_args(params: &ConnectParams, database: Option<&str>) ->
     let mut args = Vec::new();
     match (&params.tls_server_name, host.parse::<IpAddr>()) {
         (Some(name), Ok(_)) if !name.is_empty() && name != host => {
-            let mut parts = vec![
-                format!("host={}", conninfo_value(name)),
-                format!("hostaddr={}", conninfo_value(host)),
-                format!("port={}", params.port),
-            ];
+            let mut parts = vec![format!("host={}", conninfo_value(name)), format!("hostaddr={}", conninfo_value(host)), format!("port={}", params.port)];
             if let Some(d) = db {
                 parts.push(format!("dbname={}", conninfo_value(d)));
             }
@@ -146,11 +142,7 @@ pub(crate) fn connection_args(params: &ConnectParams, database: Option<&str>) ->
 
 fn file_path_of(source: &str) -> Option<String> {
     // inline PEM cannot be passed to libpq; only file paths
-    if source.contains("-----BEGIN") || source.trim().is_empty() {
-        None
-    } else {
-        Some(source.trim().to_string())
-    }
+    if source.contains("-----BEGIN") || source.trim().is_empty() { None } else { Some(source.trim().to_string()) }
 }
 
 /// Environment for the tools: password and TLS settings.
@@ -318,13 +310,8 @@ pub(crate) fn restore_command(params: &ConnectParams, opts: &RestoreOptions) -> 
 /// `psql` running a script file ("execute with local client").
 pub(crate) fn client_command(params: &ConnectParams, script: &Path) -> DbResult<CommandSpec> {
     let program = find_tool("psql", params.property("psql_path"))?;
-    let mut args = vec![
-        "--no-psqlrc".to_string(),
-        "--no-password".to_string(),
-        "--set=ON_ERROR_STOP=1".to_string(),
-        "--echo-errors".to_string(),
-        format!("--file={}", path_str(script)),
-    ];
+    let mut args =
+        vec!["--no-psqlrc".to_string(), "--no-password".to_string(), "--set=ON_ERROR_STOP=1".to_string(), "--echo-errors".to_string(), format!("--file={}", path_str(script))];
     args.extend(connection_args(params, None));
     Ok(CommandSpec { program, args, env: tool_env(params), stdin_file: None, stdout_file: None })
 }
@@ -400,26 +387,13 @@ mod tests {
 
     #[test]
     fn restore_arguments() {
-        let plain = RestoreOptions {
-            input: "/tmp/in.sql".into(),
-            format: BackupFormat::Plain,
-            single_transaction: true,
-            exit_on_error: true,
-            ..Default::default()
-        };
+        let plain = RestoreOptions { input: "/tmp/in.sql".into(), format: BackupFormat::Plain, single_transaction: true, exit_on_error: true, ..Default::default() };
         let c = restore_command(&params(), &plain).unwrap();
         assert!(c.program.ends_with("psql"));
         assert!(c.args.contains(&"--set=ON_ERROR_STOP=1".to_string()));
         assert!(c.args.contains(&"--single-transaction".to_string()));
         assert!(c.args.contains(&"--file=/tmp/in.sql".to_string()));
-        let archive = RestoreOptions {
-            input: "/tmp/in.dump".into(),
-            format: BackupFormat::Custom,
-            clean: true,
-            create_database: true,
-            exit_on_error: true,
-            ..Default::default()
-        };
+        let archive = RestoreOptions { input: "/tmp/in.dump".into(), format: BackupFormat::Custom, clean: true, create_database: true, exit_on_error: true, ..Default::default() };
         let c = restore_command(&params(), &archive).unwrap();
         assert!(c.program.ends_with("pg_restore"));
         assert!(c.args.contains(&"--create".to_string()));

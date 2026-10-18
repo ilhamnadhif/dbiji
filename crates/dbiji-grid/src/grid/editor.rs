@@ -3,10 +3,7 @@
 use super::frame::{GridFrame, PAD};
 use dbiji_core::{tr, trf};
 use egui::text::{CCursor, CCursorRange};
-use egui::{
-    Align, EventFilter, Frame, Key, Layout, Margin, Popup, PopupCloseBehavior, Rect, ScrollArea, Stroke, StrokeKind,
-    TextEdit, Ui, UiBuilder, pos2, vec2,
-};
+use egui::{Align, EventFilter, Frame, Key, Layout, Margin, Popup, PopupCloseBehavior, Rect, ScrollArea, Stroke, StrokeKind, TextEdit, Ui, UiBuilder, pos2, vec2};
 
 impl GridFrame<'_> {
     /// Show the inline text editor when a cell is being edited.
@@ -36,9 +33,7 @@ impl GridFrame<'_> {
             None => return,
         };
         let output = {
-            let mut child = ui.new_child(
-                UiBuilder::new().max_rect(rect).layout(Layout::left_to_right(Align::Center)).id_salt("cell_editor_ui"),
-            );
+            let mut child = ui.new_child(UiBuilder::new().max_rect(rect).layout(Layout::left_to_right(Align::Center)).id_salt("cell_editor_ui"));
             child.set_clip_rect(rect);
             TextEdit::singleline(&mut text)
                 .id(editor_id)
@@ -62,11 +57,7 @@ impl GridFrame<'_> {
             output.response.request_focus();
             let mut st = output.state.clone();
             let n = session.text.chars().count();
-            let range = if session.typed {
-                CCursorRange::one(CCursor::new(n))
-            } else {
-                CCursorRange::two(CCursor::new(0), CCursor::new(n))
-            };
+            let range = if session.typed { CCursorRange::one(CCursor::new(n)) } else { CCursorRange::two(CCursor::new(0), CCursor::new(n)) };
             st.cursor.set_char_range(Some(range));
             st.store(ui.ctx(), editor_id);
             ui.ctx().request_repaint();
@@ -74,9 +65,7 @@ impl GridFrame<'_> {
         if output.response.changed() {
             session.error = None;
         }
-        let (enter, tab, shift, esc) = ui.input(|i| {
-            (i.key_pressed(Key::Enter), i.key_pressed(Key::Tab), i.modifiers.shift, i.key_pressed(Key::Escape))
-        });
+        let (enter, tab, shift, esc) = ui.input(|i| (i.key_pressed(Key::Enter), i.key_pressed(Key::Tab), i.modifiers.shift, i.key_pressed(Key::Escape)));
         let focused = output.response.has_focus();
         if esc && (focused || session.error.is_some()) {
             self.state.rt.editing = None;
@@ -98,16 +87,13 @@ impl GridFrame<'_> {
         }
         if let Some(err) = self.state.rt.editing.as_ref().and_then(|s| s.error.clone()) {
             let tip = Rect::from_min_size(pos2(rect.left(), rect.bottom() + 2.0), vec2(rect.width().max(240.0), 10.0));
-            egui::Area::new(self.id.with("edit_error")).order(egui::Order::Tooltip).fixed_pos(tip.min).show(
-                ui.ctx(),
-                |ui| {
-                    Frame::popup(ui.style()).show(ui, |ui| {
-                        ui.set_max_width(320.0);
-                        ui.colored_label(theme.error, err);
-                        ui.weak(tr("Enter to retry, Esc to cancel"));
-                    });
-                },
-            );
+            egui::Area::new(self.id.with("edit_error")).order(egui::Order::Tooltip).fixed_pos(tip.min).show(ui.ctx(), |ui| {
+                Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.set_max_width(320.0);
+                    ui.colored_label(theme.error, err);
+                    ui.weak(tr("Enter to retry, Esc to cancel"));
+                });
+            });
         }
     }
 
@@ -124,12 +110,11 @@ impl GridFrame<'_> {
         }
         let (sx, sy) = (self.state.rt.scroll_x, self.state.rt.scroll_y);
         let cell = self.geo.cell_rect(dd.row, pos, sx, sy);
-        let entries: Vec<(String, Option<String>)> =
-            match (self.model.dictionary(dd.col), self.model.enum_values(dd.col)) {
-                (Some(d), _) => d.entries().iter().map(|(k, v)| (k.clone(), Some(v.clone()))).collect(),
-                (None, Some(e)) => e.iter().map(|v| (v.clone(), None)).collect(),
-                (None, None) => Vec::new(),
-            };
+        let entries: Vec<(String, Option<String>)> = match (self.model.dictionary(dd.col), self.model.enum_values(dd.col)) {
+            (Some(d), _) => d.entries().iter().map(|(k, v)| (k.clone(), Some(v.clone()))).collect(),
+            (None, Some(e)) => e.iter().map(|v| (v.clone(), None)).collect(),
+            (None, None) => Vec::new(),
+        };
         let current = self.model.cell(dd.row, dd.col).map(|v| v.to_text().into_owned()).unwrap_or_default();
         let nullable = self.model.column_meta(dd.col).is_none_or(|m| m.nullable != Some(false));
         let mut chosen: Option<Option<String>> = None;
@@ -137,11 +122,7 @@ impl GridFrame<'_> {
         let needle = dd.search.to_lowercase();
         let filtered: Vec<&(String, Option<String>)> = entries
             .iter()
-            .filter(|(k, d)| {
-                needle.is_empty()
-                    || k.to_lowercase().contains(&needle)
-                    || d.as_ref().is_some_and(|d| d.to_lowercase().contains(&needle))
-            })
+            .filter(|(k, d)| needle.is_empty() || k.to_lowercase().contains(&needle) || d.as_ref().is_some_and(|d| d.to_lowercase().contains(&needle)))
             .take(1000)
             .collect();
         let just_opened = dd.just_opened;
@@ -150,13 +131,7 @@ impl GridFrame<'_> {
             .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
             .width(cell.width().max(240.0))
             .show(|ui| {
-                let te = ui.add(
-                    TextEdit::singleline(&mut dd.search)
-                        .id(search_id)
-                        .hint_text(tr("Search…"))
-                        .return_key(None)
-                        .desired_width(f32::INFINITY),
-                );
+                let te = ui.add(TextEdit::singleline(&mut dd.search).id(search_id).hint_text(tr("Search…")).return_key(None).desired_width(f32::INFINITY));
                 if just_opened {
                     te.request_focus();
                 }
@@ -191,8 +166,7 @@ impl GridFrame<'_> {
                 }
             });
         dd.just_opened = false;
-        let close_requested =
-            resp.as_ref().is_none_or(|r| r.response.should_close()) || ui.input(|i| i.key_pressed(Key::Escape));
+        let close_requested = resp.as_ref().is_none_or(|r| r.response.should_close()) || ui.input(|i| i.key_pressed(Key::Escape));
         if let Some(choice) = chosen {
             let result = match choice {
                 Some(k) => self.model.set_cell(dd.row, dd.col, &k),

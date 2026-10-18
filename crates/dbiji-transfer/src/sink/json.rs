@@ -374,15 +374,9 @@ mod tests {
         assert_eq!(render(Value::Float(f64::NAN)), "\"NaN\"");
         assert_eq!(render(Value::json(" {\"a\": [1, 2]} ")), "{\"a\": [1, 2]}");
         // Multi-line documents are minified; strings and numbers are kept exactly.
-        assert_eq!(
-            render(Value::json("{\n  \"k y\": \"a  b\\\" c\",\n  \"n\": 1.50e3\n}\n")),
-            "{\"k y\":\"a  b\\\" c\",\"n\":1.50e3}"
-        );
+        assert_eq!(render(Value::json("{\n  \"k y\": \"a  b\\\" c\",\n  \"n\": 1.50e3\n}\n")), "{\"k y\":\"a  b\\\" c\",\"n\":1.50e3}");
         assert_eq!(render(Value::json("{bad")), "\"{bad\"");
         assert_eq!(render(Value::bytes(vec![0u8, 1, 2])), "\"AAEC\"");
-        assert_eq!(
-            render(Value::Array(vec![Value::Int(1), Value::Null, Value::text("x")].into_boxed_slice())),
-            "[1,null,\"x\"]"
-        );
+        assert_eq!(render(Value::Array(vec![Value::Int(1), Value::Null, Value::text("x")].into_boxed_slice())), "[1,null,\"x\"]");
     }
 }

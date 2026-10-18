@@ -215,11 +215,7 @@ fn shorten(s: &str) -> String {
 }
 
 fn date_from_datetime(dt: NaiveDateTime) -> Result<Value, String> {
-    if dt.time() == NaiveTime::MIN {
-        Ok(Value::Date(dt.date()))
-    } else {
-        Err(format!("'{dt}' has a time of day and cannot be stored as a date"))
-    }
+    if dt.time() == NaiveTime::MIN { Ok(Value::Date(dt.date())) } else { Err(format!("'{dt}' has a time of day and cannot be stored as a date")) }
 }
 
 fn local_tz(dt: NaiveDateTime) -> Option<Value> {
@@ -231,14 +227,7 @@ pub(crate) fn parse_tz_strict(t: &str) -> Option<DateTime<FixedOffset>> {
     if let Ok(v) = DateTime::parse_from_rfc3339(t) {
         return Some(v);
     }
-    for f in [
-        "%Y-%m-%d %H:%M:%S%.f%:z",
-        "%Y-%m-%d %H:%M:%S%.f%z",
-        "%Y-%m-%d %H:%M:%S%.f%#z",
-        "%Y-%m-%dT%H:%M:%S%.f%#z",
-        "%Y-%m-%d %H:%M:%S%#z",
-        "%Y-%m-%d %H:%M%#z",
-    ] {
+    for f in ["%Y-%m-%d %H:%M:%S%.f%:z", "%Y-%m-%d %H:%M:%S%.f%z", "%Y-%m-%d %H:%M:%S%.f%#z", "%Y-%m-%dT%H:%M:%S%.f%#z", "%Y-%m-%d %H:%M:%S%#z", "%Y-%m-%d %H:%M%#z"] {
         if let Ok(v) = DateTime::parse_from_str(t, f) {
             return Some(v);
         }
@@ -259,9 +248,7 @@ pub(crate) fn normalize_number(t: &str, opts: &ConvertOptions) -> String {
 }
 
 fn decode_binary(t: &str, encoding: Option<BinaryEncoding>) -> Result<Vec<u8>, String> {
-    let b64 = |s: &str| {
-        base64::engine::general_purpose::STANDARD.decode(s.as_bytes()).map_err(|e| format!("invalid base64: {e}"))
-    };
+    let b64 = |s: &str| base64::engine::general_purpose::STANDARD.decode(s.as_bytes()).map_err(|e| format!("invalid base64: {e}"));
     match encoding {
         Some(BinaryEncoding::Hex) => parse_hex_bytes(t).ok_or_else(|| format!("'{}' is not hexadecimal", shorten(t))),
         Some(BinaryEncoding::Base64) => b64(t),
@@ -339,9 +326,7 @@ fn convert_typed(v: &Value, kind: DataKind, opts: &ConvertOptions) -> Result<Val
         DataKind::DateTimeTz => match v {
             V::DateTimeTz(_) => Ok(v.clone()),
             V::DateTime(dt) => opts.zoned(*dt).ok_or_else(|| format!("'{dt}' does not exist in the target time zone")),
-            V::Date(d) => opts
-                .zoned(d.and_time(NaiveTime::MIN))
-                .ok_or_else(|| format!("'{d}' is not a valid time in the target time zone")),
+            V::Date(d) => opts.zoned(d.and_time(NaiveTime::MIN)).ok_or_else(|| format!("'{d}' is not a valid time in the target time zone")),
             _ => text_fallback(),
         },
         DataKind::Time => match v {
@@ -538,15 +523,7 @@ mod tests {
         assert!(c(Value::text("{x"), DataKind::Json).is_err());
         assert_eq!(
             c(Value::text("{1,NULL,\"x y\",{2}}"), DataKind::Array).unwrap(),
-            Value::Array(
-                vec![
-                    Value::Int(1),
-                    Value::Null,
-                    Value::text("x y"),
-                    Value::Array(vec![Value::Int(2)].into_boxed_slice())
-                ]
-                .into_boxed_slice()
-            )
+            Value::Array(vec![Value::Int(1), Value::Null, Value::text("x y"), Value::Array(vec![Value::Int(2)].into_boxed_slice())].into_boxed_slice())
         );
         assert_eq!(c(Value::text("2024-01-02 00:00:00"), DataKind::Date).unwrap().to_text(), "2024-01-02");
         assert!(c(Value::text("2024-01-02 10:00:00"), DataKind::Date).is_err());
@@ -563,10 +540,7 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(convert_value(&Value::text("31/01/2024"), DataKind::Date, &o).unwrap().to_text(), "2024-01-31");
-        assert_eq!(
-            convert_value(&Value::text("31/01/2024 10.30"), DataKind::DateTime, &o).unwrap().to_text(),
-            "2024-01-31 10:30:00"
-        );
+        assert_eq!(convert_value(&Value::text("31/01/2024 10.30"), DataKind::DateTime, &o).unwrap().to_text(), "2024-01-31 10:30:00");
         assert_eq!(convert_value(&Value::text("1.234,50"), DataKind::Decimal, &o).unwrap(), Value::decimal("1234.50"));
         assert_eq!(convert_value(&Value::text("N/A"), DataKind::Text, &o).unwrap(), Value::Null);
     }
@@ -580,10 +554,7 @@ mod tests {
         assert_eq!(c(Value::Float(0.1), DataKind::Decimal).unwrap(), Value::decimal("0.1"));
         assert_eq!(c(Value::Int(5), DataKind::Text).unwrap(), Value::text("5"));
         assert_eq!(c(Value::json("[1,2]"), DataKind::Array).unwrap().to_text(), "{1,2}");
-        assert_eq!(
-            c(Value::Array(vec![Value::Int(1)].into_boxed_slice()), DataKind::Json).unwrap(),
-            Value::json("[1]")
-        );
+        assert_eq!(c(Value::Array(vec![Value::Int(1)].into_boxed_slice()), DataKind::Json).unwrap(), Value::json("[1]"));
         let dt = NaiveDate::from_ymd_opt(2024, 5, 6).unwrap().and_time(NaiveTime::MIN);
         assert_eq!(c(Value::DateTime(dt), DataKind::Date).unwrap(), Value::Date(dt.date()));
     }

@@ -76,9 +76,8 @@ async fn run(cmd: OsCommand, stdin: Option<String>) -> DbResult<String> {
         pipe.shutdown().await?;
         drop(pipe);
     }
-    let out = tokio::time::timeout(std::time::Duration::from_secs(30), child.wait_with_output())
-        .await
-        .map_err(|_| DbError::timeout(trf("{} did not finish", &[&cmd.program])))??;
+    let out =
+        tokio::time::timeout(std::time::Duration::from_secs(30), child.wait_with_output()).await.map_err(|_| DbError::timeout(trf("{} did not finish", &[&cmd.program])))??;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).to_string())
     } else {

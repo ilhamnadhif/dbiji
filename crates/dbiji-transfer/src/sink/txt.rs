@@ -45,11 +45,7 @@ impl TxtSink {
         (0..self.headers.len())
             .map(|i| {
                 let v = cell(row, i);
-                let text = if v.is_null() {
-                    if self.opts.show_nulls { self.opts.null_text.clone() } else { String::new() }
-                } else {
-                    single_line(&format_value(v, &self.values))
-                };
+                let text = if v.is_null() { if self.opts.show_nulls { self.opts.null_text.clone() } else { String::new() } } else { single_line(&format_value(v, &self.values)) };
                 Cell { text, numeric: is_numeric_value(v) }
             })
             .collect()
@@ -112,8 +108,7 @@ impl TxtSink {
         self.widths = (0..self.headers.len())
             .map(|i| {
                 let header = if self.opts.header { self.headers[i].chars().count() } else { 0 };
-                let data =
-                    self.sample.iter().filter_map(|r| r.get(i)).map(|c| c.text.chars().count()).max().unwrap_or(0);
+                let data = self.sample.iter().filter_map(|r| r.get(i)).map(|c| c.text.chars().count()).max().unwrap_or(0);
                 header.max(data).clamp(min, max)
             })
             .collect();
@@ -123,8 +118,7 @@ impl TxtSink {
             text.push_str(&rule);
         }
         if self.opts.header {
-            let header_cells: Vec<Cell> =
-                self.headers.iter().map(|h| Cell { text: single_line(h), numeric: false }).collect();
+            let header_cells: Vec<Cell> = self.headers.iter().map(|h| Cell { text: single_line(h), numeric: false }).collect();
             self.render(&mut text, &header_cells);
             text.push_str(&rule);
         }

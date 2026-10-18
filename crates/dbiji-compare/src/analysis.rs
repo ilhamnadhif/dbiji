@@ -18,19 +18,8 @@ pub(crate) enum Side {
 }
 
 /// Storage option keys whose values change with the data and are never compared.
-const VOLATILE_OPTIONS: &[&str] = &[
-    "auto_increment",
-    "rows",
-    "row_count",
-    "avg_row_length",
-    "data_length",
-    "index_length",
-    "data_free",
-    "create_time",
-    "update_time",
-    "check_time",
-    "checksum",
-];
+const VOLATILE_OPTIONS: &[&str] =
+    &["auto_increment", "rows", "row_count", "avg_row_length", "data_length", "index_length", "data_free", "create_time", "update_time", "check_time", "checksum"];
 
 pub(crate) fn is_volatile_option(key: &str) -> bool {
     VOLATILE_OPTIONS.contains(&key.to_ascii_lowercase().as_str())
@@ -165,11 +154,7 @@ impl<'a> Ctx<'a> {
     }
 
     pub fn sql_norm(&self, side: Side) -> SqlNorm {
-        SqlNorm {
-            own_schema: self.schema_of(side).map(str::to_string),
-            strip_casts: self.opts.cross_dialect,
-            canonical_functions: self.opts.cross_dialect,
-        }
+        SqlNorm { own_schema: self.schema_of(side).map(str::to_string), strip_casts: self.opts.cross_dialect, canonical_functions: self.opts.cross_dialect }
     }
 
     /// Canonical form of a SQL definition.
@@ -288,9 +273,11 @@ impl<'a> Ctx<'a> {
                 ch.push(PropertyChange::new("type", Some(s.data_type.clone()), Some(t.data_type.clone())));
             }
             if let (Some(a), Some(b)) = (&s.collation, &t.collation)
-                && !o.cross_dialect && !a.eq_ignore_ascii_case(b) {
-                    ch.push(PropertyChange::new("collation", Some(a.clone()), Some(b.clone())));
-                }
+                && !o.cross_dialect
+                && !a.eq_ignore_ascii_case(b)
+            {
+                ch.push(PropertyChange::new("collation", Some(a.clone()), Some(b.clone())));
+            }
         }
         if o.nullability && s.nullable != t.nullable {
             ch.push(PropertyChange::new("nullable", Some(yes_no(s.nullable)), Some(yes_no(t.nullable))));
@@ -300,11 +287,7 @@ impl<'a> Ctx<'a> {
                 ch.push(PropertyChange::new("default", s.default.clone(), t.default.clone()));
             }
             if self.effective_auto_increment(s) != self.effective_auto_increment(t) {
-                ch.push(PropertyChange::new(
-                    "auto_increment",
-                    Some(yes_no(self.effective_auto_increment(s))),
-                    Some(yes_no(self.effective_auto_increment(t))),
-                ));
+                ch.push(PropertyChange::new("auto_increment", Some(yes_no(self.effective_auto_increment(s))), Some(yes_no(self.effective_auto_increment(t)))));
             }
             let gs = s.generated.as_deref().map(|g| self.norm_sql(g, Side::Source));
             let gt = t.generated.as_deref().map(|g| self.norm_sql(g, Side::Target));
@@ -343,9 +326,7 @@ impl<'a> Ctx<'a> {
             .filter(|r| t.columns.iter().any(|c| self.same(&c.name, &r.from)) && s.columns.iter().any(|c| self.same(&c.name, &r.to)))
             .map(|r| (r.from.clone(), r.to.clone()))
             .collect();
-        let rename_target = |source_col: &str| -> Option<&str> {
-            renames.iter().find(|(_, to)| self.same(to, source_col)).map(|(from, _)| from.as_str())
-        };
+        let rename_target = |source_col: &str| -> Option<&str> { renames.iter().find(|(_, to)| self.same(to, source_col)).map(|(from, _)| from.as_str()) };
         let m = match_two_pass(
             &s.columns,
             &t.columns,
@@ -447,10 +428,7 @@ pub(crate) fn is_secondary_index(ctx: &Ctx<'_>, t: &TableDef, idx: &IndexDef) ->
     }
     let cols: Vec<String> = idx.columns.iter().map(|c| ctx.key(&c.name)).collect();
     let same_cols = |k: &KeyDef| k.columns.iter().map(|c| ctx.key(c)).collect::<Vec<_>>() == cols;
-    let backs_unique = t
-        .unique_keys
-        .iter()
-        .any(|u| u.name.as_deref().is_some_and(|n| ctx.same(n, &idx.name)) || same_cols(u));
+    let backs_unique = t.unique_keys.iter().any(|u| u.name.as_deref().is_some_and(|n| ctx.same(n, &idx.name)) || same_cols(u));
     let backs_pk = t.primary_key.as_ref().is_some_and(|pk| pk.name.as_deref().is_some_and(|n| ctx.same(n, &idx.name)) || same_cols(pk));
     !(backs_unique || backs_pk)
 }
@@ -461,10 +439,7 @@ pub(crate) fn is_implicit_sequence(ctx: &Ctx<'_>, snap: &SchemaSnapshot, seq: &S
     let Some(owned) = seq.owned_by.as_deref() else { return false };
     let Some((table, column)) = owned.rsplit_once('.') else { return false };
     let table = table.rsplit('.').next().unwrap_or(table);
-    snap.tables
-        .iter()
-        .filter(|t| ctx.same(&t.name, table))
-        .any(|t| t.columns.iter().any(|c| ctx.same(&c.name, column) && c.auto_increment))
+    snap.tables.iter().filter(|t| ctx.same(&t.name, table)).any(|t| t.columns.iter().any(|c| ctx.same(&c.name, column) && c.auto_increment))
 }
 
 fn routine_kind(r: &RoutineDef) -> ObjectKind {
@@ -541,11 +516,8 @@ impl<'a> Analysis<'a> {
             }
             col_matches.push((m, renames, map));
         }
-        let maps_by_source: HashMap<String, (String, HashMap<String, String>)> = pairs
-            .iter()
-            .zip(col_matches.iter())
-            .map(|(&(si, ti), (_, _, map))| (ctx.key(&src[si].name), (tgt[ti].name.clone(), map.clone())))
-            .collect();
+        let maps_by_source: HashMap<String, (String, HashMap<String, String>)> =
+            pairs.iter().zip(col_matches.iter()).map(|(&(si, ti), (_, _, map))| (ctx.key(&src[si].name), (tgt[ti].name.clone(), map.clone()))).collect();
         for (&(si, ti), (columns, renames, col_map)) in pairs.iter().zip(col_matches) {
             let s = &src[si];
             let t = &tgt[ti];
@@ -596,11 +568,7 @@ impl<'a> Analysis<'a> {
         let cols_eq = |a: &[String], b: &[String]| a.len() == b.len() && a.iter().zip(b).all(|(x, y)| mcol(x) == ctx.key(y));
         let list = |v: &[String]| v.join(", ");
         let name_change = |a: Option<&str>, b: Option<&str>| -> Option<PropertyChange> {
-            if names && a.is_some() && b.is_some() && !ctx.same_opt(a, b) {
-                Some(PropertyChange::new("name", a.map(str::to_string), b.map(str::to_string)))
-            } else {
-                None
-            }
+            if names && a.is_some() && b.is_some() && !ctx.same_opt(a, b) { Some(PropertyChange::new("name", a.map(str::to_string), b.map(str::to_string))) } else { None }
         };
         let columns = if o.columns { columns } else { SubMatch::default() };
 
@@ -669,8 +637,7 @@ impl<'a> Analysis<'a> {
             SubMatch::default()
         };
 
-        let src_fks_mapped: Vec<ForeignKeyDef> =
-            s.foreign_keys.iter().map(|fk| self.map_source_fk(fk, &t.name, &col_map, maps_by_source)).collect();
+        let src_fks_mapped: Vec<ForeignKeyDef> = s.foreign_keys.iter().map(|fk| self.map_source_fk(fk, &t.name, &col_map, maps_by_source)).collect();
         let foreign_keys = if o.foreign_keys {
             let same_ref_schema = |a: &ForeignKeyDef, b: &ForeignKeyDef| {
                 let own_a = ctx.is_own_schema(a.ref_schema.as_deref(), Side::Target);
@@ -679,10 +646,7 @@ impl<'a> Analysis<'a> {
             };
             let keys = |v: &[String]| v.iter().map(|c| ctx.key(c)).collect::<Vec<_>>();
             let structure = |a: &ForeignKeyDef, b: &ForeignKeyDef| {
-                keys(&a.columns) == keys(&b.columns)
-                    && ctx.same(&a.ref_table, &b.ref_table)
-                    && keys(&a.ref_columns) == keys(&b.ref_columns)
-                    && same_ref_schema(a, b)
+                keys(&a.columns) == keys(&b.columns) && ctx.same(&a.ref_table, &b.ref_table) && keys(&a.ref_columns) == keys(&b.ref_columns) && same_ref_schema(a, b)
             };
             let fk_ref = |f: &ForeignKeyDef| format!("{}({})", f.ref_table, list(&f.ref_columns));
             let mut m = match_two_pass(
@@ -750,13 +714,7 @@ impl<'a> Analysis<'a> {
                     && method(a) == method(b)
                     && include(a, true) == include(b, false)
             };
-            let desc = |i: &IndexDef| {
-                i.columns
-                    .iter()
-                    .map(|c| if c.descending { format!("{} DESC", c.name) } else { c.name.clone() })
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            };
+            let desc = |i: &IndexDef| i.columns.iter().map(|c| if c.descending { format!("{} DESC", c.name) } else { c.name.clone() }).collect::<Vec<_>>().join(", ");
             match_two_pass(
                 &s.indexes,
                 &t.indexes,
@@ -858,10 +816,7 @@ impl<'a> Analysis<'a> {
         }
         if o.table_options {
             let norm_opts = |m: &BTreeMap<String, String>| -> BTreeMap<String, String> {
-                m.iter()
-                    .filter(|(k, _)| !is_volatile_option(k))
-                    .map(|(k, v)| (k.to_ascii_lowercase(), v.trim().to_lowercase()))
-                    .collect()
+                m.iter().filter(|(k, _)| !is_volatile_option(k)).map(|(k, v)| (k.to_ascii_lowercase(), v.trim().to_lowercase())).collect()
             };
             let (so, to) = (norm_opts(&s.options), norm_opts(&t.options));
             let keys: std::collections::BTreeSet<&String> = so.keys().chain(to.keys()).collect();
@@ -874,15 +829,9 @@ impl<'a> Analysis<'a> {
         }
         if o.partitions {
             if s.table_kind != t.table_kind {
-                changes.push(PropertyChange::new(
-                    "table_kind",
-                    Some(format!("{:?}", s.table_kind)),
-                    Some(format!("{:?}", t.table_kind)),
-                ));
+                changes.push(PropertyChange::new("table_kind", Some(format!("{:?}", s.table_kind)), Some(format!("{:?}", t.table_kind))));
             }
-            let part = |p: &Option<PartitioningDef>, side| {
-                p.as_ref().map(|p| format!("{} ({})", p.strategy.to_uppercase(), ctx.norm_sql(&p.key, side)))
-            };
+            let part = |p: &Option<PartitioningDef>, side| p.as_ref().map(|p| format!("{} ({})", p.strategy.to_uppercase(), ctx.norm_sql(&p.key, side)));
             if part(&s.partitioning, Side::Source) != part(&t.partitioning, Side::Target) {
                 let show = |p: &Option<PartitioningDef>| p.as_ref().map(|p| format!("{} ({})", p.strategy, p.key));
                 changes.push(PropertyChange::new("partitioning", show(&s.partitioning), show(&t.partitioning)));
@@ -903,30 +852,12 @@ impl<'a> Analysis<'a> {
             }
         }
 
-        TablePair {
-            source: s,
-            target: t,
-            columns,
-            renames,
-            col_map,
-            primary_key,
-            unique_keys,
-            checks,
-            foreign_keys,
-            src_fks_mapped,
-            indexes,
-            triggers,
-            partitions,
-            changes,
-        }
+        TablePair { source: s, target: t, columns, renames, col_map, primary_key, unique_keys, checks, foreign_keys, src_fks_mapped, indexes, triggers, partitions, changes }
     }
 
     /// Column maps of matched tables keyed by source table key.
     pub fn maps_by_source(&self) -> HashMap<String, (String, HashMap<String, String>)> {
-        self.tables
-            .iter()
-            .map(|p| (self.ctx.key(&p.source.name), (p.target.name.clone(), p.col_map.clone())))
-            .collect()
+        self.tables.iter().map(|p| (self.ctx.key(&p.source.name), (p.target.name.clone(), p.col_map.clone()))).collect()
     }
 
     // ------------------------------------------------------------ other objects
@@ -971,17 +902,20 @@ impl<'a> Analysis<'a> {
             |a, b| {
                 let mut ch = Vec::new();
                 if let (Some(x), Some(y)) = (&a.data_type, &b.data_type)
-                    && !ctx.opts.cross_dialect && ctx.norm_type(x) != ctx.norm_type(y) {
-                        ch.push(PropertyChange::new("data_type", Some(x.clone()), Some(y.clone())));
-                    }
+                    && !ctx.opts.cross_dialect
+                    && ctx.norm_type(x) != ctx.norm_type(y)
+                {
+                    ch.push(PropertyChange::new("data_type", Some(x.clone()), Some(y.clone())));
+                }
                 if a.increment.unwrap_or(1) != b.increment.unwrap_or(1) {
                     ch.push(PropertyChange::new("increment", opt_string(a.increment), opt_string(b.increment)));
                 }
                 for (prop, x, y) in [("min_value", a.min_value, b.min_value), ("max_value", a.max_value, b.max_value)] {
                     if let (Some(x), Some(y)) = (x, y)
-                        && x != y {
-                            ch.push(PropertyChange::new(prop, Some(x.to_string()), Some(y.to_string())));
-                        }
+                        && x != y
+                    {
+                        ch.push(PropertyChange::new(prop, Some(x.to_string()), Some(y.to_string())));
+                    }
                 }
                 if a.cache.unwrap_or(1) != b.cache.unwrap_or(1) {
                     ch.push(PropertyChange::new("cache", opt_string(a.cache), opt_string(b.cache)));
@@ -991,9 +925,10 @@ impl<'a> Analysis<'a> {
                 }
                 if ctx.opts.sequence_start_values
                     && let (Some(x), Some(y)) = (a.start, b.start)
-                        && x != y {
-                            ch.push(PropertyChange::new("start", Some(x.to_string()), Some(y.to_string())));
-                        }
+                    && x != y
+                {
+                    ch.push(PropertyChange::new("start", Some(x.to_string()), Some(y.to_string())));
+                }
                 ch
             },
         );

@@ -16,10 +16,7 @@ use dbiji_core::dialect::Dialect;
 use dbiji_core::driver::ServerInfo;
 use dbiji_core::meta::*;
 use dbiji_core::plan::QueryPlan;
-use dbiji_core::{
-    CancelHandle, ColumnMeta, ColumnSource, ConnectParams, DbError, DbKind, DbResult, ExecOptions, QueryCursor,
-    Session, TransactionMode, Value,
-};
+use dbiji_core::{CancelHandle, ColumnMeta, ColumnSource, ConnectParams, DbError, DbKind, DbResult, ExecOptions, QueryCursor, Session, TransactionMode, Value};
 use postgres_types::{ToSql, Type};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -65,13 +62,8 @@ pub struct PgSession {
 }
 
 /// Session settings applied right after connecting.
-const SESSION_SETUP: &[&str] = &[
-    "SET DateStyle = 'ISO, MDY'",
-    "SET IntervalStyle = 'postgres'",
-    "SET extra_float_digits = 3",
-    "SET bytea_output = 'hex'",
-    "SET client_encoding = 'UTF8'",
-];
+const SESSION_SETUP: &[&str] =
+    &["SET DateStyle = 'ISO, MDY'", "SET IntervalStyle = 'postgres'", "SET extra_float_digits = 3", "SET bytea_output = 'hex'", "SET client_encoding = 'UTF8'"];
 
 /// Wraps a metadata operation: takes the session gate and, inside an open
 /// transaction, protects it with a savepoint so a failing catalog query
@@ -116,10 +108,7 @@ impl PgSession {
 
     async fn initialize(&mut self, props: &connect::Props) -> DbResult<()> {
         let client = self.client()?;
-        let rows = client
-            .simple_query("SELECT version(), pg_backend_pid(), current_database()")
-            .await
-            .map_err(pg)?;
+        let rows = client.simple_query("SELECT version(), pg_backend_pid(), current_database()").await.map_err(pg)?;
         let mut version = String::new();
         let mut pid = None;
         for m in rows {
@@ -140,12 +129,7 @@ impl PgSession {
         } else {
             version.split_whitespace().next().unwrap_or("PostgreSQL").to_string()
         };
-        self.info = ServerInfo {
-            version_number: dbiji_core::driver::parse_version_number(&version),
-            product,
-            version,
-            session_id: pid,
-        };
+        self.info = ServerInfo { version_number: dbiji_core::driver::parse_version_number(&version), product, version, session_id: pid };
         let client = self.client()?;
         match client.batch_execute(&SESSION_SETUP.join(";\n")).await {
             Ok(()) => {}
@@ -160,10 +144,7 @@ impl PgSession {
             }
         }
         if self.params.read_only {
-            client
-                .batch_execute("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY")
-                .await
-                .map_err(pg)?;
+            client.batch_execute("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY").await.map_err(pg)?;
         }
         if let Some(tsa) = props.target_session_attrs.as_deref() {
             self.check_target_session_attrs(tsa).await?;
@@ -194,11 +175,7 @@ impl PgSession {
                 return Err(DbError::config(format!("Invalid target_session_attrs value '{other}'")));
             }
         };
-        if ok {
-            Ok(())
-        } else {
-            Err(DbError::connection(format!("The server does not satisfy target_session_attrs={attrs}")))
-        }
+        if ok { Ok(()) } else { Err(DbError::connection(format!("The server does not satisfy target_session_attrs={attrs}"))) }
     }
 
     pub(crate) fn client(&self) -> DbResult<&Client> {
@@ -228,9 +205,7 @@ impl PgSession {
             Ok(g) => Ok(g),
             Err(_) => {
                 if self.shared.cursor_open.load(std::sync::atomic::Ordering::Acquire) {
-                    return Err(DbError::internal(
-                        "A previous result is still open on this session; close it before running another statement",
-                    ));
+                    return Err(DbError::internal("A previous result is still open on this session; close it before running another statement"));
                 }
                 match tokio::time::timeout(Duration::from_secs(90), self.shared.gate.clone().lock_owned()).await {
                     Ok(g) => Ok(g),
@@ -268,11 +243,7 @@ impl PgSession {
         if !savepoint {
             return;
         }
-        let sql = if ok {
-            "RELEASE SAVEPOINT dbiji_meta"
-        } else {
-            "ROLLBACK TO SAVEPOINT dbiji_meta; RELEASE SAVEPOINT dbiji_meta"
-        };
+        let sql = if ok { "RELEASE SAVEPOINT dbiji_meta" } else { "ROLLBACK TO SAVEPOINT dbiji_meta; RELEASE SAVEPOINT dbiji_meta" };
         if let Err(e) = self.batch(sql).await {
             tracing::warn!("releasing the metadata savepoint failed: {e}");
         }
@@ -353,28 +324,14 @@ impl PgSession {
             }
             for r in rows {
                 let key = (r.i(0)? as u32, r.i(1)? as i16);
-                self.source_cache.insert(
-                    key,
-                    Some(SourceInfo {
-                        schema: r.s(2)?,
-                        table: r.s(3)?,
-                        column: r.s(4)?,
-                        not_null: r.b(5)?,
-                        auto_increment: r.b(6)?,
-                    }),
-                );
+                self.source_cache.insert(key, Some(SourceInfo { schema: r.s(2)?, table: r.s(3)?, column: r.s(4)?, not_null: r.b(5)?, auto_increment: r.b(6)? }));
             }
         }
         for (c, plan) in columns.iter().zip(plans.iter_mut()) {
             if let (Some(t), Some(a)) = (c.table_oid, c.column_id)
                 && let Some(Some(src)) = self.source_cache.get(&(t, a))
             {
-                plan.meta.source = Some(ColumnSource {
-                    database: None,
-                    schema: Some(src.schema.clone()),
-                    table: src.table.clone(),
-                    column: src.column.clone(),
-                });
+                plan.meta.source = Some(ColumnSource { database: None, schema: Some(src.schema.clone()), table: src.table.clone(), column: src.column.clone() });
                 plan.meta.nullable = Some(!src.not_null);
                 plan.meta.auto_increment = Some(src.auto_increment);
             }
@@ -400,23 +357,10 @@ impl PgSession {
             }
         }
         let stream = self.client()?.simple_query_raw(sql).await.map_err(pg)?;
-        Ok(Body::Simple(SimpleBody {
-            stream: Box::pin(stream),
-            script,
-            stmt_index: 0,
-            prepared,
-            convs: Vec::new(),
-            results_seen: 0,
-        }))
+        Ok(Body::Simple(SimpleBody { stream: Box::pin(stream), script, stmt_index: 0, prepared, convs: Vec::new(), results_seen: 0 }))
     }
 
-    async fn extended_body(
-        &mut self,
-        sql: &str,
-        script: ScriptInfo,
-        params: &[Value],
-        opts: &ExecOptions,
-    ) -> DbResult<Body> {
+    async fn extended_body(&mut self, sql: &str, script: ScriptInfo, params: &[Value], opts: &ExecOptions) -> DbResult<Body> {
         if script.statements.len() > 1 {
             return Err(DbError::query("A statement with parameters must contain a single SQL command"));
         }
@@ -432,11 +376,7 @@ impl PgSession {
             Err(e) => return Err(map_error(&e)),
         };
         if stmt.params().len() != params.len() {
-            return Err(DbError::query(format!(
-                "The statement expects {} parameter(s) but {} were supplied",
-                stmt.params().len(),
-                params.len()
-            )));
+            return Err(DbError::query(format!("The statement expects {} parameter(s) but {} were supplied", stmt.params().len(), params.len())));
         }
         let columns = if stmt.columns().is_empty() {
             None
@@ -446,45 +386,27 @@ impl PgSession {
         };
         let text_params: Vec<TextParam<'_>> = params.iter().map(TextParam).collect();
         let client = self.client()?;
-        let stream = client
-            .query_raw(&stmt, text_params.iter().map(|p| p as &(dyn ToSql + Sync)))
-            .await
-            .map_err(pg)?;
+        let stream = client.query_raw(&stmt, text_params.iter().map(|p| p as &(dyn ToSql + Sync))).await.map_err(pg)?;
         Ok(Body::Extended(ExtendedBody { stream: Box::pin(stream), columns, info, header_done: false }))
     }
 
-    async fn execute_impl(
-        &mut self,
-        sql: &str,
-        params: &[Value],
-        opts: &ExecOptions,
-        guard: OwnedMutexGuard<()>,
-    ) -> DbResult<Box<dyn QueryCursor>> {
+    async fn execute_impl(&mut self, sql: &str, params: &[Value], opts: &ExecOptions, guard: OwnedMutexGuard<()>) -> DbResult<Box<dyn QueryCursor>> {
         self.shared.clear_notices();
         let script = ScriptInfo::analyze(sql);
         if script.has_copy_from_stdin() {
-            return Err(DbError::unsupported(
-                "COPY ... FROM STDIN cannot be run from the SQL editor; use the data import tool or COPY FROM a server side file",
-            ));
+            return Err(DbError::unsupported("COPY ... FROM STDIN cannot be run from the SQL editor; use the data import tool or COPY FROM a server side file"));
         }
         if script.statements.len() > 1 && script.statements.iter().any(|s| s.copy == CopyKind::ToStdout) {
             return Err(DbError::unsupported("Run COPY ... TO STDOUT as a single statement, not as part of a script"));
         }
-        if script
-            .statements
-            .iter()
-            .any(|s| matches!(s.verb.as_str(), "CREATE" | "ALTER" | "DROP" | "COMMENT" | "TRUNCATE"))
-        {
+        if script.statements.iter().any(|s| matches!(s.verb.as_str(), "CREATE" | "ALTER" | "DROP" | "COMMENT" | "TRUNCATE")) {
             self.source_cache.clear();
         }
         if script.is_empty() {
             return Ok(Box::new(PgCursor::new(Body::Empty, self.shared.clone(), guard, self.cancel.clone(), None, self.rt.clone())));
         }
         self.implicit_begin(&script).await?;
-        let timer = opts
-            .timeout
-            .filter(|t| !t.is_zero())
-            .map(|t| StatementTimer::start(&self.rt, t, self.cancel.clone()));
+        let timer = opts.timeout.filter(|t| !t.is_zero()).map(|t| StatementTimer::start(&self.rt, t, self.cancel.clone()));
         let copy_out = script.statements.len() == 1 && script.statements[0].copy == CopyKind::ToStdout;
         let body = if !params.is_empty() {
             self.extended_body(sql, script, params, opts).await
@@ -506,15 +428,13 @@ impl PgSession {
                         let _ = pending_cancel.await;
                     }
                     if fired && e.code.as_deref() == Some("57014") {
-                        e = DbError::timeout("The statement was cancelled because it exceeded the timeout")
-                            .with_code("57014");
+                        e = DbError::timeout("The statement was cancelled because it exceeded the timeout").with_code("57014");
                     }
                 }
                 Err(e)
             }
         }
     }
-
 }
 
 /// Errors after which a statement is executed without `Parse`/`Describe` metadata.
@@ -534,11 +454,7 @@ fn is_prepare_unsupported(e: &tokio_postgres::Error) -> bool {
 /// Highest `$n` placeholder number in `sql`.
 fn count_placeholders(sql: &str) -> usize {
     let toks = tokenize(sql);
-    toks.iter()
-        .filter(|t| t.tok == Tok::Param)
-        .filter_map(|t| sql.get(t.start + 1..t.end).and_then(|n| n.parse::<usize>().ok()))
-        .max()
-        .unwrap_or(0)
+    toks.iter().filter(|t| t.tok == Tok::Param).filter_map(|t| sql.get(t.start + 1..t.end).and_then(|n| n.parse::<usize>().ok())).max().unwrap_or(0)
 }
 
 /// The parts of a prepared statement column the driver needs.
@@ -551,15 +467,7 @@ pub(crate) struct ColInfo {
 }
 
 pub(crate) fn col_infos(cols: &[tokio_postgres::Column]) -> Vec<ColInfo> {
-    cols.iter()
-        .map(|c| ColInfo {
-            name: c.name().to_string(),
-            ty: c.type_().clone(),
-            typmod: c.type_modifier(),
-            table_oid: c.table_oid(),
-            column_id: c.column_id(),
-        })
-        .collect()
+    cols.iter().map(|c| ColInfo { name: c.name().to_string(), ty: c.type_().clone(), typmod: c.type_modifier(), table_oid: c.table_oid(), column_id: c.column_id() }).collect()
 }
 
 #[async_trait]
@@ -653,39 +561,39 @@ impl Session for PgSession {
         if self.database.is_some() {
             return Ok(self.database.clone());
         }
-        guarded!(self, async {
-            match self.q1("SELECT current_database()::text", &[]).await? {
-                Some(r) => r.os(0),
-                None => Ok(None),
+        guarded!(
+            self,
+            async {
+                match self.q1("SELECT current_database()::text", &[]).await? {
+                    Some(r) => r.os(0),
+                    None => Ok(None),
+                }
             }
-        }
-        .await)
+            .await
+        )
     }
 
     async fn current_schema(&mut self) -> DbResult<Option<String>> {
-        guarded!(self, async {
-            match self.q1("SELECT current_schema()::text", &[]).await? {
-                Some(r) => r.os(0),
-                None => Ok(None),
+        guarded!(
+            self,
+            async {
+                match self.q1("SELECT current_schema()::text", &[]).await? {
+                    Some(r) => r.os(0),
+                    None => Ok(None),
+                }
             }
-        }
-        .await)
+            .await
+        )
     }
 
     async fn set_current_schema(&mut self, schema: &str) -> DbResult<()> {
         let _g = self.acquire().await?;
-        let sql = if schema == "public" {
-            "SET search_path TO public".to_string()
-        } else {
-            format!("SET search_path TO {}, public", catalog::quote_ident_always(schema))
-        };
+        let sql = if schema == "public" { "SET search_path TO public".to_string() } else { format!("SET search_path TO {}, public", catalog::quote_ident_always(schema)) };
         self.batch(&sql).await
     }
 
     async fn set_current_database(&mut self, _database: &str) -> DbResult<()> {
-        Err(DbError::unsupported(
-            "PostgreSQL cannot switch the database of an open session; open a new session for the other database",
-        ))
+        Err(DbError::unsupported("PostgreSQL cannot switch the database of an open session; open a new session for the other database"))
     }
 
     async fn list_databases(&mut self) -> DbResult<Vec<DatabaseInfo>> {

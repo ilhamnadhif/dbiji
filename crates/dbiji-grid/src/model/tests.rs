@@ -205,13 +205,7 @@ fn change_statements_parameterised() {
     assert_eq!(cs.summary(), "2 updated, 2 inserted, 1 deleted");
     let stmts = cs.statements(&PgLike(GenericDialect::new()));
     assert_eq!(stmts[0], ("DELETE FROM app.people WHERE id = $1".to_string(), vec![Value::Int(4)]));
-    assert_eq!(
-        stmts[1],
-        (
-            "UPDATE app.people SET name = $1, age = $2 WHERE id = $3".to_string(),
-            vec![Value::text("Bob"), Value::Int(33), Value::Int(2)]
-        )
-    );
+    assert_eq!(stmts[1], ("UPDATE app.people SET name = $1, age = $2 WHERE id = $3".to_string(), vec![Value::text("Bob"), Value::Int(33), Value::Int(2)]));
     assert_eq!(stmts[2], ("UPDATE app.people SET score = DEFAULT WHERE id = $1".to_string(), vec![Value::Int(3)]));
     assert_eq!(stmts[3], ("INSERT INTO app.people (name) VALUES ($1)".to_string(), vec![Value::text("New")]));
     assert_eq!(stmts[4], ("INSERT INTO app.people DEFAULT VALUES".to_string(), vec![]));
@@ -232,21 +226,14 @@ fn change_statements_parameterised() {
 
 #[test]
 fn null_safe_keys_and_key_updates() {
-    let cols = vec![
-        ColumnMeta::new("code", "text", DataKind::Text).with_source(src("code")),
-        ColumnMeta::new("v", "int", DataKind::Int).with_source(src("v")),
-    ];
-    let mut m =
-        ResultModel::from_rows(cols, vec![vec![Value::Null, Value::Int(1)], vec![Value::text("a"), Value::Int(2)]]);
+    let cols = vec![ColumnMeta::new("code", "text", DataKind::Text).with_source(src("code")), ColumnMeta::new("v", "int", DataKind::Int).with_source(src("v"))];
+    let mut m = ResultModel::from_rows(cols, vec![vec![Value::Null, Value::Int(1)], vec![Value::text("a"), Value::Int(2)]]);
     m.set_editability(determine_editability(m.columns(), |_| Some(vec!["code".into()]), false));
     m.set_cell(0, 1, "10").unwrap();
     m.set_cell(1, 0, "b").unwrap();
     let stmts = m.change_statements(&PgLike(GenericDialect::new()));
     assert_eq!(stmts[0], ("UPDATE app.people SET v = $1 WHERE code IS NULL".to_string(), vec![Value::Int(10)]));
-    assert_eq!(
-        stmts[1],
-        ("UPDATE app.people SET code = $1 WHERE code = $2".to_string(), vec![Value::text("b"), Value::text("a")])
-    );
+    assert_eq!(stmts[1], ("UPDATE app.people SET code = $1 WHERE code = $2".to_string(), vec![Value::text("b"), Value::text("a")]));
 }
 
 #[test]
@@ -263,10 +250,7 @@ fn apply_saved_updates_store_and_view() {
     assert_eq!(m.row_count(), 5);
     assert_eq!(m.stored_row_count(), 6);
     let names: Vec<Value> = (0..5).map(|d| m.cell(d, 1).unwrap()).collect();
-    assert_eq!(
-        names,
-        vec![Value::text("p0"), Value::text("p1"), Value::text("ins"), Value::text("p2"), Value::text("p4")]
-    );
+    assert_eq!(names, vec![Value::text("p0"), Value::text("p1"), Value::text("ins"), Value::text("p2"), Value::text("p4")]);
     assert_eq!(m.store().lock().cell(0, 2), Some(&Value::Int(99)));
     assert_eq!(m.row_state(0), RowState::Unchanged);
     // Rows fetched later are appended to the (materialized) view.
@@ -295,22 +279,15 @@ fn apply_saved_simple_append_keeps_identity() {
 #[test]
 fn client_view_and_inserted_anchor() {
     let mut m = model(6);
-    let idx = crate::view::compute_view(
-        m.store(),
-        &ViewSpec { sort: vec![SortKey::desc(0)], filter: None },
-        &m.view_context(),
-        &std::sync::atomic::AtomicBool::new(false),
-    )
-    .unwrap();
+    let idx =
+        crate::view::compute_view(m.store(), &ViewSpec { sort: vec![SortKey::desc(0)], filter: None }, &m.view_context(), &std::sync::atomic::AtomicBool::new(false)).unwrap();
     m.set_view_index(idx, ViewSpec { sort: vec![SortKey::desc(0)], filter: None });
     assert_eq!(m.cell(0, 0), Some(Value::Int(6)));
     // Insert after the row with id 6, then re-sort ascending: the new row follows id 6.
     let r = m.add_row(Some(0)).unwrap();
     assert_eq!(r, 1);
     let spec = ViewSpec { sort: vec![SortKey::asc(0)], filter: None };
-    let idx =
-        crate::view::compute_view(m.store(), &spec, &m.view_context(), &std::sync::atomic::AtomicBool::new(false))
-            .unwrap();
+    let idx = crate::view::compute_view(m.store(), &spec, &m.view_context(), &std::sync::atomic::AtomicBool::new(false)).unwrap();
     m.set_view_index(idx, spec);
     assert_eq!(m.row_state(6), RowState::Inserted);
     assert_eq!(m.cell(5, 0), Some(Value::Int(6)));
@@ -323,9 +300,7 @@ fn client_view_and_inserted_anchor() {
     // Filter hides rows; inserted rows stay visible.
     let f = ClientFilter::parse("age > 21", &m.column_names()).unwrap();
     let spec = ViewSpec { sort: vec![], filter: Some(f) };
-    let idx =
-        crate::view::compute_view(m.store(), &spec, &m.view_context(), &std::sync::atomic::AtomicBool::new(false))
-            .unwrap();
+    let idx = crate::view::compute_view(m.store(), &spec, &m.view_context(), &std::sync::atomic::AtomicBool::new(false)).unwrap();
     m.set_view_index(idx, spec);
     assert_eq!(m.stored_row_count(), 7);
     let visible: Vec<Option<Value>> = (0..m.row_count()).map(|d| m.cell(d, 2)).collect();
@@ -380,8 +355,7 @@ fn virtual_columns() {
 #[test]
 fn paste_block_adds_rows_and_validates() {
     let mut m = model(2);
-    let block =
-        vec![vec!["Ann".to_string(), "30".into()], vec!["Ben".into(), "31".into()], vec!["Cy".into(), "32".into()]];
+    let block = vec![vec!["Ann".to_string(), "30".into()], vec!["Ben".into(), "31".into()], vec!["Cy".into(), "32".into()]];
     let n = m.paste_block(1, &block, &[1, 2]).unwrap();
     assert_eq!(n, 6);
     assert_eq!(m.row_count(), 4);

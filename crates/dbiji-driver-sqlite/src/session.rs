@@ -98,7 +98,10 @@ impl SqliteSession {
         let (tx, rx) = oneshot::channel();
         self.tx
             .send(Command::Call(Box::new(move |w: &mut Worker| {
-                let _ = tx.send(f(w));
+                let r = f(w);
+                // Before replying: the caller may read in_transaction() right away.
+                w.sync_state();
+                let _ = tx.send(r);
             })))
             .map_err(|_| worker_gone())?;
         rx.await.map_err(|_| {

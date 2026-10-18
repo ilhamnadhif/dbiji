@@ -44,8 +44,7 @@ async fn auto_generators_fill_a_table() {
     session.exec_batch(SCHEMA);
     let def = customers_def(&mut session).await;
     let generators = auto_generators(&def);
-    let config =
-        MockConfig { table: def.clone(), rows: 300, generators, batch_size: 64, seed: Some(42), ..Default::default() };
+    let config = MockConfig { table: def.clone(), rows: 300, generators, batch_size: 64, seed: Some(42), ..Default::default() };
     let progress = Progress::new();
     let s = run_mock(&config, &mut session, &progress, &CancellationToken::new()).await.unwrap();
     assert_eq!(s.rows_inserted, 300);
@@ -101,10 +100,7 @@ async fn seeds_reproduce_and_sequences_continue() {
     assert_eq!(select(&a.conn, q), select(&b.conn, q));
     // A second run continues the unique sequence after MAX(code).
     run_mock(&config, &mut a, &Progress::new(), &CancellationToken::new()).await.unwrap();
-    assert_eq!(
-        select(&a.conn, "SELECT min(code), max(code), count(*) FROM customers"),
-        vec![vec![Value::Int(1), Value::Int(100), Value::Int(100)]]
-    );
+    assert_eq!(select(&a.conn, "SELECT min(code), max(code), count(*) FROM customers"), vec![vec![Value::Int(1), Value::Int(100), Value::Int(100)]]);
     // Truncate first starts over.
     let config = MockConfig { mode: MockMode::TruncateFirst, rows: 5, ..config };
     run_mock(&config, &mut a, &Progress::new(), &CancellationToken::new()).await.unwrap();
@@ -140,10 +136,7 @@ async fn explicit_generators_null_ratio_and_errors() {
     let fk = MockConfig {
         table: child,
         rows: 2,
-        generators: vec![ColumnGenerator::new(
-            "pid",
-            GeneratorKind::ForeignKey { table: ObjectRef::table(None, "parent"), column: "id".into(), group: None },
-        )],
+        generators: vec![ColumnGenerator::new("pid", GeneratorKind::ForeignKey { table: ObjectRef::table(None, "parent"), column: "id".into(), group: None })],
         ..Default::default()
     };
     let err = run_mock(&fk, &mut session, &Progress::new(), &CancellationToken::new()).await.unwrap_err();
@@ -160,13 +153,7 @@ async fn explicit_generators_null_ratio_and_errors() {
 fn config_is_serialisable() {
     let mut def = TableDef::new(None, "t");
     def.columns.push(dbiji_core::ddl::ColumnDef::new("d", "date"));
-    let config = MockConfig {
-        table: def.clone(),
-        rows: 10,
-        generators: auto_generators(&def),
-        seed: Some(1),
-        ..Default::default()
-    };
+    let config = MockConfig { table: def.clone(), rows: 10, generators: auto_generators(&def), seed: Some(1), ..Default::default() };
     let s = serde_json::to_string(&config).unwrap();
     assert!(s.contains("\"type\":\"date_range\""), "{s}");
     assert_eq!(serde_json::from_str::<MockConfig>(&s).unwrap(), config);

@@ -17,10 +17,7 @@ use dbiji_core::config::{SslConfig, SslMode};
 use dbiji_core::ddl::{DdlGenerator, SnapshotOptions, TableDef};
 use dbiji_core::driver::{execute_update, query_all, query_scalar};
 use dbiji_core::meta::{MetadataSearch, ObjectKind, ObjectRef, SchemaRef};
-use dbiji_core::{
-    ConnectParams, DataKind, DbKind, Driver, ErrorKind, ExecOptions, ResultHeader, Secret, Session,
-    TransactionMode, Value,
-};
+use dbiji_core::{ConnectParams, DataKind, DbKind, Driver, ErrorKind, ExecOptions, ResultHeader, Secret, Session, TransactionMode, Value};
 use dbiji_driver_postgres::{PgDdl, PostgresDriver};
 use std::time::{Duration, Instant};
 
@@ -228,14 +225,8 @@ async fn multiple_statements_and_tags() {
             headers.push(h);
         }
         assert_eq!(headers.len(), 6, "{headers:?}");
-        assert_eq!(
-            headers[0],
-            ResultHeader::Update { rows_affected: None, last_insert_id: None, tag: Some("CREATE TABLE".into()) }
-        );
-        assert_eq!(
-            headers[1],
-            ResultHeader::Update { rows_affected: Some(2), last_insert_id: None, tag: Some("INSERT 0 2".into()) }
-        );
+        assert_eq!(headers[0], ResultHeader::Update { rows_affected: None, last_insert_id: None, tag: Some("CREATE TABLE".into()) });
+        assert_eq!(headers[1], ResultHeader::Update { rows_affected: Some(2), last_insert_id: None, tag: Some("INSERT 0 2".into()) });
         // multi statement results have no metadata: text columns
         match &headers[2] {
             ResultHeader::Rows(c) => {
@@ -251,10 +242,7 @@ async fn multiple_statements_and_tags() {
         cur.close().await.unwrap();
 
         // advancing with unread rows discards them
-        let mut cur = s
-            .execute("SELECT g FROM generate_series(1, 5000) g; SELECT 'second'", &[], &ExecOptions::default())
-            .await
-            .unwrap();
+        let mut cur = s.execute("SELECT g FROM generate_series(1, 5000) g; SELECT 'second'", &[], &ExecOptions::default()).await.unwrap();
         assert!(matches!(cur.next_result().await.unwrap(), Some(ResultHeader::Rows(_))));
         assert_eq!(cur.fetch(3).await.unwrap().len(), 3);
         assert!(matches!(cur.next_result().await.unwrap(), Some(ResultHeader::Rows(_))));
@@ -325,11 +313,7 @@ async fn million_rows_bounded_memory() {
     let before = rss_kib();
     let started = Instant::now();
     let mut cur = s
-        .execute(
-            "SELECT g, 'row ' || g || ' with some padding text to make it larger', now(), g * 1.5 FROM generate_series(1, 1000000) g",
-            &[],
-            &ExecOptions::default(),
-        )
+        .execute("SELECT g, 'row ' || g || ' with some padding text to make it larger', now(), g * 1.5 FROM generate_series(1, 1000000) g", &[], &ExecOptions::default())
         .await
         .unwrap();
     assert!(matches!(cur.next_result().await.unwrap(), Some(ResultHeader::Rows(_))));
@@ -419,10 +403,7 @@ async fn statement_timeout_and_abandoned_cursors() {
 
     // closing with unread rows cancels the remaining work quickly
     let started = Instant::now();
-    let mut cur = s
-        .execute("SELECT g FROM generate_series(1, 50000000) g", &[], &ExecOptions::default())
-        .await
-        .unwrap();
+    let mut cur = s.execute("SELECT g FROM generate_series(1, 50000000) g", &[], &ExecOptions::default()).await.unwrap();
     assert!(matches!(cur.next_result().await.unwrap(), Some(ResultHeader::Rows(_))));
     assert_eq!(cur.fetch(10).await.unwrap().len(), 10);
     cur.close().await.unwrap();
@@ -430,10 +411,7 @@ async fn statement_timeout_and_abandoned_cursors() {
     assert_eq!(scalar(&mut s, "SELECT 2").await, Value::Int(2));
 
     // dropping without close: the next statement waits for the background cleanup
-    let mut cur = s
-        .execute("SELECT g FROM generate_series(1, 50000000) g", &[], &ExecOptions::default())
-        .await
-        .unwrap();
+    let mut cur = s.execute("SELECT g FROM generate_series(1, 50000000) g", &[], &ExecOptions::default()).await.unwrap();
     assert!(matches!(cur.next_result().await.unwrap(), Some(ResultHeader::Rows(_))));
     assert_eq!(cur.fetch(5).await.unwrap().len(), 5);
     drop(cur);
@@ -556,14 +534,7 @@ async fn notices_and_error_details() {
     let params = params_from_url(&url);
     with_schema(&params, |params, schema| async move {
         let mut s = connect(&params).await;
-        let mut cur = s
-            .execute(
-                "DO $$ BEGIN RAISE NOTICE 'hello %', 42; RAISE WARNING 'careful' USING HINT = 'look'; END $$",
-                &[],
-                &ExecOptions::default(),
-            )
-            .await
-            .unwrap();
+        let mut cur = s.execute("DO $$ BEGIN RAISE NOTICE 'hello %', 42; RAISE WARNING 'careful' USING HINT = 'look'; END $$", &[], &ExecOptions::default()).await.unwrap();
         while cur.next_result().await.unwrap().is_some() {}
         let msgs = cur.take_messages();
         assert!(msgs.iter().any(|m| m.severity == "NOTICE" && m.message == "hello 42"), "{msgs:?}");
@@ -582,13 +553,7 @@ async fn notices_and_error_details() {
         assert_eq!(e.kind, ErrorKind::Syntax);
         assert_eq!(e.position, Some(1));
         // error inside a function carries the PL/pgSQL context
-        exec(
-            &mut s,
-            &format!(
-                "CREATE FUNCTION {schema}.boom() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN 1 / 0; END $$"
-            ),
-        )
-        .await;
+        exec(&mut s, &format!("CREATE FUNCTION {schema}.boom() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN 1 / 0; END $$")).await;
         let e = execute_update(&mut *s, &format!("SELECT {schema}.boom()"), &[]).await.unwrap_err();
         assert_eq!(e.code.as_deref(), Some("22012"));
         assert!(e.context.as_deref().unwrap_or("").contains("PL/pgSQL function"), "{}", e.full_text());
@@ -653,14 +618,10 @@ async fn parameters_round_trip() {
             Value::text("{{1,2},{3,4}}"),
         ];
         let placeholders: Vec<String> = (1..=values.len()).map(|i| format!("${i}")).collect();
-        let n = execute_update(&mut *s, &format!("INSERT INTO {schema}.p VALUES ({})", placeholders.join(", ")), &values)
-            .await
-            .unwrap_or_else(|e| panic!("{}", e.full_text()));
+        let n = execute_update(&mut *s, &format!("INSERT INTO {schema}.p VALUES ({})", placeholders.join(", ")), &values).await.unwrap_or_else(|e| panic!("{}", e.full_text()));
         assert_eq!(n, Some(1));
         // read back through the parameter path (binary results)
-        let (cols, data) = query_all(&mut *s, &format!("SELECT * FROM {schema}.p WHERE id = $1"), &[Value::Int(1)])
-            .await
-            .unwrap_or_else(|e| panic!("{}", e.full_text()));
+        let (cols, data) = query_all(&mut *s, &format!("SELECT * FROM {schema}.p WHERE id = $1"), &[Value::Int(1)]).await.unwrap_or_else(|e| panic!("{}", e.full_text()));
         let row = &data[0];
         let get = |name: &str| &row[cols.iter().position(|c| c.name == name).unwrap()];
         assert_eq!(get("b"), &Value::Bool(true));
@@ -695,10 +656,7 @@ async fn parameters_round_trip() {
         assert_eq!(get("mia"), &Value::text("{{1,2},{3,4}}"));
         // the same row through the text protocol renders identically for text kinds
         let text_rows = rows(&mut s, &format!("SELECT ia, ta, r, iv, ttz, mia FROM {schema}.p")).await;
-        assert_eq!(
-            text_rows[0],
-            vec![get("ia").clone(), get("ta").clone(), get("r").clone(), get("iv").clone(), get("ttz").clone(), get("mia").clone()]
-        );
+        assert_eq!(text_rows[0], vec![get("ia").clone(), get("ta").clone(), get("r").clone(), get("iv").clone(), get("ttz").clone(), get("mia").clone()]);
         // update and delete with parameters, RETURNING through the parameter path
         let (_, ret) = query_all(
             &mut *s,
@@ -708,9 +666,7 @@ async fn parameters_round_trip() {
         .await
         .unwrap();
         assert_eq!(ret, vec![vec![Value::text("new"), Value::text("{9}")]]);
-        let n = execute_update(&mut *s, &format!("UPDATE {schema}.p SET b = $1 WHERE id = $2"), &[Value::Null, Value::Int(1)])
-            .await
-            .unwrap();
+        let n = execute_update(&mut *s, &format!("UPDATE {schema}.p SET b = $1 WHERE id = $2"), &[Value::Null, Value::Int(1)]).await.unwrap();
         assert_eq!(n, Some(1));
         assert_eq!(scalar(&mut s, &format!("SELECT b IS NULL FROM {schema}.p")).await, Value::Bool(true));
         // untyped parameter (SELECT $1) works too
@@ -718,14 +674,10 @@ async fn parameters_round_trip() {
         // a placeholder without parameters is a server error; too many parameters a client error
         let e = execute_update(&mut *s, &format!("DELETE FROM {schema}.p WHERE id = $1"), &[]).await.unwrap_err();
         assert_eq!(e.code.as_deref(), Some("42P02"), "{}", e.full_text());
-        let e = execute_update(&mut *s, &format!("DELETE FROM {schema}.p WHERE id = $1"), &[Value::Int(1), Value::Int(2)])
-            .await
-            .unwrap_err();
+        let e = execute_update(&mut *s, &format!("DELETE FROM {schema}.p WHERE id = $1"), &[Value::Int(1), Value::Int(2)]).await.unwrap_err();
         assert_eq!(e.kind, ErrorKind::Query);
         // invalid input is a server error, not a client crash
-        let e = execute_update(&mut *s, &format!("DELETE FROM {schema}.p WHERE id = $1"), &[Value::text("abc")])
-            .await
-            .unwrap_err();
+        let e = execute_update(&mut *s, &format!("DELETE FROM {schema}.p WHERE id = $1"), &[Value::text("abc")]).await.unwrap_err();
         assert_eq!(e.code.as_deref(), Some("22P02"));
         let n = execute_update(&mut *s, &format!("DELETE FROM {schema}.p WHERE id = $1"), &[Value::Int(1)]).await.unwrap();
         assert_eq!(n, Some(1));
@@ -743,10 +695,7 @@ async fn resolve_sources_of_result_columns() {
         exec(&mut s, &format!("CREATE TABLE {schema}.src (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, name text NOT NULL, note text)")).await;
         exec(&mut s, &format!("CREATE VIEW {schema}.src_v AS SELECT id, name FROM {schema}.src")).await;
         let opts = ExecOptions { resolve_sources: true, ..Default::default() };
-        for sql in [
-            format!("SELECT id, name, note, 1 AS x FROM {schema}.src"),
-            format!("SELECT id, name, note, 1 AS x FROM {schema}.src WHERE id = $1"),
-        ] {
+        for sql in [format!("SELECT id, name, note, 1 AS x FROM {schema}.src"), format!("SELECT id, name, note, 1 AS x FROM {schema}.src WHERE id = $1")] {
             let p = if sql.contains("$1") { vec![Value::Int(1)] } else { Vec::new() };
             let mut cur = s.execute(&sql, &p, &opts).await.unwrap();
             let Some(ResultHeader::Rows(cols)) = cur.next_result().await.unwrap() else { panic!() };
@@ -1059,14 +1008,18 @@ async fn metadata_of_every_object_kind() {
         assert!(props.iter().any(|p| p.name == "Owner"));
         assert!(props.iter().any(|p| p.name == "Comment" && p.value.contains("important")));
         assert!(props.iter().any(|p| p.name == "Options" && p.value.contains("fillfactor")));
-        for o in [&add_int, &ddl_of(ObjectKind::Type, "status"), &ddl_of(ObjectKind::Sequence, "ticket_seq"),
-                  &ObjectRef::new(ObjectKind::Schema, None, schema.clone()),
-                  &ObjectRef::child(ObjectKind::Column, &orders, "status"),
-                  &ObjectRef::child(ObjectKind::Index, &orders, "orders_tags_gin"),
-                  &ObjectRef::child(ObjectKind::Trigger, &orders, "orders_touch"),
-                  &ObjectRef::child(ObjectKind::CheckConstraint, &orders, "orders_price_check"),
-                  &ObjectRef::new(ObjectKind::Database, None, params.database.clone().unwrap()),
-                  &ObjectRef::new(ObjectKind::Extension, None, "plpgsql")] {
+        for o in [
+            &add_int,
+            &ddl_of(ObjectKind::Type, "status"),
+            &ddl_of(ObjectKind::Sequence, "ticket_seq"),
+            &ObjectRef::new(ObjectKind::Schema, None, schema.clone()),
+            &ObjectRef::child(ObjectKind::Column, &orders, "status"),
+            &ObjectRef::child(ObjectKind::Index, &orders, "orders_tags_gin"),
+            &ObjectRef::child(ObjectKind::Trigger, &orders, "orders_touch"),
+            &ObjectRef::child(ObjectKind::CheckConstraint, &orders, "orders_price_check"),
+            &ObjectRef::new(ObjectKind::Database, None, params.database.clone().unwrap()),
+            &ObjectRef::new(ObjectKind::Extension, None, "plpgsql"),
+        ] {
             let p = s.object_properties(o).await.unwrap_or_else(|e| panic!("{o}: {}", e.full_text()));
             assert!(!p.is_empty(), "no properties for {o}");
         }
@@ -1083,10 +1036,7 @@ async fn metadata_of_every_object_kind() {
         assert!(!s.object_statistics(&ObjectRef::child(ObjectKind::Index, &orders, "orders_pkey")).await.unwrap().is_empty());
 
         // search
-        let found = s
-            .search_metadata(&MetadataSearch { pattern: "custom*".into(), schemas: vec![schema.clone()], ..Default::default() })
-            .await
-            .unwrap();
+        let found = s.search_metadata(&MetadataSearch { pattern: "custom*".into(), schemas: vec![schema.clone()], ..Default::default() }).await.unwrap();
         assert!(found.iter().any(|o| o.obj.kind == ObjectKind::Table && o.obj.name == "customers"));
         assert!(found.iter().any(|o| o.obj.kind == ObjectKind::Column && o.obj.name == "customer_id" && o.obj.table.as_deref() == Some("orders")));
         let found = s
@@ -1100,26 +1050,13 @@ async fn metadata_of_every_object_kind() {
             .await
             .unwrap();
         assert_eq!(names(&found), vec!["customers"]);
-        let only_columns = s
-            .search_metadata(&MetadataSearch {
-                pattern: "credit".into(),
-                schemas: vec![schema.clone()],
-                kinds: vec![ObjectKind::Column],
-                ..Default::default()
-            })
-            .await
-            .unwrap();
+        let only_columns =
+            s.search_metadata(&MetadataSearch { pattern: "credit".into(), schemas: vec![schema.clone()], kinds: vec![ObjectKind::Column], ..Default::default() }).await.unwrap();
         assert_eq!(only_columns.len(), 1);
         assert_eq!(only_columns[0].obj.table.as_deref(), Some("customers"));
-        let routines = s
-            .search_metadata(&MetadataSearch { pattern: "ADD".into(), kinds: vec![ObjectKind::Function], ..Default::default() })
-            .await
-            .unwrap();
+        let routines = s.search_metadata(&MetadataSearch { pattern: "ADD".into(), kinds: vec![ObjectKind::Function], ..Default::default() }).await.unwrap();
         assert!(routines.iter().any(|o| o.obj.schema.as_deref() == Some(schema.as_str()) && o.obj.signature.is_some()));
-        let limited = s
-            .search_metadata(&MetadataSearch { pattern: "*".into(), schemas: vec![schema.clone()], limit: 3, ..Default::default() })
-            .await
-            .unwrap();
+        let limited = s.search_metadata(&MetadataSearch { pattern: "*".into(), schemas: vec![schema.clone()], limit: 3, ..Default::default() }).await.unwrap();
         assert_eq!(limited.len(), 3);
 
         // snapshot
@@ -1423,12 +1360,7 @@ async fn backup_and_restore_with_local_tools() {
         std::fs::create_dir_all(&dir).unwrap();
         for (format, file) in [(BackupFormat::Plain, "dump.sql"), (BackupFormat::Custom, "dump.custom")] {
             let out = dir.join(file);
-            let cmd = driver
-                .backup_command(
-                    &params,
-                    &BackupOptions { output: out.clone(), format, schemas: vec![schema.clone()], no_owner: true, ..Default::default() },
-                )
-                .unwrap();
+            let cmd = driver.backup_command(&params, &BackupOptions { output: out.clone(), format, schemas: vec![schema.clone()], no_owner: true, ..Default::default() }).unwrap();
             let status = run(&cmd);
             assert!(status, "pg_dump failed: {}", cmd.display());
             assert!(out.is_file());
@@ -1632,7 +1564,6 @@ async fn postgis_geometry_values() {
     s.close().await.ok();
 }
 
-
 #[tokio::test]
 async fn tls_modes() {
     let (Some(url), Some(dir)) = (dbg_url(), tls_dir()) else { return };
@@ -1738,15 +1669,10 @@ async fn large_schema_metadata_is_fast() {
         let light_time = started.elapsed();
         assert_eq!(light.tables.len(), 1000);
         let started = Instant::now();
-        let found = s
-            .search_metadata(&MetadataSearch { pattern: "t99*".into(), schemas: vec![schema.clone()], ..Default::default() })
-            .await
-            .unwrap();
+        let found = s.search_metadata(&MetadataSearch { pattern: "t99*".into(), schemas: vec![schema.clone()], ..Default::default() }).await.unwrap();
         let search_time = started.elapsed();
         assert!(found.iter().any(|o| o.obj.name == "t999"));
-        eprintln!(
-            "1000 tables: list {list_time:?}, full snapshot {snap_time:?}, light snapshot {light_time:?}, search {search_time:?}"
-        );
+        eprintln!("1000 tables: list {list_time:?}, full snapshot {snap_time:?}, light snapshot {light_time:?}, search {search_time:?}");
         assert!(list_time < Duration::from_secs(2), "list took {list_time:?}");
         assert!(snap_time < Duration::from_secs(10), "snapshot took {snap_time:?}");
         // drop in batches as well

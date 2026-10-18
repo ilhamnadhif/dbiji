@@ -85,19 +85,7 @@ fn editor_validation_keeps_editor_open() {
 fn bool_toggle_delete_duplicate_and_set_null() {
     let mut h = GridHarness::new(editable_model(5));
     h.click_at(h.cell_center(0, 2), PointerButton::Primary, Modifiers::NONE);
-    h.frame_mods(
-        vec![
-            Event::Key {
-                key: Key::Space,
-                physical_key: None,
-                pressed: true,
-                repeat: false,
-                modifiers: Modifiers::NONE,
-            },
-            Event::Text(" ".into()),
-        ],
-        Modifiers::NONE,
-    );
+    h.frame_mods(vec![Event::Key { key: Key::Space, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE }, Event::Text(" ".into())], Modifiers::NONE);
     assert_eq!(h.model.cell(0, 2), Some(Value::Bool(false)), "space toggles booleans");
     assert!(!h.state.is_editing());
     h.key(Key::D, Modifiers::COMMAND);
@@ -215,10 +203,7 @@ fn foreign_key_navigation_with_command_click() {
     let p = h.cell_center(2, 3);
     h.frame_mods(vec![Event::PointerMoved(p)], Modifiers::COMMAND);
     h.frame_mods(vec![crate::test_support::press(p, PointerButton::Primary, Modifiers::COMMAND)], Modifiers::COMMAND);
-    let found = h
-        .actions
-        .iter()
-        .any(|a| matches!(a, GridAction::NavigateForeignKey { values, .. } if values == &vec![Value::Int(3)]));
+    let found = h.actions.iter().any(|a| matches!(a, GridAction::NavigateForeignKey { values, .. } if values == &vec![Value::Int(3)]));
     assert!(found, "{:?}", h.actions);
     // A plain click only selects.
     h.frame(vec![crate::test_support::release(p, PointerButton::Primary, Modifiers::NONE)]);
@@ -277,11 +262,7 @@ fn accessibility_label_describes_grid_and_cell() {
 #[test]
 fn virtual_column_dialog_adds_column() {
     let mut h = GridHarness::new(editable_model(3));
-    h.state.rt.virtual_dialog = Some(super::state::VirtualColumnDialog {
-        name: "twice".into(),
-        expression: "id * 2".into(),
-        ..Default::default()
-    });
+    h.state.rt.virtual_dialog = Some(super::state::VirtualColumnDialog { name: "twice".into(), expression: "id * 2".into(), ..Default::default() });
     h.frame(vec![]);
     // Simulate pressing "Add": apply through the model API used by the dialog.
     let idx = h.model.add_virtual_column("twice", "id * 2").unwrap();

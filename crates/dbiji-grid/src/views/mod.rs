@@ -13,12 +13,7 @@ use egui::{ScrollArea, TextStyle, Ui};
 use std::sync::Arc;
 
 /// Show pre-rendered lines in a virtualised, monospace scroll area.
-pub(crate) fn show_lines(
-    ui: &mut Ui,
-    id_salt: impl std::hash::Hash + std::fmt::Debug,
-    lines: &Arc<Vec<String>>,
-    max_chars: usize,
-) {
+pub(crate) fn show_lines(ui: &mut Ui, id_salt: impl std::hash::Hash + std::fmt::Debug, lines: &Arc<Vec<String>>, max_chars: usize) {
     let font = TextStyle::Monospace.resolve(ui.style());
     let row_h = ui.fonts_mut(|f| f.row_height(&font));
     let char_w = ui.fonts_mut(|f| f.glyph_width(&font, 'M'));

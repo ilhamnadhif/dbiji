@@ -106,10 +106,7 @@ impl Default for MsSqlDialect {
 }
 
 fn base_type(type_name: Option<&str>) -> String {
-    type_name
-        .map(|t| t.trim().to_ascii_lowercase())
-        .map(|t| t.split(['(', ' ']).next().unwrap_or("").trim_matches(|c| c == '[' || c == ']').to_string())
-        .unwrap_or_default()
+    type_name.map(|t| t.trim().to_ascii_lowercase()).map(|t| t.split(['(', ' ']).next().unwrap_or("").trim_matches(|c| c == '[' || c == ']').to_string()).unwrap_or_default()
 }
 
 impl Dialect for MsSqlDialect {
@@ -190,18 +187,8 @@ impl Dialect for MsSqlDialect {
                 let off = dt.offset().local_minus_utc();
                 let sign = if off < 0 { '-' } else { '+' };
                 let off = off.abs();
-                let text = format!(
-                    "{}{}{sign}{:02}:{:02}",
-                    local.format("%Y-%m-%d %H:%M:%S"),
-                    fraction(local.nanosecond(), 7),
-                    off / 3600,
-                    (off % 3600) / 60
-                );
-                if base.is_empty() || base == "datetimeoffset" {
-                    format!("CAST('{text}' AS datetimeoffset)")
-                } else {
-                    format!("'{text}'")
-                }
+                let text = format!("{}{}{sign}{:02}:{:02}", local.format("%Y-%m-%d %H:%M:%S"), fraction(local.nanosecond(), 7), off / 3600, (off % 3600) / 60);
+                if base.is_empty() || base == "datetimeoffset" { format!("CAST('{text}' AS datetimeoffset)") } else { format!("'{text}'") }
             }
             Value::Array(_) => nstring(&value.to_text()),
         }
@@ -221,16 +208,17 @@ impl Dialect for MsSqlDialect {
         if simple && shape.order_by.is_some() {
             return format!("{inner}\nOFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY");
         }
-        if simple && offset == 0 && !shape.has_set_op
-            && let Some(at) = shape.top_insert_at {
-                return format!("{} TOP ({limit}){}", &inner[..at], &inner[at..]);
-            }
+        if simple
+            && offset == 0
+            && !shape.has_set_op
+            && let Some(at) = shape.top_insert_at
+        {
+            return format!("{} TOP ({limit}){}", &inner[..at], &inner[at..]);
+        }
         if shape.has_into {
             return inner.to_string();
         }
-        format!(
-            "SELECT * FROM ({inner}) dbiji_q ORDER BY (SELECT NULL) OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY"
-        )
+        format!("SELECT * FROM ({inner}) dbiji_q ORDER BY (SELECT NULL) OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY")
     }
 
     fn count_query(&self, sql: &str) -> String {
@@ -244,14 +232,7 @@ impl Dialect for MsSqlDialect {
         format!("SELECT COUNT_BIG(*) FROM ({body}) dbiji_cnt")
     }
 
-    fn select_table(
-        &self,
-        table: &ObjectRef,
-        columns: Option<&[String]>,
-        where_clause: Option<&str>,
-        order_by: Option<&str>,
-        limit: Option<u64>,
-    ) -> String {
+    fn select_table(&self, table: &ObjectRef, columns: Option<&[String]>, where_clause: Option<&str>, order_by: Option<&str>, limit: Option<u64>) -> String {
         let cols = match columns {
             Some(c) if !c.is_empty() => c.iter().map(|c| ident(c)).collect::<Vec<_>>().join(", "),
             _ => "*".to_string(),
@@ -274,24 +255,12 @@ impl Dialect for MsSqlDialect {
             return None;
         }
         let on = key_columns.iter().map(|k| format!("t.{k} = s.{k}")).collect::<Vec<_>>().join(" AND ");
-        let updates: Vec<String> = columns
-            .iter()
-            .filter(|c| !key_columns.contains(c))
-            .map(|c| format!("t.{c} = s.{c}"))
-            .collect();
-        let mut sql = format!(
-            "MERGE INTO {table} WITH (HOLDLOCK) AS t\nUSING (VALUES ({})) AS s ({})\nON {on}",
-            values.join(", "),
-            columns.join(", ")
-        );
+        let updates: Vec<String> = columns.iter().filter(|c| !key_columns.contains(c)).map(|c| format!("t.{c} = s.{c}")).collect();
+        let mut sql = format!("MERGE INTO {table} WITH (HOLDLOCK) AS t\nUSING (VALUES ({})) AS s ({})\nON {on}", values.join(", "), columns.join(", "));
         if !updates.is_empty() {
             sql.push_str(&format!("\nWHEN MATCHED THEN UPDATE SET {}", updates.join(", ")));
         }
-        sql.push_str(&format!(
-            "\nWHEN NOT MATCHED THEN INSERT ({}) VALUES ({});",
-            columns.join(", "),
-            columns.iter().map(|c| format!("s.{c}")).collect::<Vec<_>>().join(", ")
-        ));
+        sql.push_str(&format!("\nWHEN NOT MATCHED THEN INSERT ({}) VALUES ({});", columns.join(", "), columns.iter().map(|c| format!("s.{c}")).collect::<Vec<_>>().join(", ")));
         Some(sql)
     }
 
@@ -375,11 +344,7 @@ impl Dialect for MsSqlDialect {
     fn maintenance_sql(&self, op: &str, targets: &[ObjectRef], options: &BTreeMap<String, bool>) -> Vec<String> {
         let opt = |k: &str, d: bool| options.get(k).copied().unwrap_or(d);
         let table_of = |t: &ObjectRef| -> String {
-            if t.kind == ObjectKind::Index {
-                t.parent_table().map(|p| self.qualified_ref(&p)).unwrap_or_else(|| self.qualified_ref(t))
-            } else {
-                self.qualified_ref(t)
-            }
+            if t.kind == ObjectKind::Index { t.parent_table().map(|p| self.qualified_ref(&p)).unwrap_or_else(|| self.qualified_ref(t)) } else { self.qualified_ref(t) }
         };
         match op {
             "update_statistics" => targets
@@ -437,9 +402,7 @@ impl Dialect for MsSqlDialect {
                     s
                 })
                 .collect(),
-            "update_all_statistics" => {
-                targets.iter().map(|t| format!("EXEC {}.sys.sp_updatestats", quote(&t.name))).collect()
-            }
+            "update_all_statistics" => targets.iter().map(|t| format!("EXEC {}.sys.sp_updatestats", quote(&t.name))).collect(),
             "shrink_database" => targets.iter().map(|t| format!("DBCC SHRINKDATABASE ({})", quote(&t.name))).collect(),
             "backup_database" => targets
                 .iter()
@@ -524,10 +487,7 @@ mod tests {
         let d = MsSqlDialect::new();
         assert_eq!(d.limit_query("SELECT a FROM t ORDER BY a;", 10, 20), "SELECT a FROM t ORDER BY a\nOFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY");
         assert_eq!(d.limit_query("SELECT DISTINCT a FROM t", 5, 0), "SELECT DISTINCT TOP (5) a FROM t");
-        assert_eq!(
-            d.limit_query("SELECT a FROM t", 5, 10),
-            "SELECT * FROM (SELECT a FROM t) dbiji_q ORDER BY (SELECT NULL) OFFSET 10 ROWS FETCH NEXT 5 ROWS ONLY"
-        );
+        assert_eq!(d.limit_query("SELECT a FROM t", 5, 10), "SELECT * FROM (SELECT a FROM t) dbiji_q ORDER BY (SELECT NULL) OFFSET 10 ROWS FETCH NEXT 5 ROWS ONLY");
         assert_eq!(d.limit_query("SELECT TOP 3 a FROM t ORDER BY a", 5, 0).matches("dbiji_q").count(), 1);
         assert_eq!(d.limit_query("EXEC sp_who", 5, 0), "EXEC sp_who");
         assert_eq!(d.count_query("SELECT a FROM t ORDER BY a"), "SELECT COUNT_BIG(*) FROM (SELECT a FROM t) dbiji_cnt");
@@ -538,9 +498,7 @@ mod tests {
     #[test]
     fn upsert_and_maintenance() {
         let d = MsSqlDialect::new();
-        let sql = d
-            .upsert("dbo.t", &["id".into(), "name".into()], &["id".into()], &["@P1".into(), "@P2".into()])
-            .unwrap();
+        let sql = d.upsert("dbo.t", &["id".into(), "name".into()], &["id".into()], &["@P1".into(), "@P2".into()]).unwrap();
         assert!(sql.starts_with("MERGE INTO dbo.t WITH (HOLDLOCK) AS t"), "{sql}");
         assert!(sql.contains("ON t.id = s.id"));
         assert!(sql.contains("WHEN MATCHED THEN UPDATE SET t.name = s.name"));

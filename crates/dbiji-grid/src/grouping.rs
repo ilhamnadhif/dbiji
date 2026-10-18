@@ -84,14 +84,7 @@ fn key_part(v: &Value) -> (u8, String) {
 
 /// Group the rows `rows` of `store` (all stored rows when `None`).
 /// Returns `None` when cancelled.
-pub fn compute_groups(
-    store: &SharedRowStore,
-    rows: Option<&[u32]>,
-    spec: &GroupSpec,
-    ctx: &ViewContext,
-    max_groups: usize,
-    cancel: &AtomicBool,
-) -> Option<GroupResult> {
+pub fn compute_groups(store: &SharedRowStore, rows: Option<&[u32]>, spec: &GroupSpec, ctx: &ViewContext, max_groups: usize, cancel: &AtomicBool) -> Option<GroupResult> {
     let total = match rows {
         Some(r) => r.len(),
         None => store.lock().len(),
@@ -101,11 +94,7 @@ pub fn compute_groups(
     let mut virt = vec![Value::Null; ctx.virtual_columns.len()];
     let mut needed: Vec<usize> = spec.columns.clone();
     needed.extend(spec.measure);
-    let virt_needed: Vec<usize> = needed
-        .iter()
-        .filter(|c| **c >= ctx.base_columns && **c - ctx.base_columns < ctx.virtual_columns.len())
-        .map(|c| c - ctx.base_columns)
-        .collect();
+    let virt_needed: Vec<usize> = needed.iter().filter(|c| **c >= ctx.base_columns && **c - ctx.base_columns < ctx.virtual_columns.len()).map(|c| c - ctx.base_columns).collect();
     let mut scanned = 0usize;
     let mut process = |row: &[Value], idx: u32, map: &mut HashMap<Vec<(u8, String)>, Acc>| {
         if ctx.removed.contains(idx) {
@@ -115,8 +104,7 @@ pub fn compute_groups(
             virt[v] = ctx.virtual_columns[v].eval(row).unwrap_or(Value::Null);
         }
         let ext = Ext { base: row, base_len: ctx.base_columns, virt: &virt };
-        let key: Vec<(u8, String)> =
-            spec.columns.iter().map(|&c| key_part(ext.value(c).unwrap_or(&Value::Null))).collect();
+        let key: Vec<(u8, String)> = spec.columns.iter().map(|&c| key_part(ext.value(c).unwrap_or(&Value::Null))).collect();
         let measure = spec.measure.and_then(|m| ext.value(m)).and_then(Value::as_f64).filter(|f| f.is_finite());
         scanned += 1;
         if !map.contains_key(&key) {
@@ -247,8 +235,7 @@ mod tests {
     #[test]
     fn filter_for_group() {
         let spec = GroupSpec { columns: vec![0, 1], measure: None };
-        let g =
-            GroupRow { keys: vec![Value::Null, Value::Int(1)], count: 1, sum: None, avg: None, min: None, max: None };
+        let g = GroupRow { keys: vec![Value::Null, Value::Int(1)], count: 1, sum: None, avg: None, min: None, max: None };
         let names = vec!["cat".to_string(), "flag".to_string(), "v".to_string()];
         let f = group_filter(&spec, &g, &names).unwrap();
         assert_eq!(f.text(), "(cat IS NULL) AND (flag = 1)");

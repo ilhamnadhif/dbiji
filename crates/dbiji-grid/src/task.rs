@@ -33,11 +33,7 @@ impl<T: Send + 'static> BackgroundTask<T> {
     /// Run `work` on a new thread. `work` should check the flag periodically
     /// and return `None` when it is set. `on_done` runs on the worker after
     /// the result was sent (e.g. to request a repaint).
-    pub fn spawn(
-        name: &str,
-        work: impl FnOnce(&AtomicBool) -> Option<T> + Send + 'static,
-        on_done: Box<dyn Fn() + Send>,
-    ) -> Self {
+    pub fn spawn(name: &str, work: impl FnOnce(&AtomicBool) -> Option<T> + Send + 'static, on_done: Box<dyn Fn() + Send>) -> Self {
         let cancel = Arc::new(AtomicBool::new(false));
         let (tx, rx) = mpsc::channel();
         let flag = cancel.clone();

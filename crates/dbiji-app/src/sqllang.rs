@@ -97,9 +97,10 @@ impl EditorLanguage for SqlLanguage {
     fn highlight(&self, text: &str) -> Vec<(Range<usize>, TokenStyle)> {
         let key = text_key(text);
         if let Some((k, v)) = self.cache.borrow().as_ref()
-            && *k == key {
-                return v.clone();
-            }
+            && *k == key
+        {
+            return v.clone();
+        }
         let v: Vec<(Range<usize>, TokenStyle)> = dbiji_sql::highlight(text, &self.syntax).into_iter().map(|(r, c)| (r, style(c))).collect();
         *self.cache.borrow_mut() = Some((key, v.clone()));
         v

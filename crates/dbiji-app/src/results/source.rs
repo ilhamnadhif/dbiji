@@ -180,11 +180,7 @@ impl ResultSource {
         let params = self.params.clone();
         self.total_count = Loadable::Loading(backend.spawn(async move {
             let (_, rows) = session.query_all(&sql, &params).await?;
-            rows.first()
-                .and_then(|r| r.first())
-                .and_then(Value::as_i64)
-                .map(|n| n as u64)
-                .ok_or_else(|| DbError::query("COUNT(*) returned no value"))
+            rows.first().and_then(|r| r.first()).and_then(Value::as_i64).map(|n| n as u64).ok_or_else(|| DbError::query("COUNT(*) returned no value"))
         }));
     }
 }
@@ -235,9 +231,10 @@ async fn fetch_rows(
     let mut exhausted = false;
     while added < n {
         if let Some(op) = &op
-            && op.cancel.is_cancelled() {
-                break;
-            }
+            && op.cancel.is_cancelled()
+        {
+            break;
+        }
         let want = page.min(n - added);
         match session.fetch(tok, want).await {
             Ok(out) => {

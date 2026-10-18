@@ -25,11 +25,7 @@ fn source_db(path: &Path) {
     .unwrap();
     let mut stmt = conn.prepare("INSERT INTO customers VALUES (?, ?, ?, ?, ?)").unwrap();
     for i in 1..=50i64 {
-        let note = if i % 7 == 0 {
-            rusqlite::types::Value::Null
-        } else {
-            rusqlite::types::Value::Text(format!("note {i} 'q' ü"))
-        };
+        let note = if i % 7 == 0 { rusqlite::types::Value::Null } else { rusqlite::types::Value::Text(format!("note {i} 'q' ü")) };
         stmt.execute(rusqlite::params![i, (i % 3) + 1, format!("user{i}@example.com"), i as f64 * 1.5, note]).unwrap();
     }
 }
@@ -50,14 +46,10 @@ async fn drop_and_create_copies_definition_data_indexes() {
     let (src_path, dst_path) = (dir.path().join("src.db"), dir.path().join("dst.db"));
     source_db(&src_path);
     // A stale target table is dropped first.
-    rusqlite::Connection::open(&dst_path)
-        .unwrap()
-        .execute_batch("CREATE TABLE customers (x TEXT); INSERT INTO customers VALUES ('stale');")
-        .unwrap();
+    rusqlite::Connection::open(&dst_path).unwrap().execute_batch("CREATE TABLE customers (x TEXT); INSERT INTO customers VALUES ('stale');").unwrap();
     let source = SqliteFactory::new(&src_path, sqlite_dialect());
     let target = SqliteFactory::new(&dst_path, sqlite_dialect());
-    let job =
-        MigrationJob { tables: tables(), mode: MigrationMode::DropAndCreate, batch_size: 7, ..Default::default() };
+    let job = MigrationJob { tables: tables(), mode: MigrationMode::DropAndCreate, batch_size: 7, ..Default::default() };
     let progress = Progress::new();
     let s = run_migration(job, source.clone(), target.clone(), &progress, &CancellationToken::new()).await.unwrap();
     assert_eq!(s.tables.len(), 2);
@@ -123,17 +115,11 @@ async fn append_truncate_replace() {
     assert_eq!(count(&dst_path, "customers"), 50);
 
     // Replace updates changed rows by primary key.
-    rusqlite::Connection::open(&src_path)
-        .unwrap()
-        .execute_batch("UPDATE customers SET email = 'changed@example.com' WHERE id = 5")
-        .unwrap();
+    rusqlite::Connection::open(&src_path).unwrap().execute_batch("UPDATE customers SET email = 'changed@example.com' WHERE id = 5").unwrap();
     let replace = MigrationJob { mode: MigrationMode::Replace, ..job.clone() };
     run_migration(replace, source.clone(), target.clone(), &Progress::new(), &cancel).await.unwrap();
     let dst = rusqlite::Connection::open(&dst_path).unwrap();
-    assert_eq!(
-        select(&dst, "SELECT email FROM customers WHERE id = 5"),
-        vec![vec![Value::text("changed@example.com")]]
-    );
+    assert_eq!(select(&dst, "SELECT email FROM customers WHERE id = 5"), vec![vec![Value::text("changed@example.com")]]);
     assert_eq!(count(&dst_path, "customers"), 50);
     assert!(target.log.lock().iter().any(|q| q.contains("ON CONFLICT (id) DO UPDATE")));
 
@@ -161,10 +147,7 @@ async fn cross_product_mapping_and_names() {
         tables: tables(),
         name_case: NameCase::Upper,
         table_names: BTreeMap::from([("customers".to_string(), "clients".to_string())]),
-        column_names: BTreeMap::from([(
-            "customers".to_string(),
-            BTreeMap::from([("email".to_string(), "mail".to_string())]),
-        )]),
+        column_names: BTreeMap::from([("customers".to_string(), BTreeMap::from([("email".to_string(), "mail".to_string())]))]),
         column_types: BTreeMap::from([("customers.note".to_string(), "VARCHAR(200)".to_string())]),
         copy_foreign_keys: false,
         transaction_per_table: false,
@@ -196,13 +179,10 @@ async fn failures_and_cancellation() {
     let mut list = tables();
     list.insert(1, ObjectRef::table(None, "ghost"));
     let job = MigrationJob { tables: list.clone(), copy_foreign_keys: false, ..Default::default() };
-    let err = run_migration(job, source.clone(), target.clone(), &Progress::new(), &CancellationToken::new())
-        .await
-        .unwrap_err();
+    let err = run_migration(job, source.clone(), target.clone(), &Progress::new(), &CancellationToken::new()).await.unwrap_err();
     assert!(err.full_text().contains("ghost"), "{}", err.full_text());
     // ... unless failures are tolerated.
-    let job =
-        MigrationJob { tables: list, copy_foreign_keys: false, continue_on_table_error: true, ..Default::default() };
+    let job = MigrationJob { tables: list, copy_foreign_keys: false, continue_on_table_error: true, ..Default::default() };
     let progress = Progress::new();
     let s = run_migration(job, source.clone(), target.clone(), &progress, &CancellationToken::new()).await.unwrap();
     assert_eq!(s.tables.len(), 3);
@@ -229,9 +209,6 @@ fn job_is_serialisable() {
     };
     let s = serde_json::to_string(&job).unwrap();
     assert_eq!(serde_json::from_str::<MigrationJob>(&s).unwrap(), job);
-    let partial: MigrationJob = serde_json::from_str(
-        r#"{"tables":[{"kind":"table","database":null,"schema":null,"table":null,"name":"t","signature":null}]}"#,
-    )
-    .unwrap();
+    let partial: MigrationJob = serde_json::from_str(r#"{"tables":[{"kind":"table","database":null,"schema":null,"table":null,"name":"t","signature":null}]}"#).unwrap();
     assert!(partial.create_tables && partial.copy_indexes);
 }

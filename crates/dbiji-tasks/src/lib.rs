@@ -31,10 +31,7 @@ mod tests;
 pub use cli::{EventCallback, run_task_once};
 pub use engine::{Clock, RunningInfo, SystemClock, TaskEvent, TokioClock};
 pub use executor::{Progress, RunContext, RunSignal, RunSink, TaskExecutor};
-pub use model::{
-    KEEP_FIRST_MESSAGES, MAX_MESSAGE_CHARS, MAX_RUN_MESSAGES, MessageLevel, NotifyOptions, RunMessage, RunOutcome, RunStatus, TaskDef, TaskKind,
-    TaskRun, Trigger,
-};
+pub use model::{KEEP_FIRST_MESSAGES, MAX_MESSAGE_CHARS, MAX_RUN_MESSAGES, MessageLevel, NotifyOptions, RunMessage, RunOutcome, RunStatus, TaskDef, TaskKind, TaskRun, Trigger};
 pub use runlog::{RunLog, RunLogOptions};
 pub use schedule::{Schedule, ScheduleError};
 pub use scheduler::{Scheduler, SchedulerOptions};

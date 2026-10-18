@@ -220,12 +220,7 @@ impl Progress {
 
     /// Log a message.
     pub fn message(&self, level: MessageLevel, item: Option<&str>, text: impl Into<String>) {
-        let msg = ProgressMessage {
-            level,
-            item: item.map(str::to_string),
-            text: text.into(),
-            elapsed_secs: self.elapsed().as_secs_f64(),
-        };
+        let msg = ProgressMessage { level, item: item.map(str::to_string), text: text.into(), elapsed_secs: self.elapsed().as_secs_f64() };
         match level {
             MessageLevel::Error => tracing::debug!(item = ?msg.item, "{}", msg.text),
             _ => tracing::trace!(item = ?msg.item, "{}", msg.text),

@@ -183,13 +183,8 @@ fn convert_raw(data: ColumnData<'static>, ct: ColumnType) -> Value {
         ColumnData::Guid(v) => v.map(Value::Uuid).unwrap_or(Value::Null),
         ColumnData::Binary(v) => v.map(|b| Value::Bytes(b.into_owned().into_boxed_slice())).unwrap_or(Value::Null),
         ColumnData::Numeric(v) => v.map(|n| Value::decimal(numeric_text(n))).unwrap_or(Value::Null),
-        ColumnData::Xml(v) => {
-            v.map(|x| Value::Text(x.into_owned().into_string().into_boxed_str())).unwrap_or(Value::Null)
-        }
-        ColumnData::DateTime(v) => v
-            .and_then(|d| datetime_value(d.days(), d.seconds_fragments()))
-            .map(Value::DateTime)
-            .unwrap_or(Value::Null),
+        ColumnData::Xml(v) => v.map(|x| Value::Text(x.into_owned().into_string().into_boxed_str())).unwrap_or(Value::Null),
+        ColumnData::DateTime(v) => v.and_then(|d| datetime_value(d.days(), d.seconds_fragments())).map(Value::DateTime).unwrap_or(Value::Null),
         ColumnData::SmallDateTime(v) => v
             .and_then(|d| {
                 let date = add_days(base_1900(), i64::from(d.days()))?;
@@ -198,14 +193,8 @@ fn convert_raw(data: ColumnData<'static>, ct: ColumnType) -> Value {
             })
             .map(Value::DateTime)
             .unwrap_or(Value::Null),
-        ColumnData::Time(v) => v
-            .and_then(|t| time_from_increments(t.increments(), t.scale()))
-            .map(Value::Time)
-            .unwrap_or(Value::Null),
-        ColumnData::Date(v) => v
-            .and_then(|d| add_days(base_0001(), i64::from(d.days())))
-            .map(Value::Date)
-            .unwrap_or(Value::Null),
+        ColumnData::Time(v) => v.and_then(|t| time_from_increments(t.increments(), t.scale())).map(Value::Time).unwrap_or(Value::Null),
+        ColumnData::Date(v) => v.and_then(|d| add_days(base_0001(), i64::from(d.days()))).map(Value::Date).unwrap_or(Value::Null),
         ColumnData::DateTime2(v) => v
             .and_then(|dt| {
                 let date = add_days(base_0001(), i64::from(dt.date().days()))?;
@@ -360,10 +349,7 @@ mod tests {
         assert_eq!(numeric_text(Numeric::new_with_scale(-5, 3)), "-0.005");
         assert_eq!(numeric_text(Numeric::new_with_scale(42, 0)), "42");
         assert_eq!(numeric_text(Numeric::new_with_scale(0, 2)), "0.00");
-        assert_eq!(
-            numeric_text(Numeric::new_with_scale(99_999_999_999_999_999_999_999_999_999_999_999_999, 0)),
-            "99999999999999999999999999999999999999"
-        );
+        assert_eq!(numeric_text(Numeric::new_with_scale(99_999_999_999_999_999_999_999_999_999_999_999_999, 0)), "99999999999999999999999999999999999999");
     }
 
     #[test]
@@ -408,14 +394,8 @@ mod tests {
         assert_eq!(convert(ColumnData::F64(Some(12.5)), ColumnType::Float8), Value::Float(12.5));
         assert_eq!(convert(ColumnData::Bit(Some(true)), ColumnType::Bitn), Value::Bool(true));
         assert_eq!(convert(ColumnData::I32(Some(5)), ColumnType::SSVariant), Value::text("5"));
-        assert_eq!(
-            convert(ColumnData::Numeric(Some(Numeric::new_with_scale(1050, 2))), ColumnType::Decimaln),
-            Value::decimal("10.50")
-        );
-        assert_eq!(
-            convert(ColumnData::Binary(Some(Cow::Owned(vec![1, 2]))), ColumnType::BigVarBin),
-            Value::bytes(vec![1u8, 2])
-        );
+        assert_eq!(convert(ColumnData::Numeric(Some(Numeric::new_with_scale(1050, 2))), ColumnType::Decimaln), Value::decimal("10.50"));
+        assert_eq!(convert(ColumnData::Binary(Some(Cow::Owned(vec![1, 2]))), ColumnType::BigVarBin), Value::bytes(vec![1u8, 2]));
         assert_eq!(convert(ColumnData::String(None), ColumnType::NVarchar), Value::Null);
     }
 
@@ -444,10 +424,7 @@ mod tests {
             Value::text("y".repeat(5000)),
         ])
         .unwrap();
-        assert_eq!(
-            decl,
-            "@P1 bigint, @P2 nvarchar(4000), @P3 nvarchar(4000), @P4 numeric(4,2), @P5 bit, @P6 varbinary(8000), @P7 numeric(20,0), @P8 nvarchar(max)"
-        );
+        assert_eq!(decl, "@P1 bigint, @P2 nvarchar(4000), @P3 nvarchar(4000), @P4 numeric(4,2), @P5 bit, @P6 varbinary(8000), @P7 numeric(20,0), @P8 nvarchar(max)");
         assert!(param_declarations(&[Value::Float(f64::NAN)]).is_err());
         assert!(executesql_command("SELECT @P1", &[Value::Int(1)]).is_ok());
     }

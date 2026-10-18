@@ -99,14 +99,7 @@ impl ObjectKind {
 
     /// Objects whose rows can be browsed in a data editor.
     pub fn has_data(self) -> bool {
-        matches!(
-            self,
-            ObjectKind::Table
-                | ObjectKind::View
-                | ObjectKind::MaterializedView
-                | ObjectKind::ForeignTable
-                | ObjectKind::Partition
-        )
+        matches!(self, ObjectKind::Table | ObjectKind::View | ObjectKind::MaterializedView | ObjectKind::ForeignTable | ObjectKind::Partition)
     }
 
     pub fn is_table_like(self) -> bool {
@@ -183,14 +176,7 @@ impl ObjectRef {
     }
 
     pub fn child(kind: ObjectKind, parent: &ObjectRef, name: impl Into<String>) -> Self {
-        ObjectRef {
-            kind,
-            database: parent.database.clone(),
-            schema: parent.schema.clone(),
-            table: Some(parent.name.clone()),
-            name: name.into(),
-            signature: None,
-        }
+        ObjectRef { kind, database: parent.database.clone(), schema: parent.schema.clone(), table: Some(parent.name.clone()), name: name.into(), signature: None }
     }
 
     pub fn with_database(mut self, database: Option<String>) -> Self {
@@ -231,9 +217,10 @@ impl ObjectRef {
         parts.push(&self.name);
         let mut s = parts.join(".");
         if let Some(sig) = &self.signature
-            && sig.starts_with('(') {
-                s.push_str(sig);
-            }
+            && sig.starts_with('(')
+        {
+            s.push_str(sig);
+        }
         s
     }
 }

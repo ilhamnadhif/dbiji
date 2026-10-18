@@ -195,11 +195,7 @@ pub trait Dialect: Send + Sync + 'static {
     /// Wrap `sql` so that at most `limit` rows starting at `offset` are returned.
     fn limit_query(&self, sql: &str, limit: u64, offset: u64) -> String {
         let inner = ansi::strip_trailing_semicolon(sql);
-        if offset > 0 {
-            format!("SELECT * FROM ({inner}) dbiji_q LIMIT {limit} OFFSET {offset}")
-        } else {
-            format!("SELECT * FROM ({inner}) dbiji_q LIMIT {limit}")
-        }
+        if offset > 0 { format!("SELECT * FROM ({inner}) dbiji_q LIMIT {limit} OFFSET {offset}") } else { format!("SELECT * FROM ({inner}) dbiji_q LIMIT {limit}") }
     }
 
     /// Query returning the row count of `sql`.
@@ -208,18 +204,9 @@ pub trait Dialect: Send + Sync + 'static {
     }
 
     /// `SELECT` for browsing a table in the data editor.
-    fn select_table(
-        &self,
-        table: &ObjectRef,
-        columns: Option<&[String]>,
-        where_clause: Option<&str>,
-        order_by: Option<&str>,
-        limit: Option<u64>,
-    ) -> String {
+    fn select_table(&self, table: &ObjectRef, columns: Option<&[String]>, where_clause: Option<&str>, order_by: Option<&str>, limit: Option<u64>) -> String {
         let cols = match columns {
-            Some(c) if !c.is_empty() => {
-                c.iter().map(|c| self.quote_ident(c)).collect::<Vec<_>>().join(", ")
-            }
+            Some(c) if !c.is_empty() => c.iter().map(|c| self.quote_ident(c)).collect::<Vec<_>>().join(", "),
             _ => "*".to_string(),
         };
         let mut sql = format!("SELECT {cols} FROM {}", self.qualified_ref(table));
@@ -441,12 +428,7 @@ pub mod ansi {
         if let Some(n) = &fk.name {
             s.push_str(&format!("CONSTRAINT {} ", q.ident(n)));
         }
-        s.push_str(&format!(
-            "FOREIGN KEY ({}) REFERENCES {} ({})",
-            q.list(&fk.columns),
-            q.qualified(fk.ref_schema.as_deref(), &fk.ref_table),
-            q.list(&fk.ref_columns)
-        ));
+        s.push_str(&format!("FOREIGN KEY ({}) REFERENCES {} ({})", q.list(&fk.columns), q.qualified(fk.ref_schema.as_deref(), &fk.ref_table), q.list(&fk.ref_columns)));
         if fk.on_update != FkAction::NoAction {
             s.push_str(&format!(" ON UPDATE {}", fk.on_update.sql()));
         }
@@ -491,9 +473,10 @@ pub mod ansi {
     pub fn create_table_body(q: &Quoter<'_>, t: &TableDef, include_fks: bool) -> Vec<String> {
         let mut lines: Vec<String> = t.columns.iter().map(|c| column_definition(q, c)).collect();
         if let Some(pk) = &t.primary_key
-            && !pk.columns.is_empty() {
-                lines.push(key_clause(q, "PRIMARY KEY", pk));
-            }
+            && !pk.columns.is_empty()
+        {
+            lines.push(key_clause(q, "PRIMARY KEY", pk));
+        }
         for u in &t.unique_keys {
             lines.push(key_clause(q, "UNIQUE", u));
         }
@@ -515,30 +498,19 @@ pub mod ansi {
                 return false;
             }
             let cols: Vec<&str> = i.columns.iter().map(|c| c.name.as_str()).collect();
-            let backs_unique = i.unique
-                && t.unique_keys.iter().any(|u| {
-                    u.name.as_deref() == Some(i.name.as_str())
-                        || u.columns.iter().map(String::as_str).collect::<Vec<_>>() == cols
-                });
+            let backs_unique =
+                i.unique && t.unique_keys.iter().any(|u| u.name.as_deref() == Some(i.name.as_str()) || u.columns.iter().map(String::as_str).collect::<Vec<_>>() == cols);
             !backs_unique
         })
     }
 
     /// Match columns of two table versions: returns (from, to) pairs, dropped and added.
-    pub fn match_columns<'a>(
-        from: &'a TableDef,
-        to: &'a TableDef,
-        renamed: &[(String, String)],
-    ) -> (Vec<(&'a ColumnDef, &'a ColumnDef)>, Vec<&'a ColumnDef>, Vec<&'a ColumnDef>) {
+    pub fn match_columns<'a>(from: &'a TableDef, to: &'a TableDef, renamed: &[(String, String)]) -> (Vec<(&'a ColumnDef, &'a ColumnDef)>, Vec<&'a ColumnDef>, Vec<&'a ColumnDef>) {
         let mut pairs = Vec::new();
         let mut dropped = Vec::new();
         let mut added = Vec::new();
         for fc in &from.columns {
-            let target_name = renamed
-                .iter()
-                .find(|(old, _)| old == &fc.name)
-                .map(|(_, new)| new.as_str())
-                .unwrap_or(fc.name.as_str());
+            let target_name = renamed.iter().find(|(old, _)| old == &fc.name).map(|(_, new)| new.as_str()).unwrap_or(fc.name.as_str());
             match to.columns.iter().find(|c| c.name == target_name) {
                 Some(tc) => pairs.push((fc, tc)),
                 None => dropped.push(fc),
@@ -580,11 +552,7 @@ pub mod ansi {
             out
         }
         fn drop_table(&self, schema: Option<&str>, name: &str, cascade: bool) -> String {
-            format!(
-                "DROP TABLE {}{}",
-                self.q().qualified(schema, name),
-                if cascade { " CASCADE" } else { "" }
-            )
+            format!("DROP TABLE {}{}", self.q().qualified(schema, name), if cascade { " CASCADE" } else { "" })
         }
         fn rename_table(&self, schema: Option<&str>, old_name: &str, new_name: &str) -> String {
             format!("ALTER TABLE {} RENAME TO {}", self.q().qualified(schema, old_name), self.q().ident(new_name))
@@ -619,11 +587,7 @@ pub mod ansi {
                     }
                 }
                 if fc.nullable != tc.nullable {
-                    out.push(format!(
-                        "ALTER TABLE {t} ALTER COLUMN {} {} NOT NULL",
-                        q.ident(&tc.name),
-                        if tc.nullable { "DROP" } else { "SET" }
-                    ));
+                    out.push(format!("ALTER TABLE {t} ALTER COLUMN {} {} NOT NULL", q.ident(&tc.name), if tc.nullable { "DROP" } else { "SET" }));
                 }
             }
             for c in added {
@@ -684,13 +648,7 @@ pub mod ansi {
         }
         fn create_index(&self, table: &TableDef, index: &IndexDef) -> String {
             let q = self.q();
-            let mut s = format!(
-                "CREATE {}INDEX {} ON {} ({})",
-                if index.unique { "UNIQUE " } else { "" },
-                q.ident(&index.name),
-                self.tname(table),
-                index_columns(&q, index)
-            );
+            let mut s = format!("CREATE {}INDEX {} ON {} ({})", if index.unique { "UNIQUE " } else { "" }, q.ident(&index.name), self.tname(table), index_columns(&q, index));
             if let Some(p) = &index.predicate {
                 s.push_str(" WHERE ");
                 s.push_str(p);
@@ -713,31 +671,19 @@ pub mod ansi {
             format!("ALTER TABLE {} ADD {}", self.tname(table), key_clause(&self.q(), "UNIQUE", key))
         }
         fn drop_unique_key(&self, table: &TableDef, key: &KeyDef) -> String {
-            format!(
-                "ALTER TABLE {} DROP CONSTRAINT {}",
-                self.tname(table),
-                self.q().ident(key.name.as_deref().unwrap_or("?"))
-            )
+            format!("ALTER TABLE {} DROP CONSTRAINT {}", self.tname(table), self.q().ident(key.name.as_deref().unwrap_or("?")))
         }
         fn add_check(&self, table: &TableDef, check: &CheckDef) -> String {
             format!("ALTER TABLE {} ADD {}", self.tname(table), check_clause(&self.q(), check))
         }
         fn drop_check(&self, table: &TableDef, check: &CheckDef) -> String {
-            format!(
-                "ALTER TABLE {} DROP CONSTRAINT {}",
-                self.tname(table),
-                self.q().ident(check.name.as_deref().unwrap_or("?"))
-            )
+            format!("ALTER TABLE {} DROP CONSTRAINT {}", self.tname(table), self.q().ident(check.name.as_deref().unwrap_or("?")))
         }
         fn add_foreign_key(&self, table: &TableDef, fk: &ForeignKeyDef) -> String {
             format!("ALTER TABLE {} ADD {}", self.tname(table), fk_clause(&self.q(), fk))
         }
         fn drop_foreign_key(&self, table: &TableDef, fk: &ForeignKeyDef) -> String {
-            format!(
-                "ALTER TABLE {} DROP CONSTRAINT {}",
-                self.tname(table),
-                self.q().ident(fk.name.as_deref().unwrap_or("?"))
-            )
+            format!("ALTER TABLE {} DROP CONSTRAINT {}", self.tname(table), self.q().ident(fk.name.as_deref().unwrap_or("?")))
         }
         fn create_trigger(&self, _table: &TableDef, trigger: &TriggerDef) -> Vec<String> {
             vec![trigger.definition.clone()]
@@ -782,9 +728,10 @@ pub mod ansi {
             let name = self.q().qualified(to.schema.as_deref(), &to.name);
             let mut parts = Vec::new();
             if from.increment != to.increment
-                && let Some(v) = to.increment {
-                    parts.push(format!("INCREMENT BY {v}"));
-                }
+                && let Some(v) = to.increment
+            {
+                parts.push(format!("INCREMENT BY {v}"));
+            }
             if from.min_value != to.min_value {
                 parts.push(to.min_value.map(|v| format!("MINVALUE {v}")).unwrap_or("NO MINVALUE".into()));
             }
@@ -816,11 +763,7 @@ pub mod ansi {
             format!("DROP SCHEMA {}{}", self.q().ident(name), if cascade { " CASCADE" } else { "" })
         }
         fn map_type(&self, _source: DbKind, data_type: &str, kind: DataKind) -> String {
-            if self.syntax.is_data_type(data_type.split('(').next().unwrap_or("")) {
-                data_type.to_string()
-            } else {
-                self.default_type_for(kind)
-            }
+            if self.syntax.is_data_type(data_type.split('(').next().unwrap_or("")) { data_type.to_string() } else { self.default_type_for(kind) }
         }
         fn default_type_for(&self, kind: DataKind) -> String {
             match kind {

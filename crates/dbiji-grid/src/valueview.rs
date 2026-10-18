@@ -73,11 +73,8 @@ pub struct DecodedImage {
 
 /// Decode an image value, downscaling so that no side exceeds `max_side`.
 pub fn decode_image(bytes: &[u8], max_side: u32) -> Result<DecodedImage, String> {
-    let kind =
-        detect_image(bytes).ok_or_else(|| tr("Not a supported image (PNG, JPEG, GIF, BMP, WebP)").to_string())?;
-    let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes))
-        .with_guessed_format()
-        .map_err(|e| trf("Cannot read image: {}", &[&e]))?;
+    let kind = detect_image(bytes).ok_or_else(|| tr("Not a supported image (PNG, JPEG, GIF, BMP, WebP)").to_string())?;
+    let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format().map_err(|e| trf("Cannot read image: {}", &[&e]))?;
     let mut limits = image::Limits::default();
     limits.max_image_width = Some(16_384);
     limits.max_image_height = Some(16_384);
@@ -285,9 +282,7 @@ mod tests {
         // Encode a tiny PNG with the image crate and decode it back, downscaled.
         let img = image::RgbaImage::from_fn(40, 20, |x, _| image::Rgba([x as u8 * 6, 0, 0, 255]));
         let mut buf = Vec::new();
-        image::DynamicImage::ImageRgba8(img)
-            .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
-            .unwrap();
+        image::DynamicImage::ImageRgba8(img).write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png).unwrap();
         let d = decode_image(&buf, 10).unwrap();
         assert_eq!(d.kind, ImageKind::Png);
         assert_eq!(d.original_size, [40, 20]);

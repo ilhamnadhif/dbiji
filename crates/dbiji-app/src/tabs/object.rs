@@ -80,9 +80,10 @@ impl ObjectEditorTab {
     {
         slot.poll();
         if slot.is_not_loaded()
-            && let Some(s) = session {
-                *slot = Loadable::Loading(backend.spawn(async move { f(s).await }));
-            }
+            && let Some(s) = session
+        {
+            *slot = Loadable::Loading(backend.spawn(async move { f(s).await }));
+        }
     }
 
     fn refresh(&mut self) {
@@ -105,9 +106,10 @@ impl ObjectEditorTab {
         let mut retry = false;
         if !is_table {
             if widgets::load_state(ui, &self.props, &mut retry)
-                && let Some(p) = self.props.get() {
-                    egui::ScrollArea::vertical().show(ui, |ui| widgets::property_grid(ui, "obj_props", p));
-                }
+                && let Some(p) = self.props.get()
+            {
+                egui::ScrollArea::vertical().show(ui, |ui| widgets::property_grid(ui, "obj_props", p));
+            }
             if retry {
                 self.props = Loadable::NotLoaded;
             }
@@ -225,15 +227,16 @@ impl ObjectEditorTab {
                     None,
                 );
                 if let Some(i) = r.double_clicked
-                    && let Some(fk) = list.get(i) {
-                        let (schema, table) = if self.table_page == TablePage::References {
-                            (fk.schema.clone(), fk.table.clone())
-                        } else {
-                            (fk.ref_schema.clone().or(self.obj.schema.clone()), fk.ref_table.clone())
-                        };
-                        let target = ObjectRef::table(schema, table).with_database(self.obj.database.clone());
-                        cx.push(AppCommand::OpenObject { connection: self.conn.clone(), object: target, page: ObjectPage::Properties });
-                    }
+                    && let Some(fk) = list.get(i)
+                {
+                    let (schema, table) = if self.table_page == TablePage::References {
+                        (fk.schema.clone(), fk.table.clone())
+                    } else {
+                        (fk.ref_schema.clone().or(self.obj.schema.clone()), fk.ref_table.clone())
+                    };
+                    let target = ObjectRef::table(schema, table).with_database(self.obj.database.clone());
+                    cx.push(AppCommand::OpenObject { connection: self.conn.clone(), object: target, page: ObjectPage::Properties });
+                }
             }
             TablePage::Indexes => {
                 let rows: Vec<Vec<String>> = t
@@ -242,7 +245,13 @@ impl ObjectEditorTab {
                     .map(|i| {
                         vec![
                             i.name.clone(),
-                            if i.primary { "PRIMARY".into() } else if i.unique { "UNIQUE".into() } else { String::new() },
+                            if i.primary {
+                                "PRIMARY".into()
+                            } else if i.unique {
+                                "UNIQUE".into()
+                            } else {
+                                String::new()
+                            },
                             i.method.clone().unwrap_or_default(),
                             i.columns.iter().map(|c| format!("{}{}", c.name, if c.descending { " DESC" } else { "" })).collect::<Vec<_>>().join(", "),
                             i.predicate.clone().unwrap_or_default(),
@@ -341,28 +350,26 @@ impl ObjectEditorTab {
                 }
                 ui.add_space(6.0);
                 if ui.button(RichText::new(format!("{} {}", icon::FLOPPY_DISK, tr("Save virtual model"))).strong()).clicked()
-                    && let Some(p) = projects {
-                        let mut vm = p.virtual_model(&self.conn).unwrap_or_default();
-                        if vt.is_empty() {
-                            vm.remove(&key);
-                        } else {
-                            vm.set(key.clone(), vt.clone());
-                        }
-                        match p.save_virtual_model(&self.conn, &vm) {
-                            Ok(()) => cx.toasts.success(tr("Virtual model saved")),
-                            Err(e) => cx.toasts.error(tr("Cannot save the virtual model"), Some(e.to_string())),
-                        }
+                    && let Some(p) = projects
+                {
+                    let mut vm = p.virtual_model(&self.conn).unwrap_or_default();
+                    if vt.is_empty() {
+                        vm.remove(&key);
+                    } else {
+                        vm.set(key.clone(), vt.clone());
                     }
+                    match p.save_virtual_model(&self.conn, &vm) {
+                        Ok(()) => cx.toasts.success(tr("Virtual model saved")),
+                        Err(e) => cx.toasts.error(tr("Cannot save the virtual model"), Some(e.to_string())),
+                    }
+                }
             }
             TablePage::Partitions => {
                 if let Some(p) = &t.partitioning {
                     ui.label(format!("{} {} ({})", tr("Partitioned by"), p.strategy, p.key));
                 }
-                let rows: Vec<Vec<String>> = t
-                    .partitions
-                    .iter()
-                    .map(|p| vec![p.name.clone(), p.bound.clone(), p.row_estimate.map(|r| r.to_string()).unwrap_or_default()])
-                    .collect();
+                let rows: Vec<Vec<String>> =
+                    t.partitions.iter().map(|p| vec![p.name.clone(), p.bound.clone(), p.row_estimate.map(|r| r.to_string()).unwrap_or_default()]).collect();
                 widgets::simple_table(ui, "obj_parts", &[tr("Name"), tr("Bound"), tr("Rows")], &rows, None);
             }
         }
@@ -416,9 +423,10 @@ impl ObjectEditorTab {
                 .collect();
             let r = widgets::simple_table(ui, "obj_deps", &[tr("Direction"), tr("Kind"), tr("Object"), tr("Dependency")], &rows, None);
             if let Some(i) = r.double_clicked
-                && let Some(d) = deps.get(i) {
-                    cx.push(AppCommand::OpenObject { connection: self.conn.clone(), object: d.target.clone(), page: ObjectPage::Properties });
-                }
+                && let Some(d) = deps.get(i)
+            {
+                cx.push(AppCommand::OpenObject { connection: self.conn.clone(), object: d.target.clone(), page: ObjectPage::Properties });
+            }
         }
         if retry {
             self.deps = Loadable::NotLoaded;

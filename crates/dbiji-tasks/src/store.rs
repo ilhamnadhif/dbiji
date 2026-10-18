@@ -251,10 +251,11 @@ impl TaskStore {
             let now = Utc::now();
             for t in &mut d.tasks {
                 if let TaskKind::Composite { steps, .. } = &mut t.kind
-                    && steps.iter().any(|s| s == id) {
-                        steps.retain(|s| s != id);
-                        t.updated = now;
-                    }
+                    && steps.iter().any(|s| s == id)
+                {
+                    steps.retain(|s| s != id);
+                    t.updated = now;
+                }
             }
             // a composite left without steps is invalid: keep it, but disabled
             for t in &mut d.tasks {
@@ -320,13 +321,7 @@ impl TaskStore {
         if old.is_empty() || new.is_empty() {
             return Err(DbError::config(tr("The folder needs a name")));
         }
-        let rename = |f: &str| -> Option<String> {
-            if f == old {
-                Some(new.clone())
-            } else {
-                f.strip_prefix(&format!("{old}/")).map(|rest| format!("{new}/{rest}"))
-            }
-        };
+        let rename = |f: &str| -> Option<String> { if f == old { Some(new.clone()) } else { f.strip_prefix(&format!("{old}/")).map(|rest| format!("{new}/{rest}")) } };
         self.mutate(|d| {
             let mut moved = 0;
             for t in &mut d.tasks {
@@ -352,10 +347,12 @@ impl TaskStore {
             if f == p {
                 Some(parent.clone())
             } else {
-                f.strip_prefix(&format!("{p}/")).map(|rest| Some(match &parent {
-                    Some(pp) => format!("{pp}/{rest}"),
-                    None => rest.to_string(),
-                }))
+                f.strip_prefix(&format!("{p}/")).map(|rest| {
+                    Some(match &parent {
+                        Some(pp) => format!("{pp}/{rest}"),
+                        None => rest.to_string(),
+                    })
+                })
             }
         };
         self.mutate(|d| {
@@ -364,10 +361,14 @@ impl TaskStore {
                     t.folder = n;
                 }
             }
-            d.folders = d.folders.iter().filter_map(|f| match lift(f) {
-                Some(n) => n,
-                None => Some(f.clone()),
-            }).collect();
+            d.folders = d
+                .folders
+                .iter()
+                .filter_map(|f| match lift(f) {
+                    Some(n) => n,
+                    None => Some(f.clone()),
+                })
+                .collect();
             Ok(())
         })
     }
@@ -413,11 +414,7 @@ impl TaskStore {
             let existing: HashSet<String> = d.tasks.iter().map(|t| t.id.clone()).collect();
             let mut map: HashMap<String, String> = HashMap::new();
             for t in &tasks {
-                let new_id = if t.id.trim().is_empty() || existing.contains(&t.id) || map.values().any(|v| v == &t.id) {
-                    uuid::Uuid::new_v4().to_string()
-                } else {
-                    t.id.clone()
-                };
+                let new_id = if t.id.trim().is_empty() || existing.contains(&t.id) || map.values().any(|v| v == &t.id) { uuid::Uuid::new_v4().to_string() } else { t.id.clone() };
                 map.insert(t.id.clone(), new_id);
             }
             let now = Utc::now();

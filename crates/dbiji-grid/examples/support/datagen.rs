@@ -28,10 +28,7 @@ impl Rng {
     }
 }
 
-const FIRST: [&str; 16] = [
-    "Alice", "Bob", "Carol", "Dewi", "Eko", "Farah", "Gita", "Hadi", "Intan", "Joko", "Kartika", "Lukas", "Maya",
-    "Nina", "Oscar", "Putri",
-];
+const FIRST: [&str; 16] = ["Alice", "Bob", "Carol", "Dewi", "Eko", "Farah", "Gita", "Hadi", "Intan", "Joko", "Kartika", "Lukas", "Maya", "Nina", "Oscar", "Putri"];
 const CITIES: [&str; 8] = ["Jakarta", "Bandung", "Surabaya", "Medan", "Denpasar", "Yogyakarta", "Makassar", "Semarang"];
 
 /// Column kinds in a repeating pattern.
@@ -80,12 +77,7 @@ pub fn columns(n: usize) -> Vec<ColumnMeta> {
                 18 => "avatar".to_string(),
                 _ => format!("{}_{c}", ty.split('(').next().unwrap_or("col")),
             };
-            let mut m = ColumnMeta::new(name.clone(), ty, kind).with_source(ColumnSource {
-                database: None,
-                schema: Some("demo".into()),
-                table: "big".into(),
-                column: name,
-            });
+            let mut m = ColumnMeta::new(name.clone(), ty, kind).with_source(ColumnSource { database: None, schema: Some("demo".into()), table: "big".into(), column: name });
             if c == 0 {
                 m.nullable = Some(false);
                 m.auto_increment = Some(true);
@@ -117,34 +109,19 @@ pub fn row(i: usize, ncols: usize, rng: &mut Rng) -> Row {
                 DataKind::Decimal => Value::decimal(format!("{}.{:02}", r % 100_000, (r >> 20) % 100)),
                 DataKind::Bool => Value::Bool(r & 1 == 0),
                 DataKind::Date => Value::Date(base + chrono::Days::new(r % 20_000)),
-                DataKind::DateTime => Value::DateTime(
-                    (base + chrono::Days::new(18_000 + r % 2_000))
-                        .and_hms_opt(((r >> 8) % 24) as u32, ((r >> 16) % 60) as u32, 0)
-                        .unwrap_or_default(),
-                ),
+                DataKind::DateTime => {
+                    Value::DateTime((base + chrono::Days::new(18_000 + r % 2_000)).and_hms_opt(((r >> 8) % 24) as u32, ((r >> 16) % 60) as u32, 0).unwrap_or_default())
+                }
                 DataKind::Text => match c % 20 {
                     1 => Value::text(format!("{} {}", FIRST[(r % 16) as usize], FIRST[((r >> 8) % 16) as usize])),
                     7 => Value::text(CITIES[(r % 8) as usize]),
-                    17 if r.is_multiple_of(5) => {
-                        Value::text(format!("Multi-line note for row {i}\nsecond line\nthird line"))
-                    }
-                    17 => Value::text(format!(
-                        "Note {i}: a somewhat longer text value that will be truncated in narrow cells"
-                    )),
+                    17 if r.is_multiple_of(5) => Value::text(format!("Multi-line note for row {i}\nsecond line\nthird line")),
+                    17 => Value::text(format!("Note {i}: a somewhat longer text value that will be truncated in narrow cells")),
                     _ => Value::text(format!("v{}", r % 100_000)),
                 },
-                DataKind::Json => {
-                    Value::json(format!("{{\"k\":{},\"tags\":[\"a\",\"b\"],\"ok\":{}}}", r % 1000, r & 1 == 0))
-                }
+                DataKind::Json => Value::json(format!("{{\"k\":{},\"tags\":[\"a\",\"b\"],\"ok\":{}}}", r % 1000, r & 1 == 0)),
                 DataKind::Uuid => Value::parse_as(
-                    &format!(
-                        "{:08x}-{:04x}-4{:03x}-8{:03x}-{:012x}",
-                        r as u32,
-                        (r >> 32) as u16,
-                        (r >> 48) % 4096,
-                        (r >> 4) % 4096,
-                        r % 0xFFFF_FFFF_FFFF
-                    ),
+                    &format!("{:08x}-{:04x}-4{:03x}-8{:03x}-{:012x}", r as u32, (r >> 32) as u16, (r >> 48) % 4096, (r >> 4) % 4096, r % 0xFFFF_FFFF_FFFF),
                     DataKind::Uuid,
                 )
                 .unwrap_or(Value::Null),
@@ -162,11 +139,7 @@ pub fn avatar_png(seed: u64) -> Vec<u8> {
     let (a, b) = ((seed % 200) as u8 + 30, ((seed >> 8) % 200) as u8 + 30);
     let img = image::RgbaImage::from_fn(48, 48, |x, y| {
         let (dx, dy) = (x as i32 - 24, y as i32 - 24);
-        if dx * dx + dy * dy < 15 * 15 {
-            image::Rgba([250, 250, 250, 255])
-        } else {
-            image::Rgba([a, (x * 5) as u8, b.wrapping_add((y * 3) as u8), 255])
-        }
+        if dx * dx + dy * dy < 15 * 15 { image::Rgba([250, 250, 250, 255]) } else { image::Rgba([a, (x * 5) as u8, b.wrapping_add((y * 3) as u8), 255]) }
     });
     let mut buf = Vec::new();
     let _ = image::DynamicImage::ImageRgba8(img).write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png);

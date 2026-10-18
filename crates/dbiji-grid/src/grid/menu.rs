@@ -26,11 +26,7 @@ fn short_value(v: &Value) -> String {
     }
     let t = v.to_text();
     let first = t.lines().next().unwrap_or("");
-    if first.chars().count() > 32 || t.contains('\n') {
-        format!("{}…", first.chars().take(32).collect::<String>())
-    } else {
-        first.to_string()
-    }
+    if first.chars().count() > 32 || t.contains('\n') { format!("{}…", first.chars().take(32).collect::<String>()) } else { first.to_string() }
 }
 
 impl GridFrame<'_> {
@@ -84,9 +80,7 @@ impl GridFrame<'_> {
             self.copy_selection(&CopyOptions::plain());
             ui.close();
         }
-        if item(ui, icon::CLIPBOARD, tr("Advanced copy…"), Some(KeyboardShortcut::new(cmd | Modifiers::SHIFT, Key::C)))
-            .clicked()
-        {
+        if item(ui, icon::CLIPBOARD, tr("Advanced copy…"), Some(KeyboardShortcut::new(cmd | Modifiers::SHIFT, Key::C))).clicked() {
             self.state.rt.copy_dialog = true;
             ui.close();
         }
@@ -108,20 +102,11 @@ impl GridFrame<'_> {
         if let Some((row, col)) = active {
             let cell_ok = editable && self.model.can_edit_cell(row, col).is_ok();
             ui.add_enabled_ui(cell_ok, |ui| {
-                if item(
-                    ui,
-                    icon::PENCIL_SIMPLE,
-                    tr("Edit cell"),
-                    Some(KeyboardShortcut::new(Modifiers::NONE, Key::Enter)),
-                )
-                .clicked()
-                {
+                if item(ui, icon::PENCIL_SIMPLE, tr("Edit cell"), Some(KeyboardShortcut::new(Modifiers::NONE, Key::Enter))).clicked() {
                     self.start_edit(row, col, None);
                     ui.close();
                 }
-                if item(ui, icon::PROHIBIT, tr("Set NULL"), Some(KeyboardShortcut::new(Modifiers::SHIFT, Key::Delete)))
-                    .clicked()
-                {
+                if item(ui, icon::PROHIBIT, tr("Set NULL"), Some(KeyboardShortcut::new(Modifiers::SHIFT, Key::Delete))).clicked() {
                     self.set_selected_null();
                     ui.close();
                 }
@@ -132,14 +117,7 @@ impl GridFrame<'_> {
             });
         }
         ui.add_enabled_ui(editable, |ui| {
-            if item(
-                ui,
-                icon::ROWS_PLUS_BOTTOM,
-                tr("Add row"),
-                Some(KeyboardShortcut::new(Modifiers::NONE, Key::Insert)),
-            )
-            .clicked()
-            {
+            if item(ui, icon::ROWS_PLUS_BOTTOM, tr("Add row"), Some(KeyboardShortcut::new(Modifiers::NONE, Key::Insert))).clicked() {
                 self.add_row_after_active();
                 ui.close();
             }
@@ -147,22 +125,17 @@ impl GridFrame<'_> {
                 self.duplicate_selected();
                 ui.close();
             }
-            if item(ui, icon::TRASH, tr("Delete row(s)"), Some(KeyboardShortcut::new(Modifiers::NONE, Key::Delete)))
-                .clicked()
-            {
+            if item(ui, icon::TRASH, tr("Delete row(s)"), Some(KeyboardShortcut::new(Modifiers::NONE, Key::Delete))).clicked() {
                 self.delete_selected();
                 ui.close();
             }
         });
-        if self.model.can_undo()
-            && item(ui, icon::ARROW_U_UP_LEFT, tr("Undo"), Some(KeyboardShortcut::new(cmd, Key::Z))).clicked()
-        {
+        if self.model.can_undo() && item(ui, icon::ARROW_U_UP_LEFT, tr("Undo"), Some(KeyboardShortcut::new(cmd, Key::Z))).clicked() {
             self.model.undo();
             ui.close();
         }
         if !editable && let Some(reason) = self.model.read_only_reason().cloned() {
-            ui.add_enabled(false, Button::new(format!("{}  {}", icon::LOCK_SIMPLE, reason.short_label())))
-                .on_disabled_hover_text(reason.message());
+            ui.add_enabled(false, Button::new(format!("{}  {}", icon::LOCK_SIMPLE, reason.short_label()))).on_disabled_hover_text(reason.message());
             if reason == ReadOnlyReason::NoKey && item(ui, icon::KEY, tr("Define virtual key…"), None).clicked() {
                 let table = crate::model::source_table(self.model.columns()).ok();
                 self.actions.push(GridAction::DefineVirtualKey { table });
@@ -191,14 +164,7 @@ impl GridFrame<'_> {
                             _ => format!("{name} {} '{v}'", op.sql()),
                         };
                         if ui.button(label).clicked() {
-                            apply_value_filter(
-                                self.model,
-                                self.state.mode,
-                                self.options,
-                                (col, op, &value),
-                                &self.ctx,
-                                &mut self.actions,
-                            );
+                            apply_value_filter(self.model, self.state.mode, self.options, (col, op, &value), &self.ctx, &mut self.actions);
                             ui.close();
                         }
                     }
@@ -214,27 +180,17 @@ impl GridFrame<'_> {
             // --- navigation / values
             if let Some(i) = self.model.foreign_key_for_column(col) {
                 let target = self.model.foreign_keys()[i].ref_table.display_path();
-                if item(ui, icon::ARROW_SQUARE_OUT, &trf("Navigate to {}", &[&target]), None)
-                    .on_hover_text(tr("Cmd+click a link cell to navigate"))
-                    .clicked()
-                {
+                if item(ui, icon::ARROW_SQUARE_OUT, &trf("Navigate to {}", &[&target]), None).on_hover_text(tr("Cmd+click a link cell to navigate")).clicked() {
                     self.navigate_fk(row, col);
                     ui.close();
                 }
             }
-            if item(ui, icon::EYE, tr("View value"), Some(KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter)))
-                .clicked()
-            {
+            if item(ui, icon::EYE, tr("View value"), Some(KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter))).clicked() {
                 self.actions.push(GridAction::OpenValuePanel { row, col });
                 ui.close();
             }
             ui.menu_button(format!("{}  {}", icon::FILE_SQL, tr("Generate SQL")), |ui| {
-                for (kind, label) in [
-                    (SqlKind::Select, "SELECT"),
-                    (SqlKind::Insert, "INSERT"),
-                    (SqlKind::Update, "UPDATE"),
-                    (SqlKind::Delete, "DELETE"),
-                ] {
+                for (kind, label) in [(SqlKind::Select, "SELECT"), (SqlKind::Insert, "INSERT"), (SqlKind::Update, "UPDATE"), (SqlKind::Delete, "DELETE")] {
                     if ui.button(label).clicked() {
                         self.generate_sql(kind);
                         ui.close();
@@ -253,12 +209,8 @@ impl GridFrame<'_> {
                 let idx = col - self.model.base_column_count();
                 if ui.button(tr("Edit virtual column…")).clicked() {
                     let v = &self.model.virtual_columns()[idx];
-                    self.state.rt.virtual_dialog = Some(VirtualColumnDialog {
-                        name: v.name.clone(),
-                        expression: v.expression.source().to_string(),
-                        error: None,
-                        editing: Some(idx),
-                    });
+                    self.state.rt.virtual_dialog =
+                        Some(VirtualColumnDialog { name: v.name.clone(), expression: v.expression.source().to_string(), error: None, editing: Some(idx) });
                     ui.close();
                 }
                 if ui.button(tr("Remove virtual column")).clicked() {
@@ -290,14 +242,7 @@ impl GridFrame<'_> {
                 ui.close();
             }
             if ui.button(format!("{name} DESC")).clicked() {
-                apply_sort(
-                    self.model,
-                    self.state,
-                    self.options,
-                    vec![SortKey::desc(col)],
-                    &self.ctx,
-                    &mut self.actions,
-                );
+                apply_sort(self.model, self.state, self.options, vec![SortKey::desc(col)], &self.ctx, &mut self.actions);
                 ui.close();
             }
             if !self.state.sort.is_empty() {

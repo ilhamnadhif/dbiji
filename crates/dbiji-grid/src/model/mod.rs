@@ -233,11 +233,7 @@ pub struct ResultModel {
 
 impl std::fmt::Debug for ResultModel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ResultModel")
-            .field("columns", &self.columns.len())
-            .field("rows", &self.row_count())
-            .field("pending", &self.pending_counts())
-            .finish()
+        f.debug_struct("ResultModel").field("columns", &self.columns.len()).field("rows", &self.row_count()).field("pending", &self.pending_counts()).finish()
     }
 }
 
@@ -286,8 +282,7 @@ impl ResultModel {
         let dictionaries = std::mem::take(&mut self.dictionaries);
         let fetch = std::mem::take(&mut self.fetch);
         let editability = std::mem::replace(&mut self.editability, Err(ReadOnlyReason::NoSourceTable));
-        let same_columns =
-            columns.len() == self.columns.len() && columns.iter().zip(&self.columns).all(|(a, b)| a.name == b.name);
+        let same_columns = columns.len() == self.columns.len() && columns.iter().zip(&self.columns).all(|(a, b)| a.name == b.name);
         *self = ResultModel::new(columns, store);
         self.fetch = fetch;
         if same_columns {
@@ -323,11 +318,7 @@ impl ResultModel {
 
     /// Header label of a column.
     pub fn column_name(&self, col: usize) -> &str {
-        if col < self.columns.len() {
-            &self.columns[col].name
-        } else {
-            self.virtual_columns.get(col - self.columns.len()).map_or("", |v| v.name.as_str())
-        }
+        if col < self.columns.len() { &self.columns[col].name } else { self.virtual_columns.get(col - self.columns.len()).map_or("", |v| v.name.as_str()) }
     }
 
     /// All column names (result columns, then virtual columns).
@@ -380,8 +371,7 @@ impl ResultModel {
             self.virtual_columns.remove(index);
             if let ViewKind::Client(spec) = &self.view_kind {
                 let base = self.columns.len();
-                let uses_virtual = spec.sort.iter().any(|k| k.column >= base)
-                    || spec.filter.as_ref().is_some_and(|f| f.expr().referenced_columns().iter().any(|c| *c >= base));
+                let uses_virtual = spec.sort.iter().any(|k| k.column >= base) || spec.filter.as_ref().is_some_and(|f| f.expr().referenced_columns().iter().any(|c| *c >= base));
                 if uses_virtual {
                     self.clear_view();
                 }
@@ -668,14 +658,8 @@ impl ResultModel {
                     f(d, cells);
                 }
                 Some(RowSource::Inserted(k)) => {
-                    let cells = RowCells {
-                        base: None,
-                        edits: None,
-                        inserted: Some(&self.inserted[k].values),
-                        state: RowState::Inserted,
-                        source: RowSource::Inserted(k),
-                        model: self,
-                    };
+                    let cells =
+                        RowCells { base: None, edits: None, inserted: Some(&self.inserted[k].values), state: RowState::Inserted, source: RowSource::Inserted(k), model: self };
                     f(d, cells);
                 }
                 None => {}
@@ -695,9 +679,7 @@ impl ResultModel {
     pub fn row_values(&self, row: usize) -> Option<Vec<Value>> {
         let mut out = None;
         let n = self.column_count();
-        self.visit_rows(row..row + 1, |_, cells| {
-            out = Some((0..n).map(|c| cells.value_of(c).unwrap_or(Value::Null)).collect())
-        });
+        self.visit_rows(row..row + 1, |_, cells| out = Some((0..n).map(|c| cells.value_of(c).unwrap_or(Value::Null)).collect()));
         out
     }
 
@@ -803,11 +785,7 @@ impl ResultModel {
 
     /// Context for evaluating model columns on another thread.
     pub fn view_context(&self) -> ViewContext {
-        ViewContext {
-            base_columns: self.columns.len(),
-            virtual_columns: self.virtual_columns.iter().map(|v| v.expression.clone()).collect(),
-            removed: self.removed.clone(),
-        }
+        ViewContext { base_columns: self.columns.len(), virtual_columns: self.virtual_columns.iter().map(|v| v.expression.clone()).collect(), removed: self.removed.clone() }
     }
 
     /// Start computing a client view on a background thread; `on_done` is
@@ -954,10 +932,7 @@ impl ResultModel {
                 if let (Some(max), Value::Text(s)) = (meta.max_length, v) {
                     let n = s.chars().count();
                     if max > 0 && n > max as usize && meta.kind == DataKind::Text {
-                        return Err(trf(
-                            "Value for '{}' is {} characters long; the column allows at most {}",
-                            &[&meta.name, &n, &max],
-                        ));
+                        return Err(trf("Value for '{}' is {} characters long; the column allows at most {}", &[&meta.name, &n, &max]));
                     }
                 }
                 Ok(())
@@ -1018,15 +993,11 @@ impl ResultModel {
         Ok(())
     }
 
-    fn set_cells_inner(
-        &mut self,
-        edits: Vec<(usize, usize, CellValue)>,
-    ) -> Result<Vec<(RowKey, usize, Option<CellValue>)>, String> {
+    fn set_cells_inner(&mut self, edits: Vec<(usize, usize, CellValue)>) -> Result<Vec<(RowKey, usize, Option<CellValue>)>, String> {
         let mut resolved = Vec::with_capacity(edits.len());
         for (row, col, value) in edits {
             let src = self.check_cell(row, col)?;
-            self.validate(col, &value, matches!(src, RowSource::Inserted(_)))
-                .map_err(|e| trf("Row {}: {}", &[&(row + 1), &e]))?;
+            self.validate(col, &value, matches!(src, RowSource::Inserted(_))).map_err(|e| trf("Row {}: {}", &[&(row + 1), &e]))?;
             resolved.push((src, col, value));
         }
         // Originals of stored rows, read with one lock.
@@ -1095,8 +1066,7 @@ impl ResultModel {
             Some(RowSource::Stored(s)) => {
                 let d = after.unwrap_or(0);
                 // Base position of display row d.
-                let before =
-                    self.inserted.iter().enumerate().filter(|(k, r)| r.after_base.min(base_len) + k < d).count();
+                let before = self.inserted.iter().enumerate().filter(|(k, r)| r.after_base.min(base_len) + k < d).count();
                 let b = d - before;
                 let idx = self.inserted.partition_point(|r| r.after_base.min(base_len) <= b);
                 (idx, b + 1, Some(s))
@@ -1327,11 +1297,7 @@ impl ResultModel {
 
     /// Counts of pending changes (rows).
     pub fn pending_counts(&self) -> PendingCounts {
-        PendingCounts {
-            updated: self.updates.keys().filter(|s| !self.deleted.contains(s)).count(),
-            inserted: self.inserted.len(),
-            deleted: self.deleted.len(),
-        }
+        PendingCounts { updated: self.updates.keys().filter(|s| !self.deleted.contains(s)).count(), inserted: self.inserted.len(), deleted: self.deleted.len() }
     }
 
     /// Drop all pending changes.
@@ -1519,10 +1485,7 @@ impl ResultModel {
             .filter_map(|c| {
                 let name = match target {
                     Some(t) => t.column_names.get(c)?.clone()?,
-                    None => self.columns[c]
-                        .source
-                        .as_ref()
-                        .map_or_else(|| self.columns[c].name.clone(), |s| s.column.clone()),
+                    None => self.columns[c].source.as_ref().map_or_else(|| self.columns[c].name.clone(), |s| s.column.clone()),
                 };
                 Some((c, name, self.columns[c].type_name.clone()))
             })

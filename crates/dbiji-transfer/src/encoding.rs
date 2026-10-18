@@ -15,8 +15,7 @@ pub(crate) fn resolve_encoding(label: &str) -> DbResult<&'static Encoding> {
     if label.is_empty() {
         return Ok(UTF_8);
     }
-    Encoding::for_label(label.as_bytes())
-        .ok_or_else(|| DbError::config(format!("Unknown character encoding '{label}'")))
+    Encoding::for_label(label.as_bytes()).ok_or_else(|| DbError::config(format!("Unknown character encoding '{label}'")))
 }
 
 /// Byte order mark for encodings that have one.
@@ -82,13 +81,9 @@ impl<W: Write> EncodingWriter<W> {
             Mode::Legacy(encoder) => {
                 let mut rest = s;
                 loop {
-                    let cap = encoder
-                        .max_buffer_length_from_utf8_without_replacement(rest.len())
-                        .unwrap_or(rest.len().saturating_mul(4))
-                        .clamp(16, 64 * 1024);
+                    let cap = encoder.max_buffer_length_from_utf8_without_replacement(rest.len()).unwrap_or(rest.len().saturating_mul(4)).clamp(16, 64 * 1024);
                     self.scratch.resize(cap, 0);
-                    let (result, read, written) =
-                        encoder.encode_from_utf8_without_replacement(rest, &mut self.scratch, last);
+                    let (result, read, written) = encoder.encode_from_utf8_without_replacement(rest, &mut self.scratch, last);
                     self.inner.write_all(&self.scratch[..written])?;
                     rest = &rest[read..];
                     match result {
@@ -257,8 +252,7 @@ impl<R: Read> Read for DecodingReader<R> {
                 }
             }
             let last = self.eof && self.raw_pos == self.raw_len;
-            let (result, read, written, errors) =
-                self.decoder.decode_to_utf8(&self.raw[self.raw_pos..self.raw_len], &mut self.out, last);
+            let (result, read, written, errors) = self.decoder.decode_to_utf8(&self.raw[self.raw_pos..self.raw_len], &mut self.out, last);
             self.raw_pos += read;
             self.out_pos = 0;
             self.out_len = written;

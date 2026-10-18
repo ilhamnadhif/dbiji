@@ -21,17 +21,17 @@ pub mod ops;
 pub mod palette;
 pub mod project_view;
 pub mod results;
-pub mod sample;
 pub mod router;
+pub mod sample;
 pub mod services;
 pub mod sqllang;
 pub mod sqlprep;
-pub mod taskexec;
-pub mod tools;
-pub mod transferexec;
 pub mod tabs;
+pub mod taskexec;
 pub mod theme;
 pub mod toasts;
+pub mod tools;
+pub mod transferexec;
 pub mod urls;
 pub mod widgets;
 
@@ -168,11 +168,7 @@ pub fn run() -> ExitCode {
     let (conns, mut conn_warnings) = connection_manager(&services);
     services.warnings.append(&mut conn_warnings);
 
-    let mut viewport = egui::ViewportBuilder::default()
-        .with_title("DBiji")
-        .with_app_id("dev.dbiji.DBiji")
-        .with_inner_size([1280.0, 820.0])
-        .with_min_inner_size([640.0, 400.0]);
+    let mut viewport = egui::ViewportBuilder::default().with_title("DBiji").with_app_id("dev.dbiji.DBiji").with_inner_size([1280.0, 820.0]).with_min_inner_size([640.0, 400.0]);
     if let Some(icon) = window_icon() {
         viewport = viewport.with_icon(icon);
     }

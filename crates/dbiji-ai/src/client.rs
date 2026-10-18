@@ -63,12 +63,7 @@ impl AiClient {
     /// arrives (from a background thread). Returns the complete answer.
     /// A refusal is returned as an error with code `refusal`; text already
     /// received for such an answer should be discarded.
-    pub async fn chat_stream(
-        &self,
-        req: ChatRequest,
-        on_delta: impl FnMut(&str) + Send + 'static,
-        cancel: CancellationToken,
-    ) -> DbResult<ChatResponse> {
+    pub async fn chat_stream(&self, req: ChatRequest, on_delta: impl FnMut(&str) + Send + 'static, cancel: CancellationToken) -> DbResult<ChatResponse> {
         crate::protocol::validate_request(&req)?;
         let cfg = self.config.clone();
         let agent = self.agent.clone();
@@ -142,15 +137,13 @@ fn send(agent: &ureq::Agent, r: &HttpRequest) -> Result<ureq::http::Response<ure
 enum Streamed {
     Done(StreamState),
     /// Error event; `emitted` tells whether text was already delivered.
-    Error { err: ApiError, emitted: bool },
+    Error {
+        err: ApiError,
+        emitted: bool,
+    },
 }
 
-fn read_stream(
-    provider: AiProviderKind,
-    resp: ureq::http::Response<ureq::Body>,
-    on_delta: &mut dyn FnMut(&str),
-    cancel: &CancellationToken,
-) -> DbResult<Streamed> {
+fn read_stream(provider: AiProviderKind, resp: ureq::http::Response<ureq::Body>, on_delta: &mut dyn FnMut(&str), cancel: &CancellationToken) -> DbResult<Streamed> {
     let mut reader = BufReader::new(resp.into_body().into_reader());
     let mut parser = SseParser::default();
     let mut state = StreamState::default();
@@ -198,14 +191,7 @@ fn read_error_body(resp: ureq::http::Response<ureq::Body>) -> String {
 
 /// The request loop: retries transient failures, drops rejected optional
 /// features once, streams the answer.
-fn run_blocking(
-    cfg: &AiConfig,
-    agent: &ureq::Agent,
-    req: &ChatRequest,
-    initial: Flags,
-    on_delta: &mut dyn FnMut(&str),
-    cancel: &CancellationToken,
-) -> DbResult<ChatResponse> {
+fn run_blocking(cfg: &AiConfig, agent: &ureq::Agent, req: &ChatRequest, initial: Flags, on_delta: &mut dyn FnMut(&str), cancel: &CancellationToken) -> DbResult<ChatResponse> {
     let mut flags = initial;
     let (mut fallback_dropped, mut effort_dropped, mut mct_switched) = (false, false, false);
     let mut attempt = 0u32;

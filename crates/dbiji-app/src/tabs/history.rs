@@ -133,12 +133,7 @@ impl TabView for HistoryTab {
         ui.horizontal(|ui| {
             ui.label(icon::MAGNIFYING_GLASS);
             changed |= ui.add(egui::TextEdit::singleline(&mut self.text).hint_text(tr("Search SQL text…")).desired_width(260.0)).changed();
-            let conn_name = self
-                .connection
-                .as_deref()
-                .and_then(|c| cx.conns.config(c))
-                .map(|c| c.name.clone())
-                .unwrap_or_else(|| tr("All connections").to_string());
+            let conn_name = self.connection.as_deref().and_then(|c| cx.conns.config(c)).map(|c| c.name.clone()).unwrap_or_else(|| tr("All connections").to_string());
             egui::ComboBox::from_id_salt("hist_conn").selected_text(conn_name).show_ui(ui, |ui| {
                 changed |= ui.selectable_value(&mut self.connection, None, tr("All connections")).changed();
                 for c in cx.conns.configs() {
@@ -175,15 +170,9 @@ impl TabView for HistoryTab {
             .entries
             .iter()
             .map(|e| {
-                let when = chrono::DateTime::from_timestamp_millis(e.timestamp_ms)
-                    .map(|t| t.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M:%S").to_string())
-                    .unwrap_or_default();
-                let conn = e
-                    .connection_id
-                    .as_ref()
-                    .and_then(|c| names.get(c).cloned())
-                    .or_else(|| e.connection_name.clone())
-                    .unwrap_or_default();
+                let when =
+                    chrono::DateTime::from_timestamp_millis(e.timestamp_ms).map(|t| t.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M:%S").to_string()).unwrap_or_default();
+                let conn = e.connection_id.as_ref().and_then(|c| names.get(c).cloned()).or_else(|| e.connection_name.clone()).unwrap_or_default();
                 vec![
                     when,
                     conn,
@@ -197,20 +186,15 @@ impl TabView for HistoryTab {
         let detail_h = if sel_entry.is_some() { 160.0 } else { 0.0 };
         let avail = ui.available_height() - detail_h;
         ui.allocate_ui(egui::vec2(ui.available_width(), avail.max(80.0)), |ui| {
-            let r = crate::widgets::simple_table(
-                ui,
-                "history_table",
-                &[tr("Time"), tr("Connection"), tr("Duration"), tr("Rows"), tr("Status"), tr("SQL")],
-                &rows,
-                self.selected,
-            );
+            let r = crate::widgets::simple_table(ui, "history_table", &[tr("Time"), tr("Connection"), tr("Duration"), tr("Rows"), tr("Status"), tr("SQL")], &rows, self.selected);
             if let Some(i) = r.clicked {
                 self.selected = Some(i);
             }
             if let Some(i) = r.double_clicked
-                && let Some(e) = self.entries.get(i).cloned() {
-                    self.open_in_editor(cx, &e);
-                }
+                && let Some(e) = self.entries.get(i).cloned()
+            {
+                self.open_in_editor(cx, &e);
+            }
             if let Some(i) = r.context_row {
                 self.selected = Some(i);
             }

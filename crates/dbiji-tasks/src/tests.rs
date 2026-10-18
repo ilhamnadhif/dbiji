@@ -15,8 +15,14 @@ use tokio_util::sync::CancellationToken;
 
 #[derive(Clone)]
 enum Behave {
-    Ok { secs: u64, rows: u64 },
-    Fail { secs: u64, msg: &'static str },
+    Ok {
+        secs: u64,
+        rows: u64,
+    },
+    Fail {
+        secs: u64,
+        msg: &'static str,
+    },
     /// Waits for cancellation.
     Hang,
     /// Ignores cancellation (must be aborted by the engine).
@@ -100,11 +106,7 @@ fn harness(options: SchedulerOptions, plans: &[(&str, Behave)]) -> Harness {
     let store = Arc::new(TaskStore::open(dir.path()).expect("store"));
     let log = Arc::new(RunLog::open(dir.path(), RunLogOptions::default()).expect("log"));
     let clock = Arc::new(TokioClock::new(base()));
-    let fake = Arc::new(Fake {
-        clock: clock.clone(),
-        plans: plans.iter().map(|(n, b)| (n.to_string(), b.clone())).collect(),
-        calls: Mutex::new(Vec::new()),
-    });
+    let fake = Arc::new(Fake { clock: clock.clone(), plans: plans.iter().map(|(n, b)| (n.to_string(), b.clone())).collect(), calls: Mutex::new(Vec::new()) });
     let sched = Scheduler::with_clock(store.clone(), log.clone(), fake.clone(), options, tokio::runtime::Handle::current(), clock.clone());
     let rx = sched.subscribe();
     Harness { _dir: dir, store, log, fake, clock, sched, rx }
@@ -217,10 +219,8 @@ async fn runs_of_a_task_never_overlap() {
 
 #[tokio::test(start_paused = true)]
 async fn composite_runs_steps_in_order_and_stops_on_error() {
-    let mut h = harness(
-        SchedulerOptions::default(),
-        &[("a", Behave::Ok { secs: 5, rows: 10 }), ("b", Behave::Fail { secs: 1, msg: "disk full" }), ("c", Behave::Ok { secs: 1, rows: 1 })],
-    );
+    let mut h =
+        harness(SchedulerOptions::default(), &[("a", Behave::Ok { secs: 5, rows: 10 }), ("b", Behave::Fail { secs: 1, msg: "disk full" }), ("c", Behave::Ok { secs: 1, rows: 1 })]);
     let a = h.store.create(shell("a")).unwrap();
     let b = h.store.create(shell("b")).unwrap();
     let c = h.store.create(shell("c")).unwrap();
@@ -253,10 +253,7 @@ async fn composite_runs_steps_in_order_and_stops_on_error() {
 
 #[tokio::test(start_paused = true)]
 async fn parallel_composite() {
-    let mut h = harness(
-        SchedulerOptions::default(),
-        &[("p1", Behave::Ok { secs: 5, rows: 1 }), ("p2", Behave::Ok { secs: 5, rows: 2 }), ("p3", Behave::Ok { secs: 3, rows: 3 })],
-    );
+    let mut h = harness(SchedulerOptions::default(), &[("p1", Behave::Ok { secs: 5, rows: 1 }), ("p2", Behave::Ok { secs: 5, rows: 2 }), ("p3", Behave::Ok { secs: 3, rows: 3 })]);
     let ids: Vec<String> = ["p1", "p2", "p3"].iter().map(|n| h.store.create(shell(n)).unwrap().id).collect();
     let comp = h.store.create(composite("par", ids.clone(), true, true)).unwrap();
     h.sched.run_now(&comp.id, Trigger::Manual).unwrap();

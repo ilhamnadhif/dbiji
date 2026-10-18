@@ -139,11 +139,7 @@ impl Operations {
                         let total = op.progress.total.load(Ordering::Relaxed);
                         if matches!(op.state, OpState::Running) {
                             if total > 0 {
-                                ui.add(
-                                    egui::ProgressBar::new((done as f32 / total as f32).clamp(0.0, 1.0))
-                                        .desired_width(220.0)
-                                        .text(format!("{done} / {total}")),
-                                );
+                                ui.add(egui::ProgressBar::new((done as f32 / total as f32).clamp(0.0, 1.0)).desired_width(220.0).text(format!("{done} / {total}")));
                             } else {
                                 ui.horizontal(|ui| {
                                     ui.spinner();
@@ -161,9 +157,7 @@ impl Operations {
                         }
                         ui.small(format!("{:.1}s", elapsed.as_secs_f32()));
                     });
-                    if matches!(op.state, OpState::Running)
-                        && ui.button(icon::STOP).on_hover_text(tr("Cancel")).clicked()
-                    {
+                    if matches!(op.state, OpState::Running) && ui.button(icon::STOP).on_hover_text(tr("Cancel")).clicked() {
                         op.cancel.cancel();
                     }
                 });

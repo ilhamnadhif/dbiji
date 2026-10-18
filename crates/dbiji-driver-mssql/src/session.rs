@@ -14,10 +14,7 @@ use dbiji_core::driver::{ServerInfo, parse_version_number};
 use dbiji_core::meta::*;
 use dbiji_core::plan::QueryPlan;
 use dbiji_core::value::ColumnMeta;
-use dbiji_core::{
-    CancelHandle, ConnectParams, DbError, DbKind, DbResult, ExecOptions, QueryCursor, ResultHeader, Row, ServerMessage,
-    Session, TransactionMode, Value,
-};
+use dbiji_core::{CancelHandle, ConnectParams, DbError, DbKind, DbResult, ExecOptions, QueryCursor, ResultHeader, Row, ServerMessage, Session, TransactionMode, Value};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::oneshot;
@@ -201,9 +198,7 @@ impl SqlServerSession {
         }
         if self.pending.is_some() {
             if self.cursor_open.load(Ordering::SeqCst) {
-                return Err(DbError::internal(
-                    "A result set is still open on this session; close it before running another statement",
-                ));
+                return Err(DbError::internal("A result set is still open on this session; close it before running another statement"));
             }
             if let Some(rx) = self.pending.as_mut() {
                 let ret = rx.await;
@@ -232,8 +227,7 @@ impl SqlServerSession {
             mode: mode.unwrap_or_else(|| exec_mode(sql, params)),
             timeout: opts.timeout,
             resolve_sources: opts.resolve_sources,
-            refresh_state: !self.suppress_refresh
-                && (self.mode == TransactionMode::Manual || sqltext::touches_session_state(sql)),
+            refresh_state: !self.suppress_refresh && (self.mode == TransactionMode::Manual || sqltext::touches_session_state(sql)),
             tag: sqltext::first_keyword(sql),
             notice: self.reconnect_notice.take(),
         };
@@ -287,11 +281,7 @@ impl SqlServerSession {
     }
 
     async fn explain_impl(&mut self, sql: &str, analyze: bool) -> DbResult<QueryPlan> {
-        let (on, off) = if analyze {
-            ("SET STATISTICS XML ON", "SET STATISTICS XML OFF")
-        } else {
-            ("SET SHOWPLAN_XML ON", "SET SHOWPLAN_XML OFF")
-        };
+        let (on, off) = if analyze { ("SET STATISTICS XML ON", "SET STATISTICS XML OFF") } else { ("SET SHOWPLAN_XML ON", "SET SHOWPLAN_XML OFF") };
         self.suppress_refresh = true;
         let on_res = self.batch(on).await;
         let res = match on_res {
@@ -308,9 +298,10 @@ impl SqlServerSession {
             if cols.len() == 1 && cols[0].name.contains("Showplan") {
                 for r in rows {
                     if let Some(v) = r.into_iter().next()
-                        && !v.is_null() {
-                            docs.push(v.to_text().into_owned());
-                        }
+                        && !v.is_null()
+                    {
+                        docs.push(v.to_text().into_owned());
+                    }
                 }
             }
         }
@@ -350,9 +341,10 @@ impl Session for SqlServerSession {
         }
         if let Some(rx) = self.pending.take()
             && !self.cursor_open.load(Ordering::SeqCst)
-                && let Ok(r) = rx.await {
-                    self.client = r.client;
-                }
+            && let Ok(r) = rx.await
+        {
+            self.client = r.client;
+        }
         self.closed = true;
         if let Some(c) = self.client.take() {
             c.close().await.map_err(|e| map_error(e, None))?;
@@ -375,9 +367,7 @@ impl Session for SqlServerSession {
     async fn set_transaction_mode(&mut self, mode: TransactionMode) -> DbResult<()> {
         match mode {
             TransactionMode::Manual => self.batch("SET IMPLICIT_TRANSACTIONS ON").await?,
-            TransactionMode::Auto => {
-                self.batch("WHILE @@TRANCOUNT > 0 COMMIT TRANSACTION;\nSET IMPLICIT_TRANSACTIONS OFF").await?
-            }
+            TransactionMode::Auto => self.batch("WHILE @@TRANCOUNT > 0 COMMIT TRANSACTION;\nSET IMPLICIT_TRANSACTIONS OFF").await?,
         }
         self.mode = mode;
         Ok(())
@@ -390,10 +380,8 @@ impl Session for SqlServerSession {
     async fn commit(&mut self) -> DbResult<()> {
         if self.lost_transaction {
             self.lost_transaction = false;
-            return Err(DbError::connection(
-                "The connection was re-established; the transaction that was open was rolled back by the server",
-            )
-            .with_hint("Repeat the changes and commit again"));
+            return Err(DbError::connection("The connection was re-established; the transaction that was open was rolled back by the server")
+                .with_hint("Repeat the changes and commit again"));
         }
         self.batch("WHILE @@TRANCOUNT > 0 COMMIT TRANSACTION").await
     }

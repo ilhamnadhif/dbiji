@@ -65,9 +65,7 @@ impl<'a> GroupingPanel<'a> {
         state.pending_key = Some((model.generation(), spec.clone()));
         state.task = Some(BackgroundTask::spawn(
             "dbiji-grid-group",
-            move |cancel| {
-                compute_groups(&store, view.as_deref().map(|v| v.as_slice()), &spec, &vctx, MAX_GROUPS, cancel)
-            },
+            move |cancel| compute_groups(&store, view.as_deref().map(|v| v.as_slice()), &spec, &vctx, MAX_GROUPS, cancel),
             Box::new(move || repaint.request_repaint()),
         ));
     }
@@ -115,8 +113,7 @@ impl<'a> GroupingPanel<'a> {
         });
         ui.horizontal(|ui| {
             ui.label(tr("Measure"));
-            let current =
-                state.spec.measure.and_then(|m| names.get(m)).cloned().unwrap_or_else(|| tr("(none)").to_string());
+            let current = state.spec.measure.and_then(|m| names.get(m)).cloned().unwrap_or_else(|| tr("(none)").to_string());
             ComboBox::from_id_salt("dbiji_group_measure").selected_text(current).show_ui(ui, |ui| {
                 if ui.selectable_label(state.spec.measure.is_none(), tr("(none)")).clicked() {
                     state.spec.measure = None;
@@ -152,15 +149,9 @@ impl<'a> GroupingPanel<'a> {
             });
         }
         let Some(result) = &state.result else { return None };
-        ui.weak(trf(
-            "{} groups in {} rows",
-            &[&result.groups.len(), &crate::format::group_thousands(&result.rows.to_string())],
-        ));
+        ui.weak(trf("{} groups in {} rows", &[&result.groups.len(), &crate::format::group_thousands(&result.rows.to_string())]));
         if result.truncated {
-            ui.colored_label(
-                ui.visuals().warn_fg_color,
-                trf("More than {} groups; the rest were dropped", &[&MAX_GROUPS]),
-            );
+            ui.colored_label(ui.visuals().warn_fg_color, trf("More than {} groups; the rest were dropped", &[&MAX_GROUPS]));
         }
         let spec = state.spec.clone();
         let has_measure = spec.measure.is_some();
@@ -180,11 +171,7 @@ impl<'a> GroupingPanel<'a> {
                 for i in range {
                     let g = &result.groups[i];
                     for k in &g.keys {
-                        let t = if k.is_null() {
-                            RichText::new("NULL").weak()
-                        } else {
-                            RichText::new(k.to_text().chars().take(60).collect::<String>())
-                        };
+                        let t = if k.is_null() { RichText::new("NULL").weak() } else { RichText::new(k.to_text().chars().take(60).collect::<String>()) };
                         if ui.selectable_label(false, t).on_hover_text(tr("Filter the grid to this group")).clicked() {
                             clicked = Some(i);
                         }

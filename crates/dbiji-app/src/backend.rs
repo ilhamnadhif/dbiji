@@ -18,11 +18,7 @@ pub struct Backend {
 impl Backend {
     pub fn new() -> std::io::Result<Self> {
         let workers = std::thread::available_parallelism().map(|n| n.get().clamp(2, 4)).unwrap_or(2);
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(workers)
-            .thread_name("dbiji-io")
-            .enable_all()
-            .build()?;
+        let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(workers).thread_name("dbiji-io").enable_all().build()?;
         Ok(Backend { runtime, ctx: Mutex::new(None) })
     }
 
@@ -140,18 +136,18 @@ pub enum Loadable<T> {
     Failed(dbiji_core::DbError),
 }
 
-
 impl<T> Loadable<T> {
     /// Move a finished job into `Loaded`/`Failed`. Returns true when the state changed.
     pub fn poll(&mut self) -> bool {
         if let Loadable::Loading(job) = self
-            && let Some(res) = job.poll() {
-                *self = match res {
-                    Ok(v) => Loadable::Loaded(v),
-                    Err(e) => Loadable::Failed(e),
-                };
-                return true;
-            }
+            && let Some(res) = job.poll()
+        {
+            *self = match res {
+                Ok(v) => Loadable::Loaded(v),
+                Err(e) => Loadable::Failed(e),
+            };
+            return true;
+        }
         false
     }
 

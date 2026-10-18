@@ -110,12 +110,7 @@ pub struct ExportSummary {
 ///
 /// `dialect` renders literals and identifiers for the SQL format (the target
 /// database of the generated script); `None` uses ANSI SQL.
-pub fn create_sink(
-    format: ExportFormat,
-    options: &ExportOptions,
-    output: ExportTarget,
-    dialect: Option<Arc<dyn Dialect>>,
-) -> DbResult<Box<dyn RowSink + Send>> {
+pub fn create_sink(format: ExportFormat, options: &ExportOptions, output: ExportTarget, dialect: Option<Arc<dyn Dialect>>) -> DbResult<Box<dyn RowSink + Send>> {
     let dialect = dialect.unwrap_or_else(|| Arc::new(GenericDialect::new()));
     Ok(match format {
         ExportFormat::Xlsx => Box::new(xlsx::XlsxSink::new(options, output)?),
@@ -202,14 +197,7 @@ impl TextOutput {
                 enc_writer.get_mut().write_all(b).map_err(|e| DbError::io(format!("Cannot write output: {e}")))?;
             }
         }
-        Ok(TextOutput {
-            writer: Some(BufWriter::with_capacity(64 * 1024, enc_writer)),
-            count,
-            path,
-            keep_partial,
-            encoding_name: enc.name(),
-            started: Instant::now(),
-        })
+        Ok(TextOutput { writer: Some(BufWriter::with_capacity(64 * 1024, enc_writer)), count, path, keep_partial, encoding_name: enc.name(), started: Instant::now() })
     }
 
     /// Name of the output encoding (for XML / HTML declarations).
@@ -246,20 +234,10 @@ impl TextOutput {
         enc.finish().map_err(|e| self.write_error(e))?;
         let mut warnings = Vec::new();
         if enc.unmappable() > 0 {
-            warnings.push(format!(
-                "{} character(s) cannot be represented in {} and were replaced with '?'",
-                enc.unmappable(),
-                self.encoding_name
-            ));
+            warnings.push(format!("{} character(s) cannot be represented in {} and were replaced with '?'", enc.unmappable(), self.encoding_name));
         }
         drop(enc);
-        Ok(ExportSummary {
-            rows,
-            bytes: self.bytes(),
-            files: self.path.iter().cloned().collect(),
-            warnings,
-            duration_ms: self.started.elapsed().as_millis() as u64,
-        })
+        Ok(ExportSummary { rows, bytes: self.bytes(), files: self.path.iter().cloned().collect(), warnings, duration_ms: self.started.elapsed().as_millis() as u64 })
     }
 
     /// Drop the output, deleting a partially written file unless configured otherwise.
@@ -342,12 +320,8 @@ mod tests {
 
     #[test]
     fn table_name_from_sources() {
-        let src =
-            |t: &str| ColumnSource { database: None, schema: Some("s".into()), table: t.into(), column: "c".into() };
-        let cols = vec![
-            ColumnMeta::new("a", "int", DataKind::Int).with_source(src("t")),
-            ColumnMeta::new("b", "int", DataKind::Int).with_source(src("t")),
-        ];
+        let src = |t: &str| ColumnSource { database: None, schema: Some("s".into()), table: t.into(), column: "c".into() };
+        let cols = vec![ColumnMeta::new("a", "int", DataKind::Int).with_source(src("t")), ColumnMeta::new("b", "int", DataKind::Int).with_source(src("t"))];
         assert_eq!(source_table_name(&cols, None), Some((Some("s".into()), "t".into())));
         let mixed = vec![cols[0].clone(), ColumnMeta::new("b", "int", DataKind::Int).with_source(src("u"))];
         assert_eq!(source_table_name(&mixed, None), None);

@@ -36,11 +36,9 @@ impl QueryBuilderTab {
         live.meta.request_objects(backend, &main, &schema, ObjectKind::View);
         let mut chosen: Option<ObjectRef> = None;
         let mut open = self.picker_open;
-        egui::Window::new(format!("{} {}", icon::TABLE, tr("Add table")))
-            .id(egui::Id::new(("qb_picker", &self.conn)))
-            .open(&mut open)
-            .default_size([320.0, 400.0])
-            .show(ui.ctx(), |ui| {
+        egui::Window::new(format!("{} {}", icon::TABLE, tr("Add table"))).id(egui::Id::new(("qb_picker", &self.conn))).open(&mut open).default_size([320.0, 400.0]).show(
+            ui.ctx(),
+            |ui| {
                 ui.add(egui::TextEdit::singleline(&mut self.picker_filter).hint_text(tr("Filter…")).desired_width(f32::INFINITY));
                 let filter = self.picker_filter.to_lowercase();
                 egui::ScrollArea::vertical().show(ui, |ui| {
@@ -64,7 +62,8 @@ impl QueryBuilderTab {
                     }
                 });
                 ui.weak(tr("Double-click a table to add it."));
-            });
+            },
+        );
         self.picker_open = open;
         if let Some(obj) = chosen {
             live.meta.request_table_def(backend, &main, &obj);

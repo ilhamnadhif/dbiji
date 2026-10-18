@@ -137,12 +137,7 @@ async fn json_layouts() {
 const SQLITE_TABLE: &str = "CREATE TABLE t (id INTEGER, flag INTEGER, big TEXT, ratio REAL, amount TEXT, note TEXT, code TEXT, \
      data BLOB, day TEXT, at TEXT, ts TEXT, tstz TEXT, uid TEXT, doc TEXT, arr TEXT)";
 
-async fn sql_round_trip(
-    rows: Vec<Row>,
-    dialect: std::sync::Arc<dyn dbiji_core::Dialect>,
-    rows_per_statement: usize,
-    what: &str,
-) {
+async fn sql_round_trip(rows: Vec<Row>, dialect: std::sync::Arc<dyn dbiji_core::Dialect>, rows_per_statement: usize, what: &str) {
     let cols = nasty_columns();
     let mut opts = ExportOptions::default();
     opts.sql.table_name = Some("t".into());
@@ -221,8 +216,7 @@ async fn sql_upsert_round_trip() {
     opts.sql.key_columns = vec!["id".into()];
     // Native upsert (SQLite ON CONFLICT) and the DELETE + INSERT fallback (ANSI).
     for (dialect, what) in [(sqlite_dialect(), "native upsert"), (generic(), "delete+insert")] {
-        let script =
-            export_string(ExportFormat::Sql, &opts, cols.clone(), rows.clone(), None, Some(dialect.clone())).await;
+        let script = export_string(ExportFormat::Sql, &opts, cols.clone(), rows.clone(), None, Some(dialect.clone())).await;
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch(&SQLITE_TABLE.replace("id INTEGER", "id INTEGER PRIMARY KEY")).unwrap();
         // Running the script twice must not duplicate rows.
@@ -262,15 +256,10 @@ async fn csv_through_import_into_sqlite() {
     session.exec_batch(SQLITE_TABLE);
     let mut src = CsvSource::open(&path, CsvReadOptions::default()).unwrap();
     let mut mapping = ImportMapping::new(dbiji_core::ObjectRef::table(None, "t"));
-    mapping.columns = cols
-        .iter()
-        .enumerate()
-        .map(|(i, c)| ColumnMapping { target_kind: Some(c.kind), ..ColumnMapping::new(i, c.name.clone()) })
-        .collect();
+    mapping.columns = cols.iter().enumerate().map(|(i, c)| ColumnMapping { target_kind: Some(c.kind), ..ColumnMapping::new(i, c.name.clone()) }).collect();
     mapping.batch_size = 4;
     mapping.rows_per_statement = 3;
-    let summary =
-        run_import(&mut src, &mut session, &mapping, &Progress::new(), &CancellationToken::new()).await.unwrap();
+    let summary = run_import(&mut src, &mut session, &mapping, &Progress::new(), &CancellationToken::new()).await.unwrap();
     assert_eq!(summary.rows_written, rows.len() as u64);
     assert_eq!(summary.rows_failed, 0);
     let back = convert_rows(select(&session.conn, "SELECT * FROM t ORDER BY id"), &cols, &ConvertOptions::default());
@@ -312,23 +301,7 @@ fn data_set_covers_every_variant() {
             walk(v, &mut seen);
         }
     }
-    for name in [
-        "null",
-        "bool",
-        "int",
-        "uint",
-        "float",
-        "decimal",
-        "text",
-        "bytes",
-        "date",
-        "time",
-        "datetime",
-        "datetimetz",
-        "uuid",
-        "json",
-        "array",
-    ] {
+    for name in ["null", "bool", "int", "uint", "float", "decimal", "text", "bytes", "date", "time", "datetime", "datetimetz", "uuid", "json", "array"] {
         assert!(seen.contains(name), "variant {name} missing from the data set");
     }
     let _: Vec<ColumnMeta> = nasty_columns();

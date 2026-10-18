@@ -144,11 +144,7 @@ impl Navigator {
             return true;
         }
         let f = self.filter.trim();
-        if f.contains('*') || f.contains('?') {
-            wildcard_match(f, text)
-        } else {
-            text.to_lowercase().contains(&f.to_lowercase())
-        }
+        if f.contains('*') || f.contains('?') { wildcard_match(f, text) } else { text.to_lowercase().contains(&f.to_lowercase()) }
     }
 
     /// Rebuild the flattened list of visible rows.
@@ -179,15 +175,7 @@ impl Navigator {
         self.rows = rows;
     }
 
-    fn build_folder_level(
-        &self,
-        cx: &mut AppContext,
-        rows: &mut Vec<Row>,
-        folders: &[String],
-        configs: &[ConnectionConfig],
-        parent: Option<&str>,
-        depth: usize,
-    ) {
+    fn build_folder_level(&self, cx: &mut AppContext, rows: &mut Vec<Row>, folders: &[String], configs: &[ConnectionConfig], parent: Option<&str>, depth: usize) {
         for f in folders {
             let is_child = match parent {
                 None => !f.contains('/'),
@@ -265,9 +253,10 @@ impl Navigator {
                     dbs.retain(|d| (show_all || Some(&d.name) == current.as_ref() || d.is_current) && (show_system || !d.is_system));
                     dbs.retain(|d| filter_ok(&live.config, ObjectKind::Database, &d.name));
                     if dbs.is_empty()
-                        && let Some(cur) = current.clone() {
-                            dbs.push(dbiji_core::meta::DatabaseInfo { name: cur, is_current: true, ..Default::default() });
-                        }
+                        && let Some(cur) = current.clone()
+                    {
+                        dbs.push(dbiji_core::meta::DatabaseInfo { name: cur, is_current: true, ..Default::default() });
+                    }
                     for d in dbs {
                         self.build_database(backend, live, &mut child_rows, &cfg.id, &d.name, depth + 1, &caps, show_system);
                     }
@@ -367,10 +356,7 @@ impl Navigator {
                 return;
             }
         };
-        let mut schemas: Vec<_> = schemas
-            .into_iter()
-            .filter(|s| (show_system || !s.is_system) && filter_ok(&live.config, ObjectKind::Schema, &s.name))
-            .collect();
+        let mut schemas: Vec<_> = schemas.into_iter().filter(|s| (show_system || !s.is_system) && filter_ok(&live.config, ObjectKind::Schema, &s.name)).collect();
         schemas.sort_by(|a, b| b.is_current.cmp(&a.is_current).then(a.name.to_lowercase().cmp(&b.name.to_lowercase())));
         // SQLite with only "main": show folders directly.
         let flatten = live.kind() == DbKind::Sqlite && schemas.len() == 1;
@@ -439,29 +425,14 @@ impl Navigator {
                 let has_children = kind.is_table_like() || matches!(kind, ObjectKind::View | ObjectKind::MaterializedView);
                 self.push_objects(live, rows, conn, schema, kind, depth + 1, has_children);
                 // expanded objects get their child folders
-                let objs: Vec<ObjectInfo> = live
-                    .meta
-                    .objects
-                    .get(&(schema.clone(), kind))
-                    .and_then(|l| l.get())
-                    .cloned()
-                    .unwrap_or_default();
+                let objs: Vec<ObjectInfo> = live.meta.objects.get(&(schema.clone(), kind)).and_then(|l| l.get()).cloned().unwrap_or_default();
                 let _ = objs;
             }
         }
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn push_objects(
-        &self,
-        live: &mut LiveConnection,
-        rows: &mut Vec<Row>,
-        conn: &str,
-        schema: &SchemaRef,
-        kind: ObjectKind,
-        depth: usize,
-        has_children: bool,
-    ) {
+    fn push_objects(&self, live: &mut LiveConnection, rows: &mut Vec<Row>, conn: &str, schema: &SchemaRef, kind: ObjectKind, depth: usize, has_children: bool) {
         let show_system = live.config.init.show_system_objects || self.prefs.show_system_objects;
         let cfg = live.config.clone();
         let list = match live.meta.objects.get(&(schema.clone(), kind)) {
@@ -489,9 +460,10 @@ impl Navigator {
             let expanded = has_children && self.expanded.contains(&node);
             let mut label = o.obj.name.clone();
             if let Some(sig) = &o.obj.signature
-                && sig.starts_with('(') {
-                    label.push_str(sig);
-                }
+                && sig.starts_with('(')
+            {
+                label.push_str(sig);
+            }
             rows.push(Row {
                 node,
                 depth,
@@ -515,11 +487,7 @@ impl Navigator {
     fn push_child_folders(&self, live: &mut LiveConnection, rows: &mut Vec<Row>, conn: &str, obj: &ObjectRef, depth: usize) {
         let simple = live.config.navigator_view == NavigatorView::Simple;
         let caps = live.driver.info().capabilities.clone();
-        let kinds: Vec<ObjectKind> = if obj.kind.is_table_like() {
-            caps.table_child_kinds.clone()
-        } else {
-            vec![ObjectKind::Column]
-        };
+        let kinds: Vec<ObjectKind> = if obj.kind.is_table_like() { caps.table_child_kinds.clone() } else { vec![ObjectKind::Column] };
         for kind in kinds {
             if simple && kind != ObjectKind::Column {
                 continue;
@@ -570,9 +538,10 @@ impl Navigator {
         for node in &self.expanded {
             if let NavNode::ChildFolder { conn, parent, kind } = node
                 && let Some(live) = cx.conns.live_mut(conn)
-                    && let Some(session) = live.ensure_session(backend, parent.database.as_deref()) {
-                        live.meta.request_children(backend, &session, parent, *kind);
-                    }
+                && let Some(session) = live.ensure_session(backend, parent.database.as_deref())
+            {
+                live.meta.request_children(backend, &session, parent, *kind);
+            }
         }
     }
 
@@ -592,14 +561,11 @@ impl Navigator {
                 .add_enabled(sel_conn.is_some(), egui::Button::new(if connected { icon::PLUGS } else { icon::PLUGS_CONNECTED }))
                 .on_hover_text(if connected { tr("Disconnect") } else { tr("Connect") })
                 .clicked()
-                && let Some(c) = sel_conn.clone() {
-                    cx.push(if connected { AppCommand::Disconnect(c) } else { AppCommand::Connect(c) });
-                }
-            if ui
-                .add_enabled(sel_conn.is_some(), egui::Button::new(icon::FILE_SQL))
-                .on_hover_text(tr("New SQL editor"))
-                .clicked()
+                && let Some(c) = sel_conn.clone()
             {
+                cx.push(if connected { AppCommand::Disconnect(c) } else { AppCommand::Connect(c) });
+            }
+            if ui.add_enabled(sel_conn.is_some(), egui::Button::new(icon::FILE_SQL)).on_hover_text(tr("New SQL editor")).clicked() {
                 cx.push(AppCommand::NewSqlEditor { connection: sel_conn.clone(), schema: self.selected_schema(), text: None });
             }
             if ui.add_enabled(connected, egui::Button::new(icon::ARROW_CLOCKWISE)).on_hover_text(tr("Refresh")).clicked() {
@@ -609,11 +575,7 @@ impl Navigator {
                 self.collapse_all();
             }
         });
-        let search = ui.add(
-            egui::TextEdit::singleline(&mut self.filter)
-                .hint_text(format!("{} {}", icon::MAGNIFYING_GLASS, tr("Filter objects")))
-                .desired_width(f32::INFINITY),
-        );
+        let search = ui.add(egui::TextEdit::singleline(&mut self.filter).hint_text(format!("{} {}", icon::MAGNIFYING_GLASS, tr("Filter objects"))).desired_width(f32::INFINITY));
         if search.changed() {
             // keep selection visible
             self.scroll_to_selected = true;
@@ -658,6 +620,12 @@ impl Navigator {
                 let r = &rows[i];
                 let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width().max(200.0), row_h), Sense::click());
                 let selected = r.kind == RowKind::Node && Some(&r.node) == self.selected.as_ref();
+                resp.widget_info(|| match &r.kind {
+                    RowKind::Node => egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, selected, &r.label),
+                    RowKind::Loading => egui::WidgetInfo::labeled(egui::WidgetType::Label, true, tr("Loading…")),
+                    RowKind::Error(e) => egui::WidgetInfo::labeled(egui::WidgetType::Label, true, e),
+                    RowKind::Empty => egui::WidgetInfo::labeled(egui::WidgetType::Label, true, tr("(empty)")),
+                });
                 if selected {
                     ui.painter().rect_filled(rect, 3.0, ui.visuals().selection.bg_fill);
                 } else if resp.hovered() {
@@ -678,13 +646,25 @@ impl Navigator {
                 x += 16.0;
                 match &r.kind {
                     RowKind::Loading => {
-                        ui.painter().text(egui::pos2(x, y), egui::Align2::LEFT_CENTER, format!("{} {}", icon::HOURGLASS, tr("Loading…")), font.clone(), ui.visuals().weak_text_color());
+                        ui.painter().text(
+                            egui::pos2(x, y),
+                            egui::Align2::LEFT_CENTER,
+                            format!("{} {}", icon::HOURGLASS, tr("Loading…")),
+                            font.clone(),
+                            ui.visuals().weak_text_color(),
+                        );
                         ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
                         continue;
                     }
                     RowKind::Error(e) => {
                         let resp = resp.on_hover_text(e.clone());
-                        ui.painter().text(egui::pos2(x, y), egui::Align2::LEFT_CENTER, format!("{} {}", icon::WARNING, e.lines().next().unwrap_or("")), font.clone(), crate::theme::error_color(dark));
+                        ui.painter().text(
+                            egui::pos2(x, y),
+                            egui::Align2::LEFT_CENTER,
+                            format!("{} {}", icon::WARNING, e.lines().next().unwrap_or("")),
+                            font.clone(),
+                            crate::theme::error_color(dark),
+                        );
                         let _ = resp;
                         continue;
                     }
@@ -740,9 +720,10 @@ impl Navigator {
             self.expanded.remove(node);
         } else {
             if let NavNode::Connection(id) = node
-                && !cx.conns.is_connected(id) {
-                    cx.push(AppCommand::Connect(id.clone()));
-                }
+                && !cx.conns.is_connected(id)
+            {
+                cx.push(AppCommand::Connect(id.clone()));
+            }
             self.expanded.insert(node.clone());
         }
     }
@@ -751,7 +732,13 @@ impl Navigator {
     fn activate(&mut self, node: &NavNode, cx: &mut AppContext) {
         match node {
             NavNode::Object { conn, obj } | NavNode::Child { conn, obj } => {
-                let page = if obj.kind.has_data() { ObjectPage::Data } else if obj.kind.is_routine() || obj.kind == ObjectKind::Trigger { ObjectPage::Ddl } else { ObjectPage::Properties };
+                let page = if obj.kind.has_data() {
+                    ObjectPage::Data
+                } else if obj.kind.is_routine() || obj.kind == ObjectKind::Trigger {
+                    ObjectPage::Ddl
+                } else {
+                    ObjectPage::Properties
+                };
                 cx.push(AppCommand::OpenObject { connection: conn.clone(), object: obj.clone(), page });
             }
             other => self.toggle(&other.clone(), cx),
@@ -931,27 +918,18 @@ impl Navigator {
             }
             NavNode::Extensions { .. } => {
                 if let Some(c) = conn
-                    && ui.button(format!("{} {}", icon::ARROW_CLOCKWISE, tr("Refresh"))).clicked() {
-                        cx.push(AppCommand::RefreshMetadata { connection: c, object: None, schema: None });
-                        ui.close();
-                    }
+                    && ui.button(format!("{} {}", icon::ARROW_CLOCKWISE, tr("Refresh"))).clicked()
+                {
+                    cx.push(AppCommand::RefreshMetadata { connection: c, object: None, schema: None });
+                    ui.close();
+                }
             }
         }
     }
 }
 
 fn placeholder(depth: usize, kind: RowKind) -> Row {
-    Row {
-        node: NavNode::Folder(String::new()),
-        depth,
-        label: String::new(),
-        detail: None,
-        icon: "",
-        icon_color: None,
-        expandable: false,
-        expanded: false,
-        kind,
-    }
+    Row { node: NavNode::Folder(String::new()), depth, label: String::new(), detail: None, icon: "", icon_color: None, expandable: false, expanded: false, kind }
 }
 
 /// Administration tools for a connection.
@@ -989,7 +967,8 @@ pub fn tools_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, schema: Option<S
         cx.push(AppCommand::OpenSearch { connection: Some(conn.to_string()), data: true });
         ui.close();
     }
-    if ui.button(format!("{} {}", icon::PASSWORD, tr("Change password"))).clicked() {
+    let can_change_password = cx.conns.live(conn).is_some_and(|l| l.dialect.change_password_sql(None, "x").is_some());
+    if can_change_password && ui.button(format!("{} {}", icon::PASSWORD, tr("Change password"))).clicked() {
         cx.push(AppCommand::ChangePassword { connection: conn.to_string() });
         ui.close();
     }

@@ -146,10 +146,7 @@ impl Column {
                     Value::DateTime(dt) => dt.time(),
                     other => dbiji_core::value::parse_time(&other.to_text()).ok_or_else(|| mismatch(other, "time"))?,
                 };
-                b.push(
-                    i64::from(t.num_seconds_from_midnight()) * 1_000_000
-                        + i64::from(t.nanosecond().min(999_999_999) / 1000),
-                );
+                b.push(i64::from(t.num_seconds_from_midnight()) * 1_000_000 + i64::from(t.nanosecond().min(999_999_999) / 1000));
                 8
             }
             (Buffer::I64(b), ColKind::Timestamp { .. }) => {
@@ -285,11 +282,7 @@ impl RowSink for ParquetSink {
         self.columns = columns.iter().zip(names).map(|(c, n)| Column::new(n, ColKind::for_column(c))).collect();
         let mut fields = Vec::with_capacity(self.columns.len());
         for c in &self.columns {
-            let t = Type::primitive_type_builder(&c.name, c.kind.physical())
-                .with_repetition(Repetition::OPTIONAL)
-                .with_logical_type(c.kind.logical())
-                .build()
-                .map_err(pq_err)?;
+            let t = Type::primitive_type_builder(&c.name, c.kind.physical()).with_repetition(Repetition::OPTIONAL).with_logical_type(c.kind.logical()).build().map_err(pq_err)?;
             fields.push(Arc::new(t));
         }
         let schema = Type::group_type_builder("schema").with_fields(fields).build().map_err(pq_err)?;
@@ -297,10 +290,7 @@ impl RowSink for ParquetSink {
             ParquetCompression::Snappy => Compression::SNAPPY,
             ParquetCompression::None => Compression::UNCOMPRESSED,
         };
-        let props = WriterProperties::builder()
-            .set_compression(compression)
-            .set_created_by(format!("DBiji {}", env!("CARGO_PKG_VERSION")))
-            .build();
+        let props = WriterProperties::builder().set_compression(compression).set_created_by(format!("DBiji {}", env!("CARGO_PKG_VERSION"))).build();
         let target = self.target.take().ok_or_else(|| DbError::internal("Parquet export already started"))?;
         let raw: Box<dyn Write + Send> = match target {
             ExportTarget::Path(p) => {
@@ -339,9 +329,7 @@ impl RowSink for ParquetSink {
         self.buffered_rows += 1;
         self.buffered_bytes += bytes;
         self.rows += 1;
-        if self.buffered_rows >= self.opts.row_group_rows.max(1)
-            || self.buffered_bytes >= self.opts.row_group_bytes.max(1024)
-        {
+        if self.buffered_rows >= self.opts.row_group_rows.max(1) || self.buffered_bytes >= self.opts.row_group_bytes.max(1024) {
             self.flush_row_group()?;
         }
         Ok(())

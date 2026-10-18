@@ -111,13 +111,7 @@ fn item_html(out: &mut String, item: &DiffItem) {
     if !item.children.is_empty() {
         out.push_str("<ul class=\"children\">");
         for c in &item.children {
-            let _ = write!(
-                out,
-                "<li>{}<span class=\"kind\">{}</span><code>{}</code>",
-                badge(c.status),
-                html_escape(tr(c.kind.label())),
-                html_escape(&c.display_name())
-            );
+            let _ = write!(out, "<li>{}<span class=\"kind\">{}</span><code>{}</code>", badge(c.status), html_escape(tr(c.kind.label())), html_escape(&c.display_name()));
             changes_table(out, &c.changes);
             out.push_str("</li>");
         }
@@ -154,12 +148,7 @@ pub fn html_report(diff: &SchemaDiff, source_label: &str, target_label: &str) ->
     // summary
     let t = diff.summary.total;
     let _ = write!(out, "<section class=\"summary\"><h2>{}</h2><div class=\"cards\">", html_escape(tr("Summary")));
-    for (s, n) in [
-        (DiffStatus::Added, t.added),
-        (DiffStatus::Removed, t.removed),
-        (DiffStatus::Modified, t.modified),
-        (DiffStatus::Unchanged, t.unchanged),
-    ] {
+    for (s, n) in [(DiffStatus::Added, t.added), (DiffStatus::Removed, t.removed), (DiffStatus::Modified, t.modified), (DiffStatus::Unchanged, t.unchanged)] {
         let _ = write!(out, "<div class=\"card {}\"><span class=\"n\">{n}</span>{}</div>", status_class(s), html_escape(tr(s.label())));
     }
     out.push_str("</div>");

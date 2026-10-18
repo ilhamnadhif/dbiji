@@ -12,10 +12,7 @@ use crate::valueview::{byte_size_text, detect_image};
 use dbiji_core::value::BoolStyle;
 use dbiji_core::{DataKind, Value, tr, trf};
 use egui::text::{LayoutJob, TextWrapping};
-use egui::{
-    Align, Align2, Color32, CornerRadius, FontId, Painter, Pos2, Rect, Shape, Stroke, StrokeKind, TextFormat, Ui, pos2,
-    vec2,
-};
+use egui::{Align, Align2, Color32, CornerRadius, FontId, Painter, Pos2, Rect, Shape, Stroke, StrokeKind, TextFormat, Ui, pos2, vec2};
 
 /// Per visible column data prepared once per frame.
 struct ColInfo<'o> {
@@ -241,32 +238,11 @@ impl GridFrame<'_> {
                 let deleted = state == RowState::Deleted;
                 let look: CellLook<'_> = match cell {
                     CellRef::Missing => match &error_text {
-                        Some(_) => CellLook {
-                            text: "#ERR".into(),
-                            color: theme.error,
-                            align: Align::Min,
-                            badge: None,
-                            suffix: None,
-                            checkbox: None,
-                        },
+                        Some(_) => CellLook { text: "#ERR".into(), color: theme.error, align: Align::Min, badge: None, suffix: None, checkbox: None },
                         None => continue,
                     },
-                    CellRef::Default => CellLook {
-                        text: default_text.into(),
-                        color: theme.weak,
-                        align: Align::Min,
-                        badge: None,
-                        suffix: None,
-                        checkbox: None,
-                    },
-                    CellRef::Value(v) if v.is_null() => CellLook {
-                        text: null_text.into(),
-                        color: theme.weak,
-                        align: Align::Min,
-                        badge: None,
-                        suffix: None,
-                        checkbox: None,
-                    },
+                    CellRef::Default => CellLook { text: default_text.into(), color: theme.weak, align: Align::Min, badge: None, suffix: None, checkbox: None },
+                    CellRef::Value(v) if v.is_null() => CellLook { text: null_text.into(), color: theme.weak, align: Align::Min, badge: None, suffix: None, checkbox: None },
                     CellRef::Value(v) => {
                         let color = if deleted {
                             theme.weak
@@ -276,24 +252,10 @@ impl GridFrame<'_> {
                             theme.text
                         };
                         match v {
-                            Value::Bool(b) if checkbox_style => CellLook {
-                                text: "".into(),
-                                color,
-                                align: Align::Center,
-                                badge: None,
-                                suffix: None,
-                                checkbox: Some(*b),
-                            },
+                            Value::Bool(b) if checkbox_style => CellLook { text: "".into(), color, align: Align::Center, badge: None, suffix: None, checkbox: Some(*b) },
                             Value::Bytes(b) if detect_image(b).is_some() => {
                                 let kind = detect_image(b).map_or("", |k| k.label());
-                                CellLook {
-                                    text: format!("{kind} {}", byte_size_text(b.len())).into(),
-                                    color,
-                                    align: Align::Min,
-                                    badge: Some("IMG"),
-                                    suffix: None,
-                                    checkbox: None,
-                                }
+                                CellLook { text: format!("{kind} {}", byte_size_text(b.len())).into(), color, align: Align::Min, badge: Some("IMG"), suffix: None, checkbox: None }
                             }
                             _ => {
                                 let text = info.fmt.format(v);
@@ -316,10 +278,7 @@ impl GridFrame<'_> {
                     let g = sink.painter.layout_no_wrap(b.to_string(), badge_font.clone(), theme.badge_text);
                     let bw = g.rect.width() + 6.0;
                     if bw + 8.0 < inner.width() {
-                        let br = Rect::from_center_size(
-                            pos2(inner.left() + bw / 2.0, inner.center().y),
-                            vec2(bw, (g.rect.height() + 2.0).min(row_h - 4.0)),
-                        );
+                        let br = Rect::from_center_size(pos2(inner.left() + bw / 2.0, inner.center().y), vec2(bw, (g.rect.height() + 2.0).min(row_h - 4.0)));
                         sink.rect_filled(br, CornerRadius::same(3), theme.badge_bg);
                         sink.galley(pos2(br.left() + 3.0, br.center().y - g.rect.height() / 2.0), g, theme.badge_text);
                         text_rect.min.x = br.right() + 4.0;
@@ -339,8 +298,7 @@ impl GridFrame<'_> {
                     }
                     continue;
                 }
-                let placed =
-                    place_text(glyphs, &mut sink, &mut batch, &font, &look.text, text_rect, look.align, look.color);
+                let placed = place_text(glyphs, &mut sink, &mut batch, &font, &look.text, text_rect, look.align, look.color);
                 let mut elided = placed.elided || look.text.ends_with('¶');
                 if let Some(desc) = look.suffix {
                     let start = placed.left + placed.width + 6.0;
@@ -353,21 +311,11 @@ impl GridFrame<'_> {
                     }
                 }
                 if deleted && placed.width > 0.0 {
-                    lines.push(Line {
-                        x0: placed.left,
-                        x1: placed.left + placed.width,
-                        y: inner.center().y,
-                        color: theme.weak,
-                    });
+                    lines.push(Line { x0: placed.left, x1: placed.left + placed.width, y: inner.center().y, color: theme.weak });
                 }
                 let hovered = hover.is_some_and(|h| h.row == row && h.col == info.pos);
                 if hovered && info.fk && command_down && placed.width > 0.0 {
-                    lines.push(Line {
-                        x0: placed.left,
-                        x1: placed.left + placed.width,
-                        y: inner.center().y + font.size * 0.55,
-                        color: theme.link,
-                    });
+                    lines.push(Line { x0: placed.left, x1: placed.left + placed.width, y: inner.center().y + font.size * 0.55, color: theme.link });
                 }
                 if hovered {
                     if let Some(e) = &error_text {
@@ -539,21 +487,9 @@ impl GridFrame<'_> {
             let name = self.model.column_name(col);
             let text_rect = Rect::from_min_max(pos2(left, r.top()), pos2(r.right() - SORT_ZONE, r.bottom()));
             if text_rect.width() > 4.0 {
-                let mut job = LayoutJob::single_section(
-                    name.to_string(),
-                    TextFormat {
-                        font_id: self.font.clone(),
-                        color: theme.header_text,
-                        italics: is_virtual,
-                        ..Default::default()
-                    },
-                );
-                job.wrap = TextWrapping {
-                    max_width: text_rect.width(),
-                    max_rows: 1,
-                    break_anywhere: true,
-                    overflow_character: Some('…'),
-                };
+                let mut job =
+                    LayoutJob::single_section(name.to_string(), TextFormat { font_id: self.font.clone(), color: theme.header_text, italics: is_virtual, ..Default::default() });
+                job.wrap = TextWrapping { max_width: text_rect.width(), max_rows: 1, break_anywhere: true, overflow_character: Some('…') };
                 let g = painter.layout_job(job);
                 painter.galley(pos2(text_rect.left(), r.center().y - g.rect.height() / 2.0), g, theme.header_text);
             }
@@ -564,19 +500,12 @@ impl GridFrame<'_> {
             let zone_hover = hover.is_some_and(|p| r.contains(p));
             if let Some(i) = sort_idx {
                 let k = self.state.sort[i];
-                let icon =
-                    if k.descending { egui_phosphor::regular::CARET_DOWN } else { egui_phosphor::regular::CARET_UP };
+                let icon = if k.descending { egui_phosphor::regular::CARET_DOWN } else { egui_phosphor::regular::CARET_UP };
                 let small = FontId::new(self.font.size * 0.85, self.font.family.clone());
                 painter.text(zone.center(), Align2::CENTER_CENTER, icon, small.clone(), theme.active_border);
                 if multi_sort {
                     let tiny = FontId::new(self.font.size * 0.6, self.font.family.clone());
-                    painter.text(
-                        pos2(zone.right() - 2.0, zone.bottom() - 2.0),
-                        Align2::RIGHT_BOTTOM,
-                        (i + 1).to_string(),
-                        tiny,
-                        theme.weak,
-                    );
+                    painter.text(pos2(zone.right() - 2.0, zone.bottom() - 2.0), Align2::RIGHT_BOTTOM, (i + 1).to_string(), tiny, theme.weak);
                 }
             } else if zone_hover {
                 let small = FontId::new(self.font.size * 0.85, self.font.family.clone());
@@ -593,13 +522,7 @@ impl GridFrame<'_> {
             let ghost = Rect::from_center_size(pos2(p.x, geo.header.center().y), vec2(w, geo.header.height()));
             let fg = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Tooltip, self.id.with("ghost")));
             fg.rect_filled(ghost, CornerRadius::same(3), theme.header_selected_bg.gamma_multiply(0.85));
-            fg.text(
-                ghost.center(),
-                Align2::CENTER_CENTER,
-                self.model.column_name(col),
-                self.font.clone(),
-                theme.header_text,
-            );
+            fg.text(ghost.center(), Align2::CENTER_CENTER, self.model.column_name(col), self.font.clone(), theme.header_text);
         }
     }
 
@@ -631,16 +554,14 @@ impl GridFrame<'_> {
         if let Some(bar) = geo.vbar {
             painter.rect_filled(bar, 0.0, track_c);
             let (thumb, _) = self.v_thumb(bar);
-            let active =
-                matches!(self.state.rt.drag, Drag::VThumb { .. }) || hover_pos.is_some_and(|p| bar.contains(p));
+            let active = matches!(self.state.rt.drag, Drag::VThumb { .. }) || hover_pos.is_some_and(|p| bar.contains(p));
             let c = if active { v.widgets.hovered.bg_fill } else { v.widgets.inactive.bg_fill };
             painter.rect_filled(thumb.shrink2(vec2(1.0, 0.0)), CornerRadius::same(4), c);
         }
         if let Some(bar) = geo.hbar {
             painter.rect_filled(bar, 0.0, track_c);
             let (thumb, _) = self.h_thumb(bar);
-            let active =
-                matches!(self.state.rt.drag, Drag::HThumb { .. }) || hover_pos.is_some_and(|p| bar.contains(p));
+            let active = matches!(self.state.rt.drag, Drag::HThumb { .. }) || hover_pos.is_some_and(|p| bar.contains(p));
             let c = if active { v.widgets.hovered.bg_fill } else { v.widgets.inactive.bg_fill };
             painter.rect_filled(thumb.shrink2(vec2(0.0, 1.0)), CornerRadius::same(4), c);
         }
@@ -656,8 +577,7 @@ impl GridFrame<'_> {
         let mut y = geo.body.top() + 6.0;
         let mut badge = |text: String, color: Color32| {
             let g = painter.layout_no_wrap(text, small.clone(), color);
-            let r =
-                Rect::from_min_size(pos2(geo.body.right() - g.rect.width() - 16.0, y), g.rect.size() + vec2(10.0, 6.0));
+            let r = Rect::from_min_size(pos2(geo.body.right() - g.rect.width() - 16.0, y), g.rect.size() + vec2(10.0, 6.0));
             painter.rect_filled(r, CornerRadius::same(4), mix(theme.header_bg, theme.bg, 0.2).gamma_multiply(0.95));
             painter.rect_stroke(r, CornerRadius::same(4), Stroke::new(1.0, theme.line), StrokeKind::Inside);
             painter.galley(r.min + vec2(5.0, 3.0), g, color);
@@ -706,16 +626,7 @@ impl GridFrame<'_> {
 
 /// Place text with the fast path, falling back to egui layout.
 #[allow(clippy::too_many_arguments)]
-fn place_text(
-    glyphs: &mut GlyphCache,
-    sink: &mut Sink<'_>,
-    batch: &mut TextBatch,
-    font: &FontId,
-    text: &str,
-    rect: Rect,
-    align: Align,
-    color: Color32,
-) -> Placed {
+fn place_text(glyphs: &mut GlyphCache, sink: &mut Sink<'_>, batch: &mut TextBatch, font: &FontId, text: &str, rect: Rect, align: Align, color: Color32) -> Placed {
     match glyphs.place(sink.painter, batch, text, rect, align, color) {
         Some(p) => p,
         None => {

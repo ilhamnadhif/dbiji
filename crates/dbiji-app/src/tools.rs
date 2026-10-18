@@ -39,9 +39,7 @@ pub async fn run_command(spec: CommandSpec, cancel: CancellationToken, mut on_li
             true
         }
     };
-    let mut child = cmd.spawn().map_err(|e| {
-        DbError::io(format!("Cannot start {}: {e}. Install the client tools or set the tool path in the dialog.", spec.program))
-    })?;
+    let mut child = cmd.spawn().map_err(|e| DbError::io(format!("Cannot start {}: {e}. Install the client tools or set the tool path in the dialog.", spec.program)))?;
     let stderr = child.stderr.take();
     let stdout = if piped_stdout { child.stdout.take() } else { None };
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
@@ -90,9 +88,5 @@ pub async fn run_command(spec: CommandSpec, cancel: CancellationToken, mut on_li
         }
     };
     let status = status.map_err(DbError::from)?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(DbError::io(format!("{} exited with {status}", spec.program)).with_detail(last_lines.join("\n")))
-    }
+    if status.success() { Ok(()) } else { Err(DbError::io(format!("{} exited with {status}", spec.program)).with_detail(last_lines.join("\n"))) }
 }

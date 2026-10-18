@@ -39,14 +39,7 @@ pub(crate) fn push_escaped_html(out: &mut String, s: &str) {
 
 impl HtmlSink {
     pub(crate) fn new(out: TextOutput, options: &ExportOptions) -> Self {
-        HtmlSink {
-            out,
-            opts: options.html.clone(),
-            values: options.values.clone(),
-            ncols: 0,
-            line: String::new(),
-            rows: 0,
-        }
+        HtmlSink { out, opts: options.html.clone(), values: options.values.clone(), ncols: 0, line: String::new(), rows: 0 }
     }
 }
 
@@ -93,11 +86,7 @@ impl RowSink for HtmlSink {
                 v if is_numeric_value(v) => self.line.push_str("<td class=\"num\">"),
                 _ => self.line.push_str("<td>"),
             }
-            let text = if v.is_null() && self.values.null_text.is_empty() {
-                std::borrow::Cow::Borrowed("NULL")
-            } else {
-                format_value(v, &self.values)
-            };
+            let text = if v.is_null() && self.values.null_text.is_empty() { std::borrow::Cow::Borrowed("NULL") } else { format_value(v, &self.values) };
             push_escaped_html(&mut self.line, &text);
             self.line.push_str("</td>");
         }

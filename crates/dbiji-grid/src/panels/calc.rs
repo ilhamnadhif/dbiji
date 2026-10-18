@@ -70,9 +70,7 @@ impl<'a> CalcPanel<'a> {
             ui.weak(tr("Select cells to calculate statistics"));
             return;
         }
-        let fmt_v = |v: &Option<Value>| {
-            v.as_ref().map(|v| v.to_text().chars().take(80).collect::<String>()).unwrap_or_default()
-        };
+        let fmt_v = |v: &Option<Value>| v.as_ref().map(|v| v.to_text().chars().take(80).collect::<String>()).unwrap_or_default();
         egui::Grid::new("dbiji_calc_grid").num_columns(2).striped(true).spacing([16.0, 4.0]).show(ui, |ui| {
             let row = |ui: &mut Ui, k: &str, v: String| {
                 ui.label(k);
@@ -99,10 +97,7 @@ impl<'a> CalcPanel<'a> {
             }
         });
         if s.truncated {
-            ui.weak(trf(
-                "Only the first {} cells were analysed",
-                &[&crate::format::group_thousands(&MAX_CALC_CELLS.to_string())],
-            ));
+            ui.weak(trf("Only the first {} cells were analysed", &[&crate::format::group_thousands(&MAX_CALC_CELLS.to_string())]));
         }
     }
 }

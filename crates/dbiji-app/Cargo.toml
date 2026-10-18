@@ -61,4 +61,5 @@ rustls.workspace = true
 open.workspace = true
 
 [dev-dependencies]
+egui_kittest = { version = "0.36", features = ["eframe"] }
 regex.workspace = true

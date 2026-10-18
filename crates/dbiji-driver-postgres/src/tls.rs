@@ -78,9 +78,7 @@ fn read_pem(source: &str, what: &str) -> DbResult<Vec<u8>> {
 fn load_certs(source: &str, what: &str) -> DbResult<Vec<CertificateDer<'static>>> {
     let pem = read_pem(source, what)?;
     let mut rd = std::io::BufReader::new(pem.as_slice());
-    let certs: Vec<CertificateDer<'static>> = rustls_pemfile::certs(&mut rd)
-        .collect::<Result<_, _>>()
-        .map_err(|e| DbError::config(format!("Invalid PEM in the {what}: {e}")))?;
+    let certs: Vec<CertificateDer<'static>> = rustls_pemfile::certs(&mut rd).collect::<Result<_, _>>().map_err(|e| DbError::config(format!("Invalid PEM in the {what}: {e}")))?;
     if certs.is_empty() {
         return Err(DbError::config(format!("The {what} contains no PEM certificate")));
     }
@@ -108,9 +106,7 @@ fn root_store(ssl: &SslConfig) -> DbResult<Arc<RootCertStore>> {
     }
     let mut store = if ssl.only_custom_ca { RootCertStore::empty() } else { (*default_roots()).clone() };
     for c in custom {
-        store
-            .add(c)
-            .map_err(|e| DbError::config(format!("The CA certificate cannot be used as trust anchor: {e}")))?;
+        store.add(c).map_err(|e| DbError::config(format!("The CA certificate cannot be used as trust anchor: {e}")))?;
     }
     Ok(Arc::new(store))
 }
@@ -133,21 +129,11 @@ impl ServerCertVerifier for NoVerifier {
         Ok(ServerCertVerified::assertion())
     }
 
-    fn verify_tls12_signature(
-        &self,
-        message: &[u8],
-        cert: &CertificateDer<'_>,
-        dss: &DigitallySignedStruct,
-    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+    fn verify_tls12_signature(&self, message: &[u8], cert: &CertificateDer<'_>, dss: &DigitallySignedStruct) -> Result<HandshakeSignatureValid, rustls::Error> {
         rustls::crypto::verify_tls12_signature(message, cert, dss, &self.algs)
     }
 
-    fn verify_tls13_signature(
-        &self,
-        message: &[u8],
-        cert: &CertificateDer<'_>,
-        dss: &DigitallySignedStruct,
-    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+    fn verify_tls13_signature(&self, message: &[u8], cert: &CertificateDer<'_>, dss: &DigitallySignedStruct) -> Result<HandshakeSignatureValid, rustls::Error> {
         rustls::crypto::verify_tls13_signature(message, cert, dss, &self.algs)
     }
 
@@ -177,21 +163,11 @@ impl ServerCertVerifier for ChainVerifier {
         Ok(ServerCertVerified::assertion())
     }
 
-    fn verify_tls12_signature(
-        &self,
-        message: &[u8],
-        cert: &CertificateDer<'_>,
-        dss: &DigitallySignedStruct,
-    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+    fn verify_tls12_signature(&self, message: &[u8], cert: &CertificateDer<'_>, dss: &DigitallySignedStruct) -> Result<HandshakeSignatureValid, rustls::Error> {
         rustls::crypto::verify_tls12_signature(message, cert, dss, &self.algs)
     }
 
-    fn verify_tls13_signature(
-        &self,
-        message: &[u8],
-        cert: &CertificateDer<'_>,
-        dss: &DigitallySignedStruct,
-    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+    fn verify_tls13_signature(&self, message: &[u8], cert: &CertificateDer<'_>, dss: &DigitallySignedStruct) -> Result<HandshakeSignatureValid, rustls::Error> {
         rustls::crypto::verify_tls13_signature(message, cert, dss, &self.algs)
     }
 
@@ -215,18 +191,14 @@ pub(crate) fn build(ssl: &SslConfig, server_name: &str) -> DbResult<TlsSetup> {
     if ServerName::try_from(server_name.clone()).is_err() && ssl.mode.uses_tls() {
         return Err(DbError::config(format!("'{server_name}' is not a valid TLS server name")));
     }
-    let builder = ClientConfig::builder_with_provider(prov.clone())
-        .with_safe_default_protocol_versions()
-        .map_err(|e| DbError::tls(format!("TLS initialisation failed: {e}")))?;
+    let builder = ClientConfig::builder_with_provider(prov.clone()).with_safe_default_protocol_versions().map_err(|e| DbError::tls(format!("TLS initialisation failed: {e}")))?;
     let mode = match ssl.mode {
         SslMode::Disable => PgSslMode::Disable,
         SslMode::Prefer => PgSslMode::Prefer,
         SslMode::Require | SslMode::VerifyCa | SslMode::VerifyFull => PgSslMode::Require,
     };
     let with_verifier = match ssl.mode {
-        SslMode::Disable | SslMode::Prefer | SslMode::Require => {
-            builder.dangerous().with_custom_certificate_verifier(Arc::new(NoVerifier { algs }))
-        }
+        SslMode::Disable | SslMode::Prefer | SslMode::Require => builder.dangerous().with_custom_certificate_verifier(Arc::new(NoVerifier { algs })),
         SslMode::VerifyCa => {
             let roots = root_store(ssl)?;
             builder.dangerous().with_custom_certificate_verifier(Arc::new(ChainVerifier { roots, algs }))
@@ -245,9 +217,7 @@ pub(crate) fn build(ssl: &SslConfig, server_name: &str) -> DbResult<TlsSetup> {
         (Some(c), Some(k)) if ssl.mode.uses_tls() => {
             let chain = load_certs(c, "client certificate")?;
             let key = load_key(k)?;
-            with_verifier
-                .with_client_auth_cert(chain, key)
-                .map_err(|e| DbError::config(format!("The client certificate and key cannot be used: {e}")))?
+            with_verifier.with_client_auth_cert(chain, key).map_err(|e| DbError::config(format!("The client certificate and key cannot be used: {e}")))?
         }
         (Some(_), None) if ssl.mode.uses_tls() => {
             return Err(DbError::config("A client certificate requires a client key"));

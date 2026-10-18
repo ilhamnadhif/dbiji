@@ -190,9 +190,7 @@ fn cron_next<Tz: TimeZone>(s: &cron::Schedule, after: &DateTime<Tz>) -> Option<D
 /// Parse `HH:MM` (or `HH:MM:SS`).
 pub(crate) fn parse_time_of_day(at: &str) -> Result<NaiveTime, ScheduleError> {
     let t = at.trim();
-    NaiveTime::parse_from_str(t, "%H:%M")
-        .or_else(|_| NaiveTime::parse_from_str(t, "%H:%M:%S"))
-        .map_err(|_| ScheduleError(trf("Invalid time '{}', expected HH:MM", &[&at])))
+    NaiveTime::parse_from_str(t, "%H:%M").or_else(|_| NaiveTime::parse_from_str(t, "%H:%M:%S")).map_err(|_| ScheduleError(trf("Invalid time '{}', expected HH:MM", &[&at])))
 }
 
 fn weekday_of(n: u8) -> Option<Weekday> {
@@ -292,9 +290,10 @@ impl Schedule {
                         continue;
                     }
                     if let Some(t) = resolve_local(&tz, date.and_time(time))
-                        && t > *after {
-                            return Some(t);
-                        }
+                        && t > *after
+                    {
+                        return Some(t);
+                    }
                 }
                 None
             }

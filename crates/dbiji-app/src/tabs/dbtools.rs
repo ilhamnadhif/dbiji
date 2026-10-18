@@ -41,6 +41,8 @@ pub enum ToolFlavor {
     Postgres,
     /// mysqldump / mysql (MySQL and MariaDB).
     MySql,
+    /// sqlite3 `.dump` / `.backup` / `.restore`.
+    Sqlite,
     /// Anything else: every option is shown.
     Other,
 }
@@ -50,6 +52,7 @@ impl ToolFlavor {
         match kind {
             DbKind::Postgres | DbKind::CockroachDb => ToolFlavor::Postgres,
             DbKind::MySql | DbKind::MariaDb => ToolFlavor::MySql,
+            DbKind::Sqlite => ToolFlavor::Sqlite,
             _ => ToolFlavor::Other,
         }
     }
@@ -217,11 +220,7 @@ pub fn join_list(items: &[String]) -> String {
 /// First line printed by `<program> --version` (`None` when the tool cannot
 /// be started).
 pub async fn tool_version(program: String) -> Option<String> {
-    let run = tokio::process::Command::new(&program)
-        .arg("--version")
-        .stdin(std::process::Stdio::null())
-        .kill_on_drop(true)
-        .output();
+    let run = tokio::process::Command::new(&program).arg("--version").stdin(std::process::Stdio::null()).kill_on_drop(true).output();
     let out = tokio::time::timeout(Duration::from_secs(10), run).await.ok()?.ok()?;
     let text = String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr);
     text.lines().map(str::trim).find(|l| !l.is_empty()).map(str::to_string)
@@ -305,11 +304,8 @@ pub(crate) fn file_safe(s: &str) -> String {
 
 /// Connection picker over the configured connections.
 pub(crate) fn connection_combo(ui: &mut Ui, cx: &AppContext, id: impl std::hash::Hash + std::fmt::Debug, value: &mut String, width: f32) -> bool {
-    let current = cx
-        .conns
-        .config(value)
-        .map(|c| c.name.clone())
-        .unwrap_or_else(|| if value.is_empty() { tr("Choose…").to_string() } else { tr("(missing connection)").to_string() });
+    let current =
+        cx.conns.config(value).map(|c| c.name.clone()).unwrap_or_else(|| if value.is_empty() { tr("Choose…").to_string() } else { tr("(missing connection)").to_string() });
     let mut changed = false;
     egui::ComboBox::from_id_salt(id).selected_text(current).width(width).show_ui(ui, |ui| {
         for c in cx.conns.configs() {

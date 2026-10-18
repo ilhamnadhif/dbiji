@@ -96,10 +96,7 @@ pub(crate) fn parse(src: &str) -> Result<Ast, ExprError> {
     let ast = p.expr(0)?;
     let t = p.peek();
     if !matches!(t.kind, Tok::Eof) {
-        return Err(ExprError::new(
-            trf("Unexpected '{}' after the end of the expression", &[&t.kind.describe()]),
-            t.span.clone(),
-        ));
+        return Err(ExprError::new(trf("Unexpected '{}' after the end of the expression", &[&t.kind.describe()]), t.span.clone()));
     }
     Ok(ast)
 }
@@ -157,11 +154,7 @@ impl Parser {
     }
 
     fn check_depth(&self, depth: usize) -> Result<(), ExprError> {
-        if depth > MAX_DEPTH {
-            Err(ExprError::new(tr("Expression is nested too deeply"), self.peek().span.clone()))
-        } else {
-            Ok(())
-        }
+        if depth > MAX_DEPTH { Err(ExprError::new(tr("Expression is nested too deeply"), self.peek().span.clone())) } else { Ok(()) }
     }
 
     fn expr(&mut self, depth: usize) -> Result<Ast, ExprError> {
@@ -217,19 +210,11 @@ impl Parser {
             let negated = self.eat_kw("NOT");
             if !self.eat_kw("NULL") {
                 let t = self.peek().clone();
-                return Err(ExprError::new(
-                    trf("Expected NULL after IS but found '{}'", &[&t.kind.describe()]),
-                    t.span,
-                ));
+                return Err(ExprError::new(trf("Expected NULL after IS but found '{}'", &[&t.kind.describe()]), t.span));
             }
             return Ok(Ast::IsNull { expr: Box::new(left), negated });
         }
-        let negated = if self.is_kw("NOT")
-            && (self.is_kw_at(1, "LIKE")
-                || self.is_kw_at(1, "ILIKE")
-                || self.is_kw_at(1, "IN")
-                || self.is_kw_at(1, "BETWEEN"))
-        {
+        let negated = if self.is_kw("NOT") && (self.is_kw_at(1, "LIKE") || self.is_kw_at(1, "ILIKE") || self.is_kw_at(1, "IN") || self.is_kw_at(1, "BETWEEN")) {
             self.next();
             true
         } else {
@@ -255,10 +240,7 @@ impl Parser {
             let low = self.concat(depth)?;
             if !self.eat_kw("AND") {
                 let t = self.peek().clone();
-                return Err(ExprError::new(
-                    trf("Expected AND in BETWEEN but found '{}'", &[&t.kind.describe()]),
-                    t.span,
-                ));
+                return Err(ExprError::new(trf("Expected AND in BETWEEN but found '{}'", &[&t.kind.describe()]), t.span));
             }
             let high = self.concat(depth)?;
             return Ok(Ast::Between { expr: Box::new(left), low: Box::new(low), high: Box::new(high), negated });
@@ -372,10 +354,7 @@ impl Parser {
                     return Ok(Ast::Call { name: word, args, span: t.span.start..close.span.end });
                 }
                 if is_keyword(&word) {
-                    return Err(ExprError::new(
-                        trf("'{}' is a keyword; write [{}] to refer to a column with that name", &[&word, &word]),
-                        t.span,
-                    ));
+                    return Err(ExprError::new(trf("'{}' is a keyword; write [{}] to refer to a column with that name", &[&word, &word]), t.span));
                 }
                 Ok(Ast::Column { name: word, span: t.span })
             }
@@ -400,21 +379,9 @@ mod tests {
             Ast::Unary(op, e) => Ast::Unary(op, Box::new(strip(*e))),
             Ast::Binary(op, l, r) => Ast::Binary(op, Box::new(strip(*l)), Box::new(strip(*r))),
             Ast::IsNull { expr, negated } => Ast::IsNull { expr: Box::new(strip(*expr)), negated },
-            Ast::Like { expr, pattern, negated, case_insensitive } => Ast::Like {
-                expr: Box::new(strip(*expr)),
-                pattern: Box::new(strip(*pattern)),
-                negated,
-                case_insensitive,
-            },
-            Ast::In { expr, list, negated } => {
-                Ast::In { expr: Box::new(strip(*expr)), list: list.into_iter().map(strip).collect(), negated }
-            }
-            Ast::Between { expr, low, high, negated } => Ast::Between {
-                expr: Box::new(strip(*expr)),
-                low: Box::new(strip(*low)),
-                high: Box::new(strip(*high)),
-                negated,
-            },
+            Ast::Like { expr, pattern, negated, case_insensitive } => Ast::Like { expr: Box::new(strip(*expr)), pattern: Box::new(strip(*pattern)), negated, case_insensitive },
+            Ast::In { expr, list, negated } => Ast::In { expr: Box::new(strip(*expr)), list: list.into_iter().map(strip).collect(), negated },
+            Ast::Between { expr, low, high, negated } => Ast::Between { expr: Box::new(strip(*expr)), low: Box::new(strip(*low)), high: Box::new(strip(*high)), negated },
             Ast::Call { name, args, .. } => Ast::Call { name, args: args.into_iter().map(strip).collect(), span: 0..0 },
             other => other,
         }
@@ -438,11 +405,7 @@ mod tests {
         assert_eq!(p("(1 + 2) * 3"), bin(BinaryOp::Mul, bin(BinaryOp::Add, int(1), int(2)), int(3)));
         assert_eq!(
             p("a = 1 or b = 2 and c = 3"),
-            bin(
-                BinaryOp::Or,
-                bin(BinaryOp::Eq, col("a"), int(1)),
-                bin(BinaryOp::And, bin(BinaryOp::Eq, col("b"), int(2)), bin(BinaryOp::Eq, col("c"), int(3)))
-            )
+            bin(BinaryOp::Or, bin(BinaryOp::Eq, col("a"), int(1)), bin(BinaryOp::And, bin(BinaryOp::Eq, col("b"), int(2)), bin(BinaryOp::Eq, col("c"), int(3))))
         );
         assert_eq!(p("a || b + 1"), bin(BinaryOp::Concat, col("a"), bin(BinaryOp::Add, col("b"), int(1))));
         assert_eq!(p("not a = 1"), Ast::Unary(UnaryOp::Not, Box::new(bin(BinaryOp::Eq, col("a"), int(1)))));
@@ -454,32 +417,13 @@ mod tests {
     #[test]
     fn predicates() {
         assert_eq!(p("a is not null"), Ast::IsNull { expr: Box::new(col("a")), negated: true });
-        assert_eq!(
-            p("name not ilike 'a%'"),
-            Ast::Like {
-                expr: Box::new(col("name")),
-                pattern: Box::new(Ast::Literal(Value::text("a%"))),
-                negated: true,
-                case_insensitive: true
-            }
-        );
+        assert_eq!(p("name not ilike 'a%'"), Ast::Like { expr: Box::new(col("name")), pattern: Box::new(Ast::Literal(Value::text("a%"))), negated: true, case_insensitive: true });
         assert_eq!(p("x in (1, 2)"), Ast::In { expr: Box::new(col("x")), list: vec![int(1), int(2)], negated: false });
         assert_eq!(
             p("x not between 1 and 5 and y"),
-            bin(
-                BinaryOp::And,
-                Ast::Between { expr: Box::new(col("x")), low: Box::new(int(1)), high: Box::new(int(5)), negated: true },
-                col("y")
-            )
+            bin(BinaryOp::And, Ast::Between { expr: Box::new(col("x")), low: Box::new(int(1)), high: Box::new(int(5)), negated: true }, col("y"))
         );
-        assert_eq!(
-            p("coalesce([first name], 'x')"),
-            Ast::Call {
-                name: "coalesce".into(),
-                args: vec![col("first name"), Ast::Literal(Value::text("x"))],
-                span: 0..0
-            }
-        );
+        assert_eq!(p("coalesce([first name], 'x')"), Ast::Call { name: "coalesce".into(), args: vec![col("first name"), Ast::Literal(Value::text("x"))], span: 0..0 });
         assert_eq!(p("now()"), Ast::Call { name: "now".into(), args: vec![], span: 0..0 });
         assert_eq!(p("[and] = TRUE"), bin(BinaryOp::Eq, col("and"), Ast::Literal(Value::Bool(true))));
     }

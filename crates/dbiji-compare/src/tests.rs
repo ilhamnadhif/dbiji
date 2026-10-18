@@ -41,12 +41,8 @@ fn shop(schema: &str) -> SchemaSnapshot {
     let q = |n: &str| format!("{schema}.{n}");
 
     let mut users = TableDef::new(s.clone(), "users");
-    users.columns = vec![
-        col("id", "integer").not_null(),
-        col("email", "varchar(255)").not_null(),
-        col("name", "varchar(100)"),
-        col("created_at", "timestamp").default_value("now()"),
-    ];
+    users.columns =
+        vec![col("id", "integer").not_null(), col("email", "varchar(255)").not_null(), col("name", "varchar(100)"), col("created_at", "timestamp").default_value("now()")];
     users.primary_key = Some(key("users_pkey", &["id"]));
     users.unique_keys = vec![key("users_email_key", &["email"])];
     users.indexes = vec![idx("idx_users_name", &["name"])];
@@ -75,12 +71,8 @@ fn shop(schema: &str) -> SchemaSnapshot {
     }];
 
     let mut items = TableDef::new(s.clone(), "order_items");
-    items.columns = vec![
-        col("order_id", "integer").not_null(),
-        col("line_no", "integer").not_null(),
-        col("product", "text").not_null(),
-        col("qty", "integer").not_null().default_value("1"),
-    ];
+    items.columns =
+        vec![col("order_id", "integer").not_null(), col("line_no", "integer").not_null(), col("product", "text").not_null(), col("qty", "integer").not_null().default_value("1")];
     items.primary_key = Some(key("order_items_pkey", &["order_id", "line_no"]));
     items.foreign_keys = vec![fk("fk_items_order", &["order_id"], schema, "orders", &["id"], FkAction::Cascade)];
     items.indexes = vec![idx("idx_items_product", &["product"])];
@@ -89,19 +81,10 @@ fn shop(schema: &str) -> SchemaSnapshot {
         ViewDef {
             schema: s.clone(),
             name: "v_user_orders".into(),
-            definition: format!(
-                "SELECT u.id, u.email, count(o.id) AS orders FROM {} u LEFT JOIN {} o ON o.user_id = u.id GROUP BY u.id, u.email",
-                q("users"),
-                q("orders")
-            ),
+            definition: format!("SELECT u.id, u.email, count(o.id) AS orders FROM {} u LEFT JOIN {} o ON o.user_id = u.id GROUP BY u.id, u.email", q("users"), q("orders")),
             ..Default::default()
         },
-        ViewDef {
-            schema: s.clone(),
-            name: "v_big_orders".into(),
-            definition: format!("SELECT id, email FROM {} WHERE orders > 10", q("v_user_orders")),
-            ..Default::default()
-        },
+        ViewDef { schema: s.clone(), name: "v_big_orders".into(), definition: format!("SELECT id, email FROM {} WHERE orders > 10", q("v_user_orders")), ..Default::default() },
     ];
     let sequences = vec![SequenceDef { schema: s.clone(), name: "invoice_seq".into(), start: Some(1000), increment: Some(1), ..Default::default() }];
     let routines = vec![
@@ -138,16 +121,7 @@ fn shop(schema: &str) -> SchemaSnapshot {
         definition: format!("CREATE TYPE {} AS ENUM ('new', 'paid', 'shipped')", q("order_status")),
         comment: None,
     }];
-    SchemaSnapshot {
-        kind: Some(DbKind::Postgres),
-        database: None,
-        schema: s,
-        tables: vec![users, orders, items],
-        views,
-        sequences,
-        routines,
-        types,
-    }
+    SchemaSnapshot { kind: Some(DbKind::Postgres), database: None, schema: s, tables: vec![users, orders, items], views, sequences, routines, types }
 }
 
 /// The production copy, drifted in many ways.
@@ -213,12 +187,7 @@ fn self_check(source: &SchemaSnapshot, target: &SchemaSnapshot, opts: &CompareOp
     let plan = migration_plan(&diff, source, target, dialect, script);
     let applied = apply_plan(&plan, target).unwrap_or_else(|e| panic!("plan does not apply: {e}\n{:#?}", plan.statements()));
     let after = schema_diff(source, &applied, opts);
-    assert!(
-        !after.has_differences(),
-        "differences remain after the migration:\n{}\nstatements:\n{}",
-        describe(&after),
-        plan.statements().join(";\n")
-    );
+    assert!(!after.has_differences(), "differences remain after the migration:\n{}\nstatements:\n{}", describe(&after), plan.statements().join(";\n"));
     plan
 }
 
@@ -736,7 +705,14 @@ fn unused_modified_type_is_recreated_used_type_warns() {
     let dialect = D(Ddl(AnsiDdl::new(SqlSyntax::ansi())), SqlSyntax::ansi());
     let mut src = shop("app");
     let mut tgt = shop("prod");
-    let mut mood = TypeDef { schema: Some("app".into()), name: "mood".into(), category: "enum".into(), elements: vec!["ok".into()], definition: "CREATE TYPE app.mood AS ENUM ('ok')".into(), comment: None };
+    let mut mood = TypeDef {
+        schema: Some("app".into()),
+        name: "mood".into(),
+        category: "enum".into(),
+        elements: vec!["ok".into()],
+        definition: "CREATE TYPE app.mood AS ENUM ('ok')".into(),
+        comment: None,
+    };
     src.types.push(mood.clone());
     mood.schema = Some("prod".into());
     mood.elements = vec!["ok".into(), "sad".into()];
@@ -963,7 +939,16 @@ mod liquibase {
         let opts = LiquibaseOptions { script: ScriptOptions::full_sync(), ..Default::default() };
         let xml = liquibase_changelog(&d, &src, &tgt, &opts);
         let (counts, _) = parse(&xml);
-        for tag in ["dropPrimaryKey", "addPrimaryKey", "dropUniqueConstraint", "addUniqueConstraint", "dropDefaultValue", "createSequence", "dropForeignKeyConstraint", "addForeignKeyConstraint"] {
+        for tag in [
+            "dropPrimaryKey",
+            "addPrimaryKey",
+            "dropUniqueConstraint",
+            "addUniqueConstraint",
+            "dropDefaultValue",
+            "createSequence",
+            "dropForeignKeyConstraint",
+            "addForeignKeyConstraint",
+        ] {
             assert!(counts.get(tag).copied().unwrap_or(0) > 0, "missing {tag} in\n{xml}");
         }
         assert!(xml.contains("constraintName=\"users_pk_old\""));

@@ -123,7 +123,14 @@ fn every_tab_draws_without_panicking() {
         ("object", Box::new(dbiji_app::tabs::object::ObjectEditorTab::new(conn.clone(), customer.clone(), dbiji_app::command::ObjectPage::Properties))),
         ("object-data", Box::new(dbiji_app::tabs::object::ObjectEditorTab::new(conn.clone(), customer.clone(), dbiji_app::command::ObjectPage::Data))),
         ("object-ddl", Box::new(dbiji_app::tabs::object::ObjectEditorTab::new(conn.clone(), customer.clone(), dbiji_app::command::ObjectPage::Ddl))),
-        ("view", Box::new(dbiji_app::tabs::object::ObjectEditorTab::new(conn.clone(), ObjectRef::new(ObjectKind::View, Some("main".into()), "big"), dbiji_app::command::ObjectPage::Ddl))),
+        (
+            "view",
+            Box::new(dbiji_app::tabs::object::ObjectEditorTab::new(
+                conn.clone(),
+                ObjectRef::new(ObjectKind::View, Some("main".into()), "big"),
+                dbiji_app::command::ObjectPage::Ddl,
+            )),
+        ),
         ("data", Box::new(dbiji_app::results::data_tab::TableDataTab::new(conn.clone(), customer.clone(), Some("id > 0".into())))),
         ("er", Box::new(dbiji_app::tabs::er::ErTab::new(conn.clone(), schema.clone(), Vec::new()))),
         ("query-builder", Box::new(dbiji_app::tabs::query_builder::QueryBuilderTab::new(conn.clone(), Some(schema.clone())))),

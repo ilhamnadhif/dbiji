@@ -2,9 +2,7 @@
 
 use crate::grid::{DataGridState, GridAction, GridOptions};
 use crate::model::{ResultModel, RowKey};
-use crate::valueview::{
-    array_lines, byte_size_text, decode_image, detect_image, hex_dump, pretty_json, pretty_xml, split_ewkt,
-};
+use crate::valueview::{array_lines, byte_size_text, decode_image, detect_image, hex_dump, pretty_json, pretty_xml, split_ewkt};
 use dbiji_core::{DataKind, Value, tr, trf};
 use egui::{CollapsingHeader, RichText, ScrollArea, TextEdit, TextureHandle, TextureOptions, Ui};
 
@@ -71,24 +69,18 @@ fn json_tree(ui: &mut Ui, key: &str, v: &serde_json::Value, budget: &mut usize, 
     *budget -= 1;
     match v {
         serde_json::Value::Object(map) => {
-            CollapsingHeader::new(format!("{key} {{{}}}", map.len()))
-                .id_salt((key, depth, *budget))
-                .default_open(depth < 2)
-                .show(ui, |ui| {
-                    for (k, child) in map {
-                        json_tree(ui, k, child, budget, depth + 1);
-                    }
-                });
+            CollapsingHeader::new(format!("{key} {{{}}}", map.len())).id_salt((key, depth, *budget)).default_open(depth < 2).show(ui, |ui| {
+                for (k, child) in map {
+                    json_tree(ui, k, child, budget, depth + 1);
+                }
+            });
         }
         serde_json::Value::Array(items) => {
-            CollapsingHeader::new(format!("{key} [{}]", items.len()))
-                .id_salt((key, depth, *budget))
-                .default_open(depth < 2)
-                .show(ui, |ui| {
-                    for (i, child) in items.iter().enumerate().take(5000) {
-                        json_tree(ui, &format!("[{i}]"), child, budget, depth + 1);
-                    }
-                });
+            CollapsingHeader::new(format!("{key} [{}]", items.len())).id_salt((key, depth, *budget)).default_open(depth < 2).show(ui, |ui| {
+                for (i, child) in items.iter().enumerate().take(5000) {
+                    json_tree(ui, &format!("[{i}]"), child, budget, depth + 1);
+                }
+            });
         }
         other => {
             ui.horizontal(|ui| {
@@ -105,12 +97,7 @@ fn json_tree(ui: &mut Ui, key: &str, v: &serde_json::Value, budget: &mut usize, 
 
 impl<'a> ValuePanel<'a> {
     /// New value panel.
-    pub fn new(
-        model: &'a mut ResultModel,
-        grid: &'a DataGridState,
-        options: &'a GridOptions,
-        state: &'a mut ValuePanelState,
-    ) -> Self {
+    pub fn new(model: &'a mut ResultModel, grid: &'a DataGridState, options: &'a GridOptions, state: &'a mut ValuePanelState) -> Self {
         ValuePanel { model, grid, options, state }
     }
 
@@ -197,29 +184,22 @@ impl<'a> ValuePanel<'a> {
                     state.edit_dirty = false;
                     state.error = None;
                 }
-                ScrollArea::both().auto_shrink([false, false]).max_height(ui.available_height() - 36.0).show(
-                    ui,
-                    |ui| {
-                        let te = TextEdit::multiline(&mut state.edit_text)
-                            .desired_width(if state.wrap { ui.available_width() } else { f32::INFINITY })
-                            .desired_rows(8)
-                            .font(egui::TextStyle::Monospace);
-                        let resp = if cell_editable {
-                            ui.add(te)
-                        } else {
-                            let mut ro = state.edit_text.as_str();
-                            ui.add(
-                                TextEdit::multiline(&mut ro)
-                                    .desired_width(f32::INFINITY)
-                                    .font(egui::TextStyle::Monospace),
-                            )
-                        };
-                        if resp.changed() {
-                            state.edit_dirty = true;
-                            state.error = None;
-                        }
-                    },
-                );
+                ScrollArea::both().auto_shrink([false, false]).max_height(ui.available_height() - 36.0).show(ui, |ui| {
+                    let te = TextEdit::multiline(&mut state.edit_text)
+                        .desired_width(if state.wrap { ui.available_width() } else { f32::INFINITY })
+                        .desired_rows(8)
+                        .font(egui::TextStyle::Monospace);
+                    let resp = if cell_editable {
+                        ui.add(te)
+                    } else {
+                        let mut ro = state.edit_text.as_str();
+                        ui.add(TextEdit::multiline(&mut ro).desired_width(f32::INFINITY).font(egui::TextStyle::Monospace))
+                    };
+                    if resp.changed() {
+                        state.edit_dirty = true;
+                        state.error = None;
+                    }
+                });
                 ui.horizontal(|ui| {
                     if cell_editable {
                         if ui.add_enabled(state.edit_dirty, egui::Button::new(tr("Apply"))).clicked() {
@@ -297,11 +277,7 @@ impl<'a> ValuePanel<'a> {
                     if state.image_key != key {
                         state.image_key = key;
                         state.image = Some(decode_image(b, 2048).map(|d| {
-                            let tex = ui.ctx().load_texture(
-                                format!("dbiji-value-{row}-{col}"),
-                                d.image,
-                                TextureOptions::LINEAR,
-                            );
+                            let tex = ui.ctx().load_texture(format!("dbiji-value-{row}-{col}"), d.image, TextureOptions::LINEAR);
                             (tex, d.original_size, d.kind.label())
                         }));
                     }

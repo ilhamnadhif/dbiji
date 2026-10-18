@@ -269,11 +269,7 @@ pub struct CompareLayout {
 }
 
 fn find_column<'a>(t: &'a TableDef, name: &str) -> Option<&'a str> {
-    t.columns
-        .iter()
-        .find(|c| c.name == name)
-        .or_else(|| t.columns.iter().find(|c| c.name.eq_ignore_ascii_case(name)))
-        .map(|c| c.name.as_str())
+    t.columns.iter().find(|c| c.name == name).or_else(|| t.columns.iter().find(|c| c.name.eq_ignore_ascii_case(name))).map(|c| c.name.as_str())
 }
 
 /// The comparison of `source` with `target`: rows matched by `keys` (source
@@ -318,11 +314,8 @@ pub fn build_compare_job(
         }
     }
     // Only keys: compare the first key with itself (rows present on one side only).
-    let (src_cols, dst_cols) = if layout.columns.is_empty() {
-        (vec![keys[0].clone()], vec![target_keys[0].clone()])
-    } else {
-        (layout.columns.clone(), layout.target_columns.clone())
-    };
+    let (src_cols, dst_cols) =
+        if layout.columns.is_empty() { (vec![keys[0].clone()], vec![target_keys[0].clone()]) } else { (layout.columns.clone(), layout.target_columns.clone()) };
     let filter = |f: &str| Some(f.trim().to_string()).filter(|f| !f.is_empty());
     let job = DataCompareJob {
         source: TableSpec { obj: src_obj.clone(), key_columns: keys, columns: src_cols, where_clause: filter(filters.0) },
@@ -496,7 +489,9 @@ impl DataCompareTab {
 
     /// Pick the source table's name in the target schema when nothing is chosen.
     fn auto_target_table(&mut self, cx: &mut AppContext) {
-        let (Some(src), Some(conn), Some(schema), None) = (self.source.table.clone(), self.target.conn.clone(), self.target.schema.clone(), self.target.table.as_ref()) else { return };
+        let (Some(src), Some(conn), Some(schema), None) = (self.source.table.clone(), self.target.conn.clone(), self.target.schema.clone(), self.target.table.as_ref()) else {
+            return;
+        };
         if !cx.conns.is_connected(&conn) || (self.source.conn.as_deref() == Some(conn.as_str()) && Some(&schema) == self.source.schema.as_ref()) {
             return;
         }
@@ -507,69 +502,72 @@ impl DataCompareTab {
     }
 
     fn columns_ui(&mut self, ui: &mut Ui, src: &TableDef, dst: Option<&TableDef>) {
-        egui::CollapsingHeader::new(trf("Keys and columns ({} key, {} compared)", &[&self.keys.len(), &src.columns.iter().filter(|c| !self.keys.contains(&c.name) && !self.excluded.contains(&c.name)).count()]))
-            .id_salt(("dc_cols", self.uid))
-            .default_open(self.keys.is_empty())
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    if ui.small_button(tr("Primary key")).clicked() {
-                        self.keys = src.row_key().map(|k| k.columns.clone()).unwrap_or_default();
-                    }
-                    if ui.small_button(tr("Compare all")).clicked() {
-                        self.excluded.clear();
-                    }
-                    if ui.small_button(tr("Compare none")).clicked() {
-                        self.excluded = src.columns.iter().map(|c| c.name.clone()).collect();
-                    }
-                });
-                egui::ScrollArea::vertical().id_salt(("dc_cols_scroll", self.uid)).max_height(220.0).show(ui, |ui| {
-                    egui::Grid::new(("dc_cols_grid", self.uid)).num_columns(5).striped(true).spacing([14.0, 2.0]).show(ui, |ui| {
-                        ui.strong(tr("Column"));
-                        ui.strong(tr("Type"));
-                        ui.strong(tr("Key"));
-                        ui.strong(tr("Compare"));
-                        ui.strong(tr("In target"));
-                        ui.end_row();
-                        for c in &src.columns {
-                            ui.label(&c.name);
-                            ui.weak(&c.data_type);
-                            let mut key = self.keys.contains(&c.name);
-                            if ui.checkbox(&mut key, "").changed() {
-                                if key {
-                                    self.keys.push(c.name.clone());
-                                } else {
-                                    self.keys.retain(|k| k != &c.name);
-                                }
+        egui::CollapsingHeader::new(trf(
+            "Keys and columns ({} key, {} compared)",
+            &[&self.keys.len(), &src.columns.iter().filter(|c| !self.keys.contains(&c.name) && !self.excluded.contains(&c.name)).count()],
+        ))
+        .id_salt(("dc_cols", self.uid))
+        .default_open(self.keys.is_empty())
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                if ui.small_button(tr("Primary key")).clicked() {
+                    self.keys = src.row_key().map(|k| k.columns.clone()).unwrap_or_default();
+                }
+                if ui.small_button(tr("Compare all")).clicked() {
+                    self.excluded.clear();
+                }
+                if ui.small_button(tr("Compare none")).clicked() {
+                    self.excluded = src.columns.iter().map(|c| c.name.clone()).collect();
+                }
+            });
+            egui::ScrollArea::vertical().id_salt(("dc_cols_scroll", self.uid)).max_height(220.0).show(ui, |ui| {
+                egui::Grid::new(("dc_cols_grid", self.uid)).num_columns(5).striped(true).spacing([14.0, 2.0]).show(ui, |ui| {
+                    ui.strong(tr("Column"));
+                    ui.strong(tr("Type"));
+                    ui.strong(tr("Key"));
+                    ui.strong(tr("Compare"));
+                    ui.strong(tr("In target"));
+                    ui.end_row();
+                    for c in &src.columns {
+                        ui.label(&c.name);
+                        ui.weak(&c.data_type);
+                        let mut key = self.keys.contains(&c.name);
+                        if ui.checkbox(&mut key, "").changed() {
+                            if key {
+                                self.keys.push(c.name.clone());
+                            } else {
+                                self.keys.retain(|k| k != &c.name);
                             }
-                            let mut cmp = !self.excluded.contains(&c.name);
-                            ui.add_enabled_ui(!key, |ui| {
-                                if ui.checkbox(&mut cmp, "").changed() {
-                                    if cmp {
-                                        self.excluded.remove(&c.name);
-                                    } else {
-                                        self.excluded.insert(c.name.clone());
-                                    }
-                                }
-                            });
-                            match dst.map(|d| find_column(d, &c.name)) {
-                                Some(Some(t)) if t == c.name => {
-                                    ui.label(RichText::new(icon::CHECK).color(crate::theme::success_color(ui.visuals().dark_mode)));
-                                }
-                                Some(Some(t)) => {
-                                    ui.weak(t);
-                                }
-                                Some(None) => {
-                                    ui.label(RichText::new(tr("missing")).color(crate::theme::warning_color(ui.visuals().dark_mode)));
-                                }
-                                None => {
-                                    ui.weak("—");
-                                }
-                            }
-                            ui.end_row();
                         }
-                    });
+                        let mut cmp = !self.excluded.contains(&c.name);
+                        ui.add_enabled_ui(!key, |ui| {
+                            if ui.checkbox(&mut cmp, "").changed() {
+                                if cmp {
+                                    self.excluded.remove(&c.name);
+                                } else {
+                                    self.excluded.insert(c.name.clone());
+                                }
+                            }
+                        });
+                        match dst.map(|d| find_column(d, &c.name)) {
+                            Some(Some(t)) if t == c.name => {
+                                ui.label(RichText::new(icon::CHECK).color(crate::theme::success_color(ui.visuals().dark_mode)));
+                            }
+                            Some(Some(t)) => {
+                                ui.weak(t);
+                            }
+                            Some(None) => {
+                                ui.label(RichText::new(tr("missing")).color(crate::theme::warning_color(ui.visuals().dark_mode)));
+                            }
+                            None => {
+                                ui.weak("—");
+                            }
+                        }
+                        ui.end_row();
+                    }
                 });
             });
+        });
     }
 
     fn options_ui(&mut self, ui: &mut Ui) {

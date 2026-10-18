@@ -44,26 +44,22 @@ fn in_key(t: &TableDef, column: &str) -> bool {
     }
     for opt in ["order_by", "sorting_key", "primary_key"] {
         if let Some(expr) = t.options.get(opt)
-            && expr_mentions(expr, column) {
-                return true;
-            }
+            && expr_mentions(expr, column)
+        {
+            return true;
+        }
     }
     false
 }
 
 /// Does the expression list mention `column` as a whole word?
 fn expr_mentions(expr: &str, column: &str) -> bool {
-    expr.split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '`'))
-        .any(|w| w.trim_matches('`') == column)
+    expr.split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '`')).any(|w| w.trim_matches('`') == column)
 }
 
 fn column_type(c: &ColumnDef, key: bool) -> String {
     let (inner, was_nullable) = strip_nullable(&c.data_type);
-    if (c.nullable || (was_nullable && c.nullable)) && !key {
-        make_nullable(&inner)
-    } else {
-        inner
-    }
+    if (c.nullable || (was_nullable && c.nullable)) && !key { make_nullable(&inner) } else { inner }
 }
 
 /// Column definition as used in `CREATE TABLE` / `ADD COLUMN` / `MODIFY COLUMN`.
@@ -95,11 +91,7 @@ fn wrap_list(expr: &str) -> String {
     if e.is_empty() {
         return "tuple()".into();
     }
-    if e.starts_with('(') && e.ends_with(')') || !e.contains(',') {
-        e.to_string()
-    } else {
-        format!("({e})")
-    }
+    if e.starts_with('(') && e.ends_with(')') || !e.contains(',') { e.to_string() } else { format!("({e})") }
 }
 
 /// Granularity from an `INDEX ... GRANULARITY n` definition.
@@ -121,16 +113,11 @@ pub fn index_clause(idx: &IndexDef) -> String {
         let c = &idx.columns[0];
         if c.is_expression { c.name.clone() } else { ident(&c.name) }
     } else {
-        let parts: Vec<String> =
-            idx.columns.iter().map(|c| if c.is_expression { c.name.clone() } else { ident(&c.name) }).collect();
+        let parts: Vec<String> = idx.columns.iter().map(|c| if c.is_expression { c.name.clone() } else { ident(&c.name) }).collect();
         format!("({})", parts.join(", "))
     };
     let ty = idx.method.as_deref().filter(|m| !m.is_empty()).unwrap_or("minmax");
-    format!(
-        "INDEX {} {expr} TYPE {ty} GRANULARITY {}",
-        ident(&idx.name),
-        index_granularity(idx.definition.as_deref())
-    )
+    format!("INDEX {} {expr} TYPE {ty} GRANULARITY {}", ident(&idx.name), index_granularity(idx.definition.as_deref()))
 }
 
 fn check_clause(c: &CheckDef) -> String {
@@ -237,11 +224,7 @@ impl DdlGenerator for ClickHouseDdl {
                 }
             }
             if fc.comment != tc.comment {
-                out.push(format!(
-                    "ALTER TABLE {t} COMMENT COLUMN {} {}",
-                    ident(&tc.name),
-                    string_literal(tc.comment.as_deref().unwrap_or(""))
-                ));
+                out.push(format!("ALTER TABLE {t} COMMENT COLUMN {} {}", ident(&tc.name), string_literal(tc.comment.as_deref().unwrap_or(""))));
             }
         }
         for c in added {
@@ -251,9 +234,10 @@ impl DdlGenerator for ClickHouseDdl {
                 if let (Some(s), Some(prev)) = (stmt.first_mut(), pos.checked_sub(1).and_then(|p| to.columns.get(p))) {
                     s.push_str(&format!(" AFTER {}", ident(&prev.name)));
                 } else if pos == 0
-                    && let Some(s) = stmt.first_mut() {
-                        s.push_str(" FIRST");
-                    }
+                    && let Some(s) = stmt.first_mut()
+                {
+                    s.push_str(" FIRST");
+                }
             }
             out.extend(stmt);
         }
@@ -268,28 +252,22 @@ impl DdlGenerator for ClickHouseDdl {
             }
         }
         if from.primary_key != to.primary_key
-            && let Some(pk) = &to.primary_key {
-                let old = key_columns(from);
-                // ClickHouse only allows appending (new) columns to the sorting key.
-                if pk.columns.starts_with(&old) && pk.columns.len() > old.len() {
-                    out.push(self.add_primary_key(to, pk));
-                }
+            && let Some(pk) = &to.primary_key
+        {
+            let old = key_columns(from);
+            // ClickHouse only allows appending (new) columns to the sorting key.
+            if pk.columns.starts_with(&old) && pk.columns.len() > old.len() {
+                out.push(self.add_primary_key(to, pk));
             }
+        }
         if from.comment != to.comment {
-            out.push(format!(
-                "ALTER TABLE {t} MODIFY COMMENT {}",
-                string_literal(to.comment.as_deref().unwrap_or(""))
-            ));
+            out.push(format!("ALTER TABLE {t} MODIFY COMMENT {}", string_literal(to.comment.as_deref().unwrap_or(""))));
         }
         out
     }
 
     fn add_column(&self, table: &TableDef, column: &ColumnDef) -> Vec<String> {
-        vec![format!(
-            "ALTER TABLE {} ADD COLUMN {}",
-            tname(table),
-            column_definition(column, in_key(table, &column.name))
-        )]
+        vec![format!("ALTER TABLE {} ADD COLUMN {}", tname(table), column_definition(column, in_key(table, &column.name)))]
     }
 
     fn drop_column(&self, table: &TableDef, column: &str) -> String {
@@ -326,11 +304,7 @@ impl DdlGenerator for ClickHouseDdl {
     }
 
     fn drop_check(&self, table: &TableDef, check: &CheckDef) -> String {
-        format!(
-            "ALTER TABLE {} DROP CONSTRAINT {}",
-            tname(table),
-            ident(check.name.as_deref().unwrap_or("chk"))
-        )
+        format!("ALTER TABLE {} DROP CONSTRAINT {}", tname(table), ident(check.name.as_deref().unwrap_or("chk")))
     }
 
     fn add_foreign_key(&self, _table: &TableDef, _fk: &ForeignKeyDef) -> String {
@@ -461,11 +435,12 @@ pub fn parse_foreign_type(data_type: &str) -> ForeignType {
     loop {
         let trimmed = t.trim_end();
         if let Some(stripped) = trimmed.strip_suffix(']')
-            && let Some(open) = stripped.rfind('[') {
-                t = stripped[..open].to_string();
-                array_dims += 1;
-                continue;
-            }
+            && let Some(open) = stripped.rfind('[')
+        {
+            t = stripped[..open].to_string();
+            array_dims += 1;
+            continue;
+        }
         break;
     }
     if t.starts_with('_') && t.len() > 1 {
@@ -507,9 +482,7 @@ fn arg_u32(ft: &ForeignType, i: usize) -> Option<u32> {
 /// Map a type of another product to ClickHouse; `None` = use the kind default.
 pub fn map_foreign_type(source: DbKind, data_type: &str, kind: DataKind) -> Option<String> {
     let ft = parse_foreign_type(data_type);
-    let int = |bits: u16| -> String {
-        if ft.unsigned { format!("UInt{bits}") } else { format!("Int{bits}") }
-    };
+    let int = |bits: u16| -> String { if ft.unsigned { format!("UInt{bits}") } else { format!("Int{bits}") } };
     let base = ft.base.as_str();
     let mapped: String = match base {
         "bool" | "boolean" => "Bool".into(),
@@ -554,11 +527,9 @@ pub fn map_foreign_type(source: DbKind, data_type: &str, kind: DataKind) -> Opti
         },
         "money" => "Decimal(19, 4)".into(),
         "smallmoney" => "Decimal(10, 4)".into(),
-        "char" | "character" | "nchar" | "bpchar" | "varchar" | "character varying" | "nvarchar"
-        | "varchar2" | "nvarchar2" | "text" | "ntext" | "tinytext" | "mediumtext" | "longtext" | "clob"
-        | "citext" | "string" | "name" | "sysname" | "enum" | "set" | "xml" | "json" | "jsonb"
-        | "interval" | "inet" | "cidr" | "macaddr" | "macaddr8" | "hierarchyid" | "sql_variant" | "struct"
-        | "map" | "union" => "String".into(),
+        "char" | "character" | "nchar" | "bpchar" | "varchar" | "character varying" | "nvarchar" | "varchar2" | "nvarchar2" | "text" | "ntext" | "tinytext" | "mediumtext"
+        | "longtext" | "clob" | "citext" | "string" | "name" | "sysname" | "enum" | "set" | "xml" | "json" | "jsonb" | "interval" | "inet" | "cidr" | "macaddr" | "macaddr8"
+        | "hierarchyid" | "sql_variant" | "struct" | "map" | "union" => "String".into(),
         "uuid" | "uniqueidentifier" => "UUID".into(),
         "date" => "Date32".into(),
         "time" | "timetz" | "time with time zone" | "time without time zone" => "String".into(),
@@ -573,11 +544,9 @@ pub fn map_foreign_type(source: DbKind, data_type: &str, kind: DataKind) -> Opti
             let p = arg_u32(&ft, 0).unwrap_or(6).min(9);
             format!("DateTime64({p}, 'UTC')")
         }
-        "bytea" | "blob" | "tinyblob" | "mediumblob" | "longblob" | "binary" | "varbinary" | "image"
-        | "rowversion" | "raw" | "bytes" => "String".into(),
+        "bytea" | "blob" | "tinyblob" | "mediumblob" | "longblob" | "binary" | "varbinary" | "image" | "rowversion" | "raw" | "bytes" => "String".into(),
         "year" => "UInt16".into(),
-        "geometry" | "geography" | "point" | "linestring" | "polygon" | "multipoint" | "multilinestring"
-        | "multipolygon" | "geometrycollection" => "String".into(),
+        "geometry" | "geography" | "point" | "linestring" | "polygon" | "multipoint" | "multilinestring" | "multipolygon" | "geometrycollection" => "String".into(),
         "list" | "array" => "Array(String)".into(),
         _ => return if ft.array_dims > 0 { Some(format!("Array({})", default_kind_type(kind))) } else { None },
     };
@@ -605,12 +574,7 @@ mod tests {
         t.columns.push(name);
         t.columns.push(ColumnDef::new("ts", "DateTime64(3)").not_null().default_value("now64()"));
         t.primary_key = Some(KeyDef { name: None, columns: vec!["id".into()] });
-        t.indexes.push(IndexDef {
-            name: "idx_name".into(),
-            columns: vec![IndexColumn::column("name")],
-            method: Some("bloom_filter".into()),
-            ..Default::default()
-        });
+        t.indexes.push(IndexDef { name: "idx_name".into(), columns: vec![IndexColumn::column("name")], method: Some("bloom_filter".into()), ..Default::default() });
         t.checks.push(CheckDef { name: Some("c_id".into()), expression: "id > 0".into() });
         t.comment = Some("all events".into());
         t
@@ -698,12 +662,8 @@ mod tests {
         mv.options.insert("to".into(), "app.target".into());
         assert_eq!(d.create_view(&mv, false), vec!["CREATE MATERIALIZED VIEW app.v TO app.target\nAS SELECT 1"]);
         assert_eq!(d.create_schema("analytics"), "CREATE DATABASE analytics");
-        let idx = IndexDef {
-            name: "i".into(),
-            columns: vec![IndexColumn::column("a"), IndexColumn::column("b")],
-            definition: Some("x GRANULARITY 4".into()),
-            ..Default::default()
-        };
+        let idx =
+            IndexDef { name: "i".into(), columns: vec![IndexColumn::column("a"), IndexColumn::column("b")], definition: Some("x GRANULARITY 4".into()), ..Default::default() };
         assert_eq!(d.create_index(&t, &idx), "ALTER TABLE app.events ADD INDEX i (a, b) TYPE minmax GRANULARITY 4");
     }
 

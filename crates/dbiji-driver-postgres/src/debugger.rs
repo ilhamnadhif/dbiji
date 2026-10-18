@@ -44,10 +44,7 @@ impl PgSession {
         }
         let installed = self.q1("SELECT extversion FROM pg_catalog.pg_extension WHERE extname = 'pldbgapi'", &[]).await?;
         if installed.is_none() {
-            let available = self
-                .q1("SELECT 1 FROM pg_catalog.pg_available_extensions WHERE name = 'pldbgapi'", &[])
-                .await?
-                .is_some();
+            let available = self.q1("SELECT 1 FROM pg_catalog.pg_available_extensions WHERE name = 'pldbgapi'", &[]).await?.is_some();
             return Err(DbError::unsupported(if available {
                 "The pldbgapi extension is available but not installed in this database: run CREATE EXTENSION pldbgapi \
                  (as superuser) and make sure plugin_debugger is listed in shared_preload_libraries"
@@ -56,16 +53,9 @@ impl PgSession {
                  plugin_debugger to shared_preload_libraries, restart the server and run CREATE EXTENSION pldbgapi"
             }));
         }
-        let preload = self
-            .q1("SELECT current_setting('shared_preload_libraries')", &[])
-            .await?
-            .map(|r| r.s(0))
-            .transpose()?
-            .unwrap_or_default();
+        let preload = self.q1("SELECT current_setting('shared_preload_libraries')", &[]).await?.map(|r| r.s(0)).transpose()?.unwrap_or_default();
         if !preload.split(',').any(|l| l.trim().trim_matches('"').ends_with("plugin_debugger")) {
-            return Err(DbError::unsupported(
-                "plugin_debugger is not loaded: add it to shared_preload_libraries and restart the server",
-            ));
+            return Err(DbError::unsupported("plugin_debugger is not loaded: add it to shared_preload_libraries and restart the server"));
         }
         let schema = require_schema(routine.schema.as_deref())?;
         let rows = self
@@ -155,29 +145,14 @@ pub(crate) async fn start(params: &ConnectParams, target: DebugTarget, args: &[S
     let proxy = open_conn(&p).await?;
     let tconn = open_conn(&p).await?;
     let pid_msgs = tconn.client.simple_query("SELECT pg_backend_pid()").await.map_err(pg)?;
-    let target_pid: i32 = first_row(&pid_msgs)
-        .and_then(|r| r.get(0))
-        .and_then(|s| s.parse().ok())
-        .ok_or_else(|| DbError::internal("cannot read the target backend pid"))?;
+    let target_pid: i32 = first_row(&pid_msgs).and_then(|r| r.get(0)).and_then(|s| s.parse().ok()).ok_or_else(|| DbError::internal("cannot read the target backend pid"))?;
     let msgs = proxy.client.simple_query("SELECT pldbg_create_listener()").await.map_err(pg)?;
-    let handle: i32 = first_row(&msgs)
-        .and_then(|r| r.get(0))
-        .and_then(|s| s.parse().ok())
-        .ok_or_else(|| DbError::internal("pldbg_create_listener returned no handle"))?;
-    let bp = proxy
-        .client
-        .simple_query(&format!("SELECT pldbg_set_global_breakpoint({handle}, {}, NULL, {target_pid})", target.oid))
-        .await
-        .map_err(pg)?;
+    let handle: i32 = first_row(&msgs).and_then(|r| r.get(0)).and_then(|s| s.parse().ok()).ok_or_else(|| DbError::internal("pldbg_create_listener returned no handle"))?;
+    let bp = proxy.client.simple_query(&format!("SELECT pldbg_set_global_breakpoint({handle}, {}, NULL, {target_pid})", target.oid)).await.map_err(pg)?;
     if first_row(&bp).and_then(|r| r.get(0)) != Some("t") {
         return Err(DbError::query("The debugger could not set the entry breakpoint"));
     }
-    let call = format!(
-        "{} {}({})",
-        if target.kind == ObjectKind::Procedure { "CALL" } else { "SELECT * FROM" },
-        qualified(Some(&target.schema), &target.name),
-        args.join(", ")
-    );
+    let call = format!("{} {}({})", if target.kind == ObjectKind::Procedure { "CALL" } else { "SELECT * FROM" }, qualified(Some(&target.schema), &target.name), args.join(", "));
     let Conn { client: tclient, shared: tshared, cancel: tcancel, task: ttask } = tconn;
     let target_task = tokio::spawn(async move {
         let res = tclient.simple_query(&call).await;
@@ -277,11 +252,7 @@ impl PgDebugSession {
     }
 
     fn messages(&self) -> Vec<String> {
-        self.target_shared
-            .take_notices()
-            .into_iter()
-            .map(|m| format!("{}: {}", m.severity, m.message))
-            .collect()
+        self.target_shared.take_notices().into_iter().map(|m| format!("{}: {}", m.severity, m.message)).collect()
     }
 
     /// Plain proxy query (no waiting on the target).
@@ -388,15 +359,8 @@ impl PgDebugSession {
     async fn current_state(&mut self, bp_rows: &[SimpleQueryMessage]) -> DbResult<DebugState> {
         self.stopped = true;
         let bp_line = first_row(bp_rows).and_then(|r| r.get(1)).and_then(|s| s.parse::<i64>().ok());
-        let stack = self
-            .simple(&format!("SELECT linenumber FROM pldbg_get_stack({}) ORDER BY level LIMIT 1", self.handle))
-            .await?;
-        let line = first_row(&stack)
-            .and_then(|r| r.get(0))
-            .and_then(|s| s.parse::<i64>().ok())
-            .or_else(|| bp_line.map(|l| l - 1))
-            .filter(|l| *l > 0)
-            .map(|l| l as u32);
+        let stack = self.simple(&format!("SELECT linenumber FROM pldbg_get_stack({}) ORDER BY level LIMIT 1", self.handle)).await?;
+        let line = first_row(&stack).and_then(|r| r.get(0)).and_then(|s| s.parse::<i64>().ok()).or_else(|| bp_line.map(|l| l - 1)).filter(|l| *l > 0).map(|l| l as u32);
         Ok(DebugState { line, finished: false, result: None, messages: self.messages() })
     }
 
@@ -429,9 +393,7 @@ impl DebugSession for PgDebugSession {
         }
         self.check()?;
         if self.stopped {
-            let rows = self
-                .simple(&format!("SELECT linenumber FROM pldbg_get_stack({}) ORDER BY level LIMIT 1", self.handle))
-                .await?;
+            let rows = self.simple(&format!("SELECT linenumber FROM pldbg_get_stack({}) ORDER BY level LIMIT 1", self.handle)).await?;
             let line = first_row(&rows).and_then(|r| r.get(0)).and_then(|s| s.parse::<u32>().ok());
             return Ok(DebugState { line, finished: false, result: None, messages: self.messages() });
         }
@@ -473,19 +435,12 @@ impl DebugSession for PgDebugSession {
     }
 
     async fn set_breakpoint(&mut self, line: u32) -> DbResult<()> {
-        let rows = self
-            .simple(&format!("SELECT pldbg_set_breakpoint({}, {}, {line})", self.handle, self.func_oid))
-            .await?;
-        if first_row(&rows).and_then(|r| r.get(0)) == Some("t") {
-            Ok(())
-        } else {
-            Err(DbError::query(format!("Cannot set a breakpoint at line {line}")))
-        }
+        let rows = self.simple(&format!("SELECT pldbg_set_breakpoint({}, {}, {line})", self.handle, self.func_oid)).await?;
+        if first_row(&rows).and_then(|r| r.get(0)) == Some("t") { Ok(()) } else { Err(DbError::query(format!("Cannot set a breakpoint at line {line}"))) }
     }
 
     async fn clear_breakpoint(&mut self, line: u32) -> DbResult<()> {
-        self.simple(&format!("SELECT pldbg_drop_breakpoint({}, {}, {line})", self.handle, self.func_oid))
-            .await?;
+        self.simple(&format!("SELECT pldbg_drop_breakpoint({}, {}, {line})", self.handle, self.func_oid)).await?;
         Ok(())
     }
 
@@ -493,12 +448,7 @@ impl DebugSession for PgDebugSession {
         if !self.stopped {
             return Ok(Vec::new());
         }
-        let rows = self
-            .simple(&format!(
-                "SELECT name, varclass::text, linenumber, pg_catalog.format_type(dtype, NULL), value FROM pldbg_get_variables({})",
-                self.handle
-            ))
-            .await?;
+        let rows = self.simple(&format!("SELECT name, varclass::text, linenumber, pg_catalog.format_type(dtype, NULL), value FROM pldbg_get_variables({})", self.handle)).await?;
         let mut out = Vec::new();
         self.last_vars.clear();
         for m in rows {
@@ -521,9 +471,7 @@ impl DebugSession for PgDebugSession {
         if !self.stopped {
             return Ok(Vec::new());
         }
-        let rows = self
-            .simple(&format!("SELECT level, targetname, linenumber, args FROM pldbg_get_stack({}) ORDER BY level", self.handle))
-            .await?;
+        let rows = self.simple(&format!("SELECT level, targetname, linenumber, args FROM pldbg_get_stack({}) ORDER BY level", self.handle)).await?;
         let mut out = Vec::new();
         for m in rows {
             if let SimpleQueryMessage::Row(r) = m {
@@ -546,19 +494,8 @@ impl DebugSession for PgDebugSession {
             self.variables().await?;
         }
         let line = self.last_vars.iter().find(|(n, _)| n == name).map(|(_, l)| *l).unwrap_or(-1);
-        let rows = self
-            .simple(&format!(
-                "SELECT pldbg_deposit_value({}, {}, {line}, {})",
-                self.handle,
-                quote_literal(name),
-                quote_literal(value)
-            ))
-            .await?;
-        if first_row(&rows).and_then(|r| r.get(0)) == Some("t") {
-            Ok(())
-        } else {
-            Err(DbError::query(format!("Cannot assign '{value}' to {name}")))
-        }
+        let rows = self.simple(&format!("SELECT pldbg_deposit_value({}, {}, {line}, {})", self.handle, quote_literal(name), quote_literal(value))).await?;
+        if first_row(&rows).and_then(|r| r.get(0)) == Some("t") { Ok(()) } else { Err(DbError::query(format!("Cannot assign '{value}' to {name}"))) }
     }
 
     async fn abort(&mut self) -> DbResult<()> {

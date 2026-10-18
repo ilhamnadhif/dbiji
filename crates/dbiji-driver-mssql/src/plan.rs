@@ -92,9 +92,7 @@ fn parse_doc(xml: &str) -> DbResult<Parsed> {
     let mut ops: Vec<OpFrame> = Vec::new();
     let mut stmts: Vec<StmtFrame> = Vec::new();
     loop {
-        let ev = reader
-            .read_event()
-            .map_err(|e| DbError::internal(format!("Invalid showplan XML: {e}")))?;
+        let ev = reader.read_event().map_err(|e| DbError::internal(format!("Invalid showplan XML: {e}")))?;
         let (start, empty) = match &ev {
             Event::Start(e) => (Some(e.clone()), false),
             Event::Empty(e) => (Some(e.clone()), true),
@@ -127,7 +125,12 @@ fn parse_doc(xml: &str) -> DbResult<Parsed> {
                         out.compile_ms += c;
                     }
                     if let Some(st) = stmts.last_mut() {
-                        for (k, label) in [("CachedPlanSize", "Cached Plan Size (KB)"), ("CompileTime", "Compile Time (ms)"), ("CompileCPU", "Compile CPU (ms)"), ("DegreeOfParallelism", "Degree of Parallelism")] {
+                        for (k, label) in [
+                            ("CachedPlanSize", "Cached Plan Size (KB)"),
+                            ("CompileTime", "Compile Time (ms)"),
+                            ("CompileCPU", "Compile CPU (ms)"),
+                            ("DegreeOfParallelism", "Degree of Parallelism"),
+                        ] {
                             if let Some(v) = get(&a, k) {
                                 st.node.properties.push((label.to_string(), v.to_string()));
                             }
@@ -171,26 +174,27 @@ fn parse_doc(xml: &str) -> DbResult<Parsed> {
                 }
                 "Object" => {
                     if let Some(op) = ops.last_mut()
-                        && !op.has_object {
-                            op.has_object = true;
-                            let schema = get(&a, "Schema").map(unbracket);
-                            let table = get(&a, "Table").map(unbracket);
-                            if let Some(t) = table {
-                                op.node.relation = Some(match schema {
-                                    Some(s) if !s.is_empty() => format!("{s}.{t}"),
-                                    _ => t,
-                                });
-                            }
-                            if let Some(i) = get(&a, "Index") {
-                                op.node.index = Some(unbracket(i));
-                            }
-                            if let Some(al) = get(&a, "Alias") {
-                                op.node.alias = Some(unbracket(al));
-                            }
-                            if let Some(db) = get(&a, "Database") {
-                                op.node.properties.push(("Database".into(), unbracket(db)));
-                            }
+                        && !op.has_object
+                    {
+                        op.has_object = true;
+                        let schema = get(&a, "Schema").map(unbracket);
+                        let table = get(&a, "Table").map(unbracket);
+                        if let Some(t) = table {
+                            op.node.relation = Some(match schema {
+                                Some(s) if !s.is_empty() => format!("{s}.{t}"),
+                                _ => t,
+                            });
                         }
+                        if let Some(i) = get(&a, "Index") {
+                            op.node.index = Some(unbracket(i));
+                        }
+                        if let Some(al) = get(&a, "Alias") {
+                            op.node.alias = Some(unbracket(al));
+                        }
+                        if let Some(db) = get(&a, "Database") {
+                            op.node.properties.push(("Database".into(), unbracket(db)));
+                        }
+                    }
                 }
                 "ScalarOperator" => {
                     if let (Some(op), Some(s)) = (ops.last_mut(), get(&a, "ScalarString")) {
@@ -216,10 +220,11 @@ fn parse_doc(xml: &str) -> DbResult<Parsed> {
                 }
                 "Warnings" | "SpillToTempDb" | "NoJoinPredicate" | "PlanAffectingConvert" | "MemoryGrantWarning" => {
                     if let Some(op) = ops.last_mut()
-                        && (name != "Warnings" || !a.is_empty()) {
-                            let detail = a.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join(", ");
-                            op.node.properties.push(("Warning".into(), if detail.is_empty() { name.clone() } else { format!("{name} {detail}") }));
-                        }
+                        && (name != "Warnings" || !a.is_empty())
+                    {
+                        let detail = a.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join(", ");
+                        op.node.properties.push(("Warning".into(), if detail.is_empty() { name.clone() } else { format!("{name} {detail}") }));
+                    }
                 }
                 _ => {}
             }
@@ -242,14 +247,15 @@ fn parse_doc(xml: &str) -> DbResult<Parsed> {
                         }
                     }
                 } else if name.starts_with("Stmt")
-                    && let Some(frame) = stmts.pop() {
-                        if frame.depth == depth {
-                            // operators left open belong to this statement
-                            attach_stmt(&mut stmts, &mut out.roots, frame.node);
-                        } else {
-                            stmts.push(frame);
-                        }
+                    && let Some(frame) = stmts.pop()
+                {
+                    if frame.depth == depth {
+                        // operators left open belong to this statement
+                        attach_stmt(&mut stmts, &mut out.roots, frame.node);
+                    } else {
+                        stmts.push(frame);
                     }
+                }
             }
             Event::Eof => break,
             _ => {}
@@ -280,9 +286,10 @@ fn finish_op(mut frame: OpFrame, ops: &mut [OpFrame], stmts: &mut [StmtFrame], r
     // Per-execution times: dbiji multiplies actual_total_ms by loops, while
     // SQL Server reports the total over all executions.
     if let (Some(t), Some(l)) = (frame.node.actual_total_ms, frame.node.loops)
-        && l > 0.0 {
-            frame.node.actual_total_ms = Some(t / l);
-        }
+        && l > 0.0
+    {
+        frame.node.actual_total_ms = Some(t / l);
+    }
     if let Some(parent) = ops.last_mut() {
         parent.node.children.push(frame.node);
     } else if let Some(st) = stmts.last_mut() {

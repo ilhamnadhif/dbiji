@@ -67,9 +67,10 @@ impl ActiveQuery {
 
     pub fn clear(&self, query_id: &str) {
         if let Ok(mut g) = self.current.lock()
-            && g.as_ref().is_some_and(|(q, _)| q == query_id) {
-                *g = None;
-            }
+            && g.as_ref().is_some_and(|(q, _)| q == query_id)
+        {
+            *g = None;
+        }
     }
 
     pub fn get(&self) -> Option<(String, Arc<JobState>)> {
@@ -184,8 +185,7 @@ fn emit(tx: &mpsc::Sender<Event>, state: &JobState, ev: Event) -> bool {
 fn finalize_error(state: &JobState, timeout: Option<Duration>, e: DbError) -> DbError {
     if state.timed_out.load(Ordering::SeqCst) {
         let secs = timeout.map(|t| t.as_secs_f64()).unwrap_or(0.0);
-        return DbError::timeout(format!("Statement timeout of {secs:.1} s exceeded; the query was killed"))
-            .with_code(e.code.unwrap_or_default());
+        return DbError::timeout(format!("Statement timeout of {secs:.1} s exceeded; the query was killed")).with_code(e.code.unwrap_or_default());
     }
     if state.cancelled.load(Ordering::SeqCst) && e.kind == ErrorKind::Cancelled {
         return DbError::cancelled();
@@ -229,9 +229,10 @@ fn run(mut job: Job, tx: &mpsc::Sender<Event>, state: &JobState) -> Option<Owned
         Ok(true) => {
             state.finished.store(true, Ordering::SeqCst);
             if let Some(db) = job.use_database.take()
-                && let Ok(mut g) = job.database.lock() {
-                    *g = Some(db);
-                }
+                && let Ok(mut g) = job.database.lock()
+            {
+                *g = Some(db);
+            }
         }
         Ok(false) => {} // aborted: the caller kills the query
         Err(e) => {
@@ -245,13 +246,7 @@ fn run(mut job: Job, tx: &mpsc::Sender<Event>, state: &JobState) -> Option<Owned
 }
 
 /// Statement without a result set (DDL, INSERT, SET ...).
-fn read_update(
-    job: &Job,
-    head: &ResponseHead,
-    body: crate::http::BodyReader,
-    tx: &mpsc::Sender<Event>,
-    state: &JobState,
-) -> DbResult<bool> {
+fn read_update(job: &Job, head: &ResponseHead, body: crate::http::BodyReader, tx: &mpsc::Sender<Event>, state: &JobState) -> DbResult<bool> {
     let mut text = String::new();
     let mut limited = body.take(1 << 20);
     let _ = limited.read_to_string(&mut text);
@@ -276,12 +271,7 @@ fn read_update(
 }
 
 /// `JSONCompactEachRowWithNamesAndTypes` body.
-fn read_rows(
-    head: &ResponseHead,
-    body: crate::http::BodyReader,
-    tx: &mpsc::Sender<Event>,
-    state: &JobState,
-) -> DbResult<bool> {
+fn read_rows(head: &ResponseHead, body: crate::http::BodyReader, tx: &mpsc::Sender<Event>, state: &JobState) -> DbResult<bool> {
     let mut reader = LineReader::with_capacity(READ_BUFFER, body);
     let mut parser = BodyParser::new(head.exception_tag.clone(), head.exception_code.clone());
     let io_err = |e: std::io::Error| DbError::connection(format!("Error reading the ClickHouse response: {e}"));
@@ -338,11 +328,7 @@ fn read_rows(
         match parser.feed(line) {
             Feed::Row(cells) => {
                 if cells.len() != types.len() {
-                    return Err(DbError::connection(format!(
-                        "ClickHouse sent a row with {} values for {} columns",
-                        cells.len(),
-                        types.len()
-                    )));
+                    return Err(DbError::connection(format!("ClickHouse sent a row with {} values for {} columns", cells.len(), types.len())));
                 }
                 let row: Row = cells.into_iter().zip(&types).map(|(c, t)| json_to_value(t, c)).collect();
                 batch.push(row);
@@ -368,19 +354,10 @@ fn read_rows(
 
 /// Any other output format (the statement had its own `FORMAT` clause):
 /// one text column, one row per line.
-fn read_raw(
-    format: &str,
-    head: &ResponseHead,
-    body: crate::http::BodyReader,
-    tx: &mpsc::Sender<Event>,
-    state: &JobState,
-) -> DbResult<bool> {
+fn read_raw(format: &str, head: &ResponseHead, body: crate::http::BodyReader, tx: &mpsc::Sender<Event>, state: &JobState) -> DbResult<bool> {
     let mut reader = LineReader::with_capacity(READ_BUFFER, body);
     let meta = ColumnMeta::new(format, "String", dbiji_core::value::DataKind::Text);
-    let note = ServerMessage::new(
-        "INFO",
-        format!("The statement requested FORMAT {format}; its output is shown as one text row per line"),
-    );
+    let note = ServerMessage::new("INFO", format!("The statement requested FORMAT {format}; its output is shown as one text row per line"));
     if !emit(tx, state, Event::Message(note)) || !emit(tx, state, Event::Header(ResultHeader::Rows(vec![meta]))) {
         return Ok(false);
     }
@@ -417,9 +394,10 @@ fn read_raw(
         batch.push(vec![Value::text(String::from_utf8_lossy(trimmed).into_owned())]);
     }
     if let Some(mut p) = exception
-        && let Some(e) = p.finish() {
-            return Err(e);
-        }
+        && let Some(e) = p.finish()
+    {
+        return Err(e);
+    }
     if !batch.is_empty() && !emit(tx, state, Event::Rows(batch)) {
         return Ok(false);
     }
@@ -442,22 +420,8 @@ pub(crate) struct ChannelCursor {
 }
 
 impl ChannelCursor {
-    pub(crate) fn new(
-        rx: mpsc::Receiver<Event>,
-        on_close: Option<Box<dyn FnOnce() + Send>>,
-        open_flag: Arc<AtomicBool>,
-    ) -> Self {
-        ChannelCursor {
-            rx,
-            in_rows: false,
-            buffer: VecDeque::new(),
-            pending_header: None,
-            pending_error: None,
-            finished: false,
-            messages: Vec::new(),
-            on_close,
-            open_flag,
-        }
+    pub(crate) fn new(rx: mpsc::Receiver<Event>, on_close: Option<Box<dyn FnOnce() + Send>>, open_flag: Arc<AtomicBool>) -> Self {
+        ChannelCursor { rx, in_rows: false, buffer: VecDeque::new(), pending_header: None, pending_error: None, finished: false, messages: Vec::new(), on_close, open_flag }
     }
 
     /// Receive the next event, handling messages and end of stream.
@@ -545,9 +509,10 @@ impl QueryCursor for ChannelCursor {
 
     async fn close(&mut self) -> DbResult<()> {
         if let Some(f) = self.on_close.take()
-            && !self.finished {
-                f();
-            }
+            && !self.finished
+        {
+            f();
+        }
         self.buffer.clear();
         self.in_rows = false;
         self.pending_header = None;
@@ -564,9 +529,10 @@ impl QueryCursor for ChannelCursor {
 impl Drop for ChannelCursor {
     fn drop(&mut self) {
         if let Some(f) = self.on_close.take()
-            && !self.finished {
-                f();
-            }
+            && !self.finished
+        {
+            f();
+        }
         self.open_flag.store(false, Ordering::SeqCst);
     }
 }
@@ -607,12 +573,7 @@ mod tests {
 
     #[tokio::test]
     async fn skipping_unread_rows() {
-        let mut c = cursor_with(vec![
-            Event::Header(ResultHeader::Rows(vec![])),
-            Event::Rows(rows(10)),
-            Event::Header(ResultHeader::Rows(vec![])),
-            Event::Rows(rows(1)),
-        ]);
+        let mut c = cursor_with(vec![Event::Header(ResultHeader::Rows(vec![])), Event::Rows(rows(10)), Event::Header(ResultHeader::Rows(vec![])), Event::Rows(rows(1))]);
         assert!(c.next_result().await.unwrap().is_some());
         assert!(c.next_result().await.unwrap().is_some());
         assert_eq!(c.fetch(10).await.unwrap().len(), 1);
@@ -621,11 +582,7 @@ mod tests {
 
     #[tokio::test]
     async fn error_after_rows_is_reported_by_fetch() {
-        let mut c = cursor_with(vec![
-            Event::Header(ResultHeader::Rows(vec![])),
-            Event::Rows(rows(2)),
-            Event::Error(DbError::query("boom")),
-        ]);
+        let mut c = cursor_with(vec![Event::Header(ResultHeader::Rows(vec![])), Event::Rows(rows(2)), Event::Error(DbError::query("boom"))]);
         assert!(c.next_result().await.unwrap().is_some());
         assert_eq!(c.fetch(10).await.unwrap().len(), 2);
         assert_eq!(c.fetch(10).await.unwrap_err().message, "boom");

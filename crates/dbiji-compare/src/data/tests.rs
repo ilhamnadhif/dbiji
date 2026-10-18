@@ -60,11 +60,7 @@ impl RowProvider for Fake {
             return Err(DbError::internal("another cursor is still open on this session"));
         }
         self.queries.push(sql.to_string());
-        let (_, meta, rows) = self
-            .tables
-            .iter()
-            .find(|(n, _, _)| sql.contains(&format!(" FROM {n}")))
-            .ok_or_else(|| DbError::query(format!("unknown table in {sql}")))?;
+        let (_, meta, rows) = self.tables.iter().find(|(n, _, _)| sql.contains(&format!(" FROM {n}"))).ok_or_else(|| DbError::query(format!("unknown table in {sql}")))?;
         self.open.store(true, AtomicOrdering::SeqCst);
         Ok(Box::new(Tracked { inner: MemoryCursor::rows(meta.clone(), rows.clone()), open: self.open.clone() }))
     }
@@ -120,12 +116,7 @@ async fn merge_join_on_numeric_keys() {
     let mut tgt = tgt.table(
         "dst.items",
         ITEM_COLS,
-        vec![
-            vec![int(1), txt("A"), dec("1.5")],
-            vec![int(2), txt("b"), dec("2.00")],
-            vec![int(4), txt("D"), Value::Float(10.0)],
-            vec![int(6), txt("F"), dec("6")],
-        ],
+        vec![vec![int(1), txt("A"), dec("1.5")], vec![int(2), txt("b"), dec("2.00")], vec![int(4), txt("D"), Value::Float(10.0)], vec![int(6), txt("F"), dec("6")]],
     );
     let j = job("src.items", "dst.items", &["id"]);
     let d = run(&j, &mut src, &mut tgt).await.unwrap();

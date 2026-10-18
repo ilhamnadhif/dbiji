@@ -21,10 +21,7 @@ fn main() -> eframe::Result {
     let nums: Vec<usize> = args.iter().filter_map(|a| a.parse().ok()).collect();
     let rows = nums.first().copied().unwrap_or(1_000_000);
     let cols = nums.get(1).copied().unwrap_or(100);
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([1400.0, 860.0]).with_title("DBiji grid demo"),
-        ..Default::default()
-    };
+    let options = eframe::NativeOptions { viewport: egui::ViewportBuilder::default().with_inner_size([1400.0, 860.0]).with_title("DBiji grid demo"), ..Default::default() };
     eframe::run_native(
         "dbiji-grid-demo",
         options,

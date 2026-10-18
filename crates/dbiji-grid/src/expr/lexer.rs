@@ -99,10 +99,7 @@ pub(crate) fn tokenize(src: &str) -> Result<Vec<Token>, ExprError> {
                 if bytes.get(i + 1) == Some(&b'|') {
                     i += simple(Tok::Concat, 2, &mut out);
                 } else {
-                    return Err(ExprError::new(
-                        dbiji_core::tr("Unexpected '|' (use || to concatenate)"),
-                        start..start + 1,
-                    ));
+                    return Err(ExprError::new(dbiji_core::tr("Unexpected '|' (use || to concatenate)"), start..start + 1));
                 }
             }
             b'=' => {
@@ -197,11 +194,7 @@ fn read_quoted(src: &str, start: usize, open: char, close: char) -> Result<(Stri
         }
         s.push(c);
     }
-    let msg = if open == '\'' {
-        dbiji_core::tr("Unterminated string literal")
-    } else {
-        dbiji_core::tr("Unterminated quoted column name")
-    };
+    let msg = if open == '\'' { dbiji_core::tr("Unterminated string literal") } else { dbiji_core::tr("Unterminated quoted column name") };
     Err(ExprError::new(msg, start..src.len()))
 }
 
@@ -273,25 +266,8 @@ mod tests {
                 Tok::Eof
             ]
         );
-        assert_eq!(
-            kinds("x<=1>=2!=3==4"),
-            vec![
-                Tok::Ident("x".into()),
-                Tok::LtEq,
-                Tok::Int(1),
-                Tok::GtEq,
-                Tok::Int(2),
-                Tok::NotEq,
-                Tok::Int(3),
-                Tok::Eq,
-                Tok::Int(4),
-                Tok::Eof
-            ]
-        );
-        assert_eq!(
-            kinds("1e3 .5 \"q\"\"x\""),
-            vec![Tok::Float(1000.0), Tok::Float(0.5), Tok::QuotedIdent("q\"x".into()), Tok::Eof]
-        );
+        assert_eq!(kinds("x<=1>=2!=3==4"), vec![Tok::Ident("x".into()), Tok::LtEq, Tok::Int(1), Tok::GtEq, Tok::Int(2), Tok::NotEq, Tok::Int(3), Tok::Eq, Tok::Int(4), Tok::Eof]);
+        assert_eq!(kinds("1e3 .5 \"q\"\"x\""), vec![Tok::Float(1000.0), Tok::Float(0.5), Tok::QuotedIdent("q\"x".into()), Tok::Eof]);
         assert_eq!(kinds("größe_1"), vec![Tok::Ident("größe_1".into()), Tok::Eof]);
     }
 

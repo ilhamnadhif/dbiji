@@ -9,9 +9,7 @@ use dbiji_core::ddl::*;
 use dbiji_core::driver::{execute_update, query_all, query_scalar};
 use dbiji_core::meta::*;
 use dbiji_core::value::DataKind;
-use dbiji_core::{
-    ConnectParams, DbKind, Driver, ErrorKind, ExecOptions, ResultHeader, Secret, Session, TransactionMode, Value,
-};
+use dbiji_core::{ConnectParams, DbKind, Driver, ErrorKind, ExecOptions, ResultHeader, Secret, Session, TransactionMode, Value};
 use dbiji_driver_mssql::SqlServerDriver;
 use std::time::{Duration, Instant};
 
@@ -129,10 +127,7 @@ async fn basic_queries_types_and_params() {
 
     // multiple results and DML counts
     exec(s.as_mut(), "CREATE TABLE dbo.items (id int IDENTITY PRIMARY KEY, name nvarchar(50) NOT NULL, qty int NULL)").await;
-    let mut cur = s
-        .execute("INSERT INTO dbo.items (name, qty) VALUES (N'a', 1), (N'b', 2), (N'c', 3)", &[], &ExecOptions::default())
-        .await
-        .unwrap();
+    let mut cur = s.execute("INSERT INTO dbo.items (name, qty) VALUES (N'a', 1), (N'b', 2), (N'c', 3)", &[], &ExecOptions::default()).await.unwrap();
     match cur.next_result().await.unwrap() {
         Some(ResultHeader::Update { rows_affected, .. }) => assert_eq!(rows_affected, Some(3)),
         other => panic!("{other:?}"),
@@ -220,10 +215,7 @@ async fn basic_queries_types_and_params() {
     s.ping().await.unwrap();
 
     // resolve_sources: base tables and nullability
-    let mut cur = s
-        .execute("SELECT id, name, qty, 1 AS k FROM dbo.items", &[], &ExecOptions { resolve_sources: true, ..Default::default() })
-        .await
-        .unwrap();
+    let mut cur = s.execute("SELECT id, name, qty, 1 AS k FROM dbo.items", &[], &ExecOptions { resolve_sources: true, ..Default::default() }).await.unwrap();
     let Some(ResultHeader::Rows(cols)) = cur.next_result().await.unwrap() else { panic!("rows") };
     cur.close().await.unwrap();
     drop(cur);
@@ -479,20 +471,11 @@ CREATE SYNONYM sales.o FOR sales.orders
     let v = s.view_definition(&vref).await.unwrap();
     assert!(v.definition.starts_with("SELECT o.id"), "{v:?}");
     assert_eq!(v.columns.len(), 2);
-    let r = s
-        .routine_definition(&ObjectRef::new(ObjectKind::Procedure, Some("sales".into()), "get_orders").with_database(Some(dbn.clone())))
-        .await
-        .unwrap();
+    let r = s.routine_definition(&ObjectRef::new(ObjectKind::Procedure, Some("sales".into()), "get_orders").with_database(Some(dbn.clone()))).await.unwrap();
     assert_eq!(r.arguments, "@customer int, @n int OUTPUT");
-    let f = s
-        .routine_definition(&ObjectRef::new(ObjectKind::Function, Some("sales".into()), "order_total").with_database(Some(dbn.clone())))
-        .await
-        .unwrap();
+    let f = s.routine_definition(&ObjectRef::new(ObjectKind::Function, Some("sales".into()), "order_total").with_database(Some(dbn.clone()))).await.unwrap();
     assert_eq!(f.returns.as_deref(), Some("decimal(21,2)"));
-    let seq = s
-        .sequence_definition(&ObjectRef::new(ObjectKind::Sequence, Some("sales".into()), "order_seq").with_database(Some(dbn.clone())))
-        .await
-        .unwrap();
+    let seq = s.sequence_definition(&ObjectRef::new(ObjectKind::Sequence, Some("sales".into()), "order_seq").with_database(Some(dbn.clone()))).await.unwrap();
     assert_eq!((seq.start, seq.increment, seq.cache), (Some(100), Some(10), Some(20)));
     let deps = s.object_dependencies(&orders).await.unwrap();
     assert!(deps.iter().any(|d| d.target.name == "v_orders" && d.direction == DependencyDirection::UsedBy), "{deps:?}");
@@ -511,15 +494,16 @@ CREATE SYNONYM sales.o FOR sales.orders
     // search (current database)
     s.set_current_database(&dbn).await.unwrap();
     let found = s
-        .search_metadata(&MetadataSearch { pattern: "order".into(), kinds: vec![ObjectKind::Table, ObjectKind::View, ObjectKind::Procedure, ObjectKind::Column], ..Default::default() })
+        .search_metadata(&MetadataSearch {
+            pattern: "order".into(),
+            kinds: vec![ObjectKind::Table, ObjectKind::View, ObjectKind::Procedure, ObjectKind::Column],
+            ..Default::default()
+        })
         .await
         .unwrap();
     assert!(found.iter().any(|o| o.obj.kind == ObjectKind::Table && o.obj.name == "orders"));
     assert!(found.iter().any(|o| o.obj.kind == ObjectKind::View && o.obj.name == "v_orders"));
-    let found = s
-        .search_metadata(&MetadataSearch { pattern: "pri*".into(), kinds: vec![ObjectKind::Column], schemas: vec!["sales".into()], ..Default::default() })
-        .await
-        .unwrap();
+    let found = s.search_metadata(&MetadataSearch { pattern: "pri*".into(), kinds: vec![ObjectKind::Column], schemas: vec!["sales".into()], ..Default::default() }).await.unwrap();
     assert!(found.iter().any(|o| o.obj.name == "price"), "{found:?}");
 
     // DDL round trip: recreate orders in another schema from its definition

@@ -36,14 +36,7 @@ pub struct BenchResult {
 
 impl BenchResult {
     fn new(name: &str, value: f64, unit: &str, target: Option<f64>, detail: String) -> Self {
-        BenchResult {
-            name: name.into(),
-            value,
-            unit: unit.into(),
-            target,
-            passed: target.is_none_or(|t| value <= t),
-            detail,
-        }
+        BenchResult { name: name.into(), value, unit: unit.into(), target, passed: target.is_none_or(|t| value <= t), detail }
     }
 }
 
@@ -73,21 +66,11 @@ fn bench_startup() -> BenchResult {
     let mut samples = Vec::new();
     for _ in 0..5 {
         let t0 = Instant::now();
-        let out = Command::new(&exe)
-            .env("DBIJI_HOME", &home)
-            .arg("--exit-after-first-frame")
-            .env("DBIJI_PRINT_STARTUP", "1")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output();
+        let out = Command::new(&exe).env("DBIJI_HOME", &home).arg("--exit-after-first-frame").env("DBIJI_PRINT_STARTUP", "1").stdout(Stdio::piped()).stderr(Stdio::null()).output();
         let wall = t0.elapsed().as_secs_f64() * 1000.0;
         let reported = out
             .ok()
-            .and_then(|o| {
-                String::from_utf8_lossy(&o.stdout)
-                    .lines()
-                    .find_map(|l| l.strip_prefix("startup_ms=").and_then(|v| v.trim().parse::<f64>().ok()))
-            })
+            .and_then(|o| String::from_utf8_lossy(&o.stdout).lines().find_map(|l| l.strip_prefix("startup_ms=").and_then(|v| v.trim().parse::<f64>().ok())))
             .unwrap_or(wall);
         samples.push(reported);
     }
@@ -141,8 +124,9 @@ pub fn run(name: &str, report: Option<&str>) -> std::process::ExitCode {
     }
     let _ = std::fs::remove_dir_all(bench_home());
     if let Some(path) = report
-        && let Ok(json) = serde_json::to_string_pretty(&results) {
-            let _ = std::fs::write(path, json);
-        }
+        && let Ok(json) = serde_json::to_string_pretty(&results)
+    {
+        let _ = std::fs::write(path, json);
+    }
     if results.iter().all(|r| r.passed) { std::process::ExitCode::SUCCESS } else { std::process::ExitCode::FAILURE }
 }

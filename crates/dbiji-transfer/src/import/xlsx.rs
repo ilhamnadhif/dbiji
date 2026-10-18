@@ -50,13 +50,7 @@ pub struct XlsxReadOptions {
 
 impl Default for XlsxReadOptions {
     fn default() -> Self {
-        XlsxReadOptions {
-            sheet: SheetSelector::Index(0),
-            header: true,
-            skip_rows: 0,
-            skip_empty_rows: true,
-            sample_rows: 100,
-        }
+        XlsxReadOptions { sheet: SheetSelector::Index(0), header: true, skip_rows: 0, skip_empty_rows: true, sample_rows: 100 }
     }
 }
 
@@ -169,10 +163,7 @@ fn read_workbook(path: PathBuf, sheet: SheetSelector, tx: Sender<Msg>, skip_empt
     let mut em = Emitter { tx: tx.clone(), batch: Vec::with_capacity(BATCH), skip_empty };
     let mut errors = 0u64;
     let result = (|| -> DbResult<()> {
-        let is_xlsx = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "xlsx" | "xlsm"));
+        let is_xlsx = path.extension().and_then(|e| e.to_str()).is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "xlsx" | "xlsm"));
         if is_xlsx {
             let mut wb: Xlsx<_> = open_workbook(&path).map_err(|e| file_error("Cannot open", &path, e))?;
             let names = wb.sheet_names();
@@ -231,8 +222,7 @@ fn read_workbook(path: PathBuf, sheet: SheetSelector, tx: Sender<Msg>, skip_empt
         Ok(())
     })();
     if errors > 0 {
-        let _ =
-            tx.blocking_send(Msg::Warning(format!("{errors} cell(s) contained Excel errors and were read as NULL")));
+        let _ = tx.blocking_send(Msg::Warning(format!("{errors} cell(s) contained Excel errors and were read as NULL")));
     }
     let _ = tx.blocking_send(match result {
         Ok(()) => Msg::Done,
@@ -242,9 +232,7 @@ fn read_workbook(path: PathBuf, sheet: SheetSelector, tx: Sender<Msg>, skip_empt
 
 fn resolve_sheet(names: &[String], sheet: &SheetSelector) -> DbResult<String> {
     match sheet {
-        SheetSelector::Index(i) => {
-            names.get(*i).cloned().ok_or_else(|| DbError::config(format!("The workbook has no sheet number {}", i + 1)))
-        }
+        SheetSelector::Index(i) => names.get(*i).cloned().ok_or_else(|| DbError::config(format!("The workbook has no sheet number {}", i + 1))),
         SheetSelector::Name(n) => names
             .iter()
             .find(|s| s == &n)
@@ -278,14 +266,7 @@ impl XlsxSource {
             .name("dbiji-xlsx-reader".into())
             .spawn(move || read_workbook(path, sheet, tx, skip_empty))
             .map_err(|e| DbError::io(format!("Cannot start the XLSX reader: {e}")))?;
-        let mut src = XlsxSource {
-            rx,
-            columns: Vec::new(),
-            first_col: 0,
-            pending: VecDeque::new(),
-            done: false,
-            warnings: Vec::new(),
-        };
+        let mut src = XlsxSource { rx, columns: Vec::new(), first_col: 0, pending: VecDeque::new(), done: false, warnings: Vec::new() };
         // Read the header and a sample to determine the columns.
         let needed = options.skip_rows + usize::from(options.header) + options.sample_rows.max(1);
         let mut head: Vec<Row> = Vec::new();

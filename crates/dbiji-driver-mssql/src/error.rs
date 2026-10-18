@@ -9,8 +9,7 @@ pub fn kind_for(number: u32, class: u8) -> ErrorKind {
         // login failures
         18452 | 18456 | 18470 | 18486 | 18487 | 18488 | 4060 | 4064 => ErrorKind::Auth,
         // syntax / parse errors
-        102 | 103 | 105 | 107 | 109 | 110 | 111 | 112 | 113 | 117 | 141 | 142 | 153 | 154 | 156 | 170 | 179
-        | 319 | 1018 | 1038 | 1039 => ErrorKind::Syntax,
+        102 | 103 | 105 | 107 | 109 | 110 | 111 | 112 | 113 | 117 | 141 | 142 | 153 | 154 | 156 | 170 | 179 | 319 | 1018 | 1038 | 1039 => ErrorKind::Syntax,
         // lock request time out
         1222 => ErrorKind::Timeout,
         // cancelled by the client (attention)
@@ -67,9 +66,7 @@ pub fn map_error(e: TdsError, sql: Option<&str>) -> DbError {
                 DbError::connection(format!("Protocol error: {m}"))
             }
         }
-        TdsError::Routing { host, port } => {
-            DbError::connection(format!("The server redirected the connection to {host}:{port}"))
-        }
+        TdsError::Routing { host, port } => DbError::connection(format!("The server redirected the connection to {host}:{port}")),
         TdsError::Conversion(m) => DbError::internal(format!("Value conversion error: {m}")),
         TdsError::Encoding(m) => DbError::internal(format!("Encoding error: {m}")),
         TdsError::Utf8 => DbError::internal("Invalid UTF-8 data received"),

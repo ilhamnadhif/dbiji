@@ -134,13 +134,9 @@ impl<'o> PreparedFormat<'o> {
     /// Prepare `base` with the overrides of `column`. Invalid date/time
     /// patterns fall back to the defaults instead of panicking.
     pub fn new(base: &'o FormatOptions, column: Option<&ColumnFormat>) -> Self {
-        let base_ok = valid_strftime(&base.date_format)
-            && valid_strftime(&base.time_format)
-            && valid_strftime(&base.datetime_format);
+        let base_ok = valid_strftime(&base.date_format) && valid_strftime(&base.time_format) && valid_strftime(&base.datetime_format);
         match column.filter(|c| !c.is_empty()) {
-            None if base_ok => {
-                PreparedFormat { opts: Cow::Borrowed(base), decimals: None, thousands: base.thousands_separator }
-            }
+            None if base_ok => PreparedFormat { opts: Cow::Borrowed(base), decimals: None, thousands: base.thousands_separator },
             None => {
                 let mut o = base.clone();
                 sanitize(&mut o);
@@ -149,11 +145,7 @@ impl<'o> PreparedFormat<'o> {
             Some(c) => {
                 let mut o = c.apply(base);
                 sanitize(&mut o);
-                PreparedFormat {
-                    opts: Cow::Owned(o),
-                    decimals: c.decimals,
-                    thousands: c.thousands_separator.unwrap_or(base.thousands_separator),
-                }
+                PreparedFormat { opts: Cow::Owned(o), decimals: c.decimals, thousands: c.thousands_separator.unwrap_or(base.thousands_separator) }
             }
         }
     }

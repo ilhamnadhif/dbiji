@@ -66,8 +66,7 @@ pub enum QuickAction {
 }
 
 impl QuickAction {
-    pub const ALL: [QuickAction; 6] =
-        [QuickAction::Chat, QuickAction::GenerateSql, QuickAction::Explain, QuickAction::FixError, QuickAction::Optimize, QuickAction::Describe];
+    pub const ALL: [QuickAction; 6] = [QuickAction::Chat, QuickAction::GenerateSql, QuickAction::Explain, QuickAction::FixError, QuickAction::Optimize, QuickAction::Describe];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -428,18 +427,7 @@ pub struct Turn {
 
 impl Turn {
     fn new(action: QuickAction, shown: String) -> Turn {
-        Turn {
-            action,
-            shown,
-            message: None,
-            answer: String::new(),
-            state: TurnState::Preparing,
-            model: None,
-            usage: None,
-            truncated: false,
-            fallback_from: None,
-            segments: None,
-        }
+        Turn { action, shown, message: None, answer: String::new(), state: TurnState::Preparing, model: None, usage: None, truncated: false, fallback_from: None, segments: None }
     }
 
     /// Part of the conversation sent with later questions.
@@ -692,12 +680,9 @@ impl AiAssistantTab {
         let object = if action == QuickAction::Describe { self.object.clone() } else { None };
         let prep = match (action, &session) {
             (QuickAction::Optimize, Some(s)) if self.include_plan && !input.text.trim().is_empty() => Prep::Plan { session: s.clone(), sql: input.text.trim().to_string() },
-            (QuickAction::Describe, Some(s)) if object.is_some() => Prep::Describe {
-                session: s.clone(),
-                dialect: s.dialect(),
-                object: object.clone().expect("checked"),
-                sample: ai.send_sample_data,
-            },
+            (QuickAction::Describe, Some(s)) if object.is_some() => {
+                Prep::Describe { session: s.clone(), dialect: s.dialect(), object: object.clone().expect("checked"), sample: ai.send_sample_data }
+            }
             _ => Prep::None,
         };
         // Check the inputs now (the real message is built after the database lookups).
@@ -903,8 +888,7 @@ impl AiAssistantTab {
             }
             Some(l) if l.error().is_some() => {
                 let e = l.error().map(|e| e.full_text()).unwrap_or_default();
-                ui.label(RichText::new(format!("{} {}", icon::WARNING, tr("No schema context"))).color(crate::theme::warning_color(ui.visuals().dark_mode)))
-                    .on_hover_text(e);
+                ui.label(RichText::new(format!("{} {}", icon::WARNING, tr("No schema context"))).color(crate::theme::warning_color(ui.visuals().dark_mode))).on_hover_text(e);
             }
             Some(l) => {
                 if let Some(s) = l.get() {
@@ -952,7 +936,13 @@ impl AiAssistantTab {
         egui::Frame::group(ui.style()).fill(theme.background).show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
-                ui.weak(if sql { "SQL".to_string() } else if lang_tag.is_empty() { tr("Code").to_string() } else { lang_tag.to_string() });
+                ui.weak(if sql {
+                    "SQL".to_string()
+                } else if lang_tag.is_empty() {
+                    tr("Code").to_string()
+                } else {
+                    lang_tag.to_string()
+                });
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if sql && ui.small_button(format!("{} {}", icon::FILE_SQL, tr("Open in SQL editor"))).clicked() {
                         self.open_in_editor(cx, code);
@@ -1163,11 +1153,9 @@ impl AiAssistantTab {
                     self.object = None;
                 }
                 let db = self.schema.as_ref().and_then(|s| s.database.clone());
-                let items = snap
-                    .tables
-                    .iter()
-                    .map(|t| ObjectRef::table(snap.schema.clone(), t.name.clone()))
-                    .chain(snap.views.iter().map(|v| ObjectRef::new(if v.materialized { ObjectKind::MaterializedView } else { ObjectKind::View }, snap.schema.clone(), v.name.clone())));
+                let items = snap.tables.iter().map(|t| ObjectRef::table(snap.schema.clone(), t.name.clone())).chain(
+                    snap.views.iter().map(|v| ObjectRef::new(if v.materialized { ObjectKind::MaterializedView } else { ObjectKind::View }, snap.schema.clone(), v.name.clone())),
+                );
                 for o in items {
                     let o = o.with_database(db.clone());
                     let on = self.object.as_ref() == Some(&o);
@@ -1213,11 +1201,7 @@ impl TabView for AiAssistantTab {
         self.header(ui, cx);
         ui.separator();
         self.maybe_auto_send(cx);
-        egui::Panel::bottom(egui::Id::new(("ai_composer", self.uid)))
-            .resizable(true)
-            .default_size(170.0)
-            .size_range(110.0..=600.0)
-            .show(ui, |ui| self.composer_ui(ui, cx));
+        egui::Panel::bottom(egui::Id::new(("ai_composer", self.uid))).resizable(true).default_size(170.0).size_range(110.0..=600.0).show(ui, |ui| self.composer_ui(ui, cx));
         egui::CentralPanel::default().show(ui, |ui| self.conversation_ui(ui, cx));
         if self.pending.is_some() {
             ui.ctx().request_repaint_after(Duration::from_millis(100));

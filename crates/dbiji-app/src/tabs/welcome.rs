@@ -14,10 +14,10 @@ pub struct WelcomeTab;
 fn recent_scripts(ui: &Ui, cx: &AppContext) -> Vec<dbiji_config::project::ScriptInfo> {
     let id = egui::Id::new("welcome_recent_scripts");
     let now = ui.input(|i| i.time);
-    if let Some((t, list)) = ui.data(|d| d.get_temp::<(f64, std::sync::Arc<Vec<dbiji_config::project::ScriptInfo>>)>(id)) {
-        if now - t < 5.0 {
-            return (*list).clone();
-        }
+    if let Some((t, list)) = ui.data(|d| d.get_temp::<(f64, std::sync::Arc<Vec<dbiji_config::project::ScriptInfo>>)>(id))
+        && now - t < 5.0
+    {
+        return (*list).clone();
     }
     let mut list = cx.services.projects.as_ref().and_then(|p| p.default_project().ok()).and_then(|p| p.list_scripts().ok()).unwrap_or_default();
     list.sort_by_key(|s| std::cmp::Reverse(s.modified));
@@ -56,7 +56,11 @@ impl TabView for WelcomeTab {
                 if ui.add_sized([w, 28.0], egui::Button::new(format!("{} {}", icon::DOWNLOAD_SIMPLE, tr("Import connections from DBeaver")))).clicked() {
                     cx.push(AppCommand::ImportConnections);
                 }
-                if ui.add_sized([w, 28.0], egui::Button::new(format!("{} {}", icon::DATABASE, tr("Create sample database")))).on_hover_text(tr("A small SQLite shop database to try every feature")).clicked() {
+                if ui
+                    .add_sized([w, 28.0], egui::Button::new(format!("{} {}", icon::DATABASE, tr("Create sample database"))))
+                    .on_hover_text(tr("A small SQLite shop database to try every feature"))
+                    .clicked()
+                {
                     cx.push(AppCommand::CreateSampleDatabase);
                 }
                 if ui.add_sized([w, 28.0], egui::Button::new(format!("{} {}", icon::COMMAND, tr("Command palette")))).clicked() {

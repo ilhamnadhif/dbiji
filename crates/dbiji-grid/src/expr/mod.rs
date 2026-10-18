@@ -331,12 +331,7 @@ fn resolve_column<S: AsRef<str>>(name: &str, columns: &[S], span: &Range<usize>)
     if let Some(i) = columns.iter().position(|c| c.as_ref() == name) {
         return Ok(i);
     }
-    let ci: Vec<usize> = columns
-        .iter()
-        .enumerate()
-        .filter(|(_, c)| c.as_ref().to_lowercase() == name.to_lowercase())
-        .map(|(i, _)| i)
-        .collect();
+    let ci: Vec<usize> = columns.iter().enumerate().filter(|(_, c)| c.as_ref().to_lowercase() == name.to_lowercase()).map(|(i, _)| i).collect();
     match ci.len() {
         1 => Ok(ci[0]),
         0 => {
@@ -355,11 +350,7 @@ fn resolve_column<S: AsRef<str>>(name: &str, columns: &[S], span: &Range<usize>)
 pub(crate) fn closest_name<'a>(name: &str, candidates: impl Iterator<Item = &'a str>) -> Option<String> {
     let target = name.to_lowercase();
     let limit = (target.chars().count() / 3).max(1);
-    candidates
-        .map(|c| (levenshtein(&target, &c.to_lowercase()), c))
-        .filter(|(d, _)| *d <= limit)
-        .min_by_key(|(d, _)| *d)
-        .map(|(_, c)| c.to_string())
+    candidates.map(|c| (levenshtein(&target, &c.to_lowercase()), c)).filter(|(d, _)| *d <= limit).min_by_key(|(d, _)| *d).map(|(_, c)| c.to_string())
 }
 
 /// Optimal string alignment distance (Levenshtein with adjacent transpositions).
@@ -394,23 +385,13 @@ fn bind<S: AsRef<str>>(ast: Ast, columns: &[S]) -> Result<Node, ExprError> {
         Ast::Unary(op, e) => Node::Unary(op, Box::new(bind(*e, columns)?)),
         Ast::Binary(op, l, r) => Node::Binary(op, Box::new(bind(*l, columns)?), Box::new(bind(*r, columns)?)),
         Ast::IsNull { expr, negated } => Node::IsNull { expr: Box::new(bind(*expr, columns)?), negated },
-        Ast::Like { expr, pattern, negated, case_insensitive } => Node::Like {
-            expr: Box::new(bind(*expr, columns)?),
-            pattern: Box::new(bind(*pattern, columns)?),
-            negated,
-            case_insensitive,
-        },
-        Ast::In { expr, list, negated } => Node::In {
-            expr: Box::new(bind(*expr, columns)?),
-            list: list.into_iter().map(|a| bind(a, columns)).collect::<Result<_, _>>()?,
-            negated,
-        },
-        Ast::Between { expr, low, high, negated } => Node::Between {
-            expr: Box::new(bind(*expr, columns)?),
-            low: Box::new(bind(*low, columns)?),
-            high: Box::new(bind(*high, columns)?),
-            negated,
-        },
+        Ast::Like { expr, pattern, negated, case_insensitive } => {
+            Node::Like { expr: Box::new(bind(*expr, columns)?), pattern: Box::new(bind(*pattern, columns)?), negated, case_insensitive }
+        }
+        Ast::In { expr, list, negated } => Node::In { expr: Box::new(bind(*expr, columns)?), list: list.into_iter().map(|a| bind(a, columns)).collect::<Result<_, _>>()?, negated },
+        Ast::Between { expr, low, high, negated } => {
+            Node::Between { expr: Box::new(bind(*expr, columns)?), low: Box::new(bind(*low, columns)?), high: Box::new(bind(*high, columns)?), negated }
+        }
         Ast::Call { name, args, span } => {
             let Some(func) = Func::lookup(&name) else {
                 let suggestion = closest_name(&name, Func::ALL.iter().map(|(_, n)| *n));
@@ -429,10 +410,7 @@ fn bind<S: AsRef<str>>(ast: Ast, columns: &[S]) -> Result<Node, ExprError> {
                 } else {
                     trf("{} to {}", &[&min, &max])
                 };
-                return Err(ExprError::new(
-                    trf("{}() takes {} argument(s), got {}", &[&func.name(), &expected, &args.len()]),
-                    span,
-                ));
+                return Err(ExprError::new(trf("{}() takes {} argument(s), got {}", &[&func.name(), &expected, &args.len()]), span));
             }
             Node::Call(func, args.into_iter().map(|a| bind(a, columns)).collect::<Result<_, _>>()?)
         }
@@ -444,7 +422,7 @@ pub fn help_text() -> String {
     tr("Columns: name, [any name] or \"any name\". Literals: 12, 1.5, 'text', TRUE, FALSE, NULL.\n\
 Operators: + - * / %  ||  = <> < <= > >=  AND OR NOT  IS [NOT] NULL  [NOT] LIKE/ILIKE  [NOT] IN (...)  BETWEEN a AND b.\n\
 Functions: upper lower length substr trim ltrim rtrim replace left right round abs coalesce concat if nullif to_number to_text.")
-        .to_string()
+    .to_string()
 }
 
 #[cfg(test)]

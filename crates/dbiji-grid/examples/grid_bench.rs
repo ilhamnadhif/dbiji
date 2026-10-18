@@ -29,14 +29,7 @@ impl Stats {
         let avg = t.iter().sum::<f64>() / t.len().max(1) as f64;
         let p95 = t.get((t.len() as f64 * 0.95) as usize).copied().unwrap_or(0.0);
         let max = t.last().copied().unwrap_or(0.0);
-        println!(
-            "{:<38} frames {:>4}  avg {:>6.3} ms  p95 {:>6.3} ms  max {:>6.3} ms",
-            self.name,
-            t.len(),
-            avg,
-            p95,
-            max
-        );
+        println!("{:<38} frames {:>4}  avg {:>6.3} ms  p95 {:>6.3} ms  max {:>6.3} ms", self.name, t.len(), avg, p95, max);
     }
 }
 
@@ -55,18 +48,8 @@ impl Bench {
     fn frame(&mut self, events: Vec<Event>) -> (f64, bool) {
         self.time += 1.0 / 60.0;
         let mut viewports = egui::ViewportIdMap::default();
-        viewports.insert(
-            egui::ViewportId::ROOT,
-            egui::ViewportInfo { native_pixels_per_point: Some(self.ppp), focused: Some(true), ..Default::default() },
-        );
-        let input = RawInput {
-            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, self.size)),
-            time: Some(self.time),
-            events,
-            focused: true,
-            viewports,
-            ..Default::default()
-        };
+        viewports.insert(egui::ViewportId::ROOT, egui::ViewportInfo { native_pixels_per_point: Some(self.ppp), focused: Some(true), ..Default::default() });
+        let input = RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, self.size)), time: Some(self.time), events, focused: true, viewports, ..Default::default() };
         let (model, state, options) = (&mut self.model, &mut self.state, &self.options);
         let start = Instant::now();
         let mut out = self.ctx.run_ui(input, |ui| {
@@ -79,20 +62,14 @@ impl Bench {
         let elapsed = start.elapsed().as_secs_f64() * 1000.0;
         std::hint::black_box(prims.len());
         out.textures_delta.clear();
-        let repaint =
-            out.viewport_output.get(&egui::ViewportId::ROOT).is_some_and(|v| v.repaint_delay < Duration::from_secs(1));
+        let repaint = out.viewport_output.get(&egui::ViewportId::ROOT).is_some_and(|v| v.repaint_delay < Duration::from_secs(1));
         (elapsed, repaint)
     }
 
     fn wheel(&self, dy: f32, dx: f32) -> Vec<Event> {
         vec![
             Event::PointerMoved(Pos2::new(self.size.x / 2.0, self.size.y / 2.0)),
-            Event::MouseWheel {
-                unit: MouseWheelUnit::Point,
-                delta: vec2(dx, dy),
-                phase: TouchPhase::Move,
-                modifiers: Default::default(),
-            },
+            Event::MouseWheel { unit: MouseWheelUnit::Point, delta: vec2(dx, dy), phase: TouchPhase::Move, modifiers: Default::default() },
         ]
     }
 }
@@ -107,12 +84,7 @@ fn main() {
     datagen::fill(&store, rows, cols, 42);
     {
         let s = store.lock();
-        println!(
-            "  done in {:.1} s; resident {:.1} MB, spilled pages {}",
-            t.elapsed().as_secs_f64(),
-            s.resident_bytes() as f64 / 1_048_576.0,
-            s.spilled_pages()
-        );
+        println!("  done in {:.1} s; resident {:.1} MB, spilled pages {}", t.elapsed().as_secs_f64(), s.resident_bytes() as f64 / 1_048_576.0, s.spilled_pages());
     }
     let mut model = ResultModel::new(datagen::columns(cols), store);
     let target = dbiji_grid::determine_editability(model.columns(), |_| Some(vec!["id".into()]), false);
@@ -120,19 +92,9 @@ fn main() {
     model.fetch.has_more = false;
     let state = DataGridState::for_model(&model);
 
-    for (label, size, ppp) in
-        [("1600x1000 @2x", vec2(1600.0, 1000.0), 2.0f32), ("2560x1440 @1x", vec2(2560.0, 1440.0), 1.0)]
-    {
+    for (label, size, ppp) in [("1600x1000 @2x", vec2(1600.0, 1000.0), 2.0f32), ("2560x1440 @1x", vec2(2560.0, 1440.0), 1.0)] {
         println!("\nWindow {label}");
-        let mut b = Bench {
-            ctx: egui::Context::default(),
-            model,
-            state: state.clone(),
-            options: GridOptions::default(),
-            size,
-            ppp,
-            time: 0.0,
-        };
+        let mut b = Bench { ctx: egui::Context::default(), model, state: state.clone(), options: GridOptions::default(), size, ppp, time: 0.0 };
         // Warm up (font atlas, glyph cache).
         for _ in 0..5 {
             b.frame(vec![]);
@@ -189,13 +151,7 @@ fn main() {
         let mut s = Stats { name: "select all + keyboard navigation", times: Vec::new() };
         for i in 0..100 {
             let key = if i % 2 == 0 { egui::Key::PageDown } else { egui::Key::ArrowDown };
-            let ev = vec![Event::Key {
-                key,
-                physical_key: None,
-                pressed: true,
-                repeat: false,
-                modifiers: Default::default(),
-            }];
+            let ev = vec![Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Default::default() }];
             s.times.push(b.frame(ev).0);
         }
         s.report();

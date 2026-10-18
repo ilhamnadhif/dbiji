@@ -13,9 +13,10 @@ pub fn route(app: &mut DbijiApp, _ctx: &egui::Context, cmd: AppCommand) {
                 Some(path) => {
                     let _ = app.dock.set_active_tab(path);
                     if let Some((_, tab)) = app.dock.find_active_focused()
-                        && let Some(t) = tab.view.as_any_mut().downcast_mut::<crate::tabs::object::ObjectEditorTab>() {
-                            t.page = page;
-                        }
+                        && let Some(t) = tab.view.as_any_mut().downcast_mut::<crate::tabs::object::ObjectEditorTab>()
+                    {
+                        t.page = page;
+                    }
                 }
                 None => {
                     app.open_tab(Box::new(crate::tabs::object::ObjectEditorTab::new(connection, object, page)));

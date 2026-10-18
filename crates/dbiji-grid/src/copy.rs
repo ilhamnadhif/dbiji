@@ -29,15 +29,7 @@ pub enum CopyFormat {
 
 impl CopyFormat {
     /// All formats in menu order.
-    pub const ALL: [CopyFormat; 7] = [
-        CopyFormat::Tsv,
-        CopyFormat::Csv,
-        CopyFormat::Markdown,
-        CopyFormat::Json,
-        CopyFormat::SqlInsert,
-        CopyFormat::Html,
-        CopyFormat::Xml,
-    ];
+    pub const ALL: [CopyFormat; 7] = [CopyFormat::Tsv, CopyFormat::Csv, CopyFormat::Markdown, CopyFormat::Json, CopyFormat::SqlInsert, CopyFormat::Html, CopyFormat::Xml];
 
     /// Translated label.
     pub fn label(self) -> &'static str {
@@ -165,12 +157,7 @@ impl CopyData {
 /// Render `data`. `dialect` is used for [`CopyFormat::SqlInsert`] (ANSI when `None`).
 pub fn render(data: &CopyData, opts: &CopyOptions, fmt: &FormatOptions, dialect: Option<&dyn Dialect>) -> String {
     // Plain copy of exactly one cell: the raw text without quoting.
-    if opts.format == CopyFormat::Tsv
-        && !opts.include_header
-        && !opts.include_row_numbers
-        && data.rows.len() == 1
-        && data.columns.len() == 1
-    {
+    if opts.format == CopyFormat::Tsv && !opts.include_header && !opts.include_row_numbers && data.rows.len() == 1 && data.columns.len() == 1 {
         return match (data.rows[0].cells.first(), data.columns.first()) {
             (Some(Some(v)), Some(col)) => cell_text(v, col, opts, fmt),
             _ => String::new(),
@@ -210,9 +197,7 @@ fn cell_text(v: &Value, col: &CopyColumn, opts: &CopyOptions, fmt: &FormatOption
 }
 
 fn needs_quote(s: &str, delimiter: &str) -> bool {
-    s.contains(delimiter)
-        || s.contains(['"', '\n', '\r'])
-        || (!s.is_empty() && (s.starts_with(' ') || s.ends_with(' ')))
+    s.contains(delimiter) || s.contains(['"', '\n', '\r']) || (!s.is_empty() && (s.starts_with(' ') || s.ends_with(' ')))
 }
 
 fn quote_field(s: &str, mode: QuoteMode, delimiter: &str) -> String {
@@ -301,9 +286,7 @@ fn json_value(v: &Value, col: &CopyColumn, opts: &CopyOptions, fmt: &FormatOptio
     if v.is_null() {
         return serde_json::Value::Null;
     }
-    if opts.formatted
-        && !matches!(v, Value::Int(_) | Value::UInt(_) | Value::Float(_) | Value::Bool(_) | Value::Json(_))
-    {
+    if opts.formatted && !matches!(v, Value::Int(_) | Value::UInt(_) | Value::Float(_) | Value::Bool(_) | Value::Json(_)) {
         return serde_json::Value::String(cell_text(v, col, opts, fmt));
     }
     v.to_json()
@@ -404,11 +387,7 @@ fn render_html(data: &CopyData, opts: &CopyOptions, fmt: &FormatOptions) -> Stri
             let align = if col.kind.is_numeric() { " style=\"text-align:right\"" } else { "" };
             match cell {
                 Some(v) => {
-                    let _ = write!(
-                        out,
-                        "<td{align}>{}</td>",
-                        xml_escape(&cell_text(v, col, opts, fmt)).replace('\n', "<br>")
-                    );
+                    let _ = write!(out, "<td{align}>{}</td>", xml_escape(&cell_text(v, col, opts, fmt)).replace('\n', "<br>"));
                 }
                 None => {
                     let _ = write!(out, "<td{align}></td>");
@@ -423,8 +402,7 @@ fn render_html(data: &CopyData, opts: &CopyOptions, fmt: &FormatOptions) -> Stri
 
 /// Turn a column name into a valid XML element name.
 pub fn xml_name(name: &str) -> String {
-    let mut out: String =
-        name.chars().map(|c| if c.is_alphanumeric() || matches!(c, '_' | '-' | '.') { c } else { '_' }).collect();
+    let mut out: String = name.chars().map(|c| if c.is_alphanumeric() || matches!(c, '_' | '-' | '.') { c } else { '_' }).collect();
     if out.is_empty() || !out.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_') {
         out.insert(0, '_');
     }
@@ -524,14 +502,7 @@ mod tests {
                 CopyColumn { name: "when".into(), kind: DataKind::Date, type_name: "date".into(), format: None },
             ],
             rows: vec![
-                CopyRow {
-                    number: 1,
-                    cells: vec![
-                        Some(Value::Int(1)),
-                        Some(Value::text("a\tb")),
-                        Some(Value::Date(chrono::NaiveDate::from_ymd_opt(2024, 1, 2).unwrap())),
-                    ],
-                },
+                CopyRow { number: 1, cells: vec![Some(Value::Int(1)), Some(Value::text("a\tb")), Some(Value::Date(chrono::NaiveDate::from_ymd_opt(2024, 1, 2).unwrap()))] },
                 CopyRow { number: 2, cells: vec![Some(Value::Int(1234)), Some(Value::Null), None] },
             ],
         }
@@ -553,22 +524,11 @@ mod tests {
 
     #[test]
     fn csv_options() {
-        let o = CopyOptions {
-            format: CopyFormat::Csv,
-            include_row_numbers: true,
-            null_text: "NULL".into(),
-            ..Default::default()
-        };
+        let o = CopyOptions { format: CopyFormat::Csv, include_row_numbers: true, null_text: "NULL".into(), ..Default::default() };
         assert_eq!(r(&o), "#,id,name,when\n1,1,a\tb,2024-01-02\n2,1234,NULL,");
-        let o = CopyOptions {
-            format: CopyFormat::Csv,
-            quote: QuoteMode::Always,
-            include_header: false,
-            ..Default::default()
-        };
+        let o = CopyOptions { format: CopyFormat::Csv, quote: QuoteMode::Always, include_header: false, ..Default::default() };
         assert_eq!(r(&o), "\"1\",\"a\tb\",\"2024-01-02\"\n\"1234\",\"\",");
-        let o =
-            CopyOptions { format: CopyFormat::Csv, delimiter: ";".into(), include_header: false, ..Default::default() };
+        let o = CopyOptions { format: CopyFormat::Csv, delimiter: ";".into(), include_header: false, ..Default::default() };
         assert_eq!(r(&o), "1;a\tb;2024-01-02\n1234;;");
         let fmt = FormatOptions { thousands_separator: true, date_format: "%d/%m/%Y".into(), ..Default::default() };
         let o = CopyOptions { format: CopyFormat::Csv, formatted: true, include_header: false, ..Default::default() };
@@ -608,10 +568,7 @@ mod tests {
     fn clipboard_parsing() {
         assert_eq!(parse_clipboard_table("a\tb\nc\td\n"), vec![vec!["a", "b"], vec!["c", "d"]]);
         assert_eq!(parse_clipboard_table("a\r\nb"), vec![vec!["a"], vec!["b"]]);
-        assert_eq!(
-            parse_clipboard_table("\"x\ty\"\t\"multi\nline\"\t\"q\"\"q\"\nz\t\t"),
-            vec![vec!["x\ty", "multi\nline", "q\"q"], vec!["z", "", ""]]
-        );
+        assert_eq!(parse_clipboard_table("\"x\ty\"\t\"multi\nline\"\t\"q\"\"q\"\nz\t\t"), vec![vec!["x\ty", "multi\nline", "q\"q"], vec!["z", "", ""]]);
         assert_eq!(parse_clipboard_table("single value"), vec![vec!["single value"]]);
         assert!(parse_clipboard_table("").is_empty());
         // Round trip with the plain copy format.

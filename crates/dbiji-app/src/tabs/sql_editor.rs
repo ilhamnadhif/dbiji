@@ -79,6 +79,8 @@ struct ParamPrompt {
     request: Request,
     names: Vec<String>,
     values: Vec<String>,
+    /// The first field got the keyboard focus.
+    focused: bool,
 }
 
 struct Confirm {
@@ -263,21 +265,23 @@ impl SqlEditorTab {
         self.catalog_generation = None;
         self.lang.set_catalog(None);
         if let Some(c) = &self.conn
-            && !cx.conns.is_connected(c) {
-                cx.push(AppCommand::Connect(c.clone()));
-            }
+            && !cx.conns.is_connected(c)
+        {
+            cx.push(AppCommand::Connect(c.clone()));
+        }
     }
 
     /// The editor's session, opening it on first use.
     fn session(&mut self, cx: &mut AppContext) -> Option<SessionHandle> {
         let conn = self.conn.clone()?;
         if let SessionSlot::Opening(j) = &mut self.session
-            && let Some(r) = j.poll() {
-                self.session = match r {
-                    Ok(s) => SessionSlot::Ready(s),
-                    Err(e) => SessionSlot::Failed(e.full_text()),
-                };
-            }
+            && let Some(r) = j.poll()
+        {
+            self.session = match r {
+                Ok(s) => SessionSlot::Ready(s),
+                Err(e) => SessionSlot::Failed(e.full_text()),
+            };
+        }
         if let SessionSlot::Ready(s) = &self.session {
             if s.is_closed() {
                 self.session = SessionSlot::None;
@@ -397,7 +401,7 @@ impl SqlEditorTab {
         if !prepared.missing.is_empty() {
             let names: Vec<String> = prepared.missing.iter().map(|(_, n)| n.clone()).collect();
             let values = names.iter().map(|n| self.variables.get(n).cloned().unwrap_or_default()).collect();
-            self.params = Some(ParamPrompt { request: req, names, values });
+            self.params = Some(ParamPrompt { request: req, names, values, focused: false });
             return;
         }
         let cfg = cx.conns.config(&conn).cloned();
@@ -460,21 +464,22 @@ impl SqlEditorTab {
 
     fn poll_exec(&mut self, ctx: &egui::Context, cx: &mut AppContext) {
         if let Some((sql, job)) = self.explain_job.as_mut()
-            && let Some(r) = job.poll() {
-                let sql = sql.clone();
-                self.explain_job = None;
-                match r {
-                    Ok(plan) => {
-                        self.results.push(ResultItem::Plan { sql, plan: Box::new(plan), state: Default::default(), view: PlanView::Diagram });
-                        self.bottom = Bottom::Result(self.results.len() - 1);
-                        self.show_results = true;
-                    }
-                    Err(e) => {
-                        self.log("ERROR", e.full_text());
-                        self.bottom = Bottom::Output;
-                    }
+            && let Some(r) = job.poll()
+        {
+            let sql = sql.clone();
+            self.explain_job = None;
+            match r {
+                Ok(plan) => {
+                    self.results.push(ResultItem::Plan { sql, plan: Box::new(plan), state: Default::default(), view: PlanView::Diagram });
+                    self.bottom = Bottom::Result(self.results.len() - 1);
+                    self.show_results = true;
+                }
+                Err(e) => {
+                    self.log("ERROR", e.full_text());
+                    self.bottom = Bottom::Output;
                 }
             }
+        }
         let Some(exec) = self.exec.as_mut() else { return };
         let events = exec.poll();
         let finished = exec.is_finished();
@@ -598,9 +603,10 @@ impl SqlEditorTab {
                         self.bottom = Bottom::Statistics;
                     }
                     if self.ddl_executed
-                        && let Some(c) = &self.conn {
-                            cx.push(AppCommand::RefreshMetadata { connection: c.clone(), object: None, schema: self.schema.clone() });
-                        }
+                        && let Some(c) = &self.conn
+                    {
+                        cx.push(AppCommand::RefreshMetadata { connection: c.clone(), object: None, schema: self.schema.clone() });
+                    }
                 }
             }
         }
@@ -832,21 +838,18 @@ impl SqlEditorTab {
             }
             let conns: Vec<(String, String)> = cx.conns.configs().iter().map(|c| (c.id.clone(), c.name.clone())).collect();
             let mut chosen: Option<Option<String>> = None;
-            egui::Popup::from_response(&r)
-                .open_bool(&mut self.select_conn_open)
-                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-                .show(|ui| {
-                    ui.set_min_width(220.0);
-                    if ui.selectable_label(self.conn.is_none(), tr("No connection")).clicked() {
-                        chosen = Some(None);
+            egui::Popup::from_response(&r).open_bool(&mut self.select_conn_open).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
+                ui.set_min_width(220.0);
+                if ui.selectable_label(self.conn.is_none(), tr("No connection")).clicked() {
+                    chosen = Some(None);
+                }
+                for (id, name) in &conns {
+                    let st = if cx.conns.is_connected(id) { icon::PLUGS_CONNECTED } else { icon::PLUGS };
+                    if ui.selectable_label(self.conn.as_deref() == Some(id), format!("{st} {name}")).clicked() {
+                        chosen = Some(Some(id.clone()));
                     }
-                    for (id, name) in &conns {
-                        let st = if cx.conns.is_connected(id) { icon::PLUGS_CONNECTED } else { icon::PLUGS };
-                        if ui.selectable_label(self.conn.as_deref() == Some(id), format!("{st} {name}")).clicked() {
-                            chosen = Some(Some(id.clone()));
-                        }
-                    }
-                });
+                }
+            });
             if let Some(c) = chosen {
                 self.select_conn_open = false;
                 self.set_connection(cx, c);
@@ -858,49 +861,48 @@ impl SqlEditorTab {
                 .and_then(|s| s.schema.clone().or(s.database.clone()))
                 .or_else(|| self.conn.as_ref().and_then(|c| cx.conns.live(c)).and_then(|l| l.current_schema.clone().or(l.current_database.clone())))
                 .unwrap_or_else(|| "—".into());
-            let r = ui.button(format!("{} {schema_label}", icon::DATABASE)).on_hover_text(format!("{} ({})", tr("Active schema"), crate::keys::label(cx.keymap, Action::SelectSchema)));
+            let r =
+                ui.button(format!("{} {schema_label}", icon::DATABASE)).on_hover_text(format!("{} ({})", tr("Active schema"), crate::keys::label(cx.keymap, Action::SelectSchema)));
             if r.clicked() {
                 self.select_schema_open = !self.select_schema_open;
             }
             let mut chosen_schema: Option<SchemaRef> = None;
             if self.select_schema_open
-                && let Some(conn) = self.conn.clone() {
-                    let backend = cx.backend;
-                    if let Some(live) = cx.conns.live_mut(&conn) {
-                        let main = live.main.clone();
-                        let multi = live.driver.info().capabilities.multiple_databases;
-                        if multi {
-                            live.meta.request_databases(backend, &main);
-                        }
-                        live.meta.request_schemas(backend, &main, None);
-                        let dbs: Vec<String> = live.meta.databases.get().map(|v| v.iter().map(|d| d.name.clone()).collect()).unwrap_or_default();
-                        let schemas: Vec<String> = live.meta.schemas_of(None).get().map(|v| v.iter().filter(|s| !s.is_system).map(|s| s.name.clone()).collect()).unwrap_or_default();
-                        let cur_db = live.current_database.clone();
-                        egui::Popup::from_response(&r)
-                            .open_bool(&mut self.select_schema_open)
-                            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-                            .show(|ui| {
-                                ui.set_min_width(200.0);
-                                egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
-                                    if multi && !dbs.is_empty() {
-                                        ui.weak(tr("Databases"));
-                                        for d in &dbs {
-                                            if ui.selectable_label(cur_db.as_deref() == Some(d.as_str()), format!("{} {d}", icon::DATABASE)).clicked() {
-                                                chosen_schema = Some(SchemaRef::new(Some(d.clone()), None));
-                                            }
-                                        }
-                                        ui.separator();
-                                    }
-                                    ui.weak(tr("Schemas"));
-                                    for s in &schemas {
-                                        if ui.selectable_label(false, format!("{} {s}", icon::TREE_STRUCTURE)).clicked() {
-                                            chosen_schema = Some(SchemaRef::new(None, Some(s.clone())));
-                                        }
-                                    }
-                                });
-                            });
+                && let Some(conn) = self.conn.clone()
+            {
+                let backend = cx.backend;
+                if let Some(live) = cx.conns.live_mut(&conn) {
+                    let main = live.main.clone();
+                    let multi = live.driver.info().capabilities.multiple_databases;
+                    if multi {
+                        live.meta.request_databases(backend, &main);
                     }
+                    live.meta.request_schemas(backend, &main, None);
+                    let dbs: Vec<String> = live.meta.databases.get().map(|v| v.iter().map(|d| d.name.clone()).collect()).unwrap_or_default();
+                    let schemas: Vec<String> = live.meta.schemas_of(None).get().map(|v| v.iter().filter(|s| !s.is_system).map(|s| s.name.clone()).collect()).unwrap_or_default();
+                    let cur_db = live.current_database.clone();
+                    egui::Popup::from_response(&r).open_bool(&mut self.select_schema_open).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
+                        ui.set_min_width(200.0);
+                        egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
+                            if multi && !dbs.is_empty() {
+                                ui.weak(tr("Databases"));
+                                for d in &dbs {
+                                    if ui.selectable_label(cur_db.as_deref() == Some(d.as_str()), format!("{} {d}", icon::DATABASE)).clicked() {
+                                        chosen_schema = Some(SchemaRef::new(Some(d.clone()), None));
+                                    }
+                                }
+                                ui.separator();
+                            }
+                            ui.weak(tr("Schemas"));
+                            for s in &schemas {
+                                if ui.selectable_label(false, format!("{} {s}", icon::TREE_STRUCTURE)).clicked() {
+                                    chosen_schema = Some(SchemaRef::new(None, Some(s.clone())));
+                                }
+                            }
+                        });
+                    });
                 }
+            }
             if let Some(s) = chosen_schema {
                 self.select_schema_open = false;
                 let db_changed = s.database.is_some() && s.database != self.schema.as_ref().and_then(|x| x.database.clone());
@@ -926,7 +928,11 @@ impl SqlEditorTab {
             if ui.add_enabled(!running, egui::Button::new(icon::TREE_VIEW)).on_hover_text(tip(Action::ExplainPlan)).clicked() {
                 self.run(cx, Request { scope: self.scope_for(true), new_tab: true, explain: Some(false), confirmed: false });
             }
-            if ui.add_enabled(running, egui::Button::new(RichText::new(icon::STOP).color(crate::theme::error_color(ui.visuals().dark_mode)))).on_hover_text(tip(Action::CancelQuery)).clicked() {
+            if ui
+                .add_enabled(running, egui::Button::new(RichText::new(icon::STOP).color(crate::theme::error_color(ui.visuals().dark_mode))))
+                .on_hover_text(tip(Action::CancelQuery))
+                .clicked()
+            {
                 self.cancel(cx);
             }
             if ui.button(icon::TEXT_INDENT).on_hover_text(tip(Action::FormatSql)).clicked() {
@@ -1193,11 +1199,12 @@ impl SqlEditorTab {
                     for (i, n) in p.names.iter().enumerate() {
                         ui.label(n);
                         let r = ui.add(egui::TextEdit::singleline(&mut p.values[i]).desired_width(260.0));
-                        if i == 0 {
-                            r.request_focus();
-                        }
                         if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                             run = true;
+                        }
+                        if i == 0 && !p.focused {
+                            r.request_focus();
+                            p.focused = true;
                         }
                         ui.end_row();
                     }
@@ -1358,7 +1365,13 @@ impl TabView for SqlEditorTab {
     }
 
     fn focus_context(&self) -> ActionContext {
-        if self.editor_focused { ActionContext::SqlEditor } else if matches!(self.bottom, Bottom::Result(_)) { ActionContext::ResultsGrid } else { ActionContext::Global }
+        if self.editor_focused {
+            ActionContext::SqlEditor
+        } else if matches!(self.bottom, Bottom::Result(_)) {
+            ActionContext::ResultsGrid
+        } else {
+            ActionContext::Global
+        }
     }
 
     fn on_action(&mut self, action: Action, cx: &mut AppContext) -> bool {
@@ -1472,15 +1485,16 @@ impl TabView for SqlEditorTab {
             self.catalog_sync(cx);
             // Open the session early and apply the active schema.
             if let Some(s) = self.session(cx)
-                && self.pending_schema {
-                    self.pending_schema = false;
-                    if let Some(schema) = self.schema.as_ref().and_then(|s| s.schema.clone()) {
-                        let s2 = s.clone();
-                        cx.backend.spawn_detached(async move {
-                            let _ = s2.lock().await.set_current_schema(&schema).await;
-                        });
-                    }
+                && self.pending_schema
+            {
+                self.pending_schema = false;
+                if let Some(schema) = self.schema.as_ref().and_then(|s| s.schema.clone()) {
+                    let s2 = s.clone();
+                    cx.backend.spawn_detached(async move {
+                        let _ = s2.lock().await.set_current_schema(&schema).await;
+                    });
                 }
+            }
         }
         if let SessionSlot::Failed(e) = &self.session {
             let e = e.clone();
@@ -1613,11 +1627,12 @@ impl SqlEditorTab {
     }
     pub fn answer_confirmation(&mut self, cx: &mut AppContext, run: bool) {
         if let Some(c) = self.confirm.take()
-            && run {
-                let mut req = c.request;
-                req.confirmed = true;
-                self.run(cx, req);
-            }
+            && run
+        {
+            let mut req = c.request;
+            req.confirmed = true;
+            self.run(cx, req);
+        }
     }
     pub fn set_text(&mut self, ctx: &egui::Context, text: &str) {
         self.editor.reset_text(ctx, text.to_string());

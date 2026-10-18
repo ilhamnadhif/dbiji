@@ -186,10 +186,7 @@ pub fn parse_version_number(version: &str) -> (u32, u32, u32) {
     let start = version.find(|c: char| c.is_ascii_digit()).unwrap_or(version.len());
     let rest = &version[start..];
     let end = rest.find(|c: char| !(c.is_ascii_digit() || c == '.')).unwrap_or(rest.len());
-    let mut nums = rest[..end]
-        .split('.')
-        .filter(|s| !s.is_empty())
-        .map(|s| s.parse::<u32>().unwrap_or(0));
+    let mut nums = rest[..end].split('.').filter(|s| !s.is_empty()).map(|s| s.parse::<u32>().unwrap_or(0));
     (nums.next().unwrap_or(0), nums.next().unwrap_or(0), nums.next().unwrap_or(0))
 }
 
@@ -413,11 +410,7 @@ pub trait Session: Send {
 }
 
 /// Run `sql` and collect the first row result completely.
-pub async fn query_all(
-    session: &mut dyn Session,
-    sql: &str,
-    params: &[Value],
-) -> DbResult<(Vec<ColumnMeta>, Vec<Row>)> {
+pub async fn query_all(session: &mut dyn Session, sql: &str, params: &[Value]) -> DbResult<(Vec<ColumnMeta>, Vec<Row>)> {
     let mut cursor = session.execute(sql, params, &ExecOptions::default()).await?;
     let mut columns = Vec::new();
     let mut rows = Vec::new();
@@ -492,10 +485,7 @@ impl MemoryCursor {
         Self::new(vec![MaterializedResult { header: ResultHeader::Rows(columns), rows }])
     }
     pub fn update(rows_affected: Option<u64>, tag: Option<String>) -> Self {
-        Self::new(vec![MaterializedResult {
-            header: ResultHeader::Update { rows_affected, last_insert_id: None, tag },
-            rows: Vec::new(),
-        }])
+        Self::new(vec![MaterializedResult { header: ResultHeader::Update { rows_affected, last_insert_id: None, tag }, rows: Vec::new() }])
     }
 }
 
@@ -539,10 +529,7 @@ mod tests {
 
     #[tokio::test]
     async fn memory_cursor_protocol() {
-        let mut c = MemoryCursor::rows(
-            vec![ColumnMeta::new("a", "int", DataKind::Int)],
-            (0..5).map(|i| vec![Value::Int(i)]).collect(),
-        );
+        let mut c = MemoryCursor::rows(vec![ColumnMeta::new("a", "int", DataKind::Int)], (0..5).map(|i| vec![Value::Int(i)]).collect());
         assert!(matches!(c.next_result().await.unwrap(), Some(ResultHeader::Rows(_))));
         assert_eq!(c.fetch(3).await.unwrap().len(), 3);
         assert_eq!(c.fetch(3).await.unwrap().len(), 2);

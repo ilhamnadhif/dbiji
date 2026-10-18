@@ -131,13 +131,9 @@ fn os_schedule(schedule: &Schedule) -> DbResult<OsSchedule> {
                 Ok(OsSchedule::Calendar(days.into_iter().map(|d| CalendarEntry { weekday: Some(d), ..base.clone() }).collect()))
             }
         }
-        Schedule::Once { at } => Ok(OsSchedule::Calendar(vec![CalendarEntry {
-            month: Some(at.month()),
-            day: Some(at.day()),
-            weekday: None,
-            hour: Some(at.hour()),
-            minute: Some(at.minute()),
-        }])),
+        Schedule::Once { at } => {
+            Ok(OsSchedule::Calendar(vec![CalendarEntry { month: Some(at.month()), day: Some(at.day()), weekday: None, hour: Some(at.hour()), minute: Some(at.minute()) }]))
+        }
     }
 }
 
@@ -274,11 +270,7 @@ fn crontab_schedule(schedule: &Schedule) -> DbResult<String> {
     match schedule {
         Schedule::Cron(expr) => {
             let c = compile_cron(expr).map_err(|e| DbError::config(e.to_string()))?;
-            if c.unix {
-                Ok(expr.split_whitespace().collect::<Vec<_>>().join(" "))
-            } else {
-                cron_fields_5(&c)
-            }
+            if c.unix { Ok(expr.split_whitespace().collect::<Vec<_>>().join(" ")) } else { cron_fields_5(&c) }
         }
         Schedule::Interval { every_secs } => {
             let s = *every_secs;
@@ -507,7 +499,20 @@ mod tests {
         assert_eq!(c.program, "schtasks");
         assert_eq!(
             c.args,
-            vec!["/Create", "/F", "/TN", "DBiji\\task-1234-abcd", "/TR", "\"C:\\Program Files\\DBiji\\dbiji.exe\" --run-task 1234-abcd", "/SC", "WEEKLY", "/D", "MON,WED", "/ST", "22:00"]
+            vec![
+                "/Create",
+                "/F",
+                "/TN",
+                "DBiji\\task-1234-abcd",
+                "/TR",
+                "\"C:\\Program Files\\DBiji\\dbiji.exe\" --run-task 1234-abcd",
+                "/SC",
+                "WEEKLY",
+                "/D",
+                "MON,WED",
+                "/ST",
+                "22:00"
+            ]
         );
         let args = |s: Schedule| schtasks_create(&task(s), &exe()).map(|c| c.args[6..].join(" "));
         assert_eq!(args(Schedule::Interval { every_secs: 300 }).unwrap(), "/SC MINUTE /MO 5");

@@ -2,18 +2,13 @@
 //! toolbar with status, and side panels. Use this for the common case, or
 //! compose the individual widgets yourself.
 
-use crate::grid::{
-    DataGrid, DataGridState, DataMode, GridAction, GridOptions, GridResponse, PanelKind, ResultViewKind,
-};
+use crate::grid::{DataGrid, DataGridState, DataMode, GridAction, GridOptions, GridResponse, PanelKind, ResultViewKind};
 use crate::model::ResultModel;
 use crate::panels::{
-    CalcPanel, CalcPanelState, GroupingAction, GroupingPanel, GroupingPanelState, MetadataPanel, ReferencesPanel,
-    ReferencesPanelState, ValuePanel, ValuePanelState,
+    CalcPanel, CalcPanelState, GroupingAction, GroupingPanel, GroupingPanelState, MetadataPanel, ReferencesPanel, ReferencesPanelState, ValuePanel, ValuePanelState,
 };
 use crate::toolbar::{FilterBar, ResultToolbar, ToolbarState};
-use crate::views::{
-    DocumentKind, DocumentView, DocumentViewState, RecordView, RecordViewState, TextView, TextViewState,
-};
+use crate::views::{DocumentKind, DocumentView, DocumentViewState, RecordView, RecordViewState, TextView, TextViewState};
 use dbiji_core::tr;
 use egui::{Frame, Id, Panel, Ui};
 use serde::{Deserialize, Serialize};
@@ -148,9 +143,7 @@ impl<'a> ResultViewer<'a> {
                         Some(PanelKind::Metadata) => MetadataPanel::new(model, &mut state.grid).show(ui),
                         Some(PanelKind::Calc) => CalcPanel::new(model, &state.grid, &mut state.calc).show(ui),
                         Some(PanelKind::Grouping) => {
-                            if let Some(GroupingAction::Filtered(text)) =
-                                GroupingPanel::new(model, &mut state.grouping).show(ui)
-                            {
+                            if let Some(GroupingAction::Filtered(text)) = GroupingPanel::new(model, &mut state.grouping).show(ui) {
                                 state.grid.mode = DataMode::Client;
                                 state.toolbar.filter_text = text;
                             }
@@ -169,15 +162,9 @@ impl<'a> ResultViewer<'a> {
                 grid_response = Some(r);
             }
             ResultViewKind::Text => TextView::new(model, &state.grid, options, &mut state.text).show(ui),
-            ResultViewKind::Record => {
-                actions.extend(RecordView::new(model, &mut state.grid, options, &mut state.record).show(ui))
-            }
-            ResultViewKind::Json => {
-                DocumentView::new(model, &state.grid, options, &mut state.documents, DocumentKind::Json).show(ui)
-            }
-            ResultViewKind::Xml => {
-                DocumentView::new(model, &state.grid, options, &mut state.documents, DocumentKind::Xml).show(ui)
-            }
+            ResultViewKind::Record => actions.extend(RecordView::new(model, &mut state.grid, options, &mut state.record).show(ui)),
+            ResultViewKind::Json => DocumentView::new(model, &state.grid, options, &mut state.documents, DocumentKind::Json).show(ui),
+            ResultViewKind::Xml => DocumentView::new(model, &state.grid, options, &mut state.documents, DocumentKind::Xml).show(ui),
         });
         // Internal handling of some actions (they are still reported).
         for a in &actions {
@@ -191,11 +178,8 @@ impl<'a> ResultViewer<'a> {
                         && !w.is_empty()
                         && !state.toolbar.filter_text.contains(w.as_str())
                     {
-                        state.toolbar.filter_text = if state.toolbar.filter_text.trim().is_empty() {
-                            w.clone()
-                        } else {
-                            format!("({}) AND ({w})", state.toolbar.filter_text.trim())
-                        };
+                        state.toolbar.filter_text =
+                            if state.toolbar.filter_text.trim().is_empty() { w.clone() } else { format!("({}) AND ({w})", state.toolbar.filter_text.trim()) };
                     }
                     if let Some(o) = order_by {
                         state.toolbar.order_text = o.clone();

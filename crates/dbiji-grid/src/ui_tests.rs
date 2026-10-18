@@ -2,9 +2,7 @@
 
 use crate::grid::{GridAction, GridOptions, PanelKind, ResultViewKind};
 use crate::model::ResultModel;
-use crate::panels::{
-    GroupingPanel, GroupingPanelState, ReferencesPanel, ReferencesPanelState, Relation, RelationDirection,
-};
+use crate::panels::{GroupingPanel, GroupingPanelState, ReferencesPanel, ReferencesPanelState, Relation, RelationDirection};
 use crate::result_view::{ResultViewState, ResultViewer};
 use crate::test_support::{Ui, editable_model, press, release};
 use dbiji_core::{ColumnMeta, DataKind, ObjectRef, Value};
@@ -22,14 +20,7 @@ struct Viewer {
 impl Viewer {
     fn new(model: ResultModel) -> Self {
         let state = ResultViewState::new(&model);
-        let mut v = Viewer {
-            ui: Ui::new(),
-            model,
-            state,
-            options: GridOptions::default(),
-            actions: Vec::new(),
-            output: Default::default(),
-        };
+        let mut v = Viewer { ui: Ui::new(), model, state, options: GridOptions::default(), actions: Vec::new(), output: Default::default() };
         v.ui.size = egui::vec2(1200.0, 700.0);
         v.ui.ctx.enable_accesskit();
         v.frame(vec![]);
@@ -128,9 +119,7 @@ fn every_view_and_panel_renders() {
         v.frame(vec![]);
         v.frame(vec![]);
     }
-    for kind in
-        [ResultViewKind::Text, ResultViewKind::Record, ResultViewKind::Json, ResultViewKind::Xml, ResultViewKind::Grid]
-    {
+    for kind in [ResultViewKind::Text, ResultViewKind::Record, ResultViewKind::Json, ResultViewKind::Xml, ResultViewKind::Grid] {
         v.state.toolbar.view = kind;
         v.frame(vec![]);
         v.frame(vec![]);
@@ -169,10 +158,7 @@ fn server_mode_filter_bar_emits_query_change() {
     v.frame(vec![Event::PointerMoved(apply)]);
     v.frame(vec![press(apply, PointerButton::Primary, Modifiers::NONE)]);
     v.frame(vec![release(apply, PointerButton::Primary, Modifiers::NONE)]);
-    let changed = v
-        .actions
-        .iter()
-        .any(|a| matches!(a, GridAction::ServerQueryChanged { where_clause: Some(w), .. } if w == "status = 'open'"));
+    let changed = v.actions.iter().any(|a| matches!(a, GridAction::ServerQueryChanged { where_clause: Some(w), .. } if w == "status = 'open'"));
     assert!(changed, "{:?}", v.actions);
 }
 
@@ -266,9 +252,7 @@ fn references_panel_requests_and_shows_related_rows() {
     }]);
     let mut actions = Vec::new();
     ui.run(vec![], Modifiers::NONE, |ui| actions = ReferencesPanel::new(&model, &grid, &mut state).show(ui));
-    assert!(
-        matches!(&actions[..], [GridAction::RequestReferences { relation: 0, values }] if values == &vec![Value::Int(2)])
-    );
+    assert!(matches!(&actions[..], [GridAction::RequestReferences { relation: 0, values }] if values == &vec![Value::Int(2)]));
     // Not requested again for the same key.
     ui.run(vec![], Modifiers::NONE, |ui| actions = ReferencesPanel::new(&model, &grid, &mut state).show(ui));
     assert!(actions.is_empty());

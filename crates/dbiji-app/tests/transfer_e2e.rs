@@ -20,9 +20,7 @@ use dbiji_core::config::{ConnectionConfig, SecretSlot, secret_key};
 use dbiji_core::meta::ObjectRef;
 use dbiji_core::{ColumnMeta, DataKind, DbKind, Secret, Value};
 use dbiji_tasks::{RunStatus, TaskDef, TaskKind, Trigger};
-use dbiji_transfer::{
-    CancellationToken, ExportFormat, ExportItem, ExportJob, ImportJob, ImportMapping, ImportSourceConfig, MigrationJob,
-};
+use dbiji_transfer::{CancellationToken, ExportFormat, ExportItem, ExportJob, ImportJob, ImportMapping, ImportSourceConfig, MigrationJob};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -41,10 +39,10 @@ mod tempdir {
 fn servers() -> Vec<(&'static str, String)> {
     let mut out = Vec::new();
     for (name, var) in [("postgres", "DBIJI_TEST_PG"), ("mysql", "DBIJI_TEST_MYSQL"), ("mariadb", "DBIJI_TEST_MARIADB")] {
-        if let Ok(url) = std::env::var(var) {
-            if !url.trim().is_empty() {
-                out.push((name, url));
-            }
+        if let Ok(url) = std::env::var(var)
+            && !url.trim().is_empty()
+        {
+            out.push((name, url));
         }
     }
     out
@@ -236,9 +234,7 @@ impl H {
     /// breaks and NULLs in the text column).
     fn sample_table(&mut self) -> String {
         let t = unique("dbiji_tr");
-        self.sql(&format!(
-            "CREATE TABLE {t} (id INT PRIMARY KEY, name VARCHAR(50) NOT NULL, amount NUMERIC(10,2), created DATE, note VARCHAR(200))"
-        ));
+        self.sql(&format!("CREATE TABLE {t} (id INT PRIMARY KEY, name VARCHAR(50) NOT NULL, amount NUMERIC(10,2), created DATE, note VARCHAR(200))"));
         self.tables.push(t.clone());
         let values: Vec<String> = (1..=ROWS)
             .map(|i| {
@@ -272,12 +268,7 @@ impl H {
         if let Some(pw) = &self.password {
             secrets.set(&store.network_secret_key(&self.cfg, SecretSlot::Password), pw).unwrap();
         }
-        Arc::new(AppTaskExecutor {
-            paths,
-            registry: Arc::new(dbiji_app::driver_registry()),
-            secrets,
-            net: Arc::new(DirectNet),
-        })
+        Arc::new(AppTaskExecutor { paths, registry: Arc::new(dbiji_app::driver_registry()), secrets, net: Arc::new(DirectNet) })
     }
 
     fn run_task(&self, exec: &Arc<AppTaskExecutor>, task: TaskDef) -> dbiji_tasks::TaskRun {
@@ -285,9 +276,7 @@ impl H {
         let log = self.services.runlog.clone().expect("run log");
         let id = store.create(task).unwrap().id;
         let exec: Arc<dyn dbiji_tasks::TaskExecutor> = exec.clone();
-        self.backend
-            .block_on(dbiji_tasks::run_task_once(store, log, exec, &id, Trigger::Manual, None, CancellationToken::new()))
-            .unwrap()
+        self.backend.block_on(dbiji_tasks::run_task_once(store, log, exec, &id, Trigger::Manual, None, CancellationToken::new())).unwrap()
     }
 }
 
@@ -302,7 +291,7 @@ impl Drop for H {
         }
         if let Some(live) = self.cm.live(&self.id) {
             let s = live.main.clone();
-            let _ = self.backend.block_on(async move {
+            self.backend.block_on(async move {
                 for sql in stmts {
                     let _ = s.execute_update(&sql, &[]).await;
                 }
@@ -407,10 +396,7 @@ fn export_to_csv_and_json_and_import_back() {
         let exec = h.executor();
         let log = h.services.runlog.clone().unwrap();
         let exec_dyn: Arc<dyn dbiji_tasks::TaskExecutor> = exec.clone();
-        let run = h
-            .backend
-            .block_on(dbiji_tasks::run_task_once(store, log, exec_dyn, &task_id, Trigger::Manual, None, CancellationToken::new()))
-            .unwrap();
+        let run = h.backend.block_on(dbiji_tasks::run_task_once(store, log, exec_dyn, &task_id, Trigger::Manual, None, CancellationToken::new())).unwrap();
         assert_eq!(run.status, RunStatus::Succeeded, "{name}: {:?}", run.error);
         assert_eq!(run.rows, Some(ROWS as u64), "{name}");
         assert!(out.join(format!("{t}_saved.csv")).is_file(), "{name}");
@@ -423,11 +409,7 @@ fn export_fetched_rows_without_database() {
     let out = h.root.join("fetched");
     let store = dbiji_core::RowStore::shared(1 << 20);
     store.lock().extend((0..10).map(|i| vec![Value::Int(i), Value::text(format!("r{i}")), Value::Null]));
-    let columns = vec![
-        ColumnMeta::new("n", "int", DataKind::Int),
-        ColumnMeta::new("label", "text", DataKind::Text),
-        ColumnMeta::new("empty", "text", DataKind::Text),
-    ];
+    let columns = vec![ColumnMeta::new("n", "int", DataKind::Int), ColumnMeta::new("label", "text", DataKind::Text), ColumnMeta::new("empty", "text", DataKind::Text)];
     let mut tab = ExportTab::from_result(h.id.clone(), "Result 1".into(), store, columns, Some(vec![7, 2, 4]), vec![1, 0], Some("select 1".into()));
     assert_eq!(tab.result_source(), ResultSource::Selected);
     {
@@ -453,9 +435,7 @@ fn mock_data_and_migration_tabs() {
     for (name, url) in servers() {
         let mut h = H::new(&url);
         let t = unique("dbiji_mk");
-        h.sql(&format!(
-            "CREATE TABLE {t} (id INT PRIMARY KEY, email VARCHAR(60) NOT NULL, first_name VARCHAR(30), amount NUMERIC(8,2), created DATE)"
-        ));
+        h.sql(&format!("CREATE TABLE {t} (id INT PRIMARY KEY, email VARCHAR(60) NOT NULL, first_name VARCHAR(30), amount NUMERIC(8,2), created DATE)"));
         h.tables.push(t.clone());
 
         // ---- Mock data.
@@ -553,22 +533,13 @@ fn transfer_tasks_run_headless() {
         let mig = format!("{target}.{t}");
         let job = MigrationJob { tables: vec![h.table(&t)], target_schema: Some(target.clone()), ..Default::default() };
         let config = migration_task_config(&job).unwrap();
-        let run = h.run_task(
-            &exec,
-            TaskDef::new(
-                "migration",
-                TaskKind::Migration { source_connection_id: h.id.clone(), target_connection_id: h.id.clone(), config },
-            ),
-        );
+        let run = h.run_task(&exec, TaskDef::new("migration", TaskKind::Migration { source_connection_id: h.id.clone(), target_connection_id: h.id.clone(), config }));
         assert_eq!(run.status, RunStatus::Succeeded, "{name}: {:?}", run.error);
         assert_eq!(run.rows, Some(ROWS as u64), "{name}");
         assert_eq!(h.count(&mig), ROWS, "{name}");
 
         // ---- Invalid configurations fail with a message.
-        let run = h.run_task(
-            &exec,
-            TaskDef::new("broken", TaskKind::Export { connection_id: h.id.clone(), config: serde_json::json!({"items": 5}) }),
-        );
+        let run = h.run_task(&exec, TaskDef::new("broken", TaskKind::Export { connection_id: h.id.clone(), config: serde_json::json!({"items": 5}) }));
         assert_eq!(run.status, RunStatus::Failed, "{name}");
         assert!(run.error.as_deref().is_some_and(|e| !e.is_empty()), "{name}");
     }

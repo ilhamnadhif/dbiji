@@ -165,9 +165,7 @@ fn apply_success(shared: &SessionShared, info: Option<&StmtInfo>) {
 /// statement inside a transaction leaves it open (aborted); a failed
 /// COMMIT / ROLLBACK / PREPARE TRANSACTION ends it.
 fn apply_failure(shared: &SessionShared, info: Option<&StmtInfo>) {
-    if let Some(TxEffect::Commit { .. }) | Some(TxEffect::Rollback { .. }) | Some(TxEffect::PrepareTransaction) =
-        info.map(|i| i.tx)
-    {
+    if let Some(TxEffect::Commit { .. }) | Some(TxEffect::Rollback { .. }) | Some(TxEffect::PrepareTransaction) = info.map(|i| i.tx) {
         shared.set_in_tx(false);
     }
 }
@@ -237,27 +235,10 @@ pub(crate) struct PgCursor {
 }
 
 impl PgCursor {
-    pub(crate) fn new(
-        body: Body,
-        shared: Arc<SessionShared>,
-        guard: OwnedMutexGuard<()>,
-        cancel: Arc<PgCancelHandle>,
-        timer: Option<StatementTimer>,
-        rt: Handle,
-    ) -> PgCursor {
+    pub(crate) fn new(body: Body, shared: Arc<SessionShared>, guard: OwnedMutexGuard<()>, cancel: Arc<PgCancelHandle>, timer: Option<StatementTimer>, rt: Handle) -> PgCursor {
         shared.cursor_open.store(true, Ordering::Release);
         let finished = matches!(body, Body::Empty);
-        let mut c = PgCursor {
-            body,
-            shared,
-            guard: Some(guard),
-            cancel,
-            rt,
-            timer,
-            pending_error: None,
-            finished: false,
-            in_rows: false,
-        };
+        let mut c = PgCursor { body, shared, guard: Some(guard), cancel, rt, timer, pending_error: None, finished: false, in_rows: false };
         if finished {
             c.complete();
         }
@@ -295,11 +276,7 @@ impl PgCursor {
             && let Some(t) = &self.timer
             && t.has_fired()
         {
-            let mut te = DbError::timeout(format!(
-                "The statement was cancelled because it exceeded the timeout of {:.1}s",
-                t.timeout.as_secs_f64()
-            ))
-            .with_code("57014");
+            let mut te = DbError::timeout(format!("The statement was cancelled because it exceeded the timeout of {:.1}s", t.timeout.as_secs_f64())).with_code("57014");
             te.detail = Some(err.message.clone());
             return te;
         }
@@ -454,17 +431,8 @@ impl PgCursor {
                     Some(Ok(SimpleQueryMessage::RowDescription(cols))) => {
                         let names: Vec<&str> = cols.iter().map(|c| c.name()).collect();
                         let plans = match b.prepared.take() {
-                            Some(p)
-                                if b.results_seen == 0
-                                    && p.len() == names.len()
-                                    && p.iter().zip(&names).all(|(a, n)| a.meta.name == *n) =>
-                            {
-                                p
-                            }
-                            _ => names
-                                .iter()
-                                .map(|n| ColumnPlan { meta: ColumnMeta::new(*n, "text", DataKind::Text), conv: Conv::Text })
-                                .collect(),
+                            Some(p) if b.results_seen == 0 && p.len() == names.len() && p.iter().zip(&names).all(|(a, n)| a.meta.name == *n) => p,
+                            _ => names.iter().map(|n| ColumnPlan { meta: ColumnMeta::new(*n, "text", DataKind::Text), conv: Conv::Text }).collect(),
                         };
                         b.results_seen += 1;
                         b.convs = plans.iter().map(|p| p.conv.clone()).collect();
@@ -490,10 +458,7 @@ impl PgCursor {
                     if !b.header_done {
                         b.header_done = true;
                         match &b.columns {
-                            Some(cols) => HeaderStep::Header(
-                                ResultHeader::Rows(cols.iter().map(|c| c.meta.clone()).collect()),
-                                true,
-                            ),
+                            Some(cols) => HeaderStep::Header(ResultHeader::Rows(cols.iter().map(|c| c.meta.clone()).collect()), true),
                             None => {
                                 // statement without rows: run it to completion
                                 let mut error = None;

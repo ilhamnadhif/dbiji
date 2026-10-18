@@ -45,24 +45,12 @@ pub struct DocumentView<'a> {
 
 impl<'a> DocumentView<'a> {
     /// New document view.
-    pub fn new(
-        model: &'a ResultModel,
-        grid: &'a DataGridState,
-        options: &'a GridOptions,
-        state: &'a mut DocumentViewState,
-        kind: DocumentKind,
-    ) -> Self {
+    pub fn new(model: &'a ResultModel, grid: &'a DataGridState, options: &'a GridOptions, state: &'a mut DocumentViewState, kind: DocumentKind) -> Self {
         DocumentView { model, grid, options, state, kind }
     }
 
     /// Render the document text (used by `show`, exposed for tests and exports).
-    pub fn render_text(
-        model: &ResultModel,
-        columns: &[usize],
-        rows: &[usize],
-        kind: DocumentKind,
-        options: &GridOptions,
-    ) -> String {
+    pub fn render_text(model: &ResultModel, columns: &[usize], rows: &[usize], kind: DocumentKind, options: &GridOptions) -> String {
         let cols: Vec<CopyColumn> = columns
             .iter()
             .map(|&c| CopyColumn {
@@ -73,14 +61,7 @@ impl<'a> DocumentView<'a> {
             })
             .collect();
         let values = model.values(rows, columns);
-        let data = CopyData {
-            columns: cols,
-            rows: rows
-                .iter()
-                .zip(values)
-                .map(|(&r, v)| CopyRow { number: r + 1, cells: v.into_iter().map(Some).collect() })
-                .collect(),
-        };
+        let data = CopyData { columns: cols, rows: rows.iter().zip(values).map(|(&r, v)| CopyRow { number: r + 1, cells: v.into_iter().map(Some).collect() }).collect() };
         let format = match kind {
             DocumentKind::Json => CopyFormat::Json,
             DocumentKind::Xml => CopyFormat::Xml,
@@ -93,20 +74,11 @@ impl<'a> DocumentView<'a> {
     pub fn show(self, ui: &mut Ui) {
         let DocumentView { model, grid, options, state, kind } = self;
         let columns = grid.visible_columns();
-        let rows: Vec<usize> = if state.selected_only {
-            grid.selected_rows(model.row_count(), MAX_DOCUMENT_ROWS + 1)
-        } else {
-            (0..model.row_count().min(MAX_DOCUMENT_ROWS + 1)).collect()
-        };
+        let rows: Vec<usize> =
+            if state.selected_only { grid.selected_rows(model.row_count(), MAX_DOCUMENT_ROWS + 1) } else { (0..model.row_count().min(MAX_DOCUMENT_ROWS + 1)).collect() };
         let truncated = rows.len() > MAX_DOCUMENT_ROWS;
         let rows: Vec<usize> = rows.into_iter().take(MAX_DOCUMENT_ROWS).collect();
-        let key = (
-            model.generation(),
-            kind,
-            state.selected_only,
-            columns.clone(),
-            if state.selected_only { rows.clone() } else { vec![rows.len()] },
-        );
+        let key = (model.generation(), kind, state.selected_only, columns.clone(), if state.selected_only { rows.clone() } else { vec![rows.len()] });
         if state.key.as_ref() != Some(&key) {
             let text = Self::render_text(model, &columns, &rows, kind, options);
             let lines: Vec<String> = text.lines().map(str::to_string).collect();
@@ -122,10 +94,7 @@ impl<'a> DocumentView<'a> {
             }
             ui.checkbox(&mut state.selected_only, tr("Selected rows only"));
             if state.truncated {
-                ui.weak(trf(
-                    "Showing the first {} rows",
-                    &[&crate::format::group_thousands(&MAX_DOCUMENT_ROWS.to_string())],
-                ));
+                ui.weak(trf("Showing the first {} rows", &[&crate::format::group_thousands(&MAX_DOCUMENT_ROWS.to_string())]));
             }
         });
         let salt = match kind {

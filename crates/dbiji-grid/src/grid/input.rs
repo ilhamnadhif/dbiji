@@ -24,12 +24,7 @@ impl GridFrame<'_> {
         let corner = ui.interact(self.geo.corner, id.with("corner"), Sense::click());
         self.focused = body.has_focus() || ui.memory(|m| m.has_focus(id));
         if self.focused {
-            ui.memory_mut(|m| {
-                m.set_focus_lock_filter(
-                    id,
-                    EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: true },
-                )
-            });
+            ui.memory_mut(|m| m.set_focus_lock_filter(id, EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: true }));
         }
         let any_hover = ui.rect_contains_pointer(self.geo.rect);
         self.hover_cell = None;
@@ -60,11 +55,7 @@ impl GridFrame<'_> {
                     Err(_) => String::new(),
                 },
             };
-            let tip = if tip.is_empty() {
-                tr("Select all").to_string()
-            } else {
-                format!("{tip}\n{}", tr("Click to select all"))
-            };
+            let tip = if tip.is_empty() { tr("Select all").to_string() } else { format!("{tip}\n{}", tr("Click to select all")) };
             corner.on_hover_text(tip);
         }
         if self.focused && self.state.rt.editing.is_none() && self.state.rt.dropdown.is_none() {
@@ -135,9 +126,7 @@ impl GridFrame<'_> {
                 self.state.rt.scroll_x = t * self.geo.max_scroll_x();
             }
         }
-        if !ui.input(|i| i.pointer.primary_down())
-            && matches!(self.state.rt.drag, Drag::VThumb { .. } | Drag::HThumb { .. })
-        {
+        if !ui.input(|i| i.pointer.primary_down()) && matches!(self.state.rt.drag, Drag::VThumb { .. } | Drag::HThumb { .. }) {
             self.state.rt.drag = Drag::None;
         }
     }
@@ -366,14 +355,9 @@ impl GridFrame<'_> {
 
     fn body_input(&mut self, ui: &mut Ui, body: &Response) {
         let (sx, sy) = (self.state.rt.scroll_x, self.state.rt.scroll_y);
-        let (pressed, secondary, mods) =
-            ui.input(|i| (i.pointer.primary_pressed(), i.pointer.secondary_pressed(), i.modifiers));
+        let (pressed, secondary, mods) = ui.input(|i| (i.pointer.primary_pressed(), i.pointer.secondary_pressed(), i.modifiers));
         // Clicks inside the open inline editor belong to the editor.
-        let in_editor = |p: egui::Pos2| {
-            self.state.rt.editing.as_ref().is_some_and(|e| {
-                self.pos_of(e.col).is_some_and(|pos| self.geo.cell_rect(e.row, pos, sx, sy).contains(p))
-            })
-        };
+        let in_editor = |p: egui::Pos2| self.state.rt.editing.as_ref().is_some_and(|e| self.pos_of(e.col).is_some_and(|pos| self.geo.cell_rect(e.row, pos, sx, sy).contains(p)));
         if (pressed || secondary)
             && body.contains_pointer()
             && !matches!(self.state.rt.drag, Drag::VThumb { .. } | Drag::HThumb { .. })
@@ -481,9 +465,7 @@ impl GridFrame<'_> {
                             sel.move_by(page, 0, nrows, ncols, m.shift);
                             self.state.rt.scroll_y += self.geo.body.height() as f64;
                         }
-                        Key::Home if m.command => {
-                            sel.move_by(-(nrows as isize), -(ncols as isize), nrows, ncols, m.shift)
-                        }
+                        Key::Home if m.command => sel.move_by(-(nrows as isize), -(ncols as isize), nrows, ncols, m.shift),
                         Key::End if m.command => sel.move_by(nrows as isize, ncols as isize, nrows, ncols, m.shift),
                         Key::Home => sel.move_by(0, -(ncols as isize), nrows, ncols, m.shift),
                         Key::End => sel.move_by(0, ncols as isize, nrows, ncols, m.shift),
@@ -608,8 +590,7 @@ impl GridFrame<'_> {
             return;
         }
         if typed.is_none() && (self.model.dictionary(col).is_some() || self.model.enum_values(col).is_some()) {
-            self.state.rt.dropdown =
-                Some(super::state::Dropdown { row, col, search: String::new(), just_opened: true });
+            self.state.rt.dropdown = Some(super::state::Dropdown { row, col, search: String::new(), just_opened: true });
             return;
         }
         let text = value.to_text().into_owned();
@@ -618,15 +599,7 @@ impl GridFrame<'_> {
             return;
         }
         let is_typed = typed.is_some();
-        self.state.rt.editing = Some(EditSession {
-            row,
-            col,
-            text: typed.unwrap_or_else(|| text.clone()),
-            original: text,
-            error: None,
-            just_started: true,
-            typed: is_typed,
-        });
+        self.state.rt.editing = Some(EditSession { row, col, text: typed.unwrap_or_else(|| text.clone()), original: text, error: None, just_started: true, typed: is_typed });
         self.state.rt.scroll_to_active = true;
     }
 
@@ -747,10 +720,7 @@ impl GridFrame<'_> {
                     .geo
                     .cols
                     .iter()
-                    .position(|&c| {
-                        self.model.can_edit_cell(row, c).is_ok()
-                            && self.model.column_meta(c).is_some_and(|m| m.auto_increment != Some(true))
-                    })
+                    .position(|&c| self.model.can_edit_cell(row, c).is_ok() && self.model.column_meta(c).is_some_and(|m| m.auto_increment != Some(true)))
                     .unwrap_or(0);
                 self.state.rt.selection.select_cell(CellPos::new(row, col));
                 self.state.rt.scroll_to_active = true;

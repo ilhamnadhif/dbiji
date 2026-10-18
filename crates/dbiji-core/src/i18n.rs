@@ -143,24 +143,25 @@ pub fn format_placeholders(template: &str, args: &[&dyn Display]) -> String {
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'{'
-            && let Some(close) = template[i + 1..].find('}') {
-                let inner = &template[i + 1..i + 1 + close];
-                if inner.is_empty() {
-                    if let Some(a) = args.get(next) {
-                        out.push_str(&a.to_string());
-                    }
-                    next += 1;
-                    i += close + 2;
-                    continue;
+            && let Some(close) = template[i + 1..].find('}')
+        {
+            let inner = &template[i + 1..i + 1 + close];
+            if inner.is_empty() {
+                if let Some(a) = args.get(next) {
+                    out.push_str(&a.to_string());
                 }
-                if let Ok(n) = inner.parse::<usize>() {
-                    if let Some(a) = args.get(n) {
-                        out.push_str(&a.to_string());
-                    }
-                    i += close + 2;
-                    continue;
-                }
+                next += 1;
+                i += close + 2;
+                continue;
             }
+            if let Ok(n) = inner.parse::<usize>() {
+                if let Some(a) = args.get(n) {
+                    out.push_str(&a.to_string());
+                }
+                i += close + 2;
+                continue;
+            }
+        }
         let ch = template[i..].chars().next().expect("char boundary");
         out.push(ch);
         i += ch.len_utf8();
@@ -189,6 +190,6 @@ mod tests {
         let t = parse_table("# comment\nHello\tHalo\nLine\\nTwo\tBaris\\nDua\nEmpty\t\n");
         assert_eq!(t.get("Hello"), Some(&"Halo"));
         assert_eq!(t.get("Line\nTwo"), Some(&"Baris\nDua"));
-        assert!(t.get("Empty").is_none());
+        assert!(!t.contains_key("Empty"));
     }
 }

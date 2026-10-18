@@ -256,9 +256,7 @@ impl TaskDef {
         if let Some(s) = &self.schedule {
             s.validate().map_err(|e| DbError::config(e.to_string()))?;
         }
-        let need = |v: &str, what: &str| -> DbResult<()> {
-            if v.trim().is_empty() { Err(DbError::config(trf("The task needs a {}", &[&tr(what)]))) } else { Ok(()) }
-        };
+        let need = |v: &str, what: &str| -> DbResult<()> { if v.trim().is_empty() { Err(DbError::config(trf("The task needs a {}", &[&tr(what)]))) } else { Ok(()) } };
         match &self.kind {
             TaskKind::SqlScript { connection_id, sql, script_path, .. } => {
                 need(connection_id, "connection")?;
@@ -267,10 +265,9 @@ impl TaskDef {
                     return Err(DbError::config(tr("The SQL script task needs SQL text or a script file")));
                 }
             }
-            TaskKind::Export { connection_id, .. }
-            | TaskKind::Import { connection_id, .. }
-            | TaskKind::Backup { connection_id, .. }
-            | TaskKind::Restore { connection_id, .. } => need(connection_id, "connection")?,
+            TaskKind::Export { connection_id, .. } | TaskKind::Import { connection_id, .. } | TaskKind::Backup { connection_id, .. } | TaskKind::Restore { connection_id, .. } => {
+                need(connection_id, "connection")?
+            }
             TaskKind::Migration { source_connection_id, target_connection_id, .. } => {
                 need(source_connection_id, "source connection")?;
                 need(target_connection_id, "target connection")?;
@@ -489,10 +486,8 @@ mod tests {
         assert_eq!(back, t);
         assert_eq!(t.path(), "ops/nightly/Nightly");
         assert_eq!(t.timeout(), Some(Duration::from_secs(60)));
-        let minimal: TaskDef = serde_json::from_str(
-            r#"{"id":"x","name":"n","kind":{"type":"composite","steps":["a"]},"created":"2026-01-01T00:00:00Z","updated":"2026-01-01T00:00:00Z"}"#,
-        )
-        .unwrap();
+        let minimal: TaskDef =
+            serde_json::from_str(r#"{"id":"x","name":"n","kind":{"type":"composite","steps":["a"]},"created":"2026-01-01T00:00:00Z","updated":"2026-01-01T00:00:00Z"}"#).unwrap();
         assert!(minimal.enabled);
         assert!(matches!(minimal.kind, TaskKind::Composite { stop_on_error: true, parallel: false, .. }));
         assert_eq!(minimal.notify, NotifyOptions::default());
@@ -504,15 +499,8 @@ mod tests {
         assert!(t.validate().is_err());
         t.name = "x".into();
         assert!(t.validate().is_ok());
-        t.kind = TaskKind::SqlScript {
-            connection_id: "c".into(),
-            database: None,
-            schema: None,
-            sql: Some("  ".into()),
-            script_path: None,
-            stop_on_error: true,
-            commit_at_end: true,
-        };
+        t.kind =
+            TaskKind::SqlScript { connection_id: "c".into(), database: None, schema: None, sql: Some("  ".into()), script_path: None, stop_on_error: true, commit_at_end: true };
         assert!(t.validate().is_err());
         t.kind = TaskKind::Composite { steps: vec![t.id.clone()], stop_on_error: true, parallel: false };
         assert!(t.validate().is_err());

@@ -19,8 +19,7 @@ use dbiji_core::meta::ObjectRef;
 use dbiji_core::{DbError, DbKind, DbResult, Dialect, Session, tr, trf};
 use dbiji_tasks::{RunContext, RunOutcome};
 use dbiji_transfer::{
-    ExportItem, ExportJob, ExportJobSummary, ImportJob, MessageLevel, MigrationJob, Progress, SessionFactory,
-    run_export_job_with, run_import_job, run_migration,
+    ExportItem, ExportJob, ExportJobSummary, ImportJob, MessageLevel, MigrationJob, Progress, SessionFactory, run_export_job_with, run_import_job, run_migration,
 };
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -151,8 +150,7 @@ pub fn export_task_config(job: &ExportJob, extras: &ExportTaskExtras) -> DbResul
 
 /// Read an export task configuration.
 pub fn parse_export_config(config: &serde_json::Value) -> DbResult<(ExportJob, ExportTaskExtras)> {
-    let job: ExportJob = serde_json::from_value(config.clone())
-        .map_err(|e| DbError::config(trf("Invalid export task configuration: {}", &[&e])))?;
+    let job: ExportJob = serde_json::from_value(config.clone()).map_err(|e| DbError::config(trf("Invalid export task configuration: {}", &[&e])))?;
     let extras: ExportTaskExtras = serde_json::from_value(config.clone()).unwrap_or_default();
     Ok((job, extras))
 }
@@ -233,23 +231,17 @@ pub async fn export(exec: &AppTaskExecutor, ctx: &RunContext, connection_id: &st
     let total = job.items.len();
     ctx.info(trf("Exporting {} object(s) to {}", &[&total, &job.output_folder.display()]));
     let summary = drive(ctx, &progress, run_export_job_with(job, factory, sql_dialect, progress.clone(), ctx.cancel.clone())).await?;
-    let failed: Vec<String> =
-        summary.items.iter().filter_map(|i| i.error.as_ref().map(|e| format!("{}: {e}", i.name))).collect();
+    let failed: Vec<String> = summary.items.iter().filter_map(|i| i.error.as_ref().map(|e| format!("{}: {e}", i.name))).collect();
     let files = export_output_files(&summary);
     if !failed.is_empty() {
         return Err(DbError::query(trf("{} of {} object(s) failed: {}", &[&failed.len(), &total, &failed.join("; ")])));
     }
-    Ok(RunOutcome {
-        rows: Some(summary.rows),
-        message: Some(trf("{} rows exported to {} file(s)", &[&summary.rows, &files.len()])),
-        output_files: files,
-    })
+    Ok(RunOutcome { rows: Some(summary.rows), message: Some(trf("{} rows exported to {} file(s)", &[&summary.rows, &files.len()])), output_files: files })
 }
 
 /// Run a saved import (`TaskKind::Import`).
 pub async fn import(exec: &AppTaskExecutor, ctx: &RunContext, connection_id: &str, config: &serde_json::Value) -> DbResult<RunOutcome> {
-    let job: ImportJob = serde_json::from_value(config.clone())
-        .map_err(|e| DbError::config(trf("Invalid import task configuration: {}", &[&e])))?;
+    let job: ImportJob = serde_json::from_value(config.clone()).map_err(|e| DbError::config(trf("Invalid import task configuration: {}", &[&e])))?;
     if job.mapping.target.name.trim().is_empty() {
         return Err(DbError::config(tr("The import task has no target table")));
     }
@@ -282,17 +274,12 @@ pub async fn import(exec: &AppTaskExecutor, ctx: &RunContext, connection_id: &st
     for w in &summary.warnings {
         ctx.warn(w.clone());
     }
-    Ok(RunOutcome {
-        rows: Some(summary.rows_written),
-        output_files: Vec::new(),
-        message: Some(trf("{} rows imported, {} failed", &[&summary.rows_written, &summary.rows_failed])),
-    })
+    Ok(RunOutcome { rows: Some(summary.rows_written), output_files: Vec::new(), message: Some(trf("{} rows imported, {} failed", &[&summary.rows_written, &summary.rows_failed])) })
 }
 
 /// Run a saved migration (`TaskKind::Migration`).
 pub async fn migrate(exec: &AppTaskExecutor, ctx: &RunContext, source: &str, target: &str, config: &serde_json::Value) -> DbResult<RunOutcome> {
-    let job: MigrationJob = serde_json::from_value(config.clone())
-        .map_err(|e| DbError::config(trf("Invalid migration task configuration: {}", &[&e])))?;
+    let job: MigrationJob = serde_json::from_value(config.clone()).map_err(|e| DbError::config(trf("Invalid migration task configuration: {}", &[&e])))?;
     if job.tables.is_empty() {
         return Err(DbError::config(tr("The migration task has no tables")));
     }
@@ -347,11 +334,7 @@ mod tests {
 
     #[test]
     fn export_config_roundtrip_keeps_extras() {
-        let job = ExportJob {
-            items: vec![ExportItem::Query { sql: "select 1".into(), name: Some("one".into()) }],
-            format: ExportFormat::Sql,
-            ..Default::default()
-        };
+        let job = ExportJob { items: vec![ExportItem::Query { sql: "select 1".into(), name: Some("one".into()) }], format: ExportFormat::Sql, ..Default::default() };
         let extras = ExportTaskExtras { sql_dialect: Some(DbKind::MySql) };
         let value = export_task_config(&job, &extras).unwrap();
         let (back, back_extras) = parse_export_config(&value).unwrap();

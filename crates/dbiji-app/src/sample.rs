@@ -47,7 +47,11 @@ pub fn create(path: &Path) -> DbResult<()> {
         let l = LAST[next(LAST.len() as u64) as usize];
         let city = CITIES[next(CITIES.len() as u64) as usize];
         let email = if next(10) == 0 { "NULL".to_string() } else { format!("'{}.{}{}@example.com'", f.to_lowercase(), l.to_lowercase(), id) };
-        sql.push_str(&format!("INSERT INTO customer (id, name, email, city, created_at) VALUES ({id}, '{f} {l}', {email}, '{city}', '2026-{:02}-{:02} 10:00:00');\n", 1 + next(9), 1 + next(28)));
+        sql.push_str(&format!(
+            "INSERT INTO customer (id, name, email, city, created_at) VALUES ({id}, '{f} {l}', {email}, '{city}', '2026-{:02}-{:02} 10:00:00');\n",
+            1 + next(9),
+            1 + next(28)
+        ));
     }
     for id in 1..=60u64 {
         let cat = 1 + next(CATEGORIES.len() as u64);

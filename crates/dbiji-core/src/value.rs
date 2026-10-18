@@ -71,15 +71,7 @@ impl DataKind {
     }
 
     pub fn is_temporal(self) -> bool {
-        matches!(
-            self,
-            DataKind::Date
-                | DataKind::Time
-                | DataKind::TimeTz
-                | DataKind::DateTime
-                | DataKind::DateTimeTz
-                | DataKind::Interval
-        )
+        matches!(self, DataKind::Date | DataKind::Time | DataKind::TimeTz | DataKind::DateTime | DataKind::DateTimeTz | DataKind::Interval)
     }
 
     pub fn is_textual(self) -> bool {
@@ -98,46 +90,32 @@ impl DataKind {
         match base {
             "bool" | "boolean" | "bit" if t == "bit(1)" || base != "bit" => DataKind::Bool,
             "bit" | "varbit" => DataKind::Bit,
-            "tinyint" | "smallint" | "mediumint" | "int" | "integer" | "bigint" | "int2" | "int4"
-            | "int8" | "serial" | "bigserial" | "smallserial" | "serial4" | "serial8" | "oid"
-            | "year" | "hugeint" | "ubigint" | "uinteger" | "usmallint" | "utinyint" | "int16"
-            | "int32" | "int64" | "int128" | "int256" | "uint8" | "uint16" | "uint32" | "uint64"
-            | "int1" | "long" => DataKind::Int,
-            "real" | "float" | "float4" | "float8" | "double" | "float32" | "float64" => {
-                DataKind::Float
-            }
-            "numeric" | "decimal" | "money" | "smallmoney" | "number" | "dec" | "fixed" => {
-                DataKind::Decimal
-            }
+            "tinyint" | "smallint" | "mediumint" | "int" | "integer" | "bigint" | "int2" | "int4" | "int8" | "serial" | "bigserial" | "smallserial" | "serial4" | "serial8"
+            | "oid" | "year" | "hugeint" | "ubigint" | "uinteger" | "usmallint" | "utinyint" | "int16" | "int32" | "int64" | "int128" | "int256" | "uint8" | "uint16"
+            | "uint32" | "uint64" | "int1" | "long" => DataKind::Int,
+            "real" | "float" | "float4" | "float8" | "double" | "float32" | "float64" => DataKind::Float,
+            "numeric" | "decimal" | "money" | "smallmoney" | "number" | "dec" | "fixed" => DataKind::Decimal,
             "date" | "date32" => DataKind::Date,
             "time" if t.contains("with time zone") => DataKind::TimeTz,
             "time" | "time without time zone" => DataKind::Time,
             "timetz" => DataKind::TimeTz,
             "timestamp" if t.contains("with time zone") => DataKind::DateTimeTz,
             "timestamptz" | "datetimeoffset" => DataKind::DateTimeTz,
-            "timestamp" | "datetime" | "datetime2" | "smalldatetime" | "datetime64" => {
-                DataKind::DateTime
-            }
+            "timestamp" | "datetime" | "datetime2" | "smalldatetime" | "datetime64" => DataKind::DateTime,
             "interval" => DataKind::Interval,
             "uuid" | "uniqueidentifier" => DataKind::Uuid,
             "json" | "jsonb" => DataKind::Json,
             "xml" => DataKind::Xml,
-            "bytea" | "blob" | "tinyblob" | "mediumblob" | "longblob" | "binary" | "varbinary"
-            | "image" | "raw" | "bytes" => DataKind::Binary,
-            "geometry" | "geography" | "point" | "linestring" | "polygon" | "multipoint"
-            | "multilinestring" | "multipolygon" | "geometrycollection" | "box2d" | "box3d" => {
+            "bytea" | "blob" | "tinyblob" | "mediumblob" | "longblob" | "binary" | "varbinary" | "image" | "raw" | "bytes" => DataKind::Binary,
+            "geometry" | "geography" | "point" | "linestring" | "polygon" | "multipoint" | "multilinestring" | "multipolygon" | "geometrycollection" | "box2d" | "box3d" => {
                 DataKind::Geometry
             }
             "inet" | "cidr" | "macaddr" | "macaddr8" | "ipv4" | "ipv6" => DataKind::Network,
             "enum" | "set" => DataKind::Enum,
-            "int4range" | "int8range" | "numrange" | "tsrange" | "tstzrange" | "daterange"
-            | "int4multirange" | "int8multirange" | "nummultirange" | "tsmultirange"
+            "int4range" | "int8range" | "numrange" | "tsrange" | "tstzrange" | "daterange" | "int4multirange" | "int8multirange" | "nummultirange" | "tsmultirange"
             | "tstzmultirange" | "datemultirange" => DataKind::Range,
-            "char" | "character" | "varchar" | "nvarchar" | "nchar" | "text" | "tinytext"
-            | "mediumtext" | "longtext" | "ntext" | "string" | "citext" | "name" | "clob"
-            | "bpchar" | "character varying" | "fixedstring" | "lowcardinality" | "sysname" => {
-                DataKind::Text
-            }
+            "char" | "character" | "varchar" | "nvarchar" | "nchar" | "text" | "tinytext" | "mediumtext" | "longtext" | "ntext" | "string" | "citext" | "name" | "clob"
+            | "bpchar" | "character varying" | "fixedstring" | "lowcardinality" | "sysname" => DataKind::Text,
             _ => DataKind::Other,
         }
     }
@@ -173,12 +151,7 @@ pub struct ColumnMeta {
 
 impl ColumnMeta {
     pub fn new(name: impl Into<String>, type_name: impl Into<String>, kind: DataKind) -> Self {
-        ColumnMeta {
-            name: name.into(),
-            type_name: type_name.into(),
-            kind,
-            ..Default::default()
-        }
+        ColumnMeta { name: name.into(), type_name: type_name.into(), kind, ..Default::default() }
     }
 
     pub fn with_source(mut self, source: ColumnSource) -> Self {
@@ -269,11 +242,7 @@ fn group_number_text(s: &str) -> String {
         Some(i) => (&s[..i], &s[i..]),
         None => (s, ""),
     };
-    if int_part.trim_start_matches('-').chars().all(|c| c.is_ascii_digit()) {
-        format!("{}{}", group_thousands(int_part), rest)
-    } else {
-        s.to_string()
-    }
+    if int_part.trim_start_matches('-').chars().all(|c| c.is_ascii_digit()) { format!("{}{}", group_thousands(int_part), rest) } else { s.to_string() }
 }
 
 fn float_text(f: f64) -> String {
@@ -302,13 +271,9 @@ fn time_text(t: &NaiveTime, fractional: bool) -> String {
     if fractional && t.nanosecond() != 0 {
         let micros = t.nanosecond() / 1000;
         if t.nanosecond().is_multiple_of(1000) {
-            format!("{}.{:06}", t.format("%H:%M:%S"), micros)
-                .trim_end_matches('0')
-                .to_string()
+            format!("{}.{:06}", t.format("%H:%M:%S"), micros).trim_end_matches('0').to_string()
         } else {
-            format!("{}.{:09}", t.format("%H:%M:%S"), t.nanosecond())
-                .trim_end_matches('0')
-                .to_string()
+            format!("{}.{:09}", t.format("%H:%M:%S"), t.nanosecond()).trim_end_matches('0').to_string()
         }
     } else {
         t.format("%H:%M:%S").to_string()
@@ -320,11 +285,7 @@ fn offset_text(o: &FixedOffset) -> String {
     let sign = if secs < 0 { '-' } else { '+' };
     let secs = secs.abs();
     let (h, m) = (secs / 3600, (secs % 3600) / 60);
-    if m == 0 {
-        format!("{sign}{h:02}")
-    } else {
-        format!("{sign}{h:02}:{m:02}")
-    }
+    if m == 0 { format!("{sign}{h:02}") } else { format!("{sign}{h:02}:{m:02}") }
 }
 
 impl Value {
@@ -419,17 +380,10 @@ impl Value {
             Value::Bytes(b) => Cow::Owned(hex::encode(b)),
             Value::Date(d) => Cow::Owned(d.format("%Y-%m-%d").to_string()),
             Value::Time(t) => Cow::Owned(time_text(t, true)),
-            Value::DateTime(dt) => Cow::Owned(format!(
-                "{} {}",
-                dt.date().format("%Y-%m-%d"),
-                time_text(&dt.time(), true)
-            )),
-            Value::DateTimeTz(dt) => Cow::Owned(format!(
-                "{} {}{}",
-                dt.naive_local().date().format("%Y-%m-%d"),
-                time_text(&dt.naive_local().time(), true),
-                offset_text(dt.offset())
-            )),
+            Value::DateTime(dt) => Cow::Owned(format!("{} {}", dt.date().format("%Y-%m-%d"), time_text(&dt.time(), true))),
+            Value::DateTimeTz(dt) => {
+                Cow::Owned(format!("{} {}{}", dt.naive_local().date().format("%Y-%m-%d"), time_text(&dt.naive_local().time(), true), offset_text(dt.offset())))
+            }
             Value::Uuid(u) => Cow::Owned(u.hyphenated().to_string()),
             Value::Array(items) => {
                 let parts: Vec<String> = items
@@ -437,10 +391,7 @@ impl Value {
                     .map(|v| match v {
                         Value::Null => "NULL".to_string(),
                         Value::Text(s) => {
-                            if s.is_empty()
-                                || s.contains([',', '{', '}', '"', '\\', ' '])
-                                || s.eq_ignore_ascii_case("null")
-                            {
+                            if s.is_empty() || s.contains([',', '{', '}', '"', '\\', ' ']) || s.eq_ignore_ascii_case("null") {
                                 format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
                             } else {
                                 s.to_string()
@@ -475,18 +426,18 @@ impl Value {
                 let s = match opts.float_max_decimals {
                     Some(d) if f.is_finite() => {
                         let s = format!("{f:.d$}");
-                        if s.contains('.') {
-                            s.trim_end_matches('0').trim_end_matches('.').to_string()
-                        } else {
-                            s
-                        }
+                        if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.').to_string() } else { s }
                     }
                     _ => float_text(*f),
                 };
                 if opts.thousands_separator { Cow::Owned(group_number_text(&s)) } else { Cow::Owned(s) }
             }
             Value::Decimal(s) => {
-                if opts.thousands_separator { Cow::Owned(group_number_text(s)) } else { Cow::Borrowed(s) }
+                if opts.thousands_separator {
+                    Cow::Owned(group_number_text(s))
+                } else {
+                    Cow::Borrowed(s)
+                }
             }
             Value::Text(s) | Value::Json(s) => {
                 let first_line_end = s.find('\n');
@@ -506,15 +457,9 @@ impl Value {
                     BinaryFormat::Hex => Cow::Owned(format!("0x{}{}", hex::encode_upper(shown), more)),
                     BinaryFormat::Base64 => {
                         use base64::Engine;
-                        Cow::Owned(format!(
-                            "{}{}",
-                            base64::engine::general_purpose::STANDARD.encode(shown),
-                            more
-                        ))
+                        Cow::Owned(format!("{}{}", base64::engine::general_purpose::STANDARD.encode(shown), more))
                     }
-                    BinaryFormat::Text => {
-                        Cow::Owned(format!("{}{}", String::from_utf8_lossy(shown), more))
-                    }
+                    BinaryFormat::Text => Cow::Owned(format!("{}{}", String::from_utf8_lossy(shown), more)),
                 }
             }
             Value::Date(d) => Cow::Owned(d.format(&opts.date_format).to_string()),
@@ -527,11 +472,7 @@ impl Value {
             }
             Value::DateTime(dt) => {
                 if opts.show_fractional_seconds && opts.datetime_format == "%Y-%m-%d %H:%M:%S" {
-                    Cow::Owned(format!(
-                        "{} {}",
-                        dt.date().format("%Y-%m-%d"),
-                        time_text(&dt.time(), true)
-                    ))
+                    Cow::Owned(format!("{} {}", dt.date().format("%Y-%m-%d"), time_text(&dt.time(), true)))
                 } else {
                     Cow::Owned(dt.format(&opts.datetime_format).to_string())
                 }
@@ -540,11 +481,7 @@ impl Value {
                 if opts.show_fractional_seconds && opts.datetime_format == "%Y-%m-%d %H:%M:%S" {
                     Cow::Owned(self.to_text().into_owned())
                 } else {
-                    Cow::Owned(format!(
-                        "{}{}",
-                        dt.naive_local().format(&opts.datetime_format),
-                        offset_text(dt.offset())
-                    ))
+                    Cow::Owned(format!("{}{}", dt.naive_local().format(&opts.datetime_format), offset_text(dt.offset())))
                 }
             }
             Value::Uuid(_) | Value::Array(_) => {
@@ -562,9 +499,7 @@ impl Value {
             return Ok(Value::Null);
         }
         match kind {
-            DataKind::Bool => parse_bool(t)
-                .map(Value::Bool)
-                .ok_or_else(|| format!("'{t}' is not a boolean")),
+            DataKind::Bool => parse_bool(t).map(Value::Bool).ok_or_else(|| format!("'{t}' is not a boolean")),
             DataKind::Int => {
                 if let Ok(i) = t.parse::<i64>() {
                     Ok(Value::Int(i))
@@ -578,10 +513,7 @@ impl Value {
                 "NaN" | "nan" => Ok(Value::Float(f64::NAN)),
                 "Infinity" | "inf" => Ok(Value::Float(f64::INFINITY)),
                 "-Infinity" | "-inf" => Ok(Value::Float(f64::NEG_INFINITY)),
-                _ => t
-                    .parse::<f64>()
-                    .map(Value::Float)
-                    .map_err(|_| format!("'{t}' is not a number")),
+                _ => t.parse::<f64>().map(Value::Float).map_err(|_| format!("'{t}' is not a number")),
             },
             DataKind::Decimal => {
                 if is_decimal_text(t) {
@@ -590,27 +522,13 @@ impl Value {
                     Err(format!("'{t}' is not a decimal number"))
                 }
             }
-            DataKind::Date => parse_date(t)
-                .map(Value::Date)
-                .ok_or_else(|| format!("'{t}' is not a date (expected YYYY-MM-DD)")),
-            DataKind::Time => parse_time(t)
-                .map(Value::Time)
-                .ok_or_else(|| format!("'{t}' is not a time (expected HH:MM:SS)")),
-            DataKind::DateTime => parse_datetime(t)
-                .map(Value::DateTime)
-                .ok_or_else(|| format!("'{t}' is not a timestamp (expected YYYY-MM-DD HH:MM:SS)")),
-            DataKind::DateTimeTz => parse_datetime_tz(t)
-                .map(Value::DateTimeTz)
-                .ok_or_else(|| format!("'{t}' is not a timestamp with time zone")),
-            DataKind::Uuid => Uuid::parse_str(t)
-                .map(Value::Uuid)
-                .map_err(|_| format!("'{t}' is not a UUID")),
-            DataKind::Json => serde_json::from_str::<serde_json::Value>(t)
-                .map(|_| Value::json(t))
-                .map_err(|e| format!("Invalid JSON: {e}")),
-            DataKind::Binary => parse_hex_bytes(t)
-                .map(Value::bytes)
-                .ok_or_else(|| "Binary values must be hexadecimal (optionally prefixed with 0x or \\x)".to_string()),
+            DataKind::Date => parse_date(t).map(Value::Date).ok_or_else(|| format!("'{t}' is not a date (expected YYYY-MM-DD)")),
+            DataKind::Time => parse_time(t).map(Value::Time).ok_or_else(|| format!("'{t}' is not a time (expected HH:MM:SS)")),
+            DataKind::DateTime => parse_datetime(t).map(Value::DateTime).ok_or_else(|| format!("'{t}' is not a timestamp (expected YYYY-MM-DD HH:MM:SS)")),
+            DataKind::DateTimeTz => parse_datetime_tz(t).map(Value::DateTimeTz).ok_or_else(|| format!("'{t}' is not a timestamp with time zone")),
+            DataKind::Uuid => Uuid::parse_str(t).map(Value::Uuid).map_err(|_| format!("'{t}' is not a UUID")),
+            DataKind::Json => serde_json::from_str::<serde_json::Value>(t).map(|_| Value::json(t)).map_err(|e| format!("Invalid JSON: {e}")),
+            DataKind::Binary => parse_hex_bytes(t).map(Value::bytes).ok_or_else(|| "Binary values must be hexadecimal (optionally prefixed with 0x or \\x)".to_string()),
             _ => Ok(Value::text(input)),
         }
     }
@@ -669,10 +587,7 @@ impl Value {
         match self {
             Value::Decimal(s) | Value::Text(s) | Value::Json(s) => s.len(),
             Value::Bytes(b) => b.len(),
-            Value::Array(items) => {
-                items.len() * std::mem::size_of::<Value>()
-                    + items.iter().map(Value::heap_size).sum::<usize>()
-            }
+            Value::Array(items) => items.len() * std::mem::size_of::<Value>() + items.iter().map(Value::heap_size).sum::<usize>(),
             _ => 0,
         }
     }
@@ -685,16 +600,12 @@ impl Value {
             Value::Bool(b) => J::Bool(*b),
             Value::Int(i) => J::from(*i),
             Value::UInt(u) => J::from(*u),
-            Value::Float(f) => serde_json::Number::from_f64(*f)
-                .map(J::Number)
-                .unwrap_or_else(|| J::String(float_text(*f))),
+            Value::Float(f) => serde_json::Number::from_f64(*f).map(J::Number).unwrap_or_else(|| J::String(float_text(*f))),
             Value::Decimal(s) => match s.parse::<serde_json::Number>() {
                 Ok(n) => J::Number(n),
                 Err(_) => J::String(s.to_string()),
             },
-            Value::Json(s) => {
-                serde_json::from_str(s).unwrap_or_else(|_| J::String(s.to_string()))
-            }
+            Value::Json(s) => serde_json::from_str(s).unwrap_or_else(|_| J::String(s.to_string())),
             Value::Array(items) => J::Array(items.iter().map(Value::to_json).collect()),
             Value::Bytes(b) => {
                 use base64::Engine;
@@ -920,14 +831,7 @@ pub fn parse_time(t: &str) -> Option<NaiveTime> {
 }
 
 pub fn parse_datetime(t: &str) -> Option<NaiveDateTime> {
-    for f in [
-        "%Y-%m-%d %H:%M:%S%.f",
-        "%Y-%m-%dT%H:%M:%S%.f",
-        "%Y-%m-%d %H:%M",
-        "%Y-%m-%dT%H:%M",
-        "%Y/%m/%d %H:%M:%S%.f",
-        "%d.%m.%Y %H:%M:%S",
-    ] {
+    for f in ["%Y-%m-%d %H:%M:%S%.f", "%Y-%m-%dT%H:%M:%S%.f", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M", "%Y/%m/%d %H:%M:%S%.f", "%d.%m.%Y %H:%M:%S"] {
         if let Ok(v) = NaiveDateTime::parse_from_str(t, f) {
             return Some(v);
         }
@@ -939,13 +843,7 @@ pub fn parse_datetime_tz(t: &str) -> Option<DateTime<FixedOffset>> {
     if let Ok(v) = DateTime::parse_from_rfc3339(t) {
         return Some(v);
     }
-    for f in [
-        "%Y-%m-%d %H:%M:%S%.f%:z",
-        "%Y-%m-%d %H:%M:%S%.f%z",
-        "%Y-%m-%d %H:%M:%S%.f%#z",
-        "%Y-%m-%dT%H:%M:%S%.f%#z",
-        "%Y-%m-%d %H:%M:%S%#z",
-    ] {
+    for f in ["%Y-%m-%d %H:%M:%S%.f%:z", "%Y-%m-%d %H:%M:%S%.f%z", "%Y-%m-%d %H:%M:%S%.f%#z", "%Y-%m-%dT%H:%M:%S%.f%#z", "%Y-%m-%d %H:%M:%S%#z"] {
         if let Ok(v) = DateTime::parse_from_str(t, f) {
             return Some(v);
         }
@@ -957,12 +855,8 @@ pub fn parse_datetime_tz(t: &str) -> Option<DateTime<FixedOffset>> {
 }
 
 pub fn parse_hex_bytes(t: &str) -> Option<Vec<u8>> {
-    let h = t
-        .strip_prefix("0x")
-        .or_else(|| t.strip_prefix("0X"))
-        .or_else(|| t.strip_prefix("\\x"))
-        .or_else(|| t.strip_prefix("X'").and_then(|s| s.strip_suffix('\'')))
-        .unwrap_or(t);
+    let h =
+        t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")).or_else(|| t.strip_prefix("\\x")).or_else(|| t.strip_prefix("X'").and_then(|s| s.strip_suffix('\''))).unwrap_or(t);
     let h: String = h.chars().filter(|c| !c.is_whitespace()).collect();
     hex::decode(h).ok()
 }

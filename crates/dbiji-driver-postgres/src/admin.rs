@@ -59,9 +59,7 @@ impl PgSession {
             let quoted = crate::catalog::quote_literal(id);
             let sql = match mode {
                 KillMode::Terminate => format!("CANCEL SESSION {quoted}"),
-                KillMode::CancelQuery => format!(
-                    "CANCEL QUERIES (SELECT query_id FROM [SHOW CLUSTER QUERIES] WHERE session_id = {quoted})"
-                ),
+                KillMode::CancelQuery => format!("CANCEL QUERIES (SELECT query_id FROM [SHOW CLUSTER QUERIES] WHERE session_id = {quoted})"),
             };
             return self.batch(&sql).await;
         }
@@ -73,9 +71,7 @@ impl PgSession {
         let row = self.q1(&format!("SELECT {func}"), &[P::Int4(pid)]).await?;
         match row {
             Some(r) if r.b(0)? => Ok(()),
-            _ => Err(DbError::query(format!(
-                "Session {pid} was not signalled (it no longer exists or you lack the privilege)"
-            ))),
+            _ => Err(DbError::query(format!("Session {pid} was not signalled (it no longer exists or you lack the privilege)"))),
         }
     }
 
@@ -90,12 +86,7 @@ impl PgSession {
                 &[],
             )
             .await?;
-            return Ok(LockList {
-                session_column: data.column_index("session_id").unwrap_or(0),
-                blocked_by_column: None,
-                granted_column: data.column_index("granted"),
-                data,
-            });
+            return Ok(LockList { session_column: data.column_index("session_id").unwrap_or(0), blocked_by_column: None, granted_column: data.column_index("granted"), data });
         }
         let sql = if self.pg_major() >= 14 { LOCKS_SQL.to_string() } else { LOCKS_SQL.replace("l.waitstart, ", "") };
         let data = catalog::query_tabular(client, &sql, &[]).await?;

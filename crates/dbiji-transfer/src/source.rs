@@ -115,14 +115,7 @@ impl CursorSource {
         loop {
             match cursor.next_result().await {
                 Ok(Some(ResultHeader::Rows(columns))) => {
-                    return Ok(CursorSource {
-                        cursor: Some(cursor),
-                        columns,
-                        table: None,
-                        total: None,
-                        done: false,
-                        warnings: Vec::new(),
-                    });
+                    return Ok(CursorSource { cursor: Some(cursor), columns, table: None, total: None, done: false, warnings: Vec::new() });
                 }
                 Ok(Some(ResultHeader::Update { .. })) => continue,
                 Ok(None) => {
@@ -397,10 +390,7 @@ mod tests {
     async fn cursor_source_skips_updates() {
         use dbiji_core::driver::MaterializedResult;
         let cursor = MemoryCursor::new(vec![
-            MaterializedResult {
-                header: ResultHeader::Update { rows_affected: Some(1), last_insert_id: None, tag: None },
-                rows: vec![],
-            },
+            MaterializedResult { header: ResultHeader::Update { rows_affected: Some(1), last_insert_id: None, tag: None }, rows: vec![] },
             MaterializedResult { header: ResultHeader::Rows(cols()), rows: rows(3) },
         ]);
         let mut s = CursorSource::new(Box::new(cursor)).await.unwrap();

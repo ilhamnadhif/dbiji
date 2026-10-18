@@ -95,24 +95,10 @@ pub struct Metric {
 
 impl Metric {
     pub fn gauge(group: &str, key: &str, label: &str, value: f64, unit: &str) -> Self {
-        Metric {
-            key: key.into(),
-            label: label.into(),
-            value,
-            kind: MetricKind::Gauge,
-            unit: unit.into(),
-            group: group.into(),
-        }
+        Metric { key: key.into(), label: label.into(), value, kind: MetricKind::Gauge, unit: unit.into(), group: group.into() }
     }
     pub fn counter(group: &str, key: &str, label: &str, value: f64, unit: &str) -> Self {
-        Metric {
-            key: key.into(),
-            label: label.into(),
-            value,
-            kind: MetricKind::Counter,
-            unit: unit.into(),
-            group: group.into(),
-        }
+        Metric { key: key.into(), label: label.into(), value, kind: MetricKind::Counter, unit: unit.into(), group: group.into() }
     }
 }
 

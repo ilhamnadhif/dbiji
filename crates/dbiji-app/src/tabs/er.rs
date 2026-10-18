@@ -35,18 +35,7 @@ impl ErTab {
             [t] => t.clone(),
             _ => format!("{} (+{})", tables[0], tables.len() - 1),
         };
-        ErTab {
-            conn,
-            schema,
-            tables,
-            diagram: None,
-            state: ErViewState::default(),
-            saved_name: None,
-            name_edit: name,
-            dirty: false,
-            snapshot: None,
-            refresh_pending: false,
-        }
+        ErTab { conn, schema, tables, diagram: None, state: ErViewState::default(), saved_name: None, name_edit: name, dirty: false, snapshot: None, refresh_pending: false }
     }
 
     /// Open a diagram saved in the project.
@@ -317,10 +306,11 @@ impl TabView for ErTab {
                 self.refresh_pending = true;
             }
             if ui.button(format!("{} {}", icon::TREE_STRUCTURE, tr("Layout"))).clicked()
-                && let Some(d) = self.diagram.as_mut() {
-                    d.relayout();
-                    self.dirty = true;
-                }
+                && let Some(d) = self.diagram.as_mut()
+            {
+                d.relayout();
+                self.dirty = true;
+            }
             if ui.button(format!("{} {}", icon::EXPORT, tr("Export…"))).clicked() {
                 self.export(cx);
             }

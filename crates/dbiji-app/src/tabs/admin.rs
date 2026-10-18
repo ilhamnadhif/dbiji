@@ -157,14 +157,15 @@ impl TabView for SessionManagerTab {
         let Some(session) = self.admin.get(ui, cx, &conn, "sessions") else { return };
         self.data.poll();
         if let Some(j) = self.kill_job.as_mut()
-            && let Some(r) = j.poll() {
-                self.kill_job = None;
-                match r {
-                    Ok(()) => cx.toasts.success(tr("Done")),
-                    Err(e) => cx.toasts.error(tr("Cannot end the session"), Some(e.full_text())),
-                }
-                self.refresh.last = None;
+            && let Some(r) = j.poll()
+        {
+            self.kill_job = None;
+            match r {
+                Ok(()) => cx.toasts.success(tr("Done")),
+                Err(e) => cx.toasts.error(tr("Cannot end the session"), Some(e.full_text())),
             }
+            self.refresh.last = None;
+        }
         ui.horizontal(|ui| {
             let now = self.refresh.ui(ui);
             if now && !self.data.is_loading() {
@@ -216,12 +217,13 @@ impl TabView for SessionManagerTab {
                 self.selected = index.get(i).copied();
             }
             if let Some(i) = r.double_clicked
-                && let (Some(q), Some(row)) = (list.query_column, index.get(i).and_then(|i| list.data.rows.get(*i))) {
-                    let sql = row.get(q).map(|v| v.to_text().into_owned()).unwrap_or_default();
-                    if !sql.trim().is_empty() {
-                        cx.push(AppCommand::NewSqlEditor { connection: Some(self.conn.clone()), schema: None, text: Some(sql) });
-                    }
+                && let (Some(q), Some(row)) = (list.query_column, index.get(i).and_then(|i| list.data.rows.get(*i)))
+            {
+                let sql = row.get(q).map(|v| v.to_text().into_owned()).unwrap_or_default();
+                if !sql.trim().is_empty() {
+                    cx.push(AppCommand::NewSqlEditor { connection: Some(self.conn.clone()), schema: None, text: Some(sql) });
                 }
+            }
         }
         if retry {
             self.refresh.last = None;
@@ -372,16 +374,17 @@ impl TabView for DashboardTab {
         let conn = self.conn.clone();
         let Some(session) = self.admin.get(ui, cx, &conn, "dashboard") else { return };
         if let Some(j) = self.job.as_mut()
-            && let Some(r) = j.poll() {
-                self.job = None;
-                match r {
-                    Ok(m) => {
-                        self.state.push(self.started.elapsed().as_secs_f64(), &m);
-                        self.error = None;
-                    }
-                    Err(e) => self.error = Some(e.full_text()),
+            && let Some(r) = j.poll()
+        {
+            self.job = None;
+            match r {
+                Ok(m) => {
+                    self.state.push(self.started.elapsed().as_secs_f64(), &m);
+                    self.error = None;
                 }
+                Err(e) => self.error = Some(e.full_text()),
             }
+        }
         let due = self.last.is_none_or(|t| t.elapsed() >= self.interval);
         if due && self.job.is_none() && !self.paused && ui.is_visible() {
             self.last = Some(Instant::now());

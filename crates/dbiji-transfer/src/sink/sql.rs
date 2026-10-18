@@ -111,14 +111,7 @@ impl SqlSink {
                 let mut t = TableDef::default();
                 for (i, c) in self.columns.iter().enumerate() {
                     let data_type = column_type(c, self.dialect.as_ref(), self.opts.source_kind, self.same_product());
-                    t.columns.push(ColumnDef {
-                        name: c.name.clone(),
-                        data_type,
-                        kind: c.kind,
-                        nullable: c.nullable.unwrap_or(true),
-                        ordinal: i as u32 + 1,
-                        ..Default::default()
-                    });
+                    t.columns.push(ColumnDef { name: c.name.clone(), data_type, kind: c.kind, nullable: c.nullable.unwrap_or(true), ordinal: i as u32 + 1, ..Default::default() });
                 }
                 t
             }
@@ -175,8 +168,7 @@ impl RowSink for SqlSink {
             _ => match &source {
                 Some((_, n)) => n.clone(),
                 None => {
-                    self.warnings
-                        .push("The result has no single source table; statements target 'query_result'".into());
+                    self.warnings.push("The result has no single source table; statements target 'query_result'".into());
                     "query_result".to_string()
                 }
             },
@@ -217,20 +209,14 @@ impl RowSink for SqlSink {
                     self.key_index = idx;
                     self.quoted_keys = keys.iter().map(|k| self.quote(k)).collect();
                     let probe: Vec<String> = (1..=columns.len()).map(|i| self.dialect.placeholder(i)).collect();
-                    self.upsert_native =
-                        self.dialect.upsert(&self.table_sql, &self.quoted_columns, &self.quoted_keys, &probe).is_some();
+                    self.upsert_native = self.dialect.upsert(&self.table_sql, &self.quoted_columns, &self.quoted_keys, &probe).is_some();
                     if !self.upsert_native {
-                        self.warnings.push(format!(
-                            "{} has no upsert statement; DELETE + INSERT pairs are written instead",
-                            self.dialect.kind().display_name()
-                        ));
+                        self.warnings.push(format!("{} has no upsert statement; DELETE + INSERT pairs are written instead", self.dialect.kind().display_name()));
                     }
                     self.upsert = true;
                 }
                 _ => {
-                    self.warnings.push(
-                        "Upsert needs key columns present in the result; plain INSERT statements are written".into(),
-                    );
+                    self.warnings.push("Upsert needs key columns present in the result; plain INSERT statements are written".into());
                 }
             }
         }
@@ -242,9 +228,7 @@ impl RowSink for SqlSink {
         if self.upsert {
             let mut text = String::new();
             if self.upsert_native {
-                if let Some(sql) =
-                    self.dialect.upsert(&self.table_sql, &self.quoted_columns, &self.quoted_keys, &self.literals)
-                {
+                if let Some(sql) = self.dialect.upsert(&self.table_sql, &self.quoted_columns, &self.quoted_keys, &self.literals) {
                     text.push_str(&sql);
                     text.push_str(&self.opts.terminator);
                     text.push('\n');
@@ -259,18 +243,8 @@ impl RowSink for SqlSink {
                         _ => format!("{k} = {}", self.literals[i]),
                     })
                     .collect();
-                text.push_str(&format!(
-                    "DELETE FROM {} WHERE {}{}\n",
-                    self.table_sql,
-                    cond.join(" AND "),
-                    self.opts.terminator
-                ));
-                text.push_str(&format!(
-                    "{} ({}){}\n",
-                    self.insert_prefix,
-                    self.literals.join(", "),
-                    self.opts.terminator
-                ));
+                text.push_str(&format!("DELETE FROM {} WHERE {}{}\n", self.table_sql, cond.join(" AND "), self.opts.terminator));
+                text.push_str(&format!("{} ({}){}\n", self.insert_prefix, self.literals.join(", "), self.opts.terminator));
             }
             self.out.write_str(&text)?;
         } else {

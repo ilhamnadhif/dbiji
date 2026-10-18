@@ -5,9 +5,7 @@ use crate::command::AppCommand;
 use crate::cx::AppContext;
 use crate::keys::{Action, IS_MAC, Keymap, Shortcut};
 use crate::tabs::TabView;
-use dbiji_config::settings::{
-    AiEffort, AiProvider, BlankLineDelimiter, KeywordCase, NavigatorSort, ResultsLayout, SecretBackend, SortFilterMode, Theme,
-};
+use dbiji_config::settings::{AiEffort, AiProvider, BlankLineDelimiter, KeywordCase, NavigatorSort, ResultsLayout, SecretBackend, SortFilterMode, Theme};
 use dbiji_config::{KeymapPreset, SecretsManager};
 use dbiji_core::config::{ConnectionType, NavigatorView};
 use dbiji_core::i18n::Locale;
@@ -209,7 +207,12 @@ impl SettingsTab {
             c |= row(ui, tr("Tab size"), |ui| num(ui, &mut e.tab_size, 1..=16, ""));
             c |= row(ui, tr("Statement delimiter"), |ui| ui.add(egui::TextEdit::singleline(&mut e.statement_delimiter).desired_width(60.0)).changed());
             c |= row(ui, tr("Blank line ends a statement"), |ui| {
-                combo(ui, "set_blank", &mut e.blank_line_delimiter, &[(BlankLineDelimiter::Never, tr("Never")), (BlankLineDelimiter::Smart, tr("Smart")), (BlankLineDelimiter::Always, tr("Always"))])
+                combo(
+                    ui,
+                    "set_blank",
+                    &mut e.blank_line_delimiter,
+                    &[(BlankLineDelimiter::Never, tr("Never")), (BlankLineDelimiter::Smart, tr("Smart")), (BlankLineDelimiter::Always, tr("Always"))],
+                )
             });
             c |= row(ui, tr("Auto-save interval"), |ui| num(ui, &mut e.auto_save_interval_secs, 0..=3600, " s"));
             for (v, l) in [
@@ -282,7 +285,9 @@ impl SettingsTab {
         let mut c = grid(ui, "set_results", |ui| {
             let mut c = false;
             c |= row(ui, tr("Rows fetched per page"), |ui| num(ui, &mut r.fetch_size, 10..=100_000, ""));
-            c |= row(ui, tr("Results position"), |ui| combo(ui, "set_layout", &mut r.layout, &[(ResultsLayout::Bottom, tr("Below the editor")), (ResultsLayout::Right, tr("Right of the editor"))]));
+            c |= row(ui, tr("Results position"), |ui| {
+                combo(ui, "set_layout", &mut r.layout, &[(ResultsLayout::Bottom, tr("Below the editor")), (ResultsLayout::Right, tr("Right of the editor"))])
+            });
             c |= row(ui, tr("Sorting and filtering"), |ui| {
                 combo(ui, "set_sortmode", &mut r.sort_filter_mode, &[(SortFilterMode::Server, tr("On the server (re-query)")), (SortFilterMode::Client, tr("On fetched rows"))])
             });
@@ -360,12 +365,13 @@ impl SettingsTab {
         });
         ui.add_space(8.0);
         if let Some(store) = cx.services.history.clone()
-            && ui.button(format!("{} {}", icon::TRASH, tr("Clear the whole history"))).clicked() {
-                match store.lock().clear(None) {
-                    Ok(n) => cx.toasts.success(trf("Deleted {} history entries", &[&n])),
-                    Err(e) => cx.toasts.error(tr("Cannot clear the history"), Some(e.to_string())),
-                }
+            && ui.button(format!("{} {}", icon::TRASH, tr("Clear the whole history"))).clicked()
+        {
+            match store.lock().clear(None) {
+                Ok(n) => cx.toasts.success(trf("Deleted {} history entries", &[&n])),
+                Err(e) => cx.toasts.error(tr("Cannot clear the history"), Some(e.to_string())),
             }
+        }
         c
     }
 
@@ -373,7 +379,9 @@ impl SettingsTab {
         let n = &mut cx.settings.navigator;
         grid(ui, "set_nav", |ui| {
             let mut c = false;
-            c |= row(ui, tr("Order"), |ui| combo(ui, "set_navsort", &mut n.sort, &[(NavigatorSort::Alphabetical, tr("Alphabetical")), (NavigatorSort::Natural, tr("As reported by the database"))]));
+            c |= row(ui, tr("Order"), |ui| {
+                combo(ui, "set_navsort", &mut n.sort, &[(NavigatorSort::Alphabetical, tr("Alphabetical")), (NavigatorSort::Natural, tr("As reported by the database"))])
+            });
             c |= row(ui, tr("Default view of new connections"), |ui| {
                 combo(ui, "set_navview", &mut n.default_view, &[(NavigatorView::Simple, tr("Simple")), (NavigatorView::Advanced, tr("Advanced"))])
             });
@@ -483,7 +491,8 @@ impl SettingsTab {
         let mut remove: Option<usize> = None;
         egui::Grid::new("set_toolbar").num_columns(3).striped(true).show(ui, |ui| {
             for (i, id) in t.items.iter().enumerate() {
-                let label = if id == "|" { tr("Separator").to_string() } else { Action::from_id(id).map(|a| crate::keys::action_label(a).to_string()).unwrap_or_else(|| id.clone()) };
+                let label =
+                    if id == "|" { tr("Separator").to_string() } else { Action::from_id(id).map(|a| crate::keys::action_label(a).to_string()).unwrap_or_else(|| id.clone()) };
                 let mut visible = !t.hidden.contains(id);
                 if ui.checkbox(&mut visible, label).changed() {
                     if visible {
@@ -622,7 +631,12 @@ impl SettingsTab {
                     }
                 }
                 if ui.button(format!("{} {}", icon::PLUS, tr("New profile"))).clicked() {
-                    self.profile = Some(NetworkProfile { id: uuid::Uuid::new_v4().to_string(), name: tr("New profile").to_string(), ssh: Some(SshConfig { enabled: true, ..Default::default() }), proxy: None });
+                    self.profile = Some(NetworkProfile {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        name: tr("New profile").to_string(),
+                        ssh: Some(SshConfig { enabled: true, ..Default::default() }),
+                        proxy: None,
+                    });
                 }
             });
             ui.separator();
@@ -656,7 +670,13 @@ impl SettingsTab {
                         ];
                         for (slot, value, save) in pairs {
                             let key = dbiji_config::profile_secret_key(&id, slot);
-                            let r = if save && !value.is_empty() { cx.conns.secrets.set(&key, &Secret::new(value.clone())) } else if !save { cx.conns.secrets.delete(&key) } else { Ok(()) };
+                            let r = if save && !value.is_empty() {
+                                cx.conns.secrets.set(&key, &Secret::new(value.clone()))
+                            } else if !save {
+                                cx.conns.secrets.delete(&key)
+                            } else {
+                                Ok(())
+                            };
                             if let Err(e) = r {
                                 cx.toasts.error(tr("Cannot store the password securely"), Some(e.to_string()));
                             }
@@ -699,7 +719,9 @@ impl SettingsTab {
             let mut c = false;
             ui.label("");
             c |= check(ui, &mut a.enabled, tr("Enable the AI assistant"));
-            c |= row(ui, tr("Provider"), |ui| combo(ui, "set_ai_prov", &mut a.provider, &[(AiProvider::Anthropic, "Anthropic Claude"), (AiProvider::OpenAiCompatible, tr("OpenAI-compatible server"))]));
+            c |= row(ui, tr("Provider"), |ui| {
+                combo(ui, "set_ai_prov", &mut a.provider, &[(AiProvider::Anthropic, "Anthropic Claude"), (AiProvider::OpenAiCompatible, tr("OpenAI-compatible server"))])
+            });
             c |= row(ui, tr("Model"), |ui| ui.add(egui::TextEdit::singleline(&mut a.model).desired_width(240.0)).changed());
             c |= row(ui, tr("Base URL"), |ui| {
                 let mut v = a.base_url.clone().unwrap_or_default();
@@ -709,7 +731,18 @@ impl SettingsTab {
             });
             c |= row(ui, tr("Maximum answer length"), |ui| num(ui, &mut a.max_tokens, 256..=128_000, tr(" tokens")));
             c |= row(ui, tr("Effort"), |ui| {
-                combo(ui, "set_ai_eff", &mut a.effort, &[(AiEffort::Low, tr("Low")), (AiEffort::Medium, tr("Medium")), (AiEffort::High, tr("High")), (AiEffort::Xhigh, tr("Very high")), (AiEffort::Max, tr("Maximum"))])
+                combo(
+                    ui,
+                    "set_ai_eff",
+                    &mut a.effort,
+                    &[
+                        (AiEffort::Low, tr("Low")),
+                        (AiEffort::Medium, tr("Medium")),
+                        (AiEffort::High, tr("High")),
+                        (AiEffort::Xhigh, tr("Very high")),
+                        (AiEffort::Max, tr("Maximum")),
+                    ],
+                )
             });
             ui.label("");
             c |= check(ui, &mut a.include_schema_context, tr("Send table and column names as context"));
@@ -732,10 +765,9 @@ impl SettingsTab {
                     Err(e) => cx.toasts.error(tr("Cannot store the API key"), Some(e.to_string())),
                 }
             }
-            if self.ai_key_saved && ui.button(tr("Remove key")).clicked()
-                && cx.services.secrets.read().set_ai_api_key(provider.id(), None).is_ok() {
-                    self.ai_key_saved = false;
-                }
+            if self.ai_key_saved && ui.button(tr("Remove key")).clicked() && cx.services.secrets.read().set_ai_api_key(provider.id(), None).is_ok() {
+                self.ai_key_saved = false;
+            }
         });
         c |= false;
         c
@@ -799,9 +831,7 @@ impl SettingsTab {
                     let r = mgr.switch_to_vault(vault, &keys, true).map_err(|e| e.to_string())?;
                     Ok(trf("{} secret(s) moved", &[&r.migrated.len()]))
                 } else {
-                    let r = mgr
-                        .switch_backend(SecretBackend::Keychain, std::sync::Arc::new(dbiji_config::KeychainStore::new()), &keys, true)
-                        .map_err(|e| e.to_string())?;
+                    let r = mgr.switch_backend(SecretBackend::Keychain, std::sync::Arc::new(dbiji_config::KeychainStore::new()), &keys, true).map_err(|e| e.to_string())?;
                     Ok(trf("{} secret(s) moved", &[&r.migrated.len()]))
                 }
             })();
@@ -840,9 +870,10 @@ impl SettingsTab {
                 self.message = Some(r);
             }
             if ui.button(format!("{} {}", icon::LOCK, tr("Lock now"))).clicked()
-                && let Some(v) = cx.services.secrets.read().vault() {
-                    v.lock();
-                }
+                && let Some(v) = cx.services.secrets.read().vault()
+            {
+                v.lock();
+            }
         }
         match &self.message {
             Some(Ok(m)) => {

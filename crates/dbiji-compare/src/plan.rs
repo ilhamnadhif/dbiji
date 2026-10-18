@@ -72,14 +72,7 @@ pub struct ScriptOptions {
 
 impl Default for ScriptOptions {
     fn default() -> Self {
-        ScriptOptions {
-            drop_removed: false,
-            cascade: false,
-            include_comments: true,
-            wrap_in_transaction: false,
-            schema_rename: None,
-            alter_mode: AlterMode::Granular,
-        }
+        ScriptOptions { drop_removed: false, cascade: false, include_comments: true, wrap_in_transaction: false, schema_rename: None, alter_mode: AlterMode::Granular }
     }
 }
 
@@ -454,9 +447,7 @@ impl Selection {
             let rkey = (src_name.clone(), args_key(item.signature.as_deref().unwrap_or("")));
             let rkey_t = (tgt_name.clone(), rkey.1.clone());
             let (m, a, r): (&mut HashSet<String>, &mut HashSet<String>, &mut HashSet<String>) = match item.kind {
-                ObjectKind::Table | ObjectKind::ForeignTable | ObjectKind::Partition => {
-                    (&mut s.tables_mod, &mut s.tables_add, &mut s.tables_rem)
-                }
+                ObjectKind::Table | ObjectKind::ForeignTable | ObjectKind::Partition => (&mut s.tables_mod, &mut s.tables_add, &mut s.tables_rem),
                 ObjectKind::View | ObjectKind::MaterializedView => (&mut s.views_mod, &mut s.views_add, &mut s.views_rem),
                 ObjectKind::Sequence => (&mut s.seq_mod, &mut s.seq_add, &mut s.seq_rem),
                 ObjectKind::Type | ObjectKind::Domain => (&mut s.types_mod, &mut s.types_add, &mut s.types_rem),
@@ -533,14 +524,7 @@ fn col_set(ctx: &Ctx<'_>, cols: &[String]) -> BTreeSet<String> {
 
 /// Reconcile one kind of sub-object: returns the final list, the target items
 /// to drop and the (mapped) source items to add.
-fn reconcile<T: Clone>(
-    m: &SubMatch,
-    src: &[T],
-    tgt: &[T],
-    map: impl Fn(&T) -> T,
-    drop_removed: bool,
-    keep_uncompared: bool,
-) -> (Vec<T>, Vec<T>, Vec<T>) {
+fn reconcile<T: Clone>(m: &SubMatch, src: &[T], tgt: &[T], map: impl Fn(&T) -> T, drop_removed: bool, keep_uncompared: bool) -> (Vec<T>, Vec<T>, Vec<T>) {
     let (mut fin, mut drops, mut adds) = (Vec::new(), Vec::new(), Vec::new());
     for (ti, item) in tgt.iter().enumerate() {
         if let Some(si) = m.source_of(ti) {
@@ -589,29 +573,14 @@ struct Planner<'a> {
 }
 
 /// Plan the migration of `target` to `source` for the objects listed in `diff`.
-pub fn migration_plan(
-    diff: &SchemaDiff,
-    source: &SchemaSnapshot,
-    target: &SchemaSnapshot,
-    target_dialect: &dyn Dialect,
-    opts: &ScriptOptions,
-) -> MigrationPlan {
+pub fn migration_plan(diff: &SchemaDiff, source: &SchemaSnapshot, target: &SchemaSnapshot, target_dialect: &dyn Dialect, opts: &ScriptOptions) -> MigrationPlan {
     let a = Analysis::new(source, target, &diff.options);
     let sel = Selection::from_diff(diff, &a.ctx);
     let rename = opts.schema_rename.clone().or_else(|| match (snapshot_schema(source), snapshot_schema(target)) {
         (Some(s), Some(t)) if s != t => Some((s.to_string(), t.to_string())),
         _ => None,
     });
-    let mut p = Planner {
-        a,
-        dialect: target_dialect,
-        opts,
-        sel,
-        rename,
-        tgt_schema: snapshot_schema(target).map(str::to_string),
-        steps: Vec::new(),
-        warnings: Vec::new(),
-    };
+    let mut p = Planner { a, dialect: target_dialect, opts, sel, rename, tgt_schema: snapshot_schema(target).map(str::to_string), steps: Vec::new(), warnings: Vec::new() };
     p.plan();
     let mut transaction = None;
     if opts.wrap_in_transaction && !p.steps.is_empty() {
@@ -686,13 +655,7 @@ impl<'a> Planner<'a> {
                 }
                 "collation" => c.collation = sc.collation.clone(),
                 "nullable" => c.nullable = sc.nullable,
-                "default" => {
-                    c.default = if ctx.opts.cross_dialect && ctx.effective_default(sc, Side::Source).is_none() {
-                        None
-                    } else {
-                        self.rq_opt(&sc.default)
-                    }
-                }
+                "default" => c.default = if ctx.opts.cross_dialect && ctx.effective_default(sc, Side::Source).is_none() { None } else { self.rq_opt(&sc.default) },
                 "auto_increment" => c.auto_increment = ctx.effective_auto_increment(sc),
                 "generated" => c.generated = self.rq_opt(&sc.generated),
                 "comment" => c.comment = sc.comment.clone(),
@@ -830,14 +793,7 @@ impl<'a> Planner<'a> {
             }
         }
         if o.partitions {
-            let (list, _, _) = reconcile(
-                &p.partitions,
-                &s.partitions,
-                &t.partitions,
-                |x: &PartitionDef| PartitionDef { bound: self.rq(&x.bound), ..x.clone() },
-                drop,
-                true,
-            );
+            let (list, _, _) = reconcile(&p.partitions, &s.partitions, &t.partitions, |x: &PartitionDef| PartitionDef { bound: self.rq(&x.bound), ..x.clone() }, drop, true);
             d.partitions = list;
         }
 
@@ -854,10 +810,11 @@ impl<'a> Planner<'a> {
                 m.pk_add = Some(map_key(&spk[si]));
                 d.primary_key = m.pk_add.clone();
             } else if let Some(&ti) = p.primary_key.removed.first()
-                && drop {
-                    m.pk_drop = Some(tpk[ti].clone());
-                    d.primary_key = None;
-                }
+                && drop
+            {
+                m.pk_drop = Some(tpk[ti].clone());
+                d.primary_key = None;
+            }
         }
         if o.unique_keys {
             let (list, drops, adds) = reconcile(&p.unique_keys, &s.unique_keys, &t.unique_keys, map_key, drop, true);
@@ -866,14 +823,7 @@ impl<'a> Planner<'a> {
             m.uq_add = adds;
         }
         if o.checks {
-            let (list, drops, adds) = reconcile(
-                &p.checks,
-                &s.checks,
-                &t.checks,
-                |c: &CheckDef| CheckDef { name: c.name.clone(), expression: self.rq(&c.expression) },
-                drop,
-                true,
-            );
+            let (list, drops, adds) = reconcile(&p.checks, &s.checks, &t.checks, |c: &CheckDef| CheckDef { name: c.name.clone(), expression: self.rq(&c.expression) }, drop, true);
             d.checks = list;
             m.ck_drop = drops;
             m.ck_add = adds;
@@ -912,9 +862,10 @@ impl<'a> Planner<'a> {
         let statements: Vec<String> = statements.into_iter().filter(|s| !s.trim().is_empty()).collect();
         if statements.is_empty() {
             if let MigrationOp::AlterTable { from, to, .. } = &op
-                && from == to {
-                    return;
-                }
+                && from == to
+            {
+                return;
+            }
             self.warnings.push(trf("No SQL generated for: {}", &[&description]));
             return;
         }
@@ -931,20 +882,11 @@ impl<'a> Planner<'a> {
                 return t.clone();
             }
         }
-        ctx.target
-            .tables
-            .iter()
-            .find(|t| ctx.same(&t.name, name))
-            .cloned()
-            .unwrap_or_else(|| TableDef::new(self.tgt_schema.clone(), name))
+        ctx.target.tables.iter().find(|t| ctx.same(&t.name, name)).cloned().unwrap_or_else(|| TableDef::new(self.tgt_schema.clone(), name))
     }
 
     #[allow(clippy::type_complexity)]
-    fn plan_foreign_keys(
-        &mut self,
-        mods: &[ModTable<'_>],
-        dropped: &HashSet<String>,
-    ) -> (Vec<(String, ForeignKeyDef)>, Vec<(String, ForeignKeyDef)>) {
+    fn plan_foreign_keys(&mut self, mods: &[ModTable<'_>], dropped: &HashSet<String>) -> (Vec<(String, ForeignKeyDef)>, Vec<(String, ForeignKeyDef)>) {
         let ctx = &self.a.ctx;
         let mut drops: Vec<(String, ForeignKeyDef)> = Vec::new();
         let mut adds: Vec<(String, ForeignKeyDef)> = Vec::new();
@@ -998,9 +940,7 @@ impl<'a> Planner<'a> {
                             dropped_sets.push(col_set(ctx, &pk.columns));
                         }
                         dropped_sets.extend(rm.uq_drop.iter().map(|u| col_set(ctx, &u.columns)));
-                        dropped_sets.extend(
-                            rm.idx_drop.iter().filter(|i| i.unique).map(|i| i.columns.iter().map(|c| ctx.key(&c.name)).collect()),
-                        );
+                        dropped_sets.extend(rm.idx_drop.iter().filter(|i| i.unique).map(|i| i.columns.iter().map(|c| ctx.key(&c.name)).collect()));
                         nf.ref_columns = f.ref_columns.iter().map(|c| rm.renamed(ctx, c)).collect();
                         if dropped_sets.contains(&set) {
                             must_drop = true;
@@ -1011,9 +951,7 @@ impl<'a> Planner<'a> {
                                 final_sets.push(col_set(ctx, &pk.columns));
                             }
                             final_sets.extend(d.unique_keys.iter().map(|u| col_set(ctx, &u.columns)));
-                            final_sets.extend(
-                                d.indexes.iter().filter(|i| i.unique).map(|i| i.columns.iter().map(|c| ctx.key(&c.name)).collect()),
-                            );
+                            final_sets.extend(d.indexes.iter().filter(|i| i.unique).map(|i| i.columns.iter().map(|c| ctx.key(&c.name)).collect()));
                             if !final_sets.contains(&new_set) {
                                 recreate = false;
                             }
@@ -1025,10 +963,7 @@ impl<'a> Planner<'a> {
                     if recreate {
                         adds.push((t.name.clone(), nf));
                     } else if tmod.is_none() || !self.opts.drop_removed {
-                        warnings.push(trf(
-                            "Foreign key {} on {} is dropped because the referenced key or table changes",
-                            &[&f.name.clone().unwrap_or_default(), &t.name],
-                        ));
+                        warnings.push(trf("Foreign key {} on {} is dropped because the referenced key or table changes", &[&f.name.clone().unwrap_or_default(), &t.name]));
                     }
                 }
             }
@@ -1057,16 +992,8 @@ impl<'a> Planner<'a> {
             .filter(|&&i| self.sel.tables_add.contains(&self.a.ctx.key(&source.tables[i].name)))
             .map(|&i| self.new_table_def(&source.tables[i]))
             .collect();
-        let dropped_tables: Vec<&TableDef> = if drop {
-            self.a
-                .removed_tables
-                .iter()
-                .map(|&i| &target.tables[i])
-                .filter(|t| self.sel.tables_rem.contains(&self.a.ctx.key(&t.name)))
-                .collect()
-        } else {
-            Vec::new()
-        };
+        let dropped_tables: Vec<&TableDef> =
+            if drop { self.a.removed_tables.iter().map(|&i| &target.tables[i]).filter(|t| self.sel.tables_rem.contains(&self.a.ctx.key(&t.name))).collect() } else { Vec::new() };
         let dropped_keys: HashSet<String> = dropped_tables.iter().map(|t| self.a.ctx.key(&t.name)).collect();
 
         let (mut fk_drops, fk_adds) = if granular { self.plan_foreign_keys(&mods, &dropped_keys) } else { (Vec::new(), Vec::new()) };
@@ -1143,9 +1070,10 @@ impl<'a> Planner<'a> {
                             None => Some(tr.clone()),
                         };
                         if let Some(ft) = final_trg
-                            && !m.is_some_and(|m| m.trg_add.iter().any(|x| ctx.same(&x.name, &ft.name))) {
-                                extra_trg_add.push((t.name.clone(), ft));
-                            }
+                            && !m.is_some_and(|m| m.trg_add.iter().any(|x| ctx.same(&x.name, &ft.name)))
+                        {
+                            extra_trg_add.push((t.name.clone(), ft));
+                        }
                     }
                 }
             }
@@ -1252,13 +1180,7 @@ impl<'a> Planner<'a> {
         }
         // 3. views
         for v in &view_drops {
-            self.push(
-                Phase::DropViews,
-                self.qual(&v.name),
-                trf("Drop view {}", &[&self.qual(&v.name)]),
-                MigrationOp::DropView { view: v.clone() },
-                vec![ddl.drop_view(v)],
-            );
+            self.push(Phase::DropViews, self.qual(&v.name), trf("Drop view {}", &[&self.qual(&v.name)]), MigrationOp::DropView { view: v.clone() }, vec![ddl.drop_view(v)]);
         }
         // 4. routines that must be dropped before being recreated
         for r in &drop_first {
@@ -1343,10 +1265,7 @@ impl<'a> Planner<'a> {
                 base.rsplit('.').next().is_some_and(|b| b.trim_matches('"') == old.name.to_lowercase())
             });
             if used {
-                type_warnings.push(trf(
-                    "Type {} differs but is used by table columns; alter it manually",
-                    &[&self.qual(&old.name)],
-                ));
+                type_warnings.push(trf("Type {} differs but is used by table columns; alter it manually", &[&self.qual(&old.name)]));
                 continue;
             }
             match ddl.drop_type(old) {
@@ -1429,8 +1348,7 @@ impl<'a> Planner<'a> {
             self.push(Phase::Sequences, obj, desc, op, sql);
         }
         // 11. early routines
-        let (early, late): (Vec<_>, Vec<_>) =
-            create_routines.into_iter().partition(|(r, _)| early_names.contains(&self.a.ctx.key(&r.name)));
+        let (early, late): (Vec<_>, Vec<_>) = create_routines.into_iter().partition(|(r, _)| early_names.contains(&self.a.ctx.key(&r.name)));
         for (r, replace) in &early {
             self.push_routine(Phase::EarlyRoutines, r, *replace);
         }
@@ -1470,35 +1388,18 @@ impl<'a> Planner<'a> {
             let mut from = m.target.clone();
             from.referenced_by.clear();
             let mut to = m.desired.clone();
-            let kept_trg: Vec<TriggerDef> = m
-                .target
-                .triggers
-                .iter()
-                .filter(|t| !trg_drops.iter().any(|(tn, d)| ctx.same(tn, &m.target.name) && ctx.same(&d.name, &t.name)))
-                .cloned()
-                .collect();
+            let kept_trg: Vec<TriggerDef> =
+                m.target.triggers.iter().filter(|t| !trg_drops.iter().any(|(tn, d)| ctx.same(tn, &m.target.name) && ctx.same(&d.name, &t.name))).cloned().collect();
             if granular {
-                let kept_fks: Vec<ForeignKeyDef> = m
-                    .target
-                    .foreign_keys
-                    .iter()
-                    .filter(|f| !fk_drops.iter().any(|(tn, d)| ctx.same(tn, &m.target.name) && same_fk(d, f)))
-                    .cloned()
-                    .collect();
-                let dropped_key_cols: Vec<BTreeSet<String>> = m
-                    .pk_drop
-                    .iter()
-                    .chain(m.uq_drop.iter())
-                    .map(|k| col_set(ctx, &k.columns))
-                    .collect();
+                let kept_fks: Vec<ForeignKeyDef> =
+                    m.target.foreign_keys.iter().filter(|f| !fk_drops.iter().any(|(tn, d)| ctx.same(tn, &m.target.name) && same_fk(d, f))).cloned().collect();
+                let dropped_key_cols: Vec<BTreeSet<String>> = m.pk_drop.iter().chain(m.uq_drop.iter()).map(|k| col_set(ctx, &k.columns)).collect();
                 let kept_idx: Vec<IndexDef> = m
                     .target
                     .indexes
                     .iter()
                     .filter(|i| !m.idx_drop.contains(i))
-                    .filter(|i| {
-                        is_secondary_index(ctx, m.target, i) || !dropped_key_cols.contains(&i.columns.iter().map(|c| ctx.key(&c.name)).collect())
-                    })
+                    .filter(|i| is_secondary_index(ctx, m.target, i) || !dropped_key_cols.contains(&i.columns.iter().map(|c| ctx.key(&c.name)).collect()))
                     .cloned()
                     .collect();
                 from.primary_key = if m.pk_drop.is_some() { None } else { m.target.primary_key.clone() };
@@ -1510,8 +1411,7 @@ impl<'a> Planner<'a> {
                 // the same lists, with renamed columns
                 let rn = |c: &String| m.renamed(ctx, c);
                 to.primary_key = from.primary_key.clone().map(|k| KeyDef { columns: k.columns.iter().map(rn).collect(), ..k });
-                to.unique_keys =
-                    from.unique_keys.iter().map(|k| KeyDef { columns: k.columns.iter().map(rn).collect(), ..k.clone() }).collect();
+                to.unique_keys = from.unique_keys.iter().map(|k| KeyDef { columns: k.columns.iter().map(rn).collect(), ..k.clone() }).collect();
                 to.checks = from.checks.clone();
                 to.indexes = from
                     .indexes
@@ -1547,13 +1447,7 @@ impl<'a> Planner<'a> {
             let renames = m.renames.clone();
             let sql = ddl.alter_table(&from, &to, &renames);
             let name = m.target.name.clone();
-            self.push(
-                Phase::AlterTables,
-                self.qual(&name),
-                trf("Alter table {}", &[&self.qual(&name)]),
-                MigrationOp::AlterTable { from, to, renamed_columns: renames },
-                sql,
-            );
+            self.push(Phase::AlterTables, self.qual(&name), trf("Alter table {}", &[&self.qual(&name)]), MigrationOp::AlterTable { from, to, renamed_columns: renames }, sql);
         }
         // 14. removed sequences, types, routines
         for r in &drop_late {
@@ -1576,8 +1470,7 @@ impl<'a> Planner<'a> {
                 // sequences owned by dropped tables / columns disappear with them
                 let owned_gone = s.owned_by.as_deref().and_then(|o| o.rsplit_once('.')).is_some_and(|(table, col)| {
                     let table = table.rsplit('.').next().unwrap_or(table);
-                    dropped_keys.contains(&ctx.key(table))
-                        || mods.iter().any(|m| ctx.same(&m.target.name, table) && m.dropped_cols.contains(&ctx.key(col)))
+                    dropped_keys.contains(&ctx.key(table)) || mods.iter().any(|m| ctx.same(&m.target.name, table) && m.dropped_cols.contains(&ctx.key(col)))
                 });
                 if !owned_gone {
                     seq_drops.push(s.clone());
@@ -1601,13 +1494,7 @@ impl<'a> Planner<'a> {
             }
             for t in type_drops {
                 match ddl.drop_type(&t) {
-                    Some(sql) => self.push(
-                        Phase::DropUnused,
-                        self.qual(&t.name),
-                        trf("Drop type {}", &[&self.qual(&t.name)]),
-                        MigrationOp::DropType { ty: t.clone() },
-                        vec![sql],
-                    ),
+                    Some(sql) => self.push(Phase::DropUnused, self.qual(&t.name), trf("Drop type {}", &[&self.qual(&t.name)]), MigrationOp::DropType { ty: t.clone() }, vec![sql]),
                     None => self.warnings.push(trf("Type {} cannot be dropped automatically", &[&self.qual(&t.name)])),
                 }
             }
@@ -1676,18 +1563,8 @@ impl<'a> Planner<'a> {
         }
         // 18. views
         for (v, replace) in &view_creates {
-            let desc = if *replace {
-                trf("Replace view {}", &[&self.qual(&v.name)])
-            } else {
-                trf("Create view {}", &[&self.qual(&v.name)])
-            };
-            self.push(
-                Phase::CreateViews,
-                self.qual(&v.name),
-                desc,
-                MigrationOp::CreateView { view: v.clone(), replace: *replace },
-                ddl.create_view(v, *replace),
-            );
+            let desc = if *replace { trf("Replace view {}", &[&self.qual(&v.name)]) } else { trf("Create view {}", &[&self.qual(&v.name)]) };
+            self.push(Phase::CreateViews, self.qual(&v.name), desc, MigrationOp::CreateView { view: v.clone(), replace: *replace }, ddl.create_view(v, *replace));
         }
         // 19. other routines
         for (r, replace) in &late {
@@ -1716,22 +1593,12 @@ impl<'a> Planner<'a> {
 
     fn push_routine(&mut self, phase: Phase, r: &RoutineDef, replace: bool) {
         let sql = self.dialect.ddl().create_routine(r);
-        let desc = if replace {
-            trf("Replace routine {}({})", &[&self.qual(&r.name), &r.arguments])
-        } else {
-            trf("Create routine {}({})", &[&self.qual(&r.name), &r.arguments])
-        };
+        let desc = if replace { trf("Replace routine {}({})", &[&self.qual(&r.name), &r.arguments]) } else { trf("Create routine {}({})", &[&self.qual(&r.name), &r.arguments]) };
         self.push(phase, self.qual(&r.name), desc, MigrationOp::CreateRoutine { routine: r.clone(), replace }, sql);
     }
 
     /// Views to drop (dependents first) and to create (dependencies first).
-    fn plan_views(
-        &mut self,
-        mods: &[ModTable<'_>],
-        dropped_tables: &[&TableDef],
-        dropped_routines: &[String],
-        granular: bool,
-    ) -> (Vec<ViewDef>, Vec<(ViewDef, bool)>) {
+    fn plan_views(&mut self, mods: &[ModTable<'_>], dropped_tables: &[&TableDef], dropped_routines: &[String], granular: bool) -> (Vec<ViewDef>, Vec<(ViewDef, bool)>) {
         let ctx = &self.a.ctx;
         let source = ctx.source;
         let target = ctx.target;
@@ -1764,12 +1631,7 @@ impl<'a> Planner<'a> {
             }
         }
         // dependency closure over target views
-        let breaking: Vec<String> = mods
-            .iter()
-            .filter(|m| !granular || m.breaking())
-            .map(|m| m.target.name.clone())
-            .chain(dropped_tables.iter().map(|t| t.name.clone()))
-            .collect();
+        let breaking: Vec<String> = mods.iter().filter(|m| !granular || m.breaking()).map(|m| m.target.name.clone()).chain(dropped_tables.iter().map(|t| t.name.clone())).collect();
         let target_refs: Vec<_> = target.views.iter().map(|v| references(&v.definition)).collect();
         loop {
             let mut changed = false;
@@ -1801,21 +1663,11 @@ impl<'a> Planner<'a> {
             if !drop_set.contains(&k) {
                 continue;
             }
-            let d = target
-                .views
-                .iter()
-                .filter(|w| !ctx.same(&w.name, &v.name) && target_refs[i].mentions(&w.name, &own_t))
-                .map(|w| ctx.key(&w.name))
-                .collect();
+            let d = target.views.iter().filter(|w| !ctx.same(&w.name, &v.name) && target_refs[i].mentions(&w.name, &own_t)).map(|w| ctx.key(&w.name)).collect();
             deps.insert(k, d);
         }
         let (order, cyclic) = topo_sort(&drop_names, &deps);
-        let drops: Vec<ViewDef> = order
-            .iter()
-            .rev()
-            .chain(cyclic.iter())
-            .filter_map(|k| target.views.iter().find(|v| ctx.key(&v.name) == *k).cloned())
-            .collect();
+        let drops: Vec<ViewDef> = order.iter().rev().chain(cyclic.iter()).filter_map(|k| target.views.iter().find(|v| ctx.key(&v.name) == *k).cloned()).collect();
 
         // views to create
         let mut creates: Vec<(ViewDef, bool)> = Vec::new();
@@ -1850,22 +1702,14 @@ impl<'a> Planner<'a> {
         let mut cdeps: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
         for (v, _) in &creates {
             let r = references(&v.definition);
-            let d = creates
-                .iter()
-                .filter(|(w, _)| !ctx.same(&w.name, &v.name) && r.mentions(&w.name, &own_c))
-                .map(|(w, _)| ctx.key(&w.name))
-                .collect();
+            let d = creates.iter().filter(|(w, _)| !ctx.same(&w.name, &v.name) && r.mentions(&w.name, &own_c)).map(|(w, _)| ctx.key(&w.name)).collect();
             cdeps.insert(ctx.key(&v.name), d);
         }
         let (order, cyclic) = topo_sort(&names, &cdeps);
         if !cyclic.is_empty() {
             self.warnings.push(trf("Circular view dependencies: {}", &[&cyclic.join(", ")]));
         }
-        let creates_sorted: Vec<(ViewDef, bool)> = order
-            .iter()
-            .chain(cyclic.iter())
-            .filter_map(|k| creates.iter().find(|(v, _)| ctx.key(&v.name) == *k).cloned())
-            .collect();
+        let creates_sorted: Vec<(ViewDef, bool)> = order.iter().chain(cyclic.iter()).filter_map(|k| creates.iter().find(|(v, _)| ctx.key(&v.name) == *k).cloned()).collect();
         (drops, creates_sorted)
     }
 }

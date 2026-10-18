@@ -16,14 +16,7 @@ pub(crate) struct MarkdownSink {
 
 impl MarkdownSink {
     pub(crate) fn new(out: TextOutput, options: &ExportOptions) -> Self {
-        MarkdownSink {
-            out,
-            opts: options.markdown.clone(),
-            values: options.values.clone(),
-            ncols: 0,
-            line: String::new(),
-            rows: 0,
-        }
+        MarkdownSink { out, opts: options.markdown.clone(), values: options.values.clone(), ncols: 0, line: String::new(), rows: 0 }
     }
 }
 

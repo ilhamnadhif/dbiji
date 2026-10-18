@@ -109,7 +109,13 @@ fn grid() -> Vec<BenchResult> {
     }
     let mut jumps = Vec::new();
     for i in 0..60 {
-        let ev = vec![Event::Key { key: if i % 2 == 0 { egui::Key::PageDown } else { egui::Key::End }, physical_key: None, pressed: true, repeat: false, modifiers: Default::default() }];
+        let ev = vec![Event::Key {
+            key: if i % 2 == 0 { egui::Key::PageDown } else { egui::Key::End },
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Default::default(),
+        }];
         jumps.push(f.frame(ev, |ui| {
             dbiji_grid::DataGrid::new(&mut model, &mut state, &options).show(ui);
         }));

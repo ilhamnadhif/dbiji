@@ -189,15 +189,7 @@ async fn run_all(
             Err(e) => {
                 let text = e.full_text();
                 push(Level::Error, text.clone());
-                shared.lock().results.push(StatementResult {
-                    sql,
-                    error: Some(text),
-                    affected: None,
-                    tag: None,
-                    rows: None,
-                    messages: Vec::new(),
-                    duration: started.elapsed(),
-                });
+                shared.lock().results.push(StatementResult { sql, error: Some(text), affected: None, tag: None, rows: None, messages: Vec::new(), duration: started.elapsed() });
                 if cancel.is_cancelled() {
                     break;
                 }
@@ -215,10 +207,7 @@ impl MaintenanceTab {
 
     /// Dialect of the connection (also when it is not connected).
     fn dialect(&self, cx: &AppContext) -> Option<Arc<dyn Dialect>> {
-        cx.conns
-            .live(&self.conn)
-            .map(|l| l.dialect.clone())
-            .or_else(|| cx.conns.config(&self.conn).and_then(|c| cx.conns.registry.get(c.kind)).map(|d| d.dialect()))
+        cx.conns.live(&self.conn).map(|l| l.dialect.clone()).or_else(|| cx.conns.config(&self.conn).and_then(|c| cx.conns.registry.get(c.kind)).map(|d| d.dialect()))
     }
 
     /// Objects the statements apply to: the selected objects, or the
@@ -227,12 +216,7 @@ impl MaintenanceTab {
         if !self.objects.is_empty() {
             return self.objects.clone();
         }
-        let db = cx
-            .conns
-            .live(&self.conn)
-            .and_then(|l| l.current_database.clone())
-            .or_else(|| cx.conns.config(&self.conn).and_then(|c| c.database.clone()))
-            .unwrap_or_default();
+        let db = cx.conns.live(&self.conn).and_then(|l| l.current_database.clone()).or_else(|| cx.conns.config(&self.conn).and_then(|c| c.database.clone())).unwrap_or_default();
         vec![ObjectRef::new(ObjectKind::Database, None, db)]
     }
 
@@ -313,15 +297,7 @@ impl MaintenanceTab {
         let handle = cx.ops.start(title);
         let shared = Arc::new(Mutex::new(Shared::default()));
         let cancel = handle.cancel.clone();
-        let job = cx.backend.spawn(run_all(
-            session.clone(),
-            statements,
-            op.needs_autocommit,
-            shared.clone(),
-            cancel.clone(),
-            cx.backend.repainter(),
-            handle.progress.clone(),
-        ));
+        let job = cx.backend.spawn(run_all(session.clone(), statements, op.needs_autocommit, shared.clone(), cancel.clone(), cx.backend.repainter(), handle.progress.clone()));
         self.run = Some(MaintRun { job: Some(job), shared, cancel, op: handle, session, started: Instant::now(), ended: None });
     }
 
@@ -348,35 +324,35 @@ impl MaintenanceTab {
     /// Cancel the running operation.
     pub fn cancel(&mut self, cx: &AppContext) {
         self.pending = false;
-        if let Some(r) = &self.run {
-            if r.job.is_some() {
-                r.cancel.cancel();
-                let s = r.session.clone();
-                cx.backend.spawn_detached(async move {
-                    let _ = s.cancel().await;
-                });
-            }
+        if let Some(r) = &self.run
+            && r.job.is_some()
+        {
+            r.cancel.cancel();
+            let s = r.session.clone();
+            cx.backend.spawn_detached(async move {
+                let _ = s.cancel().await;
+            });
         }
     }
 
     fn poll(&mut self, cx: &mut AppContext) {
         self.try_start(cx);
-        if let Some(run) = self.run.as_mut() {
-            if run.job.as_mut().and_then(|j| j.poll()).is_some() {
-                run.job = None;
-                run.ended = Some(Instant::now());
-                let shared = run.shared.lock();
-                let failed = shared.results.iter().filter(|r| r.error.is_some()).count();
-                let state = if run.cancel.is_cancelled() {
-                    OpState::Cancelled
-                } else if failed > 0 || shared.results.is_empty() {
-                    OpState::Failed(trf("{} statement(s) failed", &[&failed]))
-                } else {
-                    OpState::Succeeded(trf("{} statement(s) executed", &[&shared.results.len()]))
-                };
-                drop(shared);
-                cx.ops.finish(run.op.id, state);
-            }
+        if let Some(run) = self.run.as_mut()
+            && run.job.as_mut().and_then(|j| j.poll()).is_some()
+        {
+            run.job = None;
+            run.ended = Some(Instant::now());
+            let shared = run.shared.lock();
+            let failed = shared.results.iter().filter(|r| r.error.is_some()).count();
+            let state = if run.cancel.is_cancelled() {
+                OpState::Cancelled
+            } else if failed > 0 || shared.results.is_empty() {
+                OpState::Failed(trf("{} statement(s) failed", &[&failed]))
+            } else {
+                OpState::Succeeded(trf("{} statement(s) executed", &[&shared.results.len()]))
+            };
+            drop(shared);
+            cx.ops.finish(run.op.id, state);
         }
     }
 
@@ -390,11 +366,7 @@ impl MaintenanceTab {
         ui.horizontal_wrapped(|ui| {
             ui.weak(tr("Objects:"));
             for t in targets.iter().take(20) {
-                let label = if t.kind == ObjectKind::Database {
-                    if t.name.is_empty() { tr("(current database)").to_string() } else { t.name.clone() }
-                } else {
-                    t.display_path()
-                };
+                let label = if t.kind == ObjectKind::Database { if t.name.is_empty() { tr("(current database)").to_string() } else { t.name.clone() } } else { t.display_path() };
                 ui.label(format!("{} {label}", crate::nav::kind_icon(t.kind)));
             }
             if targets.len() > 20 {
@@ -432,15 +404,15 @@ impl MaintenanceTab {
         if let Some(id) = chosen {
             self.select_op(cx, id);
         }
-        if let Some(op) = ops.iter().find(|o| Some(o.id) == self.op.as_deref()) {
-            if !op.options.is_empty() {
-                ui.add_space(6.0);
-                ui.strong(tr("Options"));
-                for (key, label, default) in op.options {
-                    let mut on = self.options.get(*key).copied().unwrap_or(*default);
-                    if ui.checkbox(&mut on, tr(label)).changed() {
-                        self.options.insert(key.to_string(), on);
-                    }
+        if let Some(op) = ops.iter().find(|o| Some(o.id) == self.op.as_deref())
+            && !op.options.is_empty()
+        {
+            ui.add_space(6.0);
+            ui.strong(tr("Options"));
+            for (key, label, default) in op.options {
+                let mut on = self.options.get(*key).copied().unwrap_or(*default);
+                if ui.checkbox(&mut on, tr(label)).changed() {
+                    self.options.insert(key.to_string(), on);
                 }
             }
         }

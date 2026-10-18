@@ -177,13 +177,7 @@ impl SessionHandle {
     fn log_tx(&self, sql: &str, started: Instant, rows: Option<u64>, ok: bool) {
         let mut tx = self.inner.tx.lock();
         if tx.in_transaction || tx.mode == TransactionMode::Manual {
-            tx.log.push(TxLogEntry {
-                sql: sql.chars().take(4000).collect(),
-                at: chrono::Local::now(),
-                duration: started.elapsed(),
-                rows,
-                ok,
-            });
+            tx.log.push(TxLogEntry { sql: sql.chars().take(4000).collect(), at: chrono::Local::now(), duration: started.elapsed(), rows, ok });
             if tx.log.len() > 2000 {
                 tx.log.remove(0);
             }
@@ -273,9 +267,10 @@ impl SessionHandle {
     pub async fn close_cursor_token(&self, token: u64) {
         let mut slot = self.inner.cursor.lock().await;
         if slot.as_ref().is_some_and(|c| c.token == token)
-            && let Some(mut c) = slot.take() {
-                let _ = c.cursor.close().await;
-            }
+            && let Some(mut c) = slot.take()
+        {
+            let _ = c.cursor.close().await;
+        }
     }
 
     /// Run `sql` to completion and return the first row set (metadata-style queries).

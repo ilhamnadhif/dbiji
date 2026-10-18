@@ -76,14 +76,7 @@ async fn csv_ragged_rows_and_header_modes() {
 #[tokio::test]
 async fn csv_skip_comment_trim_null() {
     let data = b"junk line\n# comment\nid ; name ; note\n 1 ; \"  spaced  \" ; NULL\n# another\n2;x;\n";
-    let opts = CsvReadOptions {
-        delimiter: ";".into(),
-        skip_rows: 1,
-        comment_char: Some('#'),
-        trim: true,
-        null_string: "NULL".into(),
-        ..Default::default()
-    };
+    let opts = CsvReadOptions { delimiter: ";".into(), skip_rows: 1, comment_char: Some('#'), trim: true, null_string: "NULL".into(), ..Default::default() };
     let mut s = csv(data, opts);
     assert_eq!(s.columns().iter().map(|c| c.name.clone()).collect::<Vec<_>>(), vec!["id", "name", "note"]);
     let rows = drain(&mut s).await;
@@ -91,10 +84,7 @@ async fn csv_skip_comment_trim_null() {
     // With a non-empty NULL marker an empty unquoted field is an empty text.
     assert_eq!(rows[1], vec![Value::text("2"), Value::text("x"), Value::text("")]);
     // Non-ASCII quote characters are rejected.
-    let r = CsvSource::from_reader(
-        Cursor::new(b"a".to_vec()),
-        CsvReadOptions { quote_char: Some('«'), ..Default::default() },
-    );
+    let r = CsvSource::from_reader(Cursor::new(b"a".to_vec()), CsvReadOptions { quote_char: Some('«'), ..Default::default() });
     assert!(r.is_err());
 }
 
@@ -120,10 +110,7 @@ async fn import_creates_table_from_inferred_types() {
     assert!(summary.created_table);
     assert_eq!((summary.rows_read, summary.rows_written, summary.rows_failed), (3, 3, 0));
     assert_eq!(progress.rows(), 3);
-    let types: Vec<String> = select(&session.conn, "SELECT type FROM pragma_table_info('people')")
-        .into_iter()
-        .map(|r| r[0].to_text().into_owned())
-        .collect();
+    let types: Vec<String> = select(&session.conn, "SELECT type FROM pragma_table_info('people')").into_iter().map(|r| r[0].to_text().into_owned()).collect();
     assert_eq!(types, vec!["INTEGER", "VARCHAR(10)", "NUMERIC(4,2)", "DATE", "BOOLEAN"]);
     let rows = select(&session.conn, "SELECT id, name, joined, active FROM people ORDER BY id");
     assert_eq!(rows[0], vec![Value::Int(1), Value::text("Ann"), Value::text("2024-01-31"), Value::Int(1)]);
@@ -169,13 +156,9 @@ async fn import_modes() {
     assert_eq!(failed, vec![3, 1, 5, 6], "{:?}", s.errors);
     assert_eq!(s.errors[0].column.as_deref(), Some("age"));
     assert_eq!((s.rows_read, s.rows_written, s.rows_failed), (7, 3, 4));
-    let ids: Vec<Value> =
-        select(&session.conn, "SELECT id FROM customers ORDER BY id").into_iter().map(|r| r[0].clone()).collect();
+    let ids: Vec<Value> = select(&session.conn, "SELECT id FROM customers ORDER BY id").into_iter().map(|r| r[0].clone()).collect();
     assert_eq!(ids, vec![Value::Int(1), Value::Int(2), Value::Int(4), Value::Int(7)]);
-    assert_eq!(
-        select(&session.conn, "SELECT joined FROM customers WHERE id = 2"),
-        vec![vec![Value::text("2024-02-01")]]
-    );
+    assert_eq!(select(&session.conn, "SELECT joined FROM customers WHERE id = 2"), vec![vec![Value::text("2024-02-01")]]);
     // Savepoints were used to isolate the failing rows inside the batch transactions.
     assert!(session.log.lock().iter().any(|s| s.starts_with("ROLLBACK TO SAVEPOINT dbiji_row")));
 
@@ -186,10 +169,7 @@ async fn import_modes() {
     let s = run_import(&mut src, &mut session, &m, &Progress::new(), &CancellationToken::new()).await.unwrap();
     assert_eq!(s.rows_written, 4);
     assert_eq!(select(&session.conn, "SELECT count(*) FROM customers"), vec![vec![Value::Int(4)]]);
-    assert_eq!(
-        select(&session.conn, "SELECT joined FROM customers WHERE id = 1"),
-        vec![vec![Value::text("2024-01-31")]]
-    );
+    assert_eq!(select(&session.conn, "SELECT joined FROM customers WHERE id = 1"), vec![vec![Value::text("2024-01-31")]]);
 
     // Replace through the dialect's upsert, then through DELETE + INSERT.
     for dialect in [sqlite_dialect(), generic()] {
@@ -296,11 +276,7 @@ async fn import_cancellation_rolls_back() {
         }
     }
     let cancel = CancellationToken::new();
-    let mut src = Cancelling {
-        inner: VecSource::new(vec![dbiji_core::ColumnMeta::new("v", "int", DataKind::Int)], rows),
-        cancel: cancel.clone(),
-        batches: 0,
-    };
+    let mut src = Cancelling { inner: VecSource::new(vec![dbiji_core::ColumnMeta::new("v", "int", DataKind::Int)], rows), cancel: cancel.clone(), batches: 0 };
     let mut m = ImportMapping::new(ObjectRef::table(None, "n"));
     m.columns = vec![ColumnMapping::new(0, "v")];
     m.batch_size = 100;
@@ -351,13 +327,7 @@ async fn xlsx_import_typed_cells() {
     ws.write_number(3, 1, 1).unwrap();
     ws.write_string(3, 2, "Ann").unwrap();
     ws.write_datetime_with_format(3, 3, ExcelDateTime::from_ymd(2024, 1, 31).unwrap(), &date).unwrap();
-    ws.write_datetime_with_format(
-        3,
-        4,
-        ExcelDateTime::from_ymd(2024, 1, 31).unwrap().and_hms(10, 30, 0).unwrap(),
-        &datetime,
-    )
-    .unwrap();
+    ws.write_datetime_with_format(3, 4, ExcelDateTime::from_ymd(2024, 1, 31).unwrap().and_hms(10, 30, 0).unwrap(), &datetime).unwrap();
     ws.write_boolean(3, 5, true).unwrap();
     ws.write_number(3, 6, 9.75).unwrap();
     // Row 5 is empty and skipped; row 6 has gaps.
@@ -376,26 +346,10 @@ async fn xlsx_import_typed_cells() {
     let rows = drain(&mut src).await;
     assert_eq!(rows.len(), 2);
     let d = NaiveDate::from_ymd_opt(2024, 1, 31).unwrap();
-    assert_eq!(
-        rows[0],
-        vec![
-            Value::Float(1.0),
-            Value::text("Ann"),
-            Value::Date(d),
-            Value::DateTime(d.and_hms_opt(10, 30, 0).unwrap()),
-            Value::Bool(true),
-            Value::Float(9.75),
-        ]
-    );
-    assert_eq!(
-        rows[1],
-        vec![Value::Float(2.0), Value::text("Bob"), Value::Null, Value::Null, Value::Null, Value::Null]
-    );
+    assert_eq!(rows[0], vec![Value::Float(1.0), Value::text("Ann"), Value::Date(d), Value::DateTime(d.and_hms_opt(10, 30, 0).unwrap()), Value::Bool(true), Value::Float(9.75),]);
+    assert_eq!(rows[1], vec![Value::Float(2.0), Value::text("Bob"), Value::Null, Value::Null, Value::Null, Value::Null]);
     let inferred = infer_columns(src.columns(), &rows, &InferOptions::default());
-    assert_eq!(
-        inferred.iter().map(|c| c.kind).collect::<Vec<_>>(),
-        vec![DataKind::Int, DataKind::Text, DataKind::Date, DataKind::DateTime, DataKind::Bool, DataKind::Float]
-    );
+    assert_eq!(inferred.iter().map(|c| c.kind).collect::<Vec<_>>(), vec![DataKind::Int, DataKind::Text, DataKind::Date, DataKind::DateTime, DataKind::Bool, DataKind::Float]);
     // Missing sheets are reported.
     let bad = XlsxSource::open(&path, XlsxReadOptions { sheet: SheetSelector::Index(5), ..Default::default() }).await;
     assert!(bad.is_err());
@@ -414,9 +368,7 @@ async fn xml_and_json_import_into_sqlite() {
   <order id="2"><customer>Bob &amp; Co</customer><total null="true"/><placed>2024-01-03 11:30:00</placed></order>
 </orders>"#;
     let mut session = SqliteSession::memory(sqlite_dialect());
-    let mut src = PeekableSource::new(
-        XmlSource::from_reader(Cursor::new(xml.as_bytes().to_vec()), XmlReadOptions::default()).unwrap(),
-    );
+    let mut src = PeekableSource::new(XmlSource::from_reader(Cursor::new(xml.as_bytes().to_vec()), XmlReadOptions::default()).unwrap());
     let cols = src.columns().to_vec();
     let sample = src.peek(10).await.unwrap().to_vec();
     let inferred = infer_columns(&cols, &sample, &InferOptions::default());
@@ -443,10 +395,7 @@ async fn xml_and_json_import_into_sqlite() {
     assert_eq!(s.rows_written, 2);
     assert_eq!(
         select(&session.conn, "SELECT * FROM items ORDER BY id"),
-        vec![
-            vec![Value::Int(1), Value::text("[\"a\", \"b\"]"), Value::text("12345678901234567890.25")],
-            vec![Value::Int(2), Value::Null, Value::text("1")],
-        ]
+        vec![vec![Value::Int(1), Value::text("[\"a\", \"b\"]"), Value::text("12345678901234567890.25")], vec![Value::Int(2), Value::Null, Value::text("1")],]
     );
 }
 

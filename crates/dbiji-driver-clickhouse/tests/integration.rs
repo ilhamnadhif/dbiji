@@ -9,9 +9,7 @@ use dbiji_core::ddl::*;
 use dbiji_core::driver::query_all;
 use dbiji_core::meta::*;
 use dbiji_core::value::DataKind;
-use dbiji_core::{
-    ConnectParams, DbKind, Driver, ErrorKind, ExecOptions, ResultHeader, Secret, Session, TransactionMode, Value,
-};
+use dbiji_core::{ConnectParams, DbKind, Driver, ErrorKind, ExecOptions, ResultHeader, Secret, Session, TransactionMode, Value};
 use dbiji_driver_clickhouse::ClickHouseDriver;
 use std::time::{Duration, Instant};
 
@@ -106,20 +104,12 @@ async fn basic_queries_and_types() {
     // parameters, INSERT counts, session state (SET, temporary tables)
     exec(s.as_mut(), "CREATE TEMPORARY TABLE tmp_t (a UInt32, b String)").await;
     // NULL into a non-Nullable column becomes the type default in ClickHouse
-    let n = dbiji_core::driver::execute_update(
-        s.as_mut(),
-        "INSERT INTO tmp_t VALUES (?, ?)",
-        &[Value::Int(3), Value::Null],
-    )
-    .await
-    .unwrap();
+    let n = dbiji_core::driver::execute_update(s.as_mut(), "INSERT INTO tmp_t VALUES (?, ?)", &[Value::Int(3), Value::Null]).await.unwrap();
     assert_eq!(n, Some(1));
     let v = dbiji_core::driver::query_scalar(s.as_mut(), "SELECT b FROM tmp_t WHERE a = 3", &[]).await.unwrap();
     assert_eq!(v, Value::text(""));
-    let mut cur = s
-        .execute("INSERT INTO tmp_t VALUES (?, ?), (?, ?)", &[Value::Int(1), Value::text("x'y"), Value::Int(2), Value::text("z")], &ExecOptions::default())
-        .await
-        .unwrap();
+    let mut cur =
+        s.execute("INSERT INTO tmp_t VALUES (?, ?), (?, ?)", &[Value::Int(1), Value::text("x'y"), Value::Int(2), Value::text("z")], &ExecOptions::default()).await.unwrap();
     match cur.next_result().await.unwrap() {
         Some(ResultHeader::Update { rows_affected, tag, .. }) => {
             assert_eq!(rows_affected, Some(2));
@@ -142,14 +132,7 @@ async fn basic_queries_and_types() {
     assert_eq!(err.position, Some(1));
     let err = query_all(s.as_mut(), "SELECT * FROM no_such_table_xyz", &[]).await.unwrap_err();
     assert_eq!(err.kind, ErrorKind::Query);
-    let mut cur = s
-        .execute(
-            "SELECT number, throwIf(number = 300000, 'boom mid stream') FROM numbers(400000)",
-            &[],
-            &ExecOptions::default(),
-        )
-        .await
-        .unwrap();
+    let mut cur = s.execute("SELECT number, throwIf(number = 300000, 'boom mid stream') FROM numbers(400000)", &[], &ExecOptions::default()).await.unwrap();
     // Depending on buffering the exception arrives before the header (HTTP
     // 500) or in the middle of the stream: both must surface as errors.
     let mut n = 0usize;
@@ -184,10 +167,7 @@ async fn basic_queries_and_types() {
 async fn streams_a_million_rows() {
     let Some(mut s) = connect().await else { return };
     let start = Instant::now();
-    let mut cur = s
-        .execute("SELECT number, toString(number) FROM numbers(1000000)", &[], &ExecOptions::default())
-        .await
-        .unwrap();
+    let mut cur = s.execute("SELECT number, toString(number) FROM numbers(1000000)", &[], &ExecOptions::default()).await.unwrap();
     assert!(matches!(cur.next_result().await.unwrap(), Some(ResultHeader::Rows(_))));
     let mut total = 0usize;
     let mut last = -1i64;
@@ -213,14 +193,7 @@ async fn streams_a_million_rows() {
     // server is still producing (the client does not buffer everything);
     // closing the cursor kills the query.
     let marker = unique("bp");
-    let mut cur = s
-        .execute(
-            &format!("SELECT number, '{marker}' FROM numbers(10000000000)"),
-            &[],
-            &ExecOptions::default(),
-        )
-        .await
-        .unwrap();
+    let mut cur = s.execute(&format!("SELECT number, '{marker}' FROM numbers(10000000000)"), &[], &ExecOptions::default()).await.unwrap();
     cur.next_result().await.unwrap();
     assert_eq!(cur.fetch(100).await.unwrap().len(), 100);
     tokio::time::sleep(Duration::from_millis(1500)).await;
@@ -315,11 +288,7 @@ async fn metadata_and_ddl_round_trip() {
     .await;
     exec(s.as_mut(), &format!("INSERT INTO {d}.events (id, name) SELECT number + 1, toString(number) FROM numbers(100)")).await;
     exec(s.as_mut(), &format!("CREATE VIEW {d}.v_events AS SELECT id, name FROM {d}.events WHERE id < 10")).await;
-    exec(
-        s.as_mut(),
-        &format!("CREATE MATERIALIZED VIEW {d}.mv_events ENGINE = MergeTree ORDER BY id AS SELECT id, name FROM {d}.events"),
-    )
-    .await;
+    exec(s.as_mut(), &format!("CREATE MATERIALIZED VIEW {d}.mv_events ENGINE = MergeTree ORDER BY id AS SELECT id, name FROM {d}.events")).await;
 
     let schemas = s.list_schemas().await.unwrap();
     assert!(schemas.iter().any(|x| x.name == d));
@@ -389,15 +358,7 @@ async fn metadata_and_ddl_round_trip() {
         .unwrap();
     assert!(found.iter().any(|o| o.obj.kind == ObjectKind::Table && o.obj.name == "events"));
     assert!(found.iter().any(|o| o.obj.kind == ObjectKind::View && o.obj.name == "v_events"));
-    let found = s
-        .search_metadata(&MetadataSearch {
-            pattern: "na*".into(),
-            kinds: vec![ObjectKind::Column],
-            schemas: vec![d.clone()],
-            ..Default::default()
-        })
-        .await
-        .unwrap();
+    let found = s.search_metadata(&MetadataSearch { pattern: "na*".into(), kinds: vec![ObjectKind::Column], schemas: vec![d.clone()], ..Default::default() }).await.unwrap();
     assert!(found.iter().any(|o| o.obj.name == "name" && o.obj.table.as_deref() == Some("events")));
 
     // snapshot
@@ -416,12 +377,7 @@ async fn metadata_and_ddl_round_trip() {
     def.columns.push(c);
     def.columns.push(ColumnDef::new("amount", "Decimal(12, 2)").not_null().default_value("0"));
     def.primary_key = Some(KeyDef { name: None, columns: vec!["id".into()] });
-    def.indexes.push(IndexDef {
-        name: "idx_label".into(),
-        columns: vec![IndexColumn::column("label")],
-        method: Some("set(100)".into()),
-        ..Default::default()
-    });
+    def.indexes.push(IndexDef { name: "idx_label".into(), columns: vec![IndexColumn::column("label")], method: Some("set(100)".into()), ..Default::default() });
     def.checks.push(CheckDef { name: Some("positive".into()), expression: "amount >= 0".into() });
     def.comment = Some("round trip".into());
     for stmt in dialect.ddl().create_table(&def, true) {
@@ -484,19 +440,11 @@ async fn explain_sessions_metrics() {
     // a long query in another session shows up in the session list and can be killed
     let mut other = connect().await.unwrap();
     let marker = unique("sess");
-    let mut cur = other
-        .execute(&format!("SELECT count(), '{marker}' FROM numbers(100000000000)"), &[], &ExecOptions::default())
-        .await
-        .unwrap();
+    let mut cur = other.execute(&format!("SELECT count(), '{marker}' FROM numbers(100000000000)"), &[], &ExecOptions::default()).await.unwrap();
     tokio::time::sleep(Duration::from_millis(800)).await;
     let list = s.list_sessions().await.unwrap();
     let qcol = list.query_column.unwrap();
-    let row = list
-        .data
-        .rows
-        .iter()
-        .find(|r| r[qcol].as_str().is_some_and(|q| q.contains(&marker)))
-        .expect("long query listed");
+    let row = list.data.rows.iter().find(|r| r[qcol].as_str().is_some_and(|q| q.contains(&marker))).expect("long query listed");
     let id = row[list.id_column].to_text().into_owned();
     s.kill_session(&id, dbiji_core::admin::KillMode::CancelQuery).await.unwrap();
     let err = loop {

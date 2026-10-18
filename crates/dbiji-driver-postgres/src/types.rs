@@ -152,9 +152,7 @@ impl Conv {
             Kind::Range(sub) => Conv::Range(Box::new(Self::for_type_depth(sub, depth + 1))),
             Kind::Multirange(sub) => Conv::Multirange(Box::new(Self::for_type_depth(sub, depth + 1))),
             Kind::Domain(base) => Self::for_type_depth(base, depth + 1),
-            Kind::Composite(fields) => {
-                Conv::Composite(fields.iter().map(|f| Self::for_type_depth(f.type_(), depth + 1)).collect())
-            }
+            Kind::Composite(fields) => Conv::Composite(fields.iter().map(|f| Self::for_type_depth(f.type_(), depth + 1)).collect()),
             _ => match ty.name() {
                 "citext" => Conv::Text,
                 "geometry" | "geography" => Conv::Geometry,
@@ -357,9 +355,8 @@ pub(crate) fn kind_from_type_name(type_name: &str) -> DataKind {
     match base {
         "bool" | "boolean" => DataKind::Bool,
         "bit" | "varbit" | "bit varying" => DataKind::Bit,
-        "smallint" | "integer" | "int" | "bigint" | "int2" | "int4" | "int8" | "smallserial"
-        | "serial" | "bigserial" | "serial2" | "serial4" | "serial8" | "oid" | "xid" | "xid8"
-        | "cid" => DataKind::Int,
+        "smallint" | "integer" | "int" | "bigint" | "int2" | "int4" | "int8" | "smallserial" | "serial" | "bigserial" | "serial2" | "serial4" | "serial8" | "oid" | "xid"
+        | "xid8" | "cid" => DataKind::Int,
         "real" | "float4" | "float8" | "double precision" | "float" => DataKind::Float,
         "numeric" | "decimal" | "money" => DataKind::Decimal,
         "date" => DataKind::Date,
@@ -374,19 +371,13 @@ pub(crate) fn kind_from_type_name(type_name: &str) -> DataKind {
         "bytea" => DataKind::Binary,
         "inet" | "cidr" | "macaddr" | "macaddr8" => DataKind::Network,
         "geometry" | "geography" => DataKind::Geometry,
-        "int4range" | "int8range" | "numrange" | "tsrange" | "tstzrange" | "daterange"
-        | "int4multirange" | "int8multirange" | "nummultirange" | "tsmultirange"
+        "int4range" | "int8range" | "numrange" | "tsrange" | "tstzrange" | "daterange" | "int4multirange" | "int8multirange" | "nummultirange" | "tsmultirange"
         | "tstzmultirange" | "datemultirange" => DataKind::Range,
-        "text" | "varchar" | "character varying" | "char" | "character" | "bpchar" | "name"
-        | "citext" | "\"char\"" => DataKind::Text,
+        "text" | "varchar" | "character varying" | "char" | "character" | "bpchar" | "name" | "citext" | "\"char\"" => DataKind::Text,
         _ if base.starts_with("interval") => DataKind::Interval,
-        _ if base.starts_with("timestamp") && base.contains("with time zone") && !base.contains("without") => {
-            DataKind::DateTimeTz
-        }
+        _ if base.starts_with("timestamp") && base.contains("with time zone") && !base.contains("without") => DataKind::DateTimeTz,
         _ if base.starts_with("timestamp") => DataKind::DateTime,
-        _ if base.starts_with("time") && base.contains("with time zone") && !base.contains("without") => {
-            DataKind::TimeTz
-        }
+        _ if base.starts_with("time") && base.contains("with time zone") && !base.contains("without") => DataKind::TimeTz,
         _ if base.starts_with("time") => DataKind::Time,
         _ if base.starts_with("character varying") || base.starts_with("character") => DataKind::Text,
         _ if base.starts_with("bit varying") => DataKind::Bit,

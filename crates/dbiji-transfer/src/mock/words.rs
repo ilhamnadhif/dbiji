@@ -3,13 +3,11 @@
 //! reserved `example.*` domains (RFC 2606), phone numbers the fictional 555 range.
 
 pub(crate) const FIRST_NAMES: &[&str] = &[
-    "Adi", "Agus", "Ahmad", "Aisha", "Akira", "Alex", "Ali", "Amara", "Amir", "Ana", "Andi", "Anika", "Anna", "Ari",
-    "Ayu", "Bayu", "Ben", "Budi", "Carlos", "Chen", "Claire", "Dani", "David", "Dewi", "Diego", "Dimas", "Elena",
-    "Emma", "Eko", "Fajar", "Farah", "Fatima", "Fitri", "Gita", "Hana", "Hans", "Hiroshi", "Ibrahim", "Ines", "Ingrid",
-    "Ivan", "Jae", "James", "Joko", "Juan", "Julia", "Kai", "Karin", "Kofi", "Lars", "Lea", "Lina", "Liam", "Lucas",
-    "Luca", "Lucia", "Maria", "Mateo", "Maya", "Mei", "Mia", "Nadia", "Nina", "Noah", "Nur", "Olga", "Olivia", "Omar",
-    "Pedro", "Pierre", "Priya", "Putri", "Raj", "Rina", "Rizky", "Rosa", "Sakura", "Sam", "Sara", "Siti", "Sofia",
-    "Tariq", "Teguh", "Tomas", "Wei", "Wulan", "Yuki", "Yusuf", "Zara",
+    "Adi", "Agus", "Ahmad", "Aisha", "Akira", "Alex", "Ali", "Amara", "Amir", "Ana", "Andi", "Anika", "Anna", "Ari", "Ayu", "Bayu", "Ben", "Budi", "Carlos", "Chen", "Claire",
+    "Dani", "David", "Dewi", "Diego", "Dimas", "Elena", "Emma", "Eko", "Fajar", "Farah", "Fatima", "Fitri", "Gita", "Hana", "Hans", "Hiroshi", "Ibrahim", "Ines", "Ingrid", "Ivan",
+    "Jae", "James", "Joko", "Juan", "Julia", "Kai", "Karin", "Kofi", "Lars", "Lea", "Lina", "Liam", "Lucas", "Luca", "Lucia", "Maria", "Mateo", "Maya", "Mei", "Mia", "Nadia",
+    "Nina", "Noah", "Nur", "Olga", "Olivia", "Omar", "Pedro", "Pierre", "Priya", "Putri", "Raj", "Rina", "Rizky", "Rosa", "Sakura", "Sam", "Sara", "Siti", "Sofia", "Tariq",
+    "Teguh", "Tomas", "Wei", "Wulan", "Yuki", "Yusuf", "Zara",
 ];
 
 pub(crate) const LAST_NAMES: &[&str] = &[
@@ -174,17 +172,14 @@ pub(crate) const COUNTRIES: &[&str] = &[
     "Vietnam",
 ];
 
-pub(crate) const COUNTRY_CODES: &[&str] =
-    &["AU", "BR", "CA", "DE", "FR", "GB", "ID", "IN", "JP", "KR", "MY", "NL", "SG", "TH", "US", "VN"];
+pub(crate) const COUNTRY_CODES: &[&str] = &["AU", "BR", "CA", "DE", "FR", "GB", "ID", "IN", "JP", "KR", "MY", "NL", "SG", "TH", "US", "VN"];
 
 pub(crate) const STREET_WORDS: &[&str] = &[
-    "Acacia", "Bridge", "Cedar", "Central", "Church", "Garden", "Harbor", "Hill", "Jasmine", "Lake", "Liberty",
-    "Maple", "Market", "Meadow", "Mill", "Orchid", "Park", "Pine", "River", "Spring", "Station", "Sunset", "Union",
-    "Valley", "Willow",
+    "Acacia", "Bridge", "Cedar", "Central", "Church", "Garden", "Harbor", "Hill", "Jasmine", "Lake", "Liberty", "Maple", "Market", "Meadow", "Mill", "Orchid", "Park", "Pine",
+    "River", "Spring", "Station", "Sunset", "Union", "Valley", "Willow",
 ];
 
-pub(crate) const STREET_SUFFIXES: &[&str] =
-    &["Street", "Avenue", "Road", "Lane", "Boulevard", "Drive", "Way", "Court", "Place"];
+pub(crate) const STREET_SUFFIXES: &[&str] = &["Street", "Avenue", "Road", "Lane", "Boulevard", "Drive", "Way", "Court", "Place"];
 
 pub(crate) const COMPANY_WORDS: &[&str] = &[
     "Atlas",

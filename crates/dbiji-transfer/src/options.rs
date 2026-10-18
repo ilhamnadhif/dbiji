@@ -314,13 +314,7 @@ pub struct JsonOptions {
 
 impl Default for JsonOptions {
     fn default() -> Self {
-        JsonOptions {
-            pretty: true,
-            layout: JsonLayout::ArrayOfObjects,
-            include_table_name: false,
-            binary: BinaryEncoding::Base64,
-            format_dates: false,
-        }
+        JsonOptions { pretty: true, layout: JsonLayout::ArrayOfObjects, include_table_name: false, binary: BinaryEncoding::Base64, format_dates: false }
     }
 }
 
@@ -514,13 +508,7 @@ pub struct XmlOptions {
 
 impl Default for XmlOptions {
     fn default() -> Self {
-        XmlOptions {
-            root_element: "export".into(),
-            record_element: "DATA_RECORD".into(),
-            null_mode: XmlNullMode::NullAttribute,
-            include_dtd: false,
-            indent: true,
-        }
+        XmlOptions { root_element: "export".into(), record_element: "DATA_RECORD".into(), null_mode: XmlNullMode::NullAttribute, include_dtd: false, indent: true }
     }
 }
 
@@ -618,11 +606,7 @@ pub struct ParquetOptions {
 
 impl Default for ParquetOptions {
     fn default() -> Self {
-        ParquetOptions {
-            compression: ParquetCompression::Snappy,
-            row_group_rows: 65_536,
-            row_group_bytes: 64 * 1024 * 1024,
-        }
+        ParquetOptions { compression: ParquetCompression::Snappy, row_group_rows: 65_536, row_group_bytes: 64 * 1024 * 1024 }
     }
 }
 

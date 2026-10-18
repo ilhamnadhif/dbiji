@@ -16,9 +16,7 @@ fn json_text(v: &J) -> String {
         J::Number(n) => n.to_string(),
         J::Bool(b) => b.to_string(),
         J::Null => String::new(),
-        J::Array(items) if items.iter().all(|i| i.is_string() || i.is_number()) => {
-            items.iter().map(json_text).collect::<Vec<_>>().join(", ")
-        }
+        J::Array(items) if items.iter().all(|i| i.is_string() || i.is_number()) => items.iter().map(json_text).collect::<Vec<_>>().join(", "),
         other => other.to_string(),
     }
 }

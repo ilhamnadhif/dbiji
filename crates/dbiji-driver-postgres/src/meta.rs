@@ -794,6 +794,22 @@ impl PgSession {
                         props.push(g("Sequence", "Owned by", o));
                     }
                 }
+                if relkind == "f"
+                    && let Some(f) = self
+                        .q1(
+                            "SELECT s.srvname::text, w.fdwname::text, array_to_string(ft.ftoptions, ', ') \
+                             FROM pg_catalog.pg_foreign_table ft JOIN pg_catalog.pg_foreign_server s ON s.oid = ft.ftserver \
+                             JOIN pg_catalog.pg_foreign_data_wrapper w ON w.oid = s.srvfdw WHERE ft.ftrelid = $1",
+                            &[P::Oid(r.i(0)? as u32)],
+                        )
+                        .await?
+                {
+                    props.push(g("Foreign table", "Server", f.s(0)?));
+                    props.push(g("Foreign table", "Foreign data wrapper", f.s(1)?));
+                    if let Some(o) = some_nonempty(f.os(2)?) {
+                        props.push(g("Foreign table", "Options", o));
+                    }
+                }
                 if (relkind == "i" || relkind == "I")
                     && let Some(r) = self
                         .q1(

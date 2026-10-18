@@ -1493,6 +1493,83 @@ fn run(cmd: &dbiji_core::admin::CommandSpec) -> bool {
     }
 }
 
+// ------------------------------------- extensions in a throwaway database
+
+/// Foreign tables (file_fdw) and hstore values, in a temporary database so
+/// the extensions never touch the shared one.
+#[tokio::test]
+async fn foreign_tables_and_hstore_in_temp_database() {
+    let Some(url) = url() else { return };
+    let params = params_from_url(&url);
+    with_database(&params, |p, _db| async move {
+        let mut s = connect(&p).await;
+        let available = scalar(&mut s, "SELECT count(*) FROM pg_available_extensions WHERE name IN ('file_fdw', 'hstore')").await;
+        if available != Value::Int(2) {
+            eprintln!("file_fdw / hstore not available on this server; skipping");
+            s.close().await.ok();
+            return;
+        }
+        for sql in [
+            "CREATE EXTENSION file_fdw",
+            "CREATE EXTENSION hstore",
+            "CREATE SERVER dbiji_files FOREIGN DATA WRAPPER file_fdw",
+            "CREATE SCHEMA ft",
+            "CREATE FOREIGN TABLE ft.lines (a integer NOT NULL, b text) SERVER dbiji_files \
+             OPTIONS (filename '/dev/null', format 'csv')",
+            "COMMENT ON FOREIGN TABLE ft.lines IS 'empty file'",
+            "CREATE TABLE ft.kv (id integer PRIMARY KEY, h hstore)",
+        ] {
+            exec(&mut s, sql).await;
+        }
+        let names = |v: &[dbiji_core::meta::ObjectInfo]| v.iter().map(|o| o.obj.name.clone()).collect::<Vec<_>>();
+        let sr = SchemaRef::schema("ft");
+        let exts = s.list_objects(&SchemaRef::default(), ObjectKind::Extension).await.unwrap();
+        assert!(names(&exts).contains(&"file_fdw".to_string()), "{exts:?}");
+        assert_eq!(names(&s.list_objects(&sr, ObjectKind::ForeignTable).await.unwrap()), vec!["lines"]);
+        assert_eq!(names(&s.list_objects(&sr, ObjectKind::Table).await.unwrap()), vec!["kv"]);
+        let ft = ObjectRef::new(ObjectKind::ForeignTable, Some("ft".into()), "lines");
+        let cols = s.list_children(&ft, ObjectKind::Column).await.unwrap();
+        assert_eq!(names(&cols), vec!["a", "b"]);
+        // definition, DDL and a replay into a second schema
+        let def = s.table_definition(&ft).await.unwrap();
+        assert_eq!(def.table_kind, dbiji_core::ddl::TableKind::ForeignTable);
+        assert_eq!(def.options.get("server").map(String::as_str), Some("dbiji_files"));
+        assert_eq!(def.comment.as_deref(), Some("empty file"));
+        let ddl = s.object_ddl(&ft).await.unwrap();
+        assert!(ddl.contains("CREATE FOREIGN TABLE ft.lines"), "{ddl}");
+        assert!(ddl.contains("SERVER dbiji_files OPTIONS (filename '/dev/null', format 'csv')"), "{ddl}");
+        assert!(ddl.contains("COMMENT ON FOREIGN TABLE ft.lines IS 'empty file'"), "{ddl}");
+        exec(&mut s, "CREATE SCHEMA ft2").await;
+        let mut copy = def.clone();
+        copy.schema = Some("ft2".into());
+        for stmt in PgDdl::new().create_table(&copy, true) {
+            exec(&mut s, &stmt).await;
+        }
+        let back = s.table_definition(&ObjectRef::new(ObjectKind::ForeignTable, Some("ft2".into()), "lines")).await.unwrap();
+        assert_eq!(back.columns, def.columns);
+        assert_eq!(back.options, def.options);
+        assert_eq!(back.comment, def.comment);
+        let props = s.object_properties(&ft).await.unwrap();
+        let prop = |n: &str| props.iter().find(|p| p.name == n).map(|p| p.value.clone());
+        assert_eq!(prop("Type").as_deref(), Some("Foreign table"));
+        assert_eq!(prop("Server").as_deref(), Some("dbiji_files"));
+        assert_eq!(prop("Foreign data wrapper").as_deref(), Some("file_fdw"));
+        s.object_statistics(&ft).await.unwrap();
+        s.object_dependencies(&ft).await.unwrap();
+        let (_, data) = query_all(&mut *s, "SELECT * FROM ft.lines", &[]).await.unwrap();
+        assert!(data.is_empty());
+        // hstore: text protocol, binary protocol (with parameters) and as a parameter
+        exec(&mut s, r#"INSERT INTO ft.kv VALUES (1, 'a=>1, "b c"=>NULL, q=>"x\"y"')"#).await;
+        let expected = Value::text(r#""a"=>"1", "q"=>"x\"y", "b c"=>NULL"#);
+        assert_eq!(scalar(&mut s, "SELECT h FROM ft.kv").await, expected);
+        assert_eq!(query_scalar(&mut *s, "SELECT h FROM ft.kv WHERE id = $1", &[Value::Int(1)]).await.unwrap(), expected);
+        execute_update(&mut *s, "INSERT INTO ft.kv VALUES ($1, $2)", &[Value::Int(2), Value::text("k=>v")]).await.unwrap();
+        assert_eq!(scalar(&mut s, "SELECT h -> 'k' FROM ft.kv WHERE id = 2").await, Value::text("v"));
+        s.close().await.ok();
+    })
+    .await;
+}
+
 // ------------------------------------------------- debugger, PostGIS and TLS
 
 #[tokio::test]

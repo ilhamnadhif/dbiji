@@ -70,6 +70,14 @@ where
     }
     let res = AssertUnwindSafe(body(params.clone(), schema.clone())).catch_unwind().await;
     let mut s = connect(params).await;
+    // the schema itself plus the ones a test derived from its name (e.g. `<schema>_copy`)
+    let derived = query_all(&mut *s, &format!("SELECT nspname::text FROM pg_namespace WHERE nspname LIKE '{schema}\\_%'"), &[])
+        .await
+        .map(|r| r.1)
+        .unwrap_or_default();
+    for name in derived.iter().filter_map(|r| r.first().and_then(|v| v.as_str()).map(str::to_string)) {
+        let _ = execute_update(&mut *s, &format!("DROP SCHEMA IF EXISTS \"{name}\" CASCADE"), &[]).await;
+    }
     let _ = execute_update(&mut *s, &format!("DROP SCHEMA IF EXISTS {schema} CASCADE"), &[]).await;
     s.close().await.ok();
     if let Err(p) = res {

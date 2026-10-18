@@ -88,11 +88,10 @@ impl Services {
         };
         let exec = crate::headless::executor(paths, secrets.clone());
         let scheduler = Arc::new(dbiji_tasks::Scheduler::new(store.clone(), log.clone(), exec, dbiji_tasks::SchedulerOptions::default(), runtime));
-        if schedule {
-            if let Err(e) = scheduler.start() {
+        if schedule
+            && let Err(e) = scheduler.start() {
                 warnings.push(e.to_string());
             }
-        }
         (Some(store), Some(log), Some(scheduler))
     }
 

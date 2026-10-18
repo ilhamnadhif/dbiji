@@ -301,12 +301,11 @@ impl TabView for ErTab {
                 }
                 self.refresh_pending = true;
             }
-            if ui.button(format!("{} {}", icon::TREE_STRUCTURE, tr("Layout"))).clicked() {
-                if let Some(d) = self.diagram.as_mut() {
+            if ui.button(format!("{} {}", icon::TREE_STRUCTURE, tr("Layout"))).clicked()
+                && let Some(d) = self.diagram.as_mut() {
                     d.relayout();
                     self.dirty = true;
                 }
-            }
             if ui.button(format!("{} {}", icon::EXPORT, tr("Export…"))).clicked() {
                 self.export(cx);
             }

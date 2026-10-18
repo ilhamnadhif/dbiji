@@ -201,8 +201,8 @@ impl ResultPanel {
             }
             crate::backend::Loadable::NotLoaded => self.model.fetch.counting = false,
         }
-        if let Some(j) = self.save_job.as_mut() {
-            if let Some(r) = j.poll() {
+        if let Some(j) = self.save_job.as_mut()
+            && let Some(r) = j.poll() {
                 self.save_job = None;
                 match r {
                     Ok((n, committed)) => {
@@ -216,7 +216,6 @@ impl ResultPanel {
                     Err(e) => cx.toasts.error(tr("Cannot save the changes"), Some(e.full_text())),
                 }
             }
-        }
         let mut done = Vec::new();
         for (i, (col, job)) in self.dict_jobs.iter_mut().enumerate() {
             if let Some(r) = job.poll() {
@@ -230,8 +229,8 @@ impl ResultPanel {
         for i in done.into_iter().rev() {
             self.dict_jobs.remove(i);
         }
-        if let Some((rel, key, job)) = self.refs_job.as_mut() {
-            if let Some(r) = job.poll() {
+        if let Some((rel, key, job)) = self.refs_job.as_mut()
+            && let Some(r) = job.poll() {
                 let (rel, key) = (*rel, key.clone());
                 self.refs_job = None;
                 match r {
@@ -239,7 +238,6 @@ impl ResultPanel {
                     Err(e) => self.status = Some((e.full_text(), true)),
                 }
             }
-        }
     }
 
     /// Work out which table the result can be edited in, its keys and foreign keys.
@@ -250,11 +248,10 @@ impl ResultPanel {
         let read_only = cx.conns.config(&self.conn).is_some_and(|c| c.read_only);
         let mut tables: Vec<ObjectRef> = Vec::new();
         for c in self.model.columns() {
-            if let Some(s) = &c.source {
-                if !tables.iter().any(|t| same_table(t, s.schema.as_deref(), &s.table)) {
+            if let Some(s) = &c.source
+                && !tables.iter().any(|t| same_table(t, s.schema.as_deref(), &s.table)) {
                     tables.push(ObjectRef::table(s.schema.clone(), s.table.clone()).with_database(s.database.clone()));
                 }
-            }
         }
         if tables.is_empty() {
             let e = Err(ReadOnlyReason::NoSourceTable);
@@ -419,12 +416,11 @@ impl ResultPanel {
 
     /// Show another table (FK navigation inside a table data view).
     fn navigate(&mut self, cx: &mut AppContext, to: Location, record: bool) {
-        if record {
-            if let Some(t) = &self.table {
+        if record
+            && let Some(t) = &self.table {
                 self.back.push(Location { table: t.clone(), where_clause: self.where_clause.clone() });
                 self.forward.clear();
             }
-        }
         self.title = to.table.name.clone();
         self.table = Some(to.table);
         self.where_clause = to.where_clause.clone();
@@ -566,8 +562,8 @@ impl ResultPanel {
             if ui.button(format!("{} {}", icon::TABLE, tr("Back to grid"))).clicked() {
                 self.mode = Mode::Grid;
             }
-            if ui.button(format!("{} {}", icon::EXPORT, tr("Export chart…"))).clicked() {
-                if let Some(path) = rfd::FileDialog::new().set_file_name("chart.png").add_filter("PNG", &["png"]).add_filter("SVG", &["svg"]).save_file() {
+            if ui.button(format!("{} {}", icon::EXPORT, tr("Export chart…"))).clicked()
+                && let Some(path) = rfd::FileDialog::new().set_file_name("chart.png").add_filter("PNG", &["png"]).add_filter("SVG", &["svg"]).save_file() {
                     let size = egui::vec2(1200.0, 700.0);
                     let res = if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("svg")) {
                         std::fs::write(&path, dbiji_visual::chart::export_chart_svg(&cv.data, &cv.config, size)).map_err(|e| e.to_string())
@@ -578,7 +574,6 @@ impl ResultPanel {
                         self.status = Some((e, true));
                     }
                 }
-            }
         });
         let mut rebuild = cv.generation != generation;
         egui::Panel::left("chart_cfg").resizable(true).default_size(220.0).show(ui, |ui| {
@@ -719,22 +714,20 @@ impl ResultPanel {
         self.resolve_editability(cx);
         if self.table.is_some() && (!self.back.is_empty() || !self.forward.is_empty()) {
             ui.horizontal(|ui| {
-                if ui.add_enabled(!self.back.is_empty(), egui::Button::new(icon::ARROW_LEFT)).on_hover_text(tr("Back")).clicked() {
-                    if let Some(loc) = self.back.pop() {
+                if ui.add_enabled(!self.back.is_empty(), egui::Button::new(icon::ARROW_LEFT)).on_hover_text(tr("Back")).clicked()
+                    && let Some(loc) = self.back.pop() {
                         if let Some(t) = &self.table {
                             self.forward.push(Location { table: t.clone(), where_clause: self.where_clause.clone() });
                         }
                         self.navigate(cx, loc, false);
                     }
-                }
-                if ui.add_enabled(!self.forward.is_empty(), egui::Button::new(icon::ARROW_RIGHT)).on_hover_text(tr("Forward")).clicked() {
-                    if let Some(loc) = self.forward.pop() {
+                if ui.add_enabled(!self.forward.is_empty(), egui::Button::new(icon::ARROW_RIGHT)).on_hover_text(tr("Forward")).clicked()
+                    && let Some(loc) = self.forward.pop() {
                         if let Some(t) = &self.table {
                             self.back.push(Location { table: t.clone(), where_clause: self.where_clause.clone() });
                         }
                         self.navigate(cx, loc, false);
                     }
-                }
                 if let Some(t) = &self.table {
                     ui.strong(t.display_path());
                 }

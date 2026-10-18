@@ -1,6 +1,9 @@
 //! DBiji application crate: window, tabs, navigator and the wiring of all
 //! DBiji crates. The `dbiji` binary calls [`run`].
 
+// `DbError` carries the server diagnostics and is returned by value.
+#![allow(clippy::result_large_err, clippy::type_complexity, clippy::too_many_arguments)]
+
 pub mod app;
 pub mod backend;
 pub mod bench;

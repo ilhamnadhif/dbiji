@@ -148,12 +148,11 @@ impl ImportDialog {
                                     ui.selectable_value(&mut self.workspace, Some(w.clone()), w.display().to_string());
                                 }
                             });
-                            if ui.button(format!("{} {}", icon::FOLDER_OPEN, tr("Browse…"))).clicked() {
-                                if let Some(p) = rfd::FileDialog::new().pick_folder() {
+                            if ui.button(format!("{} {}", icon::FOLDER_OPEN, tr("Browse…"))).clicked()
+                                && let Some(p) = rfd::FileDialog::new().pick_folder() {
                                     self.workspaces.push(p.clone());
                                     self.workspace = Some(p);
                                 }
-                            }
                         });
                         ui.weak(tr("Passwords saved by DBeaver with the default key are imported into the secure store."));
                     }
@@ -161,11 +160,10 @@ impl ImportDialog {
                         ui.horizontal(|ui| {
                             ui.label(tr("File"));
                             ui.add(egui::TextEdit::singleline(&mut self.pgpass_path).desired_width(380.0));
-                            if ui.button(format!("{} {}", icon::FOLDER_OPEN, tr("Browse…"))).clicked() {
-                                if let Some(p) = rfd::FileDialog::new().pick_file() {
+                            if ui.button(format!("{} {}", icon::FOLDER_OPEN, tr("Browse…"))).clicked()
+                                && let Some(p) = rfd::FileDialog::new().pick_file() {
                                     self.pgpass_path = p.display().to_string();
                                 }
-                            }
                         });
                         ui.checkbox(&mut self.pgpass_store_passwords, tr("Copy the passwords into the secure store (otherwise the connections read .pgpass)"));
                     }

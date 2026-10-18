@@ -272,11 +272,10 @@ impl SessionHandle {
     /// Close the cursor only if it is the one identified by `token`.
     pub async fn close_cursor_token(&self, token: u64) {
         let mut slot = self.inner.cursor.lock().await;
-        if slot.as_ref().is_some_and(|c| c.token == token) {
-            if let Some(mut c) = slot.take() {
+        if slot.as_ref().is_some_and(|c| c.token == token)
+            && let Some(mut c) = slot.take() {
                 let _ = c.cursor.close().await;
             }
-        }
     }
 
     /// Run `sql` to completion and return the first row set (metadata-style queries).

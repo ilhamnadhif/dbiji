@@ -207,8 +207,8 @@ impl TabView for SchemaCompareTab {
     }
 
     fn ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
-        if let Some(j) = self.job.as_mut() {
-            if let Some(r) = j.poll() {
+        if let Some(j) = self.job.as_mut()
+            && let Some(r) = j.poll() {
                 self.job = None;
                 match r {
                     Ok((a, b)) => {
@@ -219,24 +219,21 @@ impl TabView for SchemaCompareTab {
                     Err(e) => self.error = Some(e.full_text()),
                 }
             }
-        }
-        if let Some(j) = self.apply_job.as_mut() {
-            if let Some(r) = j.poll() {
+        if let Some(j) = self.apply_job.as_mut()
+            && let Some(r) = j.poll() {
                 self.apply_job = None;
                 match r {
                     Ok(n) => {
                         cx.toasts.success(trf("{} statement(s) executed on the target", &[&n]));
-                        if let (Some(tc), Some(ts)) = (&self.target.conn, &self.target.schema) {
-                            if let Some(l) = cx.conns.live_mut(tc) {
+                        if let (Some(tc), Some(ts)) = (&self.target.conn, &self.target.schema)
+                            && let Some(l) = cx.conns.live_mut(tc) {
                                 l.meta.clear_schema(ts);
                             }
-                        }
                         self.start(cx);
                     }
                     Err(e) => self.error = Some(e.full_text()),
                 }
             }
-        }
         egui::Grid::new("cmp_sides").num_columns(3).spacing([8.0, 6.0]).show(ui, |ui| {
             ui.strong(tr("Source"));
             ui.horizontal(|ui| Self::side_ui(ui, cx, "src", &mut self.source));
@@ -290,8 +287,8 @@ impl TabView for SchemaCompareTab {
             if ui.add_enabled(!script.is_empty() && self.apply_job.is_none(), egui::Button::new(format!("{} {}", icon::PLAY, tr("Apply to target…")))).clicked() {
                 self.confirm_apply = true;
             }
-            if ui.button(format!("{} {}", icon::GRAPH, tr("Diff diagram"))).on_hover_text(tr("ER diagram of the target with the differences highlighted")).clicked() {
-                if let (Some((a, b)), Some(tc)) = (self.snapshots.clone(), self.target.conn.clone()) {
+            if ui.button(format!("{} {}", icon::GRAPH, tr("Diff diagram"))).on_hover_text(tr("ER diagram of the target with the differences highlighted")).clicked()
+                && let (Some((a, b)), Some(tc)) = (self.snapshots.clone(), self.target.conn.clone()) {
                     let old = dbiji_visual::er::ErModel::from_snapshot(&b, None);
                     let new = dbiji_visual::er::ErModel::from_snapshot(&a, None);
                     let model = dbiji_visual::er::ErModel::diff(&old, &new);
@@ -300,9 +297,8 @@ impl TabView for SchemaCompareTab {
                     let schema = self.target.schema.clone().unwrap_or_else(|| SchemaRef::new(None, None));
                     cx.push(AppCommand::OpenTab(Box::new(crate::tabs::er::ErTab::from_saved(tc, schema, name, diagram))));
                 }
-            }
-            if ui.button(format!("{} {}", icon::FILE_HTML, tr("HTML report…"))).clicked() {
-                if let Some(path) = rfd::FileDialog::new().set_file_name("schema-compare.html").save_file() {
+            if ui.button(format!("{} {}", icon::FILE_HTML, tr("HTML report…"))).clicked()
+                && let Some(path) = rfd::FileDialog::new().set_file_name("schema-compare.html").save_file() {
                     let src = self.source.schema.as_ref().and_then(|s| s.schema.clone()).unwrap_or_default();
                     let dst = self.target.schema.as_ref().and_then(|s| s.schema.clone()).unwrap_or_default();
                     let html = dbiji_compare::html_report(&diff, &src, &dst);
@@ -310,18 +306,15 @@ impl TabView for SchemaCompareTab {
                         cx.toasts.error(tr("Cannot write the file"), Some(e.to_string()));
                     }
                 }
-            }
-            if ui.button(format!("{} {}", icon::FILE_CODE, tr("Liquibase changelog…"))).clicked() {
-                if let (Some(d), Some((a, b))) = (self.selected_diff(), self.snapshots.clone()) {
-                    if let Some(path) = rfd::FileDialog::new().set_file_name("changelog.xml").save_file() {
+            if ui.button(format!("{} {}", icon::FILE_CODE, tr("Liquibase changelog…"))).clicked()
+                && let (Some(d), Some((a, b))) = (self.selected_diff(), self.snapshots.clone())
+                    && let Some(path) = rfd::FileDialog::new().set_file_name("changelog.xml").save_file() {
                         let opts = LiquibaseOptions { script: self.script_options(), dialect: target.as_ref().and_then(|t| cx.conns.live(t)).map(|l| l.dialect.clone()), ..Default::default() };
                         let xml = dbiji_compare::liquibase_changelog(&d, &a, &b, &opts);
                         if let Err(e) = std::fs::write(&path, xml) {
                             cx.toasts.error(tr("Cannot write the file"), Some(e.to_string()));
                         }
                     }
-                }
-            }
             if self.apply_job.is_some() {
                 ui.spinner();
             }

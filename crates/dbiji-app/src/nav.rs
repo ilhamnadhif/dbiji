@@ -262,11 +262,10 @@ impl Navigator {
                     let mut dbs = dbs.clone();
                     dbs.retain(|d| (show_all || Some(&d.name) == current.as_ref() || d.is_current) && (show_system || !d.is_system));
                     dbs.retain(|d| filter_ok(&live.config, ObjectKind::Database, &d.name));
-                    if dbs.is_empty() {
-                        if let Some(cur) = current.clone() {
+                    if dbs.is_empty()
+                        && let Some(cur) = current.clone() {
                             dbs.push(dbiji_core::meta::DatabaseInfo { name: cur, is_current: true, ..Default::default() });
                         }
-                    }
                     for d in dbs {
                         self.build_database(backend, live, &mut child_rows, &cfg.id, &d.name, depth + 1, &caps, show_system);
                     }
@@ -483,11 +482,10 @@ impl Navigator {
             let node = NavNode::Object { conn: conn.to_string(), obj: o.obj.clone() };
             let expanded = has_children && self.expanded.contains(&node);
             let mut label = o.obj.name.clone();
-            if let Some(sig) = &o.obj.signature {
-                if sig.starts_with('(') {
+            if let Some(sig) = &o.obj.signature
+                && sig.starts_with('(') {
                     label.push_str(sig);
                 }
-            }
             rows.push(Row {
                 node,
                 depth,
@@ -564,13 +562,11 @@ impl Navigator {
     fn request_child_loads(&self, cx: &mut AppContext) {
         let backend = cx.backend;
         for node in &self.expanded {
-            if let NavNode::ChildFolder { conn, parent, kind } = node {
-                if let Some(live) = cx.conns.live_mut(conn) {
-                    if let Some(session) = live.ensure_session(backend, parent.database.as_deref()) {
+            if let NavNode::ChildFolder { conn, parent, kind } = node
+                && let Some(live) = cx.conns.live_mut(conn)
+                    && let Some(session) = live.ensure_session(backend, parent.database.as_deref()) {
                         live.meta.request_children(backend, &session, parent, *kind);
                     }
-                }
-            }
         }
     }
 
@@ -587,11 +583,9 @@ impl Navigator {
                 .add_enabled(sel_conn.is_some(), egui::Button::new(if connected { icon::PLUGS } else { icon::PLUGS_CONNECTED }))
                 .on_hover_text(if connected { tr("Disconnect") } else { tr("Connect") })
                 .clicked()
-            {
-                if let Some(c) = sel_conn.clone() {
+                && let Some(c) = sel_conn.clone() {
                     cx.push(if connected { AppCommand::Disconnect(c) } else { AppCommand::Connect(c) });
                 }
-            }
             if ui
                 .add_enabled(sel_conn.is_some(), egui::Button::new(icon::FILE_SQL))
                 .on_hover_text(tr("New SQL editor"))
@@ -736,11 +730,10 @@ impl Navigator {
         if self.expanded.contains(node) {
             self.expanded.remove(node);
         } else {
-            if let NavNode::Connection(id) = node {
-                if !cx.conns.is_connected(id) {
+            if let NavNode::Connection(id) = node
+                && !cx.conns.is_connected(id) {
                     cx.push(AppCommand::Connect(id.clone()));
                 }
-            }
             self.expanded.insert(node.clone());
         }
     }
@@ -928,12 +921,11 @@ impl Navigator {
                 }
             }
             NavNode::Extensions { .. } => {
-                if let Some(c) = conn {
-                    if ui.button(format!("{} {}", icon::ARROW_CLOCKWISE, tr("Refresh"))).clicked() {
+                if let Some(c) = conn
+                    && ui.button(format!("{} {}", icon::ARROW_CLOCKWISE, tr("Refresh"))).clicked() {
                         cx.push(AppCommand::RefreshMetadata { connection: c, object: None, schema: None });
                         ui.close();
                     }
-                }
             }
         }
     }

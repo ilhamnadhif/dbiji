@@ -79,11 +79,10 @@ impl ObjectEditorTab {
         Fut: Future<Output = DbResult<T>> + Send + 'static,
     {
         slot.poll();
-        if slot.is_not_loaded() {
-            if let Some(s) = session {
+        if slot.is_not_loaded()
+            && let Some(s) = session {
                 *slot = Loadable::Loading(backend.spawn(async move { f(s).await }));
             }
-        }
     }
 
     fn refresh(&mut self) {
@@ -105,11 +104,10 @@ impl ObjectEditorTab {
         }
         let mut retry = false;
         if !is_table {
-            if widgets::load_state(ui, &self.props, &mut retry) {
-                if let Some(p) = self.props.get() {
+            if widgets::load_state(ui, &self.props, &mut retry)
+                && let Some(p) = self.props.get() {
                     egui::ScrollArea::vertical().show(ui, |ui| widgets::property_grid(ui, "obj_props", p));
                 }
-            }
             if retry {
                 self.props = Loadable::NotLoaded;
             }
@@ -226,8 +224,8 @@ impl ObjectEditorTab {
                     &rows,
                     None,
                 );
-                if let Some(i) = r.double_clicked {
-                    if let Some(fk) = list.get(i) {
+                if let Some(i) = r.double_clicked
+                    && let Some(fk) = list.get(i) {
                         let (schema, table) = if self.table_page == TablePage::References {
                             (fk.schema.clone(), fk.table.clone())
                         } else {
@@ -236,7 +234,6 @@ impl ObjectEditorTab {
                         let target = ObjectRef::table(schema, table).with_database(self.obj.database.clone());
                         cx.push(AppCommand::OpenObject { connection: self.conn.clone(), object: target, page: ObjectPage::Properties });
                     }
-                }
             }
             TablePage::Indexes => {
                 let rows: Vec<Vec<String>> = t
@@ -343,8 +340,8 @@ impl ObjectEditorTab {
                     vt.virtual_columns.remove(i);
                 }
                 ui.add_space(6.0);
-                if ui.button(RichText::new(format!("{} {}", icon::FLOPPY_DISK, tr("Save virtual model"))).strong()).clicked() {
-                    if let Some(p) = projects {
+                if ui.button(RichText::new(format!("{} {}", icon::FLOPPY_DISK, tr("Save virtual model"))).strong()).clicked()
+                    && let Some(p) = projects {
                         let mut vm = p.virtual_model(&self.conn).unwrap_or_default();
                         if vt.is_empty() {
                             vm.remove(&key);
@@ -356,7 +353,6 @@ impl ObjectEditorTab {
                             Err(e) => cx.toasts.error(tr("Cannot save the virtual model"), Some(e.to_string())),
                         }
                     }
-                }
             }
             TablePage::Partitions => {
                 if let Some(p) = &t.partitioning {
@@ -419,11 +415,10 @@ impl ObjectEditorTab {
                 })
                 .collect();
             let r = widgets::simple_table(ui, "obj_deps", &[tr("Direction"), tr("Kind"), tr("Object"), tr("Dependency")], &rows, None);
-            if let Some(i) = r.double_clicked {
-                if let Some(d) = deps.get(i) {
+            if let Some(i) = r.double_clicked
+                && let Some(d) = deps.get(i) {
                     cx.push(AppCommand::OpenObject { connection: self.conn.clone(), object: d.target.clone(), page: ObjectPage::Properties });
                 }
-            }
         }
         if retry {
             self.deps = Loadable::NotLoaded;

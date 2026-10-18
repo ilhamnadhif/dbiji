@@ -44,11 +44,10 @@ impl ProjectView {
             if ui.button(icon::ARROW_CLOCKWISE).on_hover_text(tr("Refresh")).clicked() {
                 self.reload(cx);
             }
-            if let Some(p) = cx.services.projects.as_ref().and_then(|m| m.default_project().ok()) {
-                if ui.button(icon::FOLDER_OPEN).on_hover_text(tr("Show in Finder")).clicked() {
+            if let Some(p) = cx.services.projects.as_ref().and_then(|m| m.default_project().ok())
+                && ui.button(icon::FOLDER_OPEN).on_hover_text(tr("Show in Finder")).clicked() {
                     let _ = open::that(p.path());
                 }
-            }
         });
         ui.add(egui::TextEdit::singleline(&mut self.filter).hint_text(format!("{} {}", icon::MAGNIFYING_GLASS, tr("Filter"))).desired_width(f32::INFINITY));
         if let Some(e) = &self.error {
@@ -102,11 +101,10 @@ impl ProjectView {
                     if !filter.is_empty() && !d.to_lowercase().contains(&filter) {
                         continue;
                     }
-                    if ui.selectable_label(false, format!("{} {d}", icon::GRAPH)).double_clicked() {
-                        if let Some(dir) = &dir {
+                    if ui.selectable_label(false, format!("{} {d}", icon::GRAPH)).double_clicked()
+                        && let Some(dir) = &dir {
                             cx.push(AppCommand::OpenSavedDiagram(dir.join(format!("{d}.json"))));
                         }
-                    }
                 }
             });
         });

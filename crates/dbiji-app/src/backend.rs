@@ -131,31 +131,27 @@ impl<T> Drop for Job<T> {
 }
 
 /// Value that is loaded in the background.
+#[derive(Default)]
 pub enum Loadable<T> {
+    #[default]
     NotLoaded,
     Loading(Job<dbiji_core::DbResult<T>>),
     Loaded(T),
     Failed(dbiji_core::DbError),
 }
 
-impl<T> Default for Loadable<T> {
-    fn default() -> Self {
-        Loadable::NotLoaded
-    }
-}
 
 impl<T> Loadable<T> {
     /// Move a finished job into `Loaded`/`Failed`. Returns true when the state changed.
     pub fn poll(&mut self) -> bool {
-        if let Loadable::Loading(job) = self {
-            if let Some(res) = job.poll() {
+        if let Loadable::Loading(job) = self
+            && let Some(res) = job.poll() {
                 *self = match res {
                     Ok(v) => Loadable::Loaded(v),
                     Err(e) => Loadable::Failed(e),
                 };
                 return true;
             }
-        }
         false
     }
 

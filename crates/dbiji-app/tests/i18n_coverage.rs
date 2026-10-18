@@ -31,11 +31,10 @@ fn extract(src: &str, out: &mut BTreeSet<String>) {
     starts.extend(src.match_indices("trf(\"").map(|(i, m)| (i, m.len())));
     for (i, len) in starts {
         // must not be part of a longer identifier (e.g. `attr("`)
-        if let Some(prev) = src[..i].chars().next_back() {
-            if prev.is_alphanumeric() || prev == '_' {
+        if let Some(prev) = src[..i].chars().next_back()
+            && (prev.is_alphanumeric() || prev == '_') {
                 continue;
             }
-        }
         let mut s = String::new();
         let mut closed = false;
         let mut chars = src[i + len..].chars();

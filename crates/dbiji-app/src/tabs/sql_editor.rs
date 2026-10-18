@@ -141,6 +141,7 @@ pub struct SqlEditorTab {
     pub fetch_all_results: bool,
 }
 
+#[allow(clippy::field_reassign_with_default)]
 fn editor_options(cx: &AppContext) -> EditorOptions {
     let e = &cx.settings.editor;
     let mut o = EditorOptions::default();
@@ -261,24 +262,22 @@ impl SqlEditorTab {
         self.schema = None;
         self.catalog_generation = None;
         self.lang.set_catalog(None);
-        if let Some(c) = &self.conn {
-            if !cx.conns.is_connected(c) {
+        if let Some(c) = &self.conn
+            && !cx.conns.is_connected(c) {
                 cx.push(AppCommand::Connect(c.clone()));
             }
-        }
     }
 
     /// The editor's session, opening it on first use.
     fn session(&mut self, cx: &mut AppContext) -> Option<SessionHandle> {
         let conn = self.conn.clone()?;
-        if let SessionSlot::Opening(j) = &mut self.session {
-            if let Some(r) = j.poll() {
+        if let SessionSlot::Opening(j) = &mut self.session
+            && let Some(r) = j.poll() {
                 self.session = match r {
                     Ok(s) => SessionSlot::Ready(s),
                     Err(e) => SessionSlot::Failed(e.full_text()),
                 };
             }
-        }
         if let SessionSlot::Ready(s) = &self.session {
             if s.is_closed() {
                 self.session = SessionSlot::None;
@@ -460,8 +459,8 @@ impl SqlEditorTab {
     }
 
     fn poll_exec(&mut self, ctx: &egui::Context, cx: &mut AppContext) {
-        if let Some((sql, job)) = self.explain_job.as_mut() {
-            if let Some(r) = job.poll() {
+        if let Some((sql, job)) = self.explain_job.as_mut()
+            && let Some(r) = job.poll() {
                 let sql = sql.clone();
                 self.explain_job = None;
                 match r {
@@ -476,7 +475,6 @@ impl SqlEditorTab {
                     }
                 }
             }
-        }
         let Some(exec) = self.exec.as_mut() else { return };
         let events = exec.poll();
         let finished = exec.is_finished();
@@ -484,9 +482,6 @@ impl SqlEditorTab {
         for ev in events {
             match ev {
                 ExecEvent::Started { index } => {
-                    if let Some(r) = self.stats.iter().find(|s| s.index == index).map(|_| ()) {
-                        let _ = r;
-                    }
                     let range = self.statement_range(index);
                     self.editor.set_statement_highlight(range);
                 }
@@ -602,11 +597,10 @@ impl SqlEditorTab {
                     if self.stats.len() > 1 && failed > 0 {
                         self.bottom = Bottom::Statistics;
                     }
-                    if self.ddl_executed {
-                        if let Some(c) = &self.conn {
+                    if self.ddl_executed
+                        && let Some(c) = &self.conn {
                             cx.push(AppCommand::RefreshMetadata { connection: c.clone(), object: None, schema: self.schema.clone() });
                         }
-                    }
                 }
             }
         }
@@ -869,8 +863,8 @@ impl SqlEditorTab {
                 self.select_schema_open = !self.select_schema_open;
             }
             let mut chosen_schema: Option<SchemaRef> = None;
-            if self.select_schema_open {
-                if let Some(conn) = self.conn.clone() {
+            if self.select_schema_open
+                && let Some(conn) = self.conn.clone() {
                     let backend = cx.backend;
                     if let Some(live) = cx.conns.live_mut(&conn) {
                         let main = live.main.clone();
@@ -907,7 +901,6 @@ impl SqlEditorTab {
                             });
                     }
                 }
-            }
             if let Some(s) = chosen_schema {
                 self.select_schema_open = false;
                 let db_changed = s.database.is_some() && s.database != self.schema.as_ref().and_then(|x| x.database.clone());
@@ -1478,8 +1471,8 @@ impl TabView for SqlEditorTab {
         if self.conn.as_ref().is_some_and(|c| cx.conns.is_connected(c)) {
             self.catalog_sync(cx);
             // Open the session early and apply the active schema.
-            if let Some(s) = self.session(cx) {
-                if self.pending_schema {
+            if let Some(s) = self.session(cx)
+                && self.pending_schema {
                     self.pending_schema = false;
                     if let Some(schema) = self.schema.as_ref().and_then(|s| s.schema.clone()) {
                         let s2 = s.clone();
@@ -1488,7 +1481,6 @@ impl TabView for SqlEditorTab {
                         });
                     }
                 }
-            }
         }
         if let SessionSlot::Failed(e) = &self.session {
             let e = e.clone();
@@ -1620,13 +1612,12 @@ impl SqlEditorTab {
         self.confirm.as_ref().map(|c| c.reasons.clone())
     }
     pub fn answer_confirmation(&mut self, cx: &mut AppContext, run: bool) {
-        if let Some(c) = self.confirm.take() {
-            if run {
+        if let Some(c) = self.confirm.take()
+            && run {
                 let mut req = c.request;
                 req.confirmed = true;
                 self.run(cx, req);
             }
-        }
     }
     pub fn set_text(&mut self, ctx: &egui::Context, text: &str) {
         self.editor.reset_text(ctx, text.to_string());

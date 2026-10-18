@@ -105,16 +105,14 @@ impl Dialogs {
             self.vault.show(ctx, cx, &mut open);
             self.vault_open = open;
         }
-        if let Some(d) = self.import.as_mut() {
-            if !d.show(ctx, cx) {
+        if let Some(d) = self.import.as_mut()
+            && !d.show(ctx, cx) {
                 self.import = None;
             }
-        }
-        if let Some(d) = self.drop.as_mut() {
-            if !d.show(ctx, cx) {
+        if let Some(d) = self.drop.as_mut()
+            && !d.show(ctx, cx) {
                 self.drop = None;
             }
-        }
         if self.about_open {
             let mut open = true;
             egui::Window::new(tr("About DBiji")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
@@ -245,12 +243,11 @@ impl Dialogs {
                             }
                         }
                     }
-                    if let Some(cfg) = cx.conns.config_mut(&p.conn_id) {
-                        if !cfg.save_password {
+                    if let Some(cfg) = cx.conns.config_mut(&p.conn_id)
+                        && !cfg.save_password {
                             cfg.save_password = true;
                             cx.push(AppCommand::SaveConnections);
                         }
-                    }
                 }
                 self.ready.push((p.conn_id.clone(), creds));
                 done.push(i);

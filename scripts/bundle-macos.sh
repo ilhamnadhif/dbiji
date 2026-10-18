@@ -33,15 +33,15 @@ if [[ -n "$FEATURES" ]]; then FEATURE_ARGS=(--features "$FEATURES"); fi
 echo "==> Building DBiji $VERSION (release)"
 if [[ $UNIVERSAL -eq 1 ]]; then
   rustup target add aarch64-apple-darwin x86_64-apple-darwin >/dev/null
-  cargo build --release -p dbiji-app --target aarch64-apple-darwin "${FEATURE_ARGS[@]}"
-  cargo build --release -p dbiji-app --target x86_64-apple-darwin "${FEATURE_ARGS[@]}"
+  cargo build --release -p dbiji-app --target aarch64-apple-darwin ${FEATURE_ARGS[@]+"${FEATURE_ARGS[@]}"}
+  cargo build --release -p dbiji-app --target x86_64-apple-darwin ${FEATURE_ARGS[@]+"${FEATURE_ARGS[@]}"}
   mkdir -p "$DIST"
   lipo -create -output "$DIST/dbiji" \
     target/aarch64-apple-darwin/release/dbiji \
     target/x86_64-apple-darwin/release/dbiji
   BIN="$DIST/dbiji"
 else
-  cargo build --release -p dbiji-app "${FEATURE_ARGS[@]}"
+  cargo build --release -p dbiji-app ${FEATURE_ARGS[@]+"${FEATURE_ARGS[@]}"}
   BIN="$ROOT/target/release/dbiji"
 fi
 

@@ -359,14 +359,13 @@ impl SettingsTab {
             c
         });
         ui.add_space(8.0);
-        if let Some(store) = cx.services.history.clone() {
-            if ui.button(format!("{} {}", icon::TRASH, tr("Clear the whole history"))).clicked() {
+        if let Some(store) = cx.services.history.clone()
+            && ui.button(format!("{} {}", icon::TRASH, tr("Clear the whole history"))).clicked() {
                 match store.lock().clear(None) {
                     Ok(n) => cx.toasts.success(trf("Deleted {} history entries", &[&n])),
                     Err(e) => cx.toasts.error(tr("Cannot clear the history"), Some(e.to_string())),
                 }
             }
-        }
         c
     }
 
@@ -733,11 +732,10 @@ impl SettingsTab {
                     Err(e) => cx.toasts.error(tr("Cannot store the API key"), Some(e.to_string())),
                 }
             }
-            if self.ai_key_saved && ui.button(tr("Remove key")).clicked() {
-                if cx.services.secrets.read().set_ai_api_key(provider.id(), None).is_ok() {
+            if self.ai_key_saved && ui.button(tr("Remove key")).clicked()
+                && cx.services.secrets.read().set_ai_api_key(provider.id(), None).is_ok() {
                     self.ai_key_saved = false;
                 }
-            }
         });
         c |= false;
         c
@@ -841,11 +839,10 @@ impl SettingsTab {
                 }
                 self.message = Some(r);
             }
-            if ui.button(format!("{} {}", icon::LOCK, tr("Lock now"))).clicked() {
-                if let Some(v) = cx.services.secrets.read().vault() {
+            if ui.button(format!("{} {}", icon::LOCK, tr("Lock now"))).clicked()
+                && let Some(v) = cx.services.secrets.read().vault() {
                     v.lock();
                 }
-            }
         }
         match &self.message {
             Some(Ok(m)) => {

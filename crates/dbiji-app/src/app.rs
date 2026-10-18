@@ -101,13 +101,12 @@ impl DbijiApp {
 
     /// Open a tab, or focus an existing tab with the same dedupe key.
     pub fn open_tab(&mut self, view: Box<dyn TabView>) -> u64 {
-        if let Some(key) = view.dedupe_key() {
-            if let Some(path) = self.dock.find_tab_from(|t| t.view.dedupe_key().as_deref() == Some(key.as_str())) {
+        if let Some(key) = view.dedupe_key()
+            && let Some(path) = self.dock.find_tab_from(|t| t.view.dedupe_key().as_deref() == Some(key.as_str())) {
                 let id = self.dock.iter_all_tabs().find(|(p, _)| *p == path).map(|(_, t)| t.id).unwrap_or(0);
                 self.focus_tab_path(path);
                 return id;
             }
-        }
         let id = self.next_tab_id;
         self.next_tab_id += 1;
         self.dock.push_to_focused_leaf(Tab::new(id, view));
@@ -137,8 +136,8 @@ impl DbijiApp {
     }
 
     fn close_tab(&mut self, id: u64) {
-        if let Some(path) = self.dock.find_tab_from(|t| t.id == id) {
-            if let Some(mut tab) = self.dock.remove_tab(path) {
+        if let Some(path) = self.dock.find_tab_from(|t| t.id == id)
+            && let Some(mut tab) = self.dock.remove_tab(path) {
                 let mut cx = AppContext {
                     backend: &self.backend,
                     conns: &mut self.conns,
@@ -156,7 +155,6 @@ impl DbijiApp {
                     self.dock.push_to_focused_leaf(tab);
                 }
             }
-        }
     }
 
     /// Request connecting, prompting for credentials when needed.
@@ -245,11 +243,10 @@ impl DbijiApp {
                 self.script_counter += 1;
                 let title = format!("Script-{}", self.script_counter);
                 let tab = crate::tabs::sql_editor::SqlEditorTab::new(connection.clone(), schema, text.unwrap_or_default(), None, false, title);
-                if let Some(c) = &connection {
-                    if !self.conns.is_connected(c) {
+                if let Some(c) = &connection
+                    && !self.conns.is_connected(c) {
                         self.request_connect(c);
                     }
-                }
                 self.open_tab(Box::new(tab));
             }
             AppCommand::NewSqlConsole { connection } => {
@@ -515,13 +512,11 @@ impl DbijiApp {
         let kind = database_file_kind(path);
         let Some(kind) = kind.filter(|k| self.conns.registry.get(*k).is_some()) else {
             let id = self.open_script(path.to_path_buf());
-            if let (true, Some(id)) = (execute, id) {
-                if let Some((_, tab)) = self.dock.iter_all_tabs_mut().find(|(_, t)| t.id == id) {
-                    if let Some(ed) = tab.view.as_any_mut().downcast_mut::<crate::tabs::sql_editor::SqlEditorTab>() {
+            if let (true, Some(id)) = (execute, id)
+                && let Some((_, tab)) = self.dock.iter_all_tabs_mut().find(|(_, t)| t.id == id)
+                    && let Some(ed) = tab.view.as_any_mut().downcast_mut::<crate::tabs::sql_editor::SqlEditorTab>() {
                         ed.auto_run = true;
                     }
-                }
-            }
             return;
         };
         let full = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
@@ -584,11 +579,10 @@ impl DbijiApp {
         let Some(projects) = self.services.projects.as_ref() else { return };
         let mut state = dbiji_config::SessionState::default();
         for (_, t) in self.dock.iter_all_tabs() {
-            if let Some(v) = t.view.session_state() {
-                if let Ok(tab) = serde_json::from_value::<dbiji_config::SessionTab>(v) {
+            if let Some(v) = t.view.session_state()
+                && let Ok(tab) = serde_json::from_value::<dbiji_config::SessionTab>(v) {
                     state.tabs.push(tab);
                 }
-            }
         }
         if let Err(e) = projects.save_session(&state) {
             tracing::warn!("cannot save the session: {e}");
@@ -613,11 +607,10 @@ impl DbijiApp {
             .or_else(|| self.nav.selected.as_ref().and_then(|n| n.connection()).map(str::to_string));
         let schema = meta.as_ref().and_then(|m| (m.schema.is_some() || m.database.is_some()).then(|| dbiji_core::meta::SchemaRef::new(m.database.clone(), m.schema.clone())));
         let title = path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
-        if let Some(c) = &conn {
-            if !self.conns.is_connected(c) {
+        if let Some(c) = &conn
+            && !self.conns.is_connected(c) {
                 self.request_connect(c);
             }
-        }
         Some(self.open_tab(Box::new(crate::tabs::sql_editor::SqlEditorTab::new(conn, schema, text, Some(path), false, title))))
     }
 

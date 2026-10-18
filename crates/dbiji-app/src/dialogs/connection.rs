@@ -110,11 +110,10 @@ impl ConnectionDialog {
         } else if self.cfg.host.trim().is_empty() {
             return Some(tr("Enter a host name.").to_string());
         }
-        if let Some(ssh) = self.cfg.ssh.as_ref().filter(|s| s.enabled) {
-            if ssh.host.trim().is_empty() || ssh.user.trim().is_empty() {
+        if let Some(ssh) = self.cfg.ssh.as_ref().filter(|s| s.enabled)
+            && (ssh.host.trim().is_empty() || ssh.user.trim().is_empty()) {
                 return Some(tr("SSH tunnel needs a host and a user.").to_string());
             }
-        }
         None
     }
 
@@ -165,12 +164,11 @@ impl ConnectionDialog {
 
     pub fn show(&mut self, ctx: &egui::Context, cx: &mut AppContext) {
         self.load_saved_secrets(cx.conns);
-        if let Some(job) = self.test.as_mut() {
-            if let Some(r) = job.poll() {
+        if let Some(job) = self.test.as_mut()
+            && let Some(r) = job.poll() {
                 self.test_result = Some(r.map_err(|e| e.full_text()));
                 self.test = None;
             }
-        }
         let title = if self.is_new { tr("New connection") } else { tr("Edit connection") };
         let mut open = self.open;
         let mut close = false;
@@ -295,22 +293,20 @@ impl ConnectionDialog {
                     if ui.add(egui::TextEdit::singleline(&mut path).desired_width(260.0)).changed() {
                         self.cfg.file_path = Some(path);
                     }
-                    if ui.button(icon::FOLDER_OPEN).on_hover_text(tr("Open existing file")).clicked() {
-                        if let Some(p) = rfd::FileDialog::new().pick_file() {
+                    if ui.button(icon::FOLDER_OPEN).on_hover_text(tr("Open existing file")).clicked()
+                        && let Some(p) = rfd::FileDialog::new().pick_file() {
                             self.cfg.file_path = Some(p.display().to_string());
                             if self.cfg.name.is_empty() {
                                 self.cfg.name = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
                             }
                         }
-                    }
-                    if ui.button(icon::FILE_PLUS).on_hover_text(tr("Create new database file")).clicked() {
-                        if let Some(p) = rfd::FileDialog::new().set_file_name("database.db").save_file() {
+                    if ui.button(icon::FILE_PLUS).on_hover_text(tr("Create new database file")).clicked()
+                        && let Some(p) = rfd::FileDialog::new().set_file_name("database.db").save_file() {
                             self.cfg.file_path = Some(p.display().to_string());
                             if self.cfg.name.is_empty() {
                                 self.cfg.name = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
                             }
                         }
-                    }
                 });
                 ui.end_row();
             } else {
@@ -508,11 +504,10 @@ impl ConnectionDialog {
                     if ui.add(egui::TextEdit::singleline(&mut v).desired_width(260.0)).changed() {
                         *field = if v.is_empty() { None } else { Some(v) };
                     }
-                    if ui.button(icon::FOLDER_OPEN).clicked() {
-                        if let Some(p) = rfd::FileDialog::new().add_filter("PEM", &["pem", "crt", "cer", "key"]).pick_file() {
+                    if ui.button(icon::FOLDER_OPEN).clicked()
+                        && let Some(p) = rfd::FileDialog::new().add_filter("PEM", &["pem", "crt", "cer", "key"]).pick_file() {
                             *field = Some(p.display().to_string());
                         }
-                    }
                 });
                 ui.end_row();
             }
@@ -738,11 +733,10 @@ pub fn ssh_form(ui: &mut Ui, id: &str, ssh: &mut SshConfig, password: &mut Strin
                     ui.label(tr("Private key file"));
                     ui.horizontal(|ui| {
                         ui.add(egui::TextEdit::singleline(key_path).desired_width(260.0));
-                        if ui.button(icon::FOLDER_OPEN).clicked() {
-                            if let Some(p) = rfd::FileDialog::new().pick_file() {
+                        if ui.button(icon::FOLDER_OPEN).clicked()
+                            && let Some(p) = rfd::FileDialog::new().pick_file() {
                                 *key_path = p.display().to_string();
                             }
-                        }
                     });
                     ui.end_row();
                     ui.label(tr("Passphrase"));

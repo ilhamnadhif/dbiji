@@ -166,11 +166,10 @@ pub async fn init_session(
     if !params.auto_commit {
         s.set_transaction_mode(TransactionMode::Manual).await?;
     }
-    if let Some(schema) = cfg.init.default_schema.as_deref().filter(|s| !s.is_empty()) {
-        if let Err(e) = s.set_current_schema(schema).await {
+    if let Some(schema) = cfg.init.default_schema.as_deref().filter(|s| !s.is_empty())
+        && let Err(e) = s.set_current_schema(schema).await {
             tracing::warn!("cannot set default schema: {e}");
         }
-    }
     for stmt in split_simple(&cfg.init.init_sql) {
         dbiji_core::driver::execute_update(s, &stmt, &[])
             .await
@@ -255,14 +254,13 @@ async fn connect_task(
     let mut params = ConnectParams::from_config(&cfg, password);
     params.auto_commit = cfg.auto_commit.unwrap_or(conn_type.auto_commit);
     let mut tunnel = None;
-    if !cfg.kind.is_file_based() {
-        if let Some(t) = net.open(&cfg, &creds, &cfg.host, cfg.effective_port()).await? {
+    if !cfg.kind.is_file_based()
+        && let Some(t) = net.open(&cfg, &creds, &cfg.host, cfg.effective_port()).await? {
             params.tls_server_name = Some(cfg.host.clone());
             params.host = t.local_host.clone();
             params.port = t.local_port;
             tunnel = Some(t);
         }
-    }
     let timeout = params.connect_timeout + Duration::from_secs(5);
     let mut session = tokio::time::timeout(timeout, driver.connect(&params))
         .await
@@ -500,11 +498,10 @@ impl ConnectionManager {
                 _ => {}
             }
         }
-        if let Some(p) = net.proxy.as_ref().filter(|p| p.user.is_some()) {
-            if !(p.save_credentials && saved(SecretSlot::ProxyPassword)) {
+        if let Some(p) = net.proxy.as_ref().filter(|p| p.user.is_some())
+            && !(p.save_credentials && saved(SecretSlot::ProxyPassword)) {
                 out.push(PromptField::ProxyPassword);
             }
-        }
         out
     }
 
@@ -635,11 +632,10 @@ impl ConnectionManager {
                     }
                 }
                 drop(live.tunnel);
-                if let Some(cmd) = after.filter(|c| !c.trim().is_empty()) {
-                    if let Err(e) = run_shell(&cmd, Duration::from_secs(60)).await {
+                if let Some(cmd) = after.filter(|c| !c.trim().is_empty())
+                    && let Err(e) = run_shell(&cmd, Duration::from_secs(60)).await {
                         tracing::warn!("shell command after disconnect failed: {e}");
                     }
-                }
             });
         }
         self.connecting.remove(id);

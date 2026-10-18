@@ -64,8 +64,8 @@ impl DropDialog {
 
     /// Draw; returns false when closed.
     pub fn show(&mut self, ctx: &egui::Context, cx: &mut AppContext) -> bool {
-        if let Some(j) = self.job.as_mut() {
-            if let Some(r) = j.poll() {
+        if let Some(j) = self.job.as_mut()
+            && let Some(r) = j.poll() {
                 self.job = None;
                 match r {
                     Ok(n) => {
@@ -80,7 +80,6 @@ impl DropDialog {
                     Err(e) => self.error = Some(e.full_text()),
                 }
             }
-        }
         let Some(live) = cx.conns.live(&self.conn) else { return false };
         let dialect = live.dialect.clone();
         let session = live.main.clone();

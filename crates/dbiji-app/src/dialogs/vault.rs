@@ -22,8 +22,8 @@ impl VaultDialog {
             *open = false;
             return;
         };
-        if let Some(job) = self.job.as_mut() {
-            if let Some(res) = job.poll() {
+        if let Some(job) = self.job.as_mut()
+            && let Some(res) = job.poll() {
                 self.job = None;
                 match res {
                     Ok(()) => {
@@ -37,7 +37,6 @@ impl VaultDialog {
                     Err(e) => self.error = Some(e.message),
                 }
             }
-        }
         let create = !vault.exists();
         let busy = self.job.is_some();
         let mut submit = false;

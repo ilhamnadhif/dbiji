@@ -207,11 +207,10 @@ impl TabView for HistoryTab {
             if let Some(i) = r.clicked {
                 self.selected = Some(i);
             }
-            if let Some(i) = r.double_clicked {
-                if let Some(e) = self.entries.get(i).cloned() {
+            if let Some(i) = r.double_clicked
+                && let Some(e) = self.entries.get(i).cloned() {
                     self.open_in_editor(cx, &e);
                 }
-            }
             if let Some(i) = r.context_row {
                 self.selected = Some(i);
             }

@@ -140,10 +140,9 @@ pub fn run(name: &str, report: Option<&str>) -> std::process::ExitCode {
         );
     }
     let _ = std::fs::remove_dir_all(bench_home());
-    if let Some(path) = report {
-        if let Ok(json) = serde_json::to_string_pretty(&results) {
+    if let Some(path) = report
+        && let Ok(json) = serde_json::to_string_pretty(&results) {
             let _ = std::fs::write(path, json);
         }
-    }
     if results.iter().all(|r| r.passed) { std::process::ExitCode::SUCCESS } else { std::process::ExitCode::FAILURE }
 }

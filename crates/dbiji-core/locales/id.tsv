@@ -1386,3 +1386,39 @@ Update	Update
 Use	Use
 Zoom In	Perbesar
 Zoom Out	Perkecil
+(none — settings below)	(tidak ada — pengaturan di bawah)
+A small SQLite shop database to try every feature	Database toko SQLite kecil untuk mencoba semua fitur
+Add variable	Tambah variabel
+Cannot create the sample database	Tidak dapat membuat database contoh
+Cannot save the virtual model	Tidak dapat menyimpan virtual model
+Client-side additions used by the data editor; stored in the project, not in the database.	Tambahan sisi klien untuk editor data; disimpan di proyek, bukan di database.
+Columns that identify a row when the table has no primary or unique key.	Kolom yang mengidentifikasi baris jika tabel tidak punya primary atau unique key.
+Create sample database	Buat database contoh
+Database drivers	Driver database
+Debugger	Debugger
+Delete profile	Hapus profil
+Dictionary	Kamus data
+Diff diagram	Diagram perbedaan
+Diff {}	Perbedaan {}
+Driver	Driver
+Drivers are built into DBiji (no downloads); network drivers are written in Rust, SQLite and DuckDB are embedded engines.	Driver sudah terpasang di DBiji (tanpa unduhan); driver jaringan ditulis dengan Rust, SQLite dan DuckDB adalah engine tertanam.
+ER diagram of the target with the differences highlighted	Diagram ER target dengan perbedaan disorot
+Network profile	Profil jaringan
+Network profiles	Profil jaringan
+New profile	Profil baru
+Not available: Oracle, Db2, Firebird, H2 and Trino (no Rust network driver yet).	Belum tersedia: Oracle, Db2, Firebird, H2, dan Trino (belum ada driver jaringan Rust).
+Profile saved	Profil disimpan
+Reusable SSH tunnel and proxy settings; connections pick a profile on their SSH page.	Pengaturan SSH tunnel dan proxy yang bisa dipakai ulang; koneksi memilih profil di halaman SSH-nya.
+SSH and proxy settings come from the network profile (Settings → Network profiles).	Pengaturan SSH dan proxy berasal dari profil jaringan (Pengaturan → Profil jaringan).
+Sample database created	Database contoh dibuat
+Save profile	Simpan profil
+Save virtual model	Simpan virtual model
+Select or create a profile.	Pilih atau buat profil.
+Values of :name and ${name} parameters and @set variables; they are inserted as SQL text.	Nilai parameter :nama dan ${nama} serta variabel @set; disisipkan sebagai teks SQL.
+Variables	Variabel
+Virtual key	Virtual key
+Virtual model	Virtual model
+Virtual model saved	Virtual model disimpan
+When other tables reference this one, show these columns next to the key.	Saat tabel lain merujuk tabel ini, tampilkan kolom ini di samping kunci.
+expression, e.g. price * quantity	ekspresi, mis. price * quantity
+{} connection(s) now use their own network settings	{} koneksi kini memakai pengaturan jaringannya sendiri

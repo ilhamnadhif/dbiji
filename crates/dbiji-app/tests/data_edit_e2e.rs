@@ -22,11 +22,10 @@ fn servers() -> Vec<(&'static str, String)> {
     let file = std::env::temp_dir().join(format!("dbiji-edit-e2e-{}.db", uuid::Uuid::new_v4().simple()));
     let mut out = vec![("sqlite", format!("sqlite://{}", file.display()))];
     for (name, var) in [("postgres", "DBIJI_TEST_PG"), ("mysql", "DBIJI_TEST_MYSQL"), ("mariadb", "DBIJI_TEST_MARIADB")] {
-        if let Ok(url) = std::env::var(var) {
-            if !url.trim().is_empty() {
+        if let Ok(url) = std::env::var(var)
+            && !url.trim().is_empty() {
                 out.push((name, url));
             }
-        }
     }
     out
 }

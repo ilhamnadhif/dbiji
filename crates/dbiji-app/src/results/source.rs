@@ -234,11 +234,10 @@ async fn fetch_rows(
     let Some(tok) = token else { return Ok(FetchBatch { added: 0, exhausted: true, token: None, messages }) };
     let mut exhausted = false;
     while added < n {
-        if let Some(op) = &op {
-            if op.cancel.is_cancelled() {
+        if let Some(op) = &op
+            && op.cancel.is_cancelled() {
                 break;
             }
-        }
         let want = page.min(n - added);
         match session.fetch(tok, want).await {
             Ok(out) => {

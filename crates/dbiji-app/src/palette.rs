@@ -118,7 +118,7 @@ pub fn show(ctx: &egui::Context, cx: &mut AppContext, open: &mut bool) {
         .iter()
         .filter_map(|it| fuzzy(&state.query, &format!("{} {}", it.label, it.detail)).map(|s| (s, it)))
         .collect();
-    scored.sort_by(|a, b| b.0.cmp(&a.0));
+    scored.sort_by_key(|s| std::cmp::Reverse(s.0));
     scored.truncate(60);
     if state.selected >= scored.len() {
         state.selected = scored.len().saturating_sub(1);

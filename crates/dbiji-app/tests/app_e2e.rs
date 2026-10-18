@@ -19,11 +19,10 @@ use std::time::{Duration, Instant};
 fn servers() -> Vec<(&'static str, String)> {
     let mut out = Vec::new();
     for (name, var) in [("mysql", "DBIJI_TEST_MYSQL"), ("mariadb", "DBIJI_TEST_MARIADB"), ("postgres", "DBIJI_TEST_PG")] {
-        if let Ok(url) = std::env::var(var) {
-            if !url.trim().is_empty() {
+        if let Ok(url) = std::env::var(var)
+            && !url.trim().is_empty() {
                 out.push((name, url));
             }
-        }
     }
     out
 }

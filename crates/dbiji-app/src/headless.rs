@@ -28,14 +28,12 @@ pub fn executor(paths: &AppPaths, secrets: Arc<parking_lot::RwLock<SecretsManage
 /// (0 succeeded, 1 failed, 2 cancelled, 3 skipped, 4 setup error).
 pub fn run_task(backend: &Backend, paths: &AppPaths, settings: &Settings, task: &str) -> ExitCode {
     let secrets = SecretsManager::new(paths, &settings.security);
-    if settings.security.secret_backend == SecretBackend::EncryptedFile {
-        if let (Some(v), Ok(pw)) = (secrets.vault(), std::env::var(VAULT_PASSWORD_ENV)) {
-            if let Err(e) = v.unlock(&Secret::new(pw)) {
+    if settings.security.secret_backend == SecretBackend::EncryptedFile
+        && let (Some(v), Ok(pw)) = (secrets.vault(), std::env::var(VAULT_PASSWORD_ENV))
+            && let Err(e) = v.unlock(&Secret::new(pw)) {
                 eprintln!("cannot unlock the vault: {e}");
                 return ExitCode::from(4);
             }
-        }
-    }
     let secrets = Arc::new(parking_lot::RwLock::new(secrets));
     let (store, log) = match (TaskStore::open(paths.tasks_dir()), RunLog::open(paths.tasks_dir(), RunLogOptions::default())) {
         (Ok(s), Ok(l)) => (Arc::new(s), Arc::new(l)),

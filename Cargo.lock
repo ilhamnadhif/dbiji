@@ -274,6 +274,7 @@ dependencies = [
  "blake2",
  "cpufeatures 0.3.1",
  "password-hash",
+ "zeroize",
 ]
 
 [[package]]
@@ -1024,6 +1025,7 @@ dependencies = [
  "chacha20",
  "cipher",
  "poly1305",
+ "zeroize",
 ]
 
 [[package]]
@@ -1583,7 +1585,6 @@ version = "0.1.0"
 dependencies = [
  "aes",
  "argon2",
- "base64 0.23.1",
  "cbc",
  "chacha20poly1305",
  "chrono",
@@ -1592,13 +1593,13 @@ dependencies = [
  "hex",
  "keyring",
  "parking_lot",
+ "quick-xml 0.42.0",
  "rand 0.10.3",
  "regex",
  "rusqlite",
  "serde",
  "serde_json",
  "tempfile",
- "thiserror 2.0.21",
  "tracing",
  "uuid",
  "zeroize",
@@ -1766,15 +1767,20 @@ dependencies = [
 name = "dbiji-net"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "base64 0.23.1",
  "dbiji-core",
  "directories",
  "futures",
+ "hmac",
+ "libc",
+ "rand 0.10.3",
  "russh",
+ "sha1 0.11.0",
+ "tempfile",
  "tokio",
  "tokio-util",
  "tracing",
+ "zeroize",
 ]
 
 [[package]]

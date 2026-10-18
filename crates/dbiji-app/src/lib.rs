@@ -19,6 +19,7 @@ pub mod palette;
 pub mod results;
 pub mod router;
 pub mod services;
+pub mod sqlprep;
 pub mod tabs;
 pub mod theme;
 pub mod toasts;

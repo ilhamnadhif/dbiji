@@ -1,0 +1,147 @@
+//! Smoke test: every tab kind is drawn for a number of headless egui frames
+//! against an embedded SQLite database (always available) and must not panic.
+
+use dbiji_app::backend::Backend;
+use dbiji_app::command::AppCommand;
+use dbiji_app::conn::{ConnectionManager, Credentials, DirectNet, MemorySecrets};
+use dbiji_app::cx::AppContext;
+use dbiji_app::keys::Keymap;
+use dbiji_app::ops::Operations;
+use dbiji_app::services::{Services, Settings};
+use dbiji_app::tabs::TabView;
+use dbiji_app::toasts::Toasts;
+use dbiji_core::meta::{ObjectKind, ObjectRef, SchemaRef};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+struct H {
+    backend: Arc<Backend>,
+    ctx: egui::Context,
+    cm: ConnectionManager,
+    services: Services,
+    settings: Settings,
+    keymap: Keymap,
+    toasts: Toasts,
+    ops: Operations,
+    commands: Vec<AppCommand>,
+    time: f64,
+    id: String,
+    dir: std::path::PathBuf,
+}
+
+impl Drop for H {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+impl H {
+    fn new() -> H {
+        let dir = std::env::temp_dir().join(format!("dbiji-smoke-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("smoke.db");
+        let backend = Arc::new(Backend::new().unwrap());
+        let ctx = egui::Context::default();
+        dbiji_app::theme::setup_fonts(&ctx);
+        backend.set_context(ctx.clone());
+        let mut cfg = dbiji_core::config::ConnectionConfig::new(dbiji_core::DbKind::Sqlite, "smoke");
+        cfg.file_path = Some(db.display().to_string());
+        cfg.auth = dbiji_core::config::AuthMethod::None;
+        let mut cm = ConnectionManager::new(dbiji_app::driver_registry(), Arc::new(MemorySecrets::default()), Arc::new(DirectNet));
+        let id = cfg.id.clone();
+        cm.upsert(cfg);
+        cm.connect(&backend, &id, Credentials::default()).unwrap();
+        let t0 = Instant::now();
+        while !cm.is_connected(&id) {
+            assert!(cm.errors().is_empty(), "{:?}", cm.errors());
+            assert!(t0.elapsed() < Duration::from_secs(10));
+            cm.poll(&backend);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let s = cm.live(&id).unwrap().main.clone();
+        backend
+            .block_on(async move {
+                s.execute_update("CREATE TABLE customer (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT)", &[]).await?;
+                s.execute_update("CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER REFERENCES customer(id), total REAL)", &[]).await?;
+                s.execute_update("INSERT INTO customer VALUES (1, 'Ani', 'a@x'), (2, 'Budi', NULL)", &[]).await?;
+                s.execute_update("INSERT INTO orders VALUES (1, 1, 10.5), (2, 2, 3.25)", &[]).await?;
+                s.execute_update("CREATE VIEW big AS SELECT * FROM orders WHERE total > 5", &[]).await
+            })
+            .unwrap();
+        let services = Services::ephemeral(&dir.join("home"));
+        let settings = Settings::default();
+        let (keymap, _) = Keymap::from_config(&settings.keymap, dbiji_app::keys::IS_MAC);
+        H { backend, ctx, cm, services, settings, keymap, toasts: Toasts::default(), ops: Operations::default(), commands: Vec::new(), time: 0.0, id, dir }
+    }
+
+    fn frames(&mut self, tab: &mut dyn TabView, n: usize) {
+        for _ in 0..n {
+            self.time += 1.0 / 60.0;
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0))),
+                time: Some(self.time),
+                focused: true,
+                ..Default::default()
+            };
+            let ctx = self.ctx.clone();
+            let mut out = ctx.run_ui(input, |ui| {
+                let mut cx = AppContext {
+                    backend: &self.backend,
+                    conns: &mut self.cm,
+                    services: &self.services,
+                    settings: &mut self.settings,
+                    commands: &mut self.commands,
+                    toasts: &mut self.toasts,
+                    ops: &mut self.ops,
+                    keymap: &self.keymap,
+                    tab_active: true,
+                    current_tab: Some(1),
+                };
+                egui::CentralPanel::default().show(ui, |ui| tab.ui(ui, &mut cx));
+            });
+            out.textures_delta.clear();
+            let _ = self.ctx.tessellate(std::mem::take(&mut out.shapes), out.pixels_per_point);
+            self.cm.poll(&self.backend);
+            std::thread::sleep(Duration::from_millis(3));
+        }
+        self.commands.clear();
+    }
+}
+
+#[test]
+fn every_tab_draws_without_panicking() {
+    let mut h = H::new();
+    let conn = h.id.clone();
+    let schema = SchemaRef::new(None, Some("main".into()));
+    let customer = ObjectRef::table(Some("main".into()), "customer");
+    let mut tabs: Vec<(&str, Box<dyn TabView>)> = vec![
+        ("welcome", Box::new(dbiji_app::tabs::welcome::WelcomeTab)),
+        ("settings", Box::new(dbiji_app::tabs::settings::SettingsTab::default())),
+        ("history", Box::new(dbiji_app::tabs::history::HistoryTab::default())),
+        ("editor", Box::new(dbiji_app::tabs::sql_editor::SqlEditorTab::new(Some(conn.clone()), None, "select * from customer;".into(), None, false, "smoke".into()))),
+        ("console", Box::new(dbiji_app::tabs::sql_editor::SqlEditorTab::new(Some(conn.clone()), None, String::new(), None, true, "console".into()))),
+        ("object", Box::new(dbiji_app::tabs::object::ObjectEditorTab::new(conn.clone(), customer.clone(), dbiji_app::command::ObjectPage::Properties))),
+        ("object-data", Box::new(dbiji_app::tabs::object::ObjectEditorTab::new(conn.clone(), customer.clone(), dbiji_app::command::ObjectPage::Data))),
+        ("object-ddl", Box::new(dbiji_app::tabs::object::ObjectEditorTab::new(conn.clone(), customer.clone(), dbiji_app::command::ObjectPage::Ddl))),
+        ("view", Box::new(dbiji_app::tabs::object::ObjectEditorTab::new(conn.clone(), ObjectRef::new(ObjectKind::View, Some("main".into()), "big"), dbiji_app::command::ObjectPage::Ddl))),
+        ("data", Box::new(dbiji_app::results::data_tab::TableDataTab::new(conn.clone(), customer.clone(), Some("id > 0".into())))),
+        ("er", Box::new(dbiji_app::tabs::er::ErTab::new(conn.clone(), schema.clone(), Vec::new()))),
+        ("query-builder", Box::new(dbiji_app::tabs::query_builder::QueryBuilderTab::new(conn.clone(), Some(schema.clone())))),
+        ("schema-compare", Box::new(dbiji_app::tabs::compare::SchemaCompareTab::new(Some(conn.clone()), Some(schema.clone())))),
+        ("sessions", Box::new(dbiji_app::tabs::admin::SessionManagerTab::new(conn.clone()))),
+        ("locks", Box::new(dbiji_app::tabs::admin::LockManagerTab::new(conn.clone()))),
+        ("dashboard", Box::new(dbiji_app::tabs::admin::DashboardTab::new(conn.clone()))),
+    ];
+    for (name, tab) in tabs.iter_mut() {
+        let t0 = Instant::now();
+        h.frames(tab.as_mut(), 40);
+        assert!(!tab.title().is_empty(), "{name}: title");
+        eprintln!("{name}: {:?}", t0.elapsed());
+    }
+    // The settings tab in every section.
+    let mut settings = dbiji_app::tabs::settings::SettingsTab::default();
+    for _ in 0..12 {
+        h.frames(&mut settings, 3);
+        settings.next_section_for_tests();
+    }
+}

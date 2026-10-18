@@ -834,3 +834,12 @@ impl TabView for SettingsTab {
 
     crate::impl_tab_any!();
 }
+
+#[doc(hidden)]
+impl SettingsTab {
+    /// Cycle through the sections (headless smoke tests).
+    pub fn next_section_for_tests(&mut self) {
+        let i = Section::ALL.iter().position(|s| *s == self.section).unwrap_or(0);
+        self.section = Section::ALL[(i + 1) % Section::ALL.len()];
+    }
+}

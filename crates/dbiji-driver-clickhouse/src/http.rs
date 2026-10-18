@@ -224,7 +224,8 @@ impl Transport {
             .timeout_connect(Some(params.connect_timeout))
             .timeout_resolve(Some(params.connect_timeout))
             .max_idle_connections_per_host(4)
-            .max_idle_age(Duration::from_secs(25))
+            // below the 10 s keep-alive timeout of older ClickHouse versions
+            .max_idle_age(Duration::from_secs(8))
             .user_agent(format!("{} (ClickHouse HTTP driver)", params.application_name));
         if https {
             cfg = cfg.tls_config(tls_config(params, verify)?);

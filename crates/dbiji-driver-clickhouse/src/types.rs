@@ -571,10 +571,13 @@ pub fn strip_nullable(type_name: &str) -> (String, bool) {
 /// `Name(inner)` → `inner` when the outer parentheses enclose everything.
 pub fn strip_wrapper<'a>(t: &'a str, name: &str) -> Option<&'a str> {
     let t = t.trim();
-    if t.len() <= name.len() + 2 || !t[..name.len()].eq_ignore_ascii_case(name) {
+    // byte comparison: a match means the prefix is ASCII, so the split
+    // point is a char boundary
+    let prefix_matches = t.as_bytes().get(..name.len()).is_some_and(|p| p.eq_ignore_ascii_case(name.as_bytes()));
+    if t.len() <= name.len() + 2 || !prefix_matches {
         return None;
     }
-    let rest = t[name.len()..].trim_start();
+    let rest = t.get(name.len()..)?.trim_start();
     let inner = rest.strip_prefix('(')?.strip_suffix(')')?;
     // verify the parentheses are balanced (so `Nullable(A)(B)` is rejected)
     let mut depth = 0i32;

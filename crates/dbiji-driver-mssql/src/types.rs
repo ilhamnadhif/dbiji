@@ -51,9 +51,10 @@ pub fn column_meta(col: &tiberius::Column) -> ColumnMeta {
     let (name, kind) = column_type_info(col.column_type());
     let mut m = ColumnMeta::new(col.name(), name, kind);
     match col.column_type() {
-        ColumnType::Bit | ColumnType::Int1 | ColumnType::Int2 | ColumnType::Int4 | ColumnType::Int8 => {
-            m.nullable = Some(false)
-        }
+        // Fixed-length `bit` is only used for NOT NULL columns. (tiberius maps
+        // nullable `intn` columns to the same Int1..Int8 types as NOT NULL
+        // integers, so nothing can be inferred for those.)
+        ColumnType::Bit => m.nullable = Some(false),
         ColumnType::Money => {
             m.precision = Some(19);
             m.scale = Some(4);

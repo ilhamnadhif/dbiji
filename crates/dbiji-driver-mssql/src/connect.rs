@@ -84,7 +84,9 @@ pub fn build_config(params: &ConnectParams, host: &str, port: u16, level: Encryp
         if let Some(ca) = params.ssl.ca_cert.as_deref().filter(|c| !c.is_empty()) {
             config.trust_cert_ca(ca);
         }
-        let name = params.property("hostname_in_certificate").unwrap_or_else(|| params.tls_host());
+        // after an Azure gateway redirect the certificate belongs to the new host
+        let default_name = if host != params.host { host } else { params.tls_host() };
+        let name = params.property("hostname_in_certificate").unwrap_or(default_name);
         config.hostname_in_certificate(name);
     } else {
         // also covers servers that force encryption when TLS was disabled

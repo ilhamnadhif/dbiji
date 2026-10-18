@@ -349,15 +349,17 @@ pub fn split_batches(sql: &str) -> Vec<(String, u32)> {
                 }
                 continue;
             }
-        // update lexical state for this line
+        // update lexical state for this line (byte-wise: all markers are
+        // ASCII, so non-ASCII text never needs a char boundary)
         let b = line.as_bytes();
         let mut i = 0;
         while i < b.len() {
+            let rest = &b[i..];
             if in_block > 0 {
-                if line[i..].starts_with("*/") {
+                if rest.starts_with(b"*/") {
                     in_block -= 1;
                     i += 2;
-                } else if line[i..].starts_with("/*") {
+                } else if rest.starts_with(b"/*") {
                     in_block += 1;
                     i += 2;
                 } else {
@@ -379,10 +381,10 @@ pub fn split_batches(sql: &str) -> Vec<(String, u32)> {
                 i += 1;
                 continue;
             }
-            if line[i..].starts_with("--") {
+            if rest.starts_with(b"--") {
                 break;
             }
-            if line[i..].starts_with("/*") {
+            if rest.starts_with(b"/*") {
                 in_block += 1;
                 i += 2;
                 continue;
@@ -612,6 +614,9 @@ mod tests {
         assert_eq!(split_batches("SELECT 1").len(), 1);
         assert!(split_batches("GO\nGO").is_empty());
         assert_eq!(go_line("GOTO x"), None);
+        // non-ASCII text in comments, identifiers and strings must not break the scanner
+        let b = split_batches("SELECT é AS [ü] /* ç\n GO ğ */ -- ö\nGO\nSELECT N'ñ'");
+        assert_eq!(b.len(), 2, "{b:?}");
         assert_eq!(go_line("go 2 x"), None);
     }
 

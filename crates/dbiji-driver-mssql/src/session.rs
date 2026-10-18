@@ -55,6 +55,9 @@ pub struct SqlServerSession {
     lost_transaction: bool,
     /// Warning for the next statement after a transparent reconnect.
     reconnect_notice: Option<ServerMessage>,
+    /// Skip the post-statement `@@TRANCOUNT` refresh (while a SHOWPLAN /
+    /// STATISTICS XML option is on, it would return a plan).
+    suppress_refresh: bool,
     /// `SERVERPROPERTY('EngineEdition')` (5 = Azure SQL Database).
     pub(crate) engine_edition: i32,
 }
@@ -148,6 +151,7 @@ impl SqlServerSession {
             closed: false,
             lost_transaction: false,
             reconnect_notice: None,
+            suppress_refresh: false,
             engine_edition: init.edition,
         })
     }
@@ -160,17 +164,17 @@ impl SqlServerSession {
         let init = init_client(&mut client, self.mode == TransactionMode::Manual).await?;
         if let Some(db) = db.filter(|d| init.database.as_deref() != Some(d.as_str())) {
             let sql = format!("USE {}", crate::dialect::quote(&db));
-            if let Err(e) = client.simple_query(sql).await.map_err(|e| map_error(e, None)) {
-                tracing::debug!("could not restore database {db}: {e}");
-                self.shared.set_db(init.database.clone());
-            } else {
-                self.shared.set_db(Some(db));
+            let restored = async { client.simple_query(sql).await?.into_results().await }.await;
+            match restored {
+                Ok(_) => self.shared.set_db(Some(db)),
+                Err(e) => {
+                    tracing::debug!("could not restore database {db}: {e}");
+                    self.shared.set_db(init.database.clone());
+                }
             }
         } else {
             self.shared.set_db(init.database.clone());
         }
-        // flush any pending result of USE
-        let _ = client.simple_query("SELECT 1").await.map_err(|e| map_error(e, None))?.into_results().await;
         self.info = init.info;
         if was_in_tx {
             self.lost_transaction = true;
@@ -228,7 +232,8 @@ impl SqlServerSession {
             mode: mode.unwrap_or_else(|| exec_mode(sql, params)),
             timeout: opts.timeout,
             resolve_sources: opts.resolve_sources,
-            refresh_state: self.mode == TransactionMode::Manual || sqltext::touches_session_state(sql),
+            refresh_state: !self.suppress_refresh
+                && (self.mode == TransactionMode::Manual || sqltext::touches_session_state(sql)),
             tag: sqltext::first_keyword(sql),
             notice: self.reconnect_notice.take(),
         };
@@ -287,8 +292,14 @@ impl SqlServerSession {
         } else {
             ("SET SHOWPLAN_XML ON", "SET SHOWPLAN_XML OFF")
         };
-        self.batch(on).await?;
-        let res = self.results(sql, &[]).await;
+        self.suppress_refresh = true;
+        let on_res = self.batch(on).await;
+        let res = match on_res {
+            Ok(()) => self.results(sql, &[]).await,
+            Err(e) => Err(e),
+        };
+        self.suppress_refresh = false;
+        // the OFF batch refreshes the transaction state (STATISTICS XML executes the statement)
         let off_res = self.batch(off).await;
         let results = res?;
         off_res?;

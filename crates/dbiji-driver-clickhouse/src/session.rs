@@ -540,7 +540,14 @@ impl Session for ClickHouseSession {
             "is_initial_query",
             "query",
         ];
-        let rows = self.rows(sql).await?;
+        let rows = match self.rows(sql).await {
+            Ok(r) => r,
+            // queryID() is missing on old servers (UNKNOWN_FUNCTION)
+            Err(e) if e.code.as_deref().is_some_and(|c| c.starts_with("46 ")) => {
+                self.rows(&sql.replace(" WHERE query_id != queryID()", "")).await?
+            }
+            Err(e) => return Err(e),
+        };
         Ok(SessionList {
             data: TabularData { columns: cols.iter().map(|c| c.to_string()).collect(), rows },
             id_column: 0,

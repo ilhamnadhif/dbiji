@@ -1526,6 +1526,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "dbiji-core",
+ "parking_lot",
  "rustls",
  "serde",
  "serde_json",
@@ -1582,6 +1583,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

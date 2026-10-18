@@ -279,6 +279,8 @@ async fn multiple_statements_and_tags() {
         assert_eq!(data, vec![vec![Value::text("1\tx")]]);
         let e = s.execute(&format!("COPY {schema}.r FROM STDIN"), &[], &ExecOptions::default()).await.err().unwrap();
         assert_eq!(e.kind, ErrorKind::Unsupported);
+        let e = s.execute(&format!("SELECT 1; COPY {schema}.r TO STDOUT"), &[], &ExecOptions::default()).await.err().unwrap();
+        assert_eq!(e.kind, ErrorKind::Unsupported);
         // the session still works
         assert_eq!(scalar(&mut s, "SELECT 1").await, Value::Int(1));
         s.close().await.ok();
@@ -1098,6 +1100,22 @@ async fn metadata_of_every_object_kind() {
             .await
             .unwrap();
         assert_eq!(names(&found), vec!["customers"]);
+        let only_columns = s
+            .search_metadata(&MetadataSearch {
+                pattern: "credit".into(),
+                schemas: vec![schema.clone()],
+                kinds: vec![ObjectKind::Column],
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(only_columns.len(), 1);
+        assert_eq!(only_columns[0].obj.table.as_deref(), Some("customers"));
+        let routines = s
+            .search_metadata(&MetadataSearch { pattern: "ADD".into(), kinds: vec![ObjectKind::Function], ..Default::default() })
+            .await
+            .unwrap();
+        assert!(routines.iter().any(|o| o.obj.schema.as_deref() == Some(schema.as_str()) && o.obj.signature.is_some()));
         let limited = s
             .search_metadata(&MetadataSearch { pattern: "*".into(), schemas: vec![schema.clone()], limit: 3, ..Default::default() })
             .await

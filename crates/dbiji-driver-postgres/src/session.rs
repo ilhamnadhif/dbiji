@@ -467,6 +467,9 @@ impl PgSession {
                 "COPY ... FROM STDIN cannot be run from the SQL editor; use the data import tool or COPY FROM a server side file",
             ));
         }
+        if script.statements.len() > 1 && script.statements.iter().any(|s| s.copy == CopyKind::ToStdout) {
+            return Err(DbError::unsupported("Run COPY ... TO STDOUT as a single statement, not as part of a script"));
+        }
         if script
             .statements
             .iter()

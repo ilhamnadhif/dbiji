@@ -93,28 +93,55 @@ fn conninfo_value(v: &str) -> String {
     }
 }
 
-/// Connection string for the tools. When the session goes through a local
-/// forwarder (`tls_server_name` set and `host` an IP address), libpq connects
-/// to `hostaddr` while verifying TLS against `host`.
-pub(crate) fn conninfo(params: &ConnectParams, database: Option<&str>) -> String {
-    let mut parts = Vec::new();
+/// Connection arguments for the tools: `-h host -p port -U user -d dbname`.
+///
+/// When the session goes through a local forwarder (`tls_server_name` set
+/// and `host` an IP address), `-d` carries a libpq connection string with
+/// `host=<real name> hostaddr=<forwarder>`, so libpq connects to the
+/// forwarder while verifying TLS (and sending SNI) for the real server name.
+pub(crate) fn connection_args(params: &ConnectParams, database: Option<&str>) -> Vec<String> {
     let host = if params.host.trim().is_empty() { "localhost" } else { params.host.trim() };
+    let db = database.or(params.database.as_deref()).filter(|d| !d.is_empty());
+    let mut args = Vec::new();
     match (&params.tls_server_name, host.parse::<IpAddr>()) {
-        (Some(name), Ok(_)) if !name.is_empty() => {
-            parts.push(format!("host={}", conninfo_value(name)));
-            parts.push(format!("hostaddr={}", conninfo_value(host)));
+        (Some(name), Ok(_)) if !name.is_empty() && name != host => {
+            let mut parts = vec![
+                format!("host={}", conninfo_value(name)),
+                format!("hostaddr={}", conninfo_value(host)),
+                format!("port={}", params.port),
+            ];
+            if let Some(d) = db {
+                parts.push(format!("dbname={}", conninfo_value(d)));
+            }
+            if let Some(u) = params.user.as_deref().filter(|u| !u.is_empty()) {
+                args.push("-U".into());
+                args.push(u.to_string());
+            }
+            args.push("-d".into());
+            args.push(parts.join(" "));
         }
-        _ => parts.push(format!("host={}", conninfo_value(host))),
+        _ => {
+            args.push("-h".into());
+            args.push(host.to_string());
+            args.push("-p".into());
+            args.push(params.port.to_string());
+            if let Some(u) = params.user.as_deref().filter(|u| !u.is_empty()) {
+                args.push("-U".into());
+                args.push(u.to_string());
+            }
+            if let Some(d) = db {
+                args.push("-d".into());
+                // libpq would expand a name containing '=' or a URI prefix as a
+                // connection string; pass such names as an explicit `dbname=`
+                if d.contains('=') || d.starts_with("postgres://") || d.starts_with("postgresql://") {
+                    args.push(format!("dbname={}", conninfo_value(d)));
+                } else {
+                    args.push(d.to_string());
+                }
+            }
+        }
     }
-    parts.push(format!("port={}", params.port));
-    if let Some(u) = params.user.as_deref().filter(|u| !u.is_empty()) {
-        parts.push(format!("user={}", conninfo_value(u)));
-    }
-    if let Some(db) = database.or(params.database.as_deref()).filter(|d| !d.is_empty()) {
-        parts.push(format!("dbname={}", conninfo_value(db)));
-    }
-    parts.push(format!("connect_timeout={}", params.connect_timeout.as_secs().max(1)));
-    parts.join(" ")
+    args
 }
 
 fn file_path_of(source: &str) -> Option<String> {
@@ -224,7 +251,7 @@ pub(crate) fn backup_command(params: &ConnectParams, opts: &BackupOptions) -> Db
         }
     }
     args.extend(opts.extra_args.iter().cloned());
-    args.push(format!("--dbname={}", conninfo(params, opts.database.as_deref())));
+    args.extend(connection_args(params, opts.database.as_deref()));
     Ok(CommandSpec { program, args, env: tool_env(params), stdin_file: None, stdout_file: None })
 }
 
@@ -248,7 +275,7 @@ pub(crate) fn restore_command(params: &ConnectParams, opts: &RestoreOptions) -> 
             args.extend(opts.extra_args.iter().cloned());
             // a dump made with --create connects to the new database itself
             let db = if opts.create_database { Some("postgres") } else { opts.database.as_deref() };
-            args.push(format!("--dbname={}", conninfo(params, db)));
+            args.extend(connection_args(params, db));
             Ok(CommandSpec { program, args, env, stdin_file: None, stdout_file: None })
         }
         fmt => {
@@ -281,7 +308,7 @@ pub(crate) fn restore_command(params: &ConnectParams, opts: &RestoreOptions) -> 
             args.extend(opts.extra_args.iter().cloned());
             // with --create, -d names the database used to issue CREATE DATABASE
             let db = if opts.create_database { Some("postgres") } else { opts.database.as_deref() };
-            args.push(format!("--dbname={}", conninfo(params, db)));
+            args.extend(connection_args(params, db));
             args.push(path_str(&opts.input));
             Ok(CommandSpec { program, args, env, stdin_file: None, stdout_file: None })
         }
@@ -291,14 +318,14 @@ pub(crate) fn restore_command(params: &ConnectParams, opts: &RestoreOptions) -> 
 /// `psql` running a script file ("execute with local client").
 pub(crate) fn client_command(params: &ConnectParams, script: &Path) -> DbResult<CommandSpec> {
     let program = find_tool("psql", params.property("psql_path"))?;
-    let args = vec![
+    let mut args = vec![
         "--no-psqlrc".to_string(),
         "--no-password".to_string(),
         "--set=ON_ERROR_STOP=1".to_string(),
         "--echo-errors".to_string(),
         format!("--file={}", path_str(script)),
-        format!("--dbname={}", conninfo(params, None)),
     ];
+    args.extend(connection_args(params, None));
     Ok(CommandSpec { program, args, env: tool_env(params), stdin_file: None, stdout_file: None })
 }
 
@@ -344,8 +371,9 @@ mod tests {
         assert!(c.args.contains(&"--table=app.\"Orders\"".to_string()));
         assert!(c.args.contains(&"--clean".to_string()));
         assert!(c.args.contains(&"--compress=6".to_string()));
-        let db = c.args.last().unwrap();
-        assert_eq!(db, "--dbname=host=db.example.com port=5432 user='app user' dbname=shop connect_timeout=7");
+        let conn = &c.args[c.args.len() - 8..];
+        assert_eq!(conn, ["-h", "db.example.com", "-p", "5432", "-U", "app user", "-d", "shop"]);
+        assert!(c.env.iter().any(|(k, v)| k == "PGCONNECT_TIMEOUT" && v.expose() == "7"));
         // the password never appears in the arguments or the display text
         assert!(!c.display().contains("hunter2"));
         assert!(c.args.iter().all(|a| !a.contains("hunter2")));
@@ -361,7 +389,13 @@ mod tests {
         p.host = "127.0.0.1".into();
         p.port = 40001;
         p.tls_server_name = Some("db.example.com".into());
-        assert!(conninfo(&p, None).starts_with("host=db.example.com hostaddr=127.0.0.1 port=40001"));
+        let args = connection_args(&p, None);
+        assert_eq!(args[0..2], ["-U".to_string(), "app user".to_string()]);
+        assert_eq!(args[2], "-d");
+        assert_eq!(args[3], "host=db.example.com hostaddr=127.0.0.1 port=40001 dbname=shop");
+        // a database name that libpq would expand as a connection string
+        let args = connection_args(&params(), Some("a=b c"));
+        assert_eq!(args[args.len() - 2..], ["-d".to_string(), "dbname='a=b c'".to_string()]);
     }
 
     #[test]
@@ -390,7 +424,7 @@ mod tests {
         assert!(c.program.ends_with("pg_restore"));
         assert!(c.args.contains(&"--create".to_string()));
         assert!(c.args.contains(&"--exit-on-error".to_string()));
-        assert!(c.args.iter().any(|a| a.contains("dbname=postgres")));
+        assert!(c.args.windows(2).any(|w| w[0] == "-d" && w[1] == "postgres"));
         assert_eq!(c.args.last().unwrap(), "/tmp/in.dump");
         let s = client_command(&params(), Path::new("/tmp/x.sql")).unwrap();
         assert!(s.args.contains(&"--file=/tmp/x.sql".to_string()));

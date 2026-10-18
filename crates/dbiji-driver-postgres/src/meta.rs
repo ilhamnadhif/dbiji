@@ -1311,7 +1311,8 @@ impl PgSession {
         let limit = search.limit.clamp(1, 100_000) as i64;
         let raw = search.pattern.trim().to_string();
         let sql = format!(
-            "SELECT * FROM ({}) s ORDER BY (lower(s.name) = lower($4)) DESC, length(s.name), s.name, s.sch LIMIT $2",
+            "SELECT * FROM ({}) s(k, sch, parent, name, sig, descr, detail) \
+             ORDER BY (lower(s.name) = lower($4)) DESC, length(s.name), s.name, s.sch LIMIT $2",
             parts.join(" UNION ALL ")
         );
         let rows = if search.schemas.is_empty() {

@@ -518,12 +518,15 @@ impl ConnectionManager {
 
     /// Saved credentials of `cfg` (also an unsaved draft), overlaid with the prompted ones.
     pub fn credentials_for(&self, cfg: &ConnectionConfig, prompted: &Credentials) -> Credentials {
-        let get = |slot| self.secret_for(cfg, slot);
+        // Only read the secrets the connection can use (each read may hit the OS keychain).
+        let net = self.store.effective_network(cfg);
+        let get = |slot, used: bool| if used { self.secret_for(cfg, slot) } else { None };
+        let password_used = !cfg.kind.is_file_based() && matches!(cfg.auth, AuthMethod::Password | AuthMethod::Prompt);
         Credentials {
-            password: prompted.password.clone().or_else(|| get(SecretSlot::Password)),
-            ssh_password: prompted.ssh_password.clone().or_else(|| get(SecretSlot::SshPassword)),
-            ssh_passphrase: prompted.ssh_passphrase.clone().or_else(|| get(SecretSlot::SshPassphrase)),
-            proxy_password: prompted.proxy_password.clone().or_else(|| get(SecretSlot::ProxyPassword)),
+            password: prompted.password.clone().or_else(|| get(SecretSlot::Password, password_used)),
+            ssh_password: prompted.ssh_password.clone().or_else(|| get(SecretSlot::SshPassword, net.ssh.is_some())),
+            ssh_passphrase: prompted.ssh_passphrase.clone().or_else(|| get(SecretSlot::SshPassphrase, net.ssh.is_some())),
+            proxy_password: prompted.proxy_password.clone().or_else(|| get(SecretSlot::ProxyPassword, net.proxy.is_some())),
         }
     }
 

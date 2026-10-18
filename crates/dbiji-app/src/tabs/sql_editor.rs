@@ -134,6 +134,10 @@ pub struct SqlEditorTab {
     request_focus: bool,
     /// Dock id of this tab (to close it after the "unsaved changes" prompt).
     tab_id: Option<u64>,
+    /// Run the whole script as soon as the session is ready (benchmarks, "run on open").
+    pub auto_run: bool,
+    /// Fetch every row of new results (benchmarks).
+    pub fetch_all_results: bool,
 }
 
 fn editor_options(cx: &AppContext) -> EditorOptions {
@@ -220,6 +224,8 @@ impl SqlEditorTab {
             select_schema_open: false,
             request_focus: true,
             tab_id: None,
+            auto_run: false,
+            fetch_all_results: false,
         }
     }
 
@@ -495,7 +501,10 @@ impl SqlEditorTab {
                         continue;
                     }
                     let title = result_title(&sql, self.results.len() + 1);
-                    let panel = ResultPanel::new(self.conn.clone().unwrap_or_default(), title, src, None);
+                    let mut panel = ResultPanel::new(self.conn.clone().unwrap_or_default(), title, src, None);
+                    if self.fetch_all_results {
+                        panel.src.fetch_more(cx.backend, usize::MAX, None);
+                    }
                     let item = ResultItem::Rows(Box::new(panel));
                     let pos = match (self.replace_result, self.bottom) {
                         (true, Bottom::Result(i)) if i < self.results.len() && !self.result_has_changes(i) => {
@@ -1450,6 +1459,10 @@ impl TabView for SqlEditorTab {
                     self.session = SessionSlot::None;
                 }
             });
+        }
+        if self.auto_run && self.session_ready() && self.exec.is_none() {
+            self.auto_run = false;
+            self.run(cx, Request { scope: Scope::Script, new_tab: true, explain: None, confirmed: true });
         }
         self.poll_exec(&ctx, cx);
         self.toolbar(ui, cx);

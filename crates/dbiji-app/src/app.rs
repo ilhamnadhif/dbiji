@@ -44,6 +44,8 @@ pub struct DbijiApp {
     /// "Generate SQL" requests waiting for the table definition.
     pending_generate: Vec<(String, dbiji_core::ObjectRef, String)>,
     script_counter: u32,
+    /// `DBIJI_BENCH_SCENARIO=workload`: connections still to open editors for.
+    bench_workload: Option<Vec<String>>,
 }
 
 impl DbijiApp {
@@ -77,6 +79,7 @@ impl DbijiApp {
                 .map(|s| Instant::now() + std::time::Duration::from_secs(s)),
             pending_generate: Vec::new(),
             script_counter: 0,
+            bench_workload: None,
         };
         app.open_tab(Box::new(crate::tabs::welcome::WelcomeTab));
         app
@@ -393,6 +396,61 @@ impl DbijiApp {
         let id = ids[next];
         if let Some(path) = self.dock.find_tab_from(|t| t.id == id) {
             let _ = self.dock.set_active_tab(path);
+        }
+    }
+
+    /// Benchmark workload (PRD §2): 3 connections and 5 result tabs with all
+    /// rows fetched. Servers come from `DBIJI_BENCH_URLS` (comma separated) or
+    /// the `DBIJI_TEST_*` variables; passwords are never stored.
+    pub fn start_bench_workload(&mut self) {
+        let mut urls: Vec<String> = std::env::var("DBIJI_BENCH_URLS").map(|v| v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()).unwrap_or_default();
+        if urls.is_empty() {
+            for v in ["DBIJI_TEST_PG", "DBIJI_TEST_MYSQL", "DBIJI_TEST_MARIADB"] {
+                if let Ok(u) = std::env::var(v) {
+                    urls.push(u);
+                }
+            }
+        }
+        let mut ids = Vec::new();
+        for (i, url) in urls.iter().take(3).enumerate() {
+            let Ok((mut cfg, password)) = dbiji_config::parse_connection_url(url) else { continue };
+            cfg.name = format!("bench {}", i + 1);
+            cfg.save_password = false;
+            let id = cfg.id.clone();
+            self.conns.upsert(cfg);
+            self.conns.dirty = false;
+            let creds = Credentials { password, ..Default::default() };
+            if self.conns.connect(&self.backend, &id, creds).is_ok() {
+                ids.push(id);
+            }
+        }
+        self.bench_workload = Some(ids);
+    }
+
+    fn poll_bench_workload(&mut self) {
+        let Some(ids) = self.bench_workload.clone() else { return };
+        if ids.iter().any(|id| !self.conns.is_connected(id) && self.conns.status(id) == crate::conn::ConnStatus::Connecting) {
+            return;
+        }
+        self.bench_workload = None;
+        let ready: Vec<String> = ids.into_iter().filter(|id| self.conns.is_connected(id)).collect();
+        if ready.is_empty() {
+            return;
+        }
+        for n in 0..5 {
+            let id = ready[n % ready.len()].clone();
+            let kind = self.conns.config(&id).map(|c| c.kind).unwrap_or(dbiji_core::DbKind::Postgres);
+            let sql = match kind {
+                dbiji_core::DbKind::Postgres | dbiji_core::DbKind::CockroachDb => {
+                    "SELECT g AS id, md5(g::text) AS name, g * 1.5 AS amount, now() AS created FROM generate_series(1, 20000) g".to_string()
+                }
+                _ => "WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 200)                       SELECT a.n * 1000 + b.n AS id, MD5(a.n * 1000 + b.n) AS name, (a.n + b.n) * 1.5 AS amount, NOW() AS created                       FROM seq a CROSS JOIN seq b LIMIT 20000"
+                    .to_string(),
+            };
+            let mut tab = crate::tabs::sql_editor::SqlEditorTab::new(Some(id), None, sql, None, false, format!("Bench {}", n + 1));
+            tab.auto_run = true;
+            tab.fetch_all_results = true;
+            self.open_tab(Box::new(tab));
         }
     }
 
@@ -761,6 +819,10 @@ impl eframe::App for DbijiApp {
             }
         }
         self.conns.poll(&self.backend);
+        if self.bench_workload.is_some() {
+            self.poll_bench_workload();
+            ctx.request_repaint_after(std::time::Duration::from_millis(50));
+        }
         if !self.pending_generate.is_empty() {
             self.poll_generate();
             ctx.request_repaint_after(std::time::Duration::from_millis(100));

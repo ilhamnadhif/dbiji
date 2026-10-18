@@ -181,8 +181,11 @@ pub fn run() -> ExitCode {
             backend.set_context(cc.egui_ctx.clone());
             let mut app = app::DbijiApp::new(backend, conns, services, settings);
             app.exit_after_first_frame = exit_after_first;
-            if app.settings.general.restore_session && std::env::var_os("DBIJI_BENCH_SCENARIO").is_none() {
-                app.restore_session();
+            match std::env::var("DBIJI_BENCH_SCENARIO").as_deref() {
+                Ok("workload") => app.start_bench_workload(),
+                Ok(_) => {}
+                Err(_) if app.settings.general.restore_session => app.restore_session(),
+                Err(_) => {}
             }
             for f in &files {
                 app.open_path(std::path::Path::new(f));

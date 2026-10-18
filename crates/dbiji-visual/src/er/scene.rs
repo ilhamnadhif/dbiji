@@ -87,6 +87,134 @@ fn z_points(start: Pos2, mid_x: f32, end: Pos2) -> Vec<Pos2> {
     }
 }
 
+/// Removes repeated and collinear interior points of an orthogonal polyline.
+fn simplify(points: Vec<Pos2>) -> Vec<Pos2> {
+    let mut out: Vec<Pos2> = Vec::with_capacity(points.len());
+    for p in points {
+        if out.last().is_some_and(|l| (*l - p).length_sq() < 0.01) {
+            continue;
+        }
+        if out.len() >= 2 {
+            let (a, b) = (out[out.len() - 2], out[out.len() - 1]);
+            let collinear = ((a.x - b.x).abs() < 0.01 && (b.x - p.x).abs() < 0.01) || ((a.y - b.y).abs() < 0.01 && (b.y - p.y).abs() < 0.01);
+            if collinear {
+                out.pop();
+            }
+        }
+        out.push(p);
+    }
+    out
+}
+
+/// Uniform grid over the table rectangles for obstacle queries.
+pub(crate) struct RectIndex {
+    cell: f32,
+    rects: Vec<Rect>,
+    cells: HashMap<(i32, i32), Vec<usize>>,
+}
+
+impl RectIndex {
+    pub(crate) fn new(rects: Vec<Rect>) -> Self {
+        let mut index = RectIndex { cell: 256.0, rects: Vec::new(), cells: HashMap::new() };
+        for r in rects {
+            let id = index.rects.len();
+            let (x0, y0, x1, y1) = index.range(r);
+            for cx in x0..=x1 {
+                for cy in y0..=y1 {
+                    index.cells.entry((cx, cy)).or_default().push(id);
+                }
+            }
+            index.rects.push(r);
+        }
+        index
+    }
+
+    fn range(&self, r: Rect) -> (i32, i32, i32, i32) {
+        let f = |v: f32| (v / self.cell).floor().clamp(-1e5, 1e5) as i32;
+        (f(r.min.x), f(r.min.y), f(r.max.x), f(r.max.y))
+    }
+
+    /// Is any rectangle other than `exclude` intersecting `area`?
+    fn any_in(&self, area: Rect, exclude: [usize; 2]) -> bool {
+        let hit = |i: usize| !exclude.contains(&i) && self.rects.get(i).is_some_and(|r| r.intersects(area));
+        let (x0, y0, x1, y1) = self.range(area);
+        if (x1 - x0 + 1) as i64 * (y1 - y0 + 1) as i64 > 64 {
+            return (0..self.rects.len()).any(hit);
+        }
+        for cx in x0..=x1 {
+            for cy in y0..=y1 {
+                if let Some(ids) = self.cells.get(&(cx, cy))
+                    && ids.iter().any(|&i| hit(i))
+                {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Does the polyline cross a rectangle other than `exclude`?
+    fn blocked(&self, points: &[Pos2], exclude: [usize; 2]) -> bool {
+        points.windows(2).any(|w| self.any_in(Rect::from_two_pos(w[0], w[1]).expand(1.5), exclude))
+    }
+}
+
+/// Re-routes a side by side relation whose direct route crosses other
+/// boxes: vertical runs in the gaps next to the child and the parent and a
+/// horizontal run along the nearest free corridor.
+fn avoid_obstacles(
+    base: Route,
+    child: Rect,
+    parent: Rect,
+    lane: f32,
+    spread: f32,
+    index: &RectIndex,
+    exclude: [usize; 2],
+) -> Route {
+    if !index.blocked(&base.points, exclude) {
+        return base;
+    }
+    let (Some(&start), Some(&end)) = (base.points.first(), base.points.last()) else { return base };
+    let child_right_of_parent = child.left() >= parent.right();
+    let gap_in = 12.0 + lane.abs() * 0.5 + spread;
+    let (xc, xp) = if child_right_of_parent {
+        (child.left() - gap_in, parent.right() + gap_in)
+    } else {
+        (child.right() + gap_in, parent.left() - gap_in)
+    };
+    let mut candidates: Vec<Vec<Pos2>> = vec![
+        vec![start, pos2(xc, start.y), pos2(xc, end.y), end],
+        vec![start, pos2(xp, start.y), pos2(xp, end.y), end],
+    ];
+    let (band_lo, band_hi) = (xp.min(xc), xp.max(xc));
+    let spacing = 8.0 + lane.abs() + spread;
+    let mut ys: Vec<f32> = vec![start.y, end.y];
+    for (i, r) in index.rects.iter().enumerate() {
+        if exclude.contains(&i) || r.right() < band_lo || r.left() > band_hi {
+            continue;
+        }
+        ys.push(r.top() - spacing);
+        ys.push(r.bottom() + spacing);
+    }
+    let ideal = (start.y + end.y) * 0.5;
+    ys.sort_by(|a, b| {
+        let ca = (a - start.y).abs() + (a - end.y).abs() + (a - ideal).abs() * 0.01;
+        let cb = (b - start.y).abs() + (b - end.y).abs() + (b - ideal).abs() * 0.01;
+        ca.total_cmp(&cb)
+    });
+    ys.dedup_by(|a, b| (*a - *b).abs() < 0.5);
+    for y in ys.into_iter().take(48) {
+        candidates.push(vec![start, pos2(xc, start.y), pos2(xc, y), pos2(xp, y), pos2(xp, end.y), end]);
+    }
+    for pts in candidates {
+        let pts = simplify(pts);
+        if !index.blocked(&pts, exclude) {
+            return Route::new(pts, base.start_dir, base.end_dir);
+        }
+    }
+    base
+}
+
 /// A box of the scene.
 #[derive(Debug, Clone)]
 pub(crate) struct SceneTable {
@@ -101,6 +229,11 @@ pub(crate) struct SceneTable {
 pub(crate) struct SceneRelation {
     /// Index into `ErModel::relations`.
     pub relation: usize,
+    /// Indices into `ErScene::tables`.
+    child: usize,
+    parent: usize,
+    /// Lane offset among relations of the same pair of boxes.
+    lane: f32,
     pub route: Route,
 }
 
@@ -149,19 +282,60 @@ impl ErScene {
                 lane[m] = if a == b { i as f32 * LANE } else { (i as f32 - (n - 1.0) * 0.5) * LANE };
             }
         }
+        let index = RectIndex::new(self.tables.iter().map(|t| t.rect).collect());
         for (k, &(ri, c, p)) in ends.iter().enumerate() {
-            let (Some(rel), Some(ct), Some(pt)) = (diagram.model.relations.get(ri), self.tables.get(c), self.tables.get(p))
-            else {
-                continue;
-            };
-            let (Some(child_t), Some(parent_t)) = (diagram.model.tables.get(ct.table), diagram.model.tables.get(pt.table)) else {
-                continue;
-            };
-            let y1 = ct.rect.top() + ct.geom.anchor_y(child_t, rel.from_columns.first().map(String::as_str));
-            let y2 = pt.rect.top() + pt.geom.anchor_y(parent_t, rel.to_columns.first().map(String::as_str));
             let lane_k = lane.get(k).copied().unwrap_or(0.0);
-            let route = if c == p { self_route(ct.rect, y1, y2, lane_k) } else { route(ct.rect, y1, pt.rect, y2, lane_k) };
-            self.relations.push(SceneRelation { relation: ri, route });
+            if let Some(route) = self.route_one(diagram, ri, c, p, lane_k, &index) {
+                self.relations.push(SceneRelation { relation: ri, child: c, parent: p, lane: lane_k, route });
+            }
+        }
+    }
+
+    fn route_one(&self, diagram: &ErDiagram, ri: usize, c: usize, p: usize, lane: f32, index: &RectIndex) -> Option<Route> {
+        let rel = diagram.model.relations.get(ri)?;
+        let (ct, pt) = (self.tables.get(c)?, self.tables.get(p)?);
+        let (child_t, parent_t) = (diagram.model.tables.get(ct.table)?, diagram.model.tables.get(pt.table)?);
+        let y1 = ct.rect.top() + ct.geom.anchor_y(child_t, rel.from_columns.first().map(String::as_str));
+        let y2 = pt.rect.top() + pt.geom.anchor_y(parent_t, rel.to_columns.first().map(String::as_str));
+        Some(if c == p {
+            self_route(ct.rect, y1, y2, lane)
+        } else {
+            let base = route(ct.rect, y1, pt.rect, y2, lane);
+            let side_by_side = ct.rect.left() >= pt.rect.right() + STUB * 2.0 || pt.rect.left() >= ct.rect.right() + STUB * 2.0;
+            // deterministic spread so detours of different relations do not coincide
+            let spread = (ri % 7) as f32 * 3.0;
+            if side_by_side { avoid_obstacles(base, ct.rect, pt.rect, lane, spread, index, [c, p]) } else { base }
+        })
+    }
+
+    /// Fast update while boxes are dragged: moves the given tables to their
+    /// current positions and re-routes only the relations attached to them.
+    /// Other routes keep their shape until the next full [`Self::build`].
+    pub fn update_moved(&mut self, diagram: &ErDiagram, keys: &[String]) {
+        let mut moved = Vec::new();
+        for k in keys {
+            if let (Some(&i), Some(pos)) = (self.index.get(k), diagram.positions.get(k))
+                && let Some(st) = self.tables.get_mut(i)
+            {
+                st.rect = Rect::from_min_size(*pos, st.geom.size);
+                moved.push(i);
+            }
+        }
+        if moved.is_empty() {
+            return;
+        }
+        let index = RectIndex::new(self.tables.iter().map(|t| t.rect).collect());
+        let updates: Vec<(usize, Route)> = self
+            .relations
+            .iter()
+            .enumerate()
+            .filter(|(_, sr)| moved.contains(&sr.child) || moved.contains(&sr.parent))
+            .filter_map(|(k, sr)| self.route_one(diagram, sr.relation, sr.child, sr.parent, sr.lane, &index).map(|r| (k, r)))
+            .collect();
+        for (k, r) in updates {
+            if let Some(sr) = self.relations.get_mut(k) {
+                sr.route = r;
+            }
         }
     }
 
@@ -213,5 +387,32 @@ mod tests {
         assert_eq!(rt.points.len(), 4);
         assert!(rt.points[1].x > parent.right());
         assert_ne!(rt.points[0].y, rt.points[3].y);
+    }
+
+    #[test]
+    fn long_routes_avoid_boxes_in_between() {
+        // parent | obstacle column | child; the direct route crosses the obstacle
+        let parent = r(0.0, 0.0, 100.0, 300.0);
+        let obstacle = r(250.0, 0.0, 120.0, 300.0);
+        let below = r(250.0, 340.0, 120.0, 100.0);
+        let child = r(500.0, 0.0, 100.0, 300.0);
+        let index = RectIndex::new(vec![parent, child, obstacle, below]);
+        let base = route(child, 150.0, parent, 150.0, 0.0);
+        assert!(index.blocked(&base.points, [0, 1]), "test setup: direct route is blocked");
+        let routed = avoid_obstacles(base, child, parent, 0.0, 0.0, &index, [0, 1]);
+        assert!(!index.blocked(&routed.points, [0, 1]), "{:?}", routed.points);
+        assert_eq!(routed.points.first(), Some(&pos2(500.0, 150.0)));
+        assert_eq!(routed.points.last(), Some(&pos2(100.0, 150.0)));
+        for w in routed.points.windows(2) {
+            assert!(w[0].x == w[1].x || w[0].y == w[1].y, "orthogonal: {:?}", routed.points);
+        }
+        // corridor between the two obstacles (y 300..340) or around them
+        let corridor_y = routed.points.iter().map(|p| p.y).find(|y| *y != 150.0).unwrap();
+        assert!(corridor_y < 0.0 || (300.0..=340.0).contains(&corridor_y) || corridor_y > 440.0, "{corridor_y}");
+        // unobstructed routes are kept as they are
+        let free = RectIndex::new(vec![parent, child]);
+        let base = route(child, 150.0, parent, 150.0, 0.0);
+        assert_eq!(avoid_obstacles(base.clone(), child, parent, 0.0, 0.0, &free, [0, 1]), base);
+        assert_eq!(simplify(vec![pos2(0.0, 0.0), pos2(0.0, 0.0), pos2(5.0, 0.0), pos2(9.0, 0.0), pos2(9.0, 4.0)]).len(), 3);
     }
 }

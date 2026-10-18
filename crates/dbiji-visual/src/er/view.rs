@@ -195,6 +195,7 @@ pub struct ErViewState {
     editing_note: Option<usize>,
     last_canvas: Rect,
     minimap_rect: Option<Rect>,
+    scene_cache: Option<(u64, ErScene)>,
 }
 
 impl Default for ErViewState {
@@ -215,6 +216,7 @@ impl Default for ErViewState {
             editing_note: None,
             last_canvas: Rect::NOTHING,
             minimap_rect: None,
+            scene_cache: None,
         }
     }
 }
@@ -341,7 +343,7 @@ pub fn show_er(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState) ->
         state.editing_note = None;
     }
 
-    let mut scene = ErScene::build(diagram);
+    let mut scene = take_scene(state, diagram);
     if state.fit_pending {
         if size_stable {
             fit(state, diagram, &scene, rect.size());
@@ -349,6 +351,7 @@ pub fn show_er(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState) ->
         } else {
             ui.painter_at(rect).rect_filled(rect, 0.0, pal.canvas);
             ui.ctx().request_repaint();
+            state.scene_cache = Some((scene_key(diagram), scene));
             return ErResponse { events, hovered: None, response: Some(response) };
         }
     }
@@ -372,7 +375,10 @@ pub fn show_er(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState) ->
     let selection_before = state.selection.clone();
 
     // --- drags
-    let mut moved_tables = false;
+    // tables moved by a drag this frame (cheap partial scene update), or a
+    // finished drag (full rebuild so other routes can avoid the new spot)
+    let mut moved_tables: Option<Vec<String>> = None;
+    let mut full_rebuild = false;
     if response.drag_started_by(PointerButton::Primary) {
         let press = ui.input(|i| i.pointer.press_origin()).unwrap_or(origin);
         let world = view.to_world(origin, press);
@@ -414,7 +420,7 @@ pub fn show_er(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState) ->
                         }
                     }
                     *moved = true;
-                    moved_tables = true;
+                    moved_tables = Some(keys.clone());
                 }
             }
             Some(ErDrag::MoveNote(i)) => {
@@ -447,6 +453,7 @@ pub fn show_er(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState) ->
                     }
                 }
                 events.push(ErEvent::TableMoved(keys));
+                full_rebuild = true;
             }
             Some(ErDrag::MoveNote(_)) | Some(ErDrag::ResizeNote(_)) => events.push(ErEvent::NotesChanged),
             Some(ErDrag::Select { origin: o, current }) => {
@@ -560,8 +567,10 @@ pub fn show_er(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState) ->
     if let Some(a) = action {
         apply_action(a, diagram, state, &mut events);
         scene = ErScene::build(diagram);
-    } else if moved_tables {
+    } else if full_rebuild {
         scene = ErScene::build(diagram);
+    } else if let Some(keys) = moved_tables {
+        scene.update_moved(diagram, &keys);
     }
 
     if state.selection != selection_before {
@@ -605,7 +614,32 @@ pub fn show_er(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState) ->
         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
     }
 
+    state.scene_cache = Some((scene_key(diagram), scene));
     ErResponse { events, hovered: state.hover.clone(), response: Some(response) }
+}
+
+/// Content hash of everything the scene geometry depends on.
+fn scene_key(diagram: &ErDiagram) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::hash::DefaultHasher::new();
+    diagram.settings.hash(&mut h);
+    diagram.model.hash(&mut h);
+    for (k, p) in &diagram.positions {
+        k.hash(&mut h);
+        p.x.to_bits().hash(&mut h);
+        p.y.to_bits().hash(&mut h);
+    }
+    h.finish()
+}
+
+/// The cached scene when nothing changed since the last frame, otherwise a
+/// freshly built one (routing with obstacle avoidance is not free).
+fn take_scene(state: &mut ErViewState, diagram: &ErDiagram) -> ErScene {
+    let key = scene_key(diagram);
+    match state.scene_cache.take() {
+        Some((k, scene)) if k == key => scene,
+        _ => ErScene::build(diagram),
+    }
 }
 
 fn fit(state: &mut ErViewState, diagram: &ErDiagram, scene: &ErScene, size: Vec2) {
@@ -1087,6 +1121,41 @@ fn paint_canvas(
             egui::FontId::proportional(14.0),
             pal.weak,
         );
+    }
+    diff_legend(ui, painter, rect, diagram, pal);
+}
+
+/// Legend of the diff colours, shown when the diagram compares two schemas.
+fn diff_legend(ui: &Ui, painter: &Painter, rect: Rect, diagram: &ErDiagram, pal: &Palette) {
+    let mut counts = [0usize; 3];
+    for t in &diagram.model.tables {
+        match t.status {
+            Some(DiffStatus::Added) => counts[0] += 1,
+            Some(DiffStatus::Removed) => counts[1] += 1,
+            Some(DiffStatus::Modified) => counts[2] += 1,
+            _ => {}
+        }
+    }
+    if !diagram.model.tables.iter().any(|t| t.status.is_some()) {
+        return;
+    }
+    let v = ui.visuals();
+    let items = [
+        (DiffStatus::Added, counts[0]),
+        (DiffStatus::Removed, counts[1]),
+        (DiffStatus::Modified, counts[2]),
+    ];
+    let font = egui::FontId::proportional(12.0);
+    let row_h = 18.0;
+    let frame = Rect::from_min_size(rect.min + vec2(10.0, 10.0), vec2(150.0, row_h * items.len() as f32 + 10.0));
+    painter.rect_filled(frame, 4.0, pal.box_fill.gamma_multiply(0.95));
+    painter.rect_stroke(frame, 4.0, pal.box_stroke, StrokeKind::Inside);
+    for (i, (status, n)) in items.iter().enumerate() {
+        let y = frame.top() + 5.0 + row_h * (i as f32 + 0.5);
+        let swatch = Rect::from_center_size(pos2(frame.left() + 14.0, y), vec2(12.0, 12.0));
+        painter.rect_filled(swatch, 3.0, pal.header(v, ErTableKind::Table, Some(*status)));
+        painter.rect_stroke(swatch, 3.0, Stroke::new(1.5, status_stroke(Some(*status)).unwrap_or(pal.weak)), StrokeKind::Inside);
+        painter.text(pos2(frame.left() + 28.0, y), Align2::LEFT_CENTER, format!("{} ({n})", tr(status.label())), font.clone(), pal.text);
     }
 }
 

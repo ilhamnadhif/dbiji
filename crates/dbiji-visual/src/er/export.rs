@@ -11,7 +11,7 @@ use super::scene::{ErScene, Route};
 use crate::common::colors;
 use crate::common::svg::{Anchor, SvgDoc, TextStyle};
 use crate::common::text::{text_width, truncate_to_width};
-use dbiji_core::{DbError, DbResult, tr};
+use dbiji_core::{DbError, DbResult, tr, trf};
 use egui::{Color32, Pos2, Rect, Vec2, pos2, vec2};
 use resvg::{tiny_skia, usvg};
 use std::sync::{Arc, OnceLock};
@@ -77,7 +77,8 @@ pub fn export_svg(diagram: &ErDiagram) -> String {
     }
     let bounds = bounds.unwrap_or(Rect::from_min_size(Pos2::ZERO, vec2(200.0, 100.0)));
     let offset = vec2(MARGIN - bounds.min.x, MARGIN - bounds.min.y);
-    let size = bounds.size() + Vec2::splat(2.0 * MARGIN);
+    let legend_h = if diagram.model.tables.iter().any(|t| t.status.is_some()) { 28.0 } else { 0.0 };
+    let size = bounds.size() + Vec2::splat(2.0 * MARGIN) + vec2(0.0, legend_h);
     let mut doc = SvgDoc::new(size.x, size.y, Some(EXPORT.background));
     doc.title(if diagram.name.is_empty() { tr("ER diagram") } else { &diagram.name });
 
@@ -107,7 +108,27 @@ pub fn export_svg(diagram: &ErDiagram) -> String {
             doc.text(rect.left() + 8.0, rect.top() + 18.0 + i as f32 * 16.0, &line, style);
         }
     }
+    if legend_h > 0.0 {
+        let top = size.y - legend_h;
+        let mut x = MARGIN;
+        for status in [DiffStatus::Added, DiffStatus::Removed, DiffStatus::Modified] {
+            let n = diagram.model.tables.iter().filter(|t| t.status == Some(status)).count();
+            doc.rect(x, top + 6.0, 12.0, 12.0, 3.0, Some(status_header(Some(status), ErTableKind::Table)), Some((status_border(status), 1.5)));
+            let label = format!("{} ({n})", tr(status.label()));
+            doc.text(x + 18.0, top + 16.5, &label, TextStyle::new(12.0, EXPORT.text));
+            x += 34.0 + text_width(&label, 12.0, false);
+        }
+    }
     doc.finish()
+}
+
+fn status_border(status: DiffStatus) -> Color32 {
+    match status {
+        DiffStatus::Added => colors::STATUS_GOOD,
+        DiffStatus::Removed => colors::STATUS_CRITICAL,
+        DiffStatus::Modified => colors::STATUS_SERIOUS,
+        DiffStatus::Unchanged => EXPORT.box_stroke,
+    }
 }
 
 fn relation_title(r: &ErRelation) -> String {
@@ -197,11 +218,7 @@ fn table_box(doc: &mut SvgDoc, t: &ErTable, rect: Rect, geom: &super::geometry::
         doc.text(rect.left() + geom.name_x, top + 14.5, &name, style);
         if diagram.settings.show_types && !col.data_type.is_empty() {
             let ty = truncate_to_width(&col.data_type, rect.width() - geom.type_x - PAD_X, ROW_FONT, false);
-            let mut ty_text = ty.into_owned();
-            if !col.nullable && !col.pk {
-                ty_text.push_str(" *");
-            }
-            doc.text(rect.left() + geom.type_x, top + 14.5, &ty_text, TextStyle::new(ROW_FONT, EXPORT.type_text));
+            doc.text(rect.left() + geom.type_x, top + 14.5, &ty, TextStyle::new(ROW_FONT, EXPORT.type_text));
         }
     }
     doc.close_group();
@@ -364,7 +381,7 @@ fn font_db() -> Arc<usvg::fontdb::Database> {
 /// Renders an SVG document to PNG at `scale` (1 = one pixel per unit).
 pub(crate) fn svg_to_png(svg: &str, scale: f32) -> DbResult<Vec<u8>> {
     let opts = usvg::Options { fontdb: font_db(), ..Default::default() };
-    let tree = usvg::Tree::from_str(svg, &opts).map_err(|e| DbError::internal(format!("SVG rendering failed: {e}")))?;
+    let tree = usvg::Tree::from_str(svg, &opts).map_err(|e| DbError::internal(trf("SVG rendering failed: {}", &[&e])))?;
     let size = tree.size();
     let mut scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
     let pixels = size.width() * size.height() * scale * scale;
@@ -380,10 +397,10 @@ pub(crate) fn svg_to_png(svg: &str, scale: f32) -> DbResult<Vec<u8>> {
     let w = (size.width() * scale).ceil().max(1.0) as u32;
     let h = (size.height() * scale).ceil().max(1.0) as u32;
     let mut pixmap =
-        tiny_skia::Pixmap::new(w, h).ok_or_else(|| DbError::internal(format!("Cannot allocate a {w}x{h} image")))?;
+        tiny_skia::Pixmap::new(w, h).ok_or_else(|| DbError::internal(trf("Cannot allocate a {}x{} image", &[&w, &h])))?;
     pixmap.fill(tiny_skia::Color::WHITE);
     resvg::render(&tree, tiny_skia::Transform::from_scale(scale, scale), &mut pixmap.as_mut());
-    pixmap.encode_png().map_err(|e| DbError::io(format!("PNG encoding failed: {e}")))
+    pixmap.encode_png().map_err(|e| DbError::io(trf("PNG encoding failed: {}", &[&e])))
 }
 
 /// Exports the diagram as PNG. `scale` is the pixel density (2 = retina);
@@ -437,6 +454,11 @@ mod tests {
         assert!(svg.contains("orders &lt;&amp;&gt; &quot;quoted&quot;"));
         assert!(svg.contains("Shop &lt;test&gt;"));
         assert!(!svg.contains("<script"));
+        // a diagram diff gets a legend
+        assert!(svg.contains("Modified (1)"), "diff legend");
+        let mut plain = d.clone();
+        plain.model.set_statuses(Default::default());
+        assert!(!export_svg(&plain).contains("Modified ("));
         // simple notation and empty diagram
         let mut d2 = d.clone();
         d2.settings.notation = Notation::Simple;

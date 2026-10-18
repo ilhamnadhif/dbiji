@@ -43,7 +43,7 @@ impl DiffStatus {
 }
 
 /// One column row of a diagram box.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct ErColumn {
     /// Column name.
@@ -98,7 +98,7 @@ impl ErColumn {
 }
 
 /// One box of the diagram.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct ErTable {
     /// Unique key: `schema.table`, or just `table` without schema.
@@ -212,7 +212,7 @@ fn view_column(c: &ColumnDef) -> ErColumn {
 }
 
 /// A foreign key drawn as a line between two boxes.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct ErRelation {
     /// Constraint name (synthesised as `<table>_<columns>_fkey` when unnamed).
@@ -239,7 +239,7 @@ impl ErRelation {
 }
 
 /// Tables and relations of a diagram.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct ErModel {
     /// Boxes, unique by [`ErTable::key`].

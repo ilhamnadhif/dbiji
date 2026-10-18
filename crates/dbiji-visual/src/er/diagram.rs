@@ -4,7 +4,7 @@ use super::geometry::{TableGeometry, table_geometry};
 use super::layout::{LayoutOptions, auto_layout, layout_incremental};
 use super::model::ErModel;
 use crate::common::serde_helpers;
-use dbiji_core::{DbError, DbResult};
+use dbiji_core::{DbError, DbResult, trf};
 use egui::{Pos2, Rect, Vec2, vec2};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -214,7 +214,7 @@ impl ErDiagram {
     /// position are placed automatically.
     pub fn from_json(json: &str) -> DbResult<Self> {
         let mut d: ErDiagram =
-            serde_json::from_str(json).map_err(|e| DbError::config(format!("Invalid diagram file: {e}")))?;
+            serde_json::from_str(json).map_err(|e| DbError::config(trf("Invalid diagram file: {}", &[&e])))?;
         d.place_missing();
         Ok(d)
     }

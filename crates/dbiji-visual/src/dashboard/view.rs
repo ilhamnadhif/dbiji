@@ -238,11 +238,11 @@ fn metric_card(ui: &mut Ui, m: &MetricHistory, now: f64, window: f64, width: f32
 fn short_duration(secs: f64) -> String {
     let s = secs.max(0.0).round() as i64;
     if s < 60 {
-        format!("{s}s")
+        trf("{}s", &[&s])
     } else if s < 3600 {
-        if s % 60 == 0 { format!("{}m", s / 60) } else { format!("{}m{}s", s / 60, s % 60) }
+        if s % 60 == 0 { trf("{}m", &[&(s / 60)]) } else { trf("{}m{}s", &[&(s / 60), &(s % 60)]) }
     } else {
-        format!("{}h{}m", s / 3600, (s % 3600) / 60)
+        trf("{}h{}m", &[&(s / 3600), &((s % 3600) / 60)])
     }
 }
 

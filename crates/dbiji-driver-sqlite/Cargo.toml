@@ -11,11 +11,15 @@ authors.workspace = true
 dbiji-core.workspace = true
 tokio.workspace = true
 async-trait.workspace = true
-rusqlite.workspace = true
+# `column_decltype` exposes the declared column types of result columns
+# (sqlite3_column_decltype), used to map values to DBiji kinds.
+rusqlite = { workspace = true, features = ["column_decltype"] }
+serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true
 hex.workspace = true
 tracing.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true }

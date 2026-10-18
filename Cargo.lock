@@ -1647,8 +1647,11 @@ dependencies = [
  "chrono",
  "dbiji-core",
  "duckdb",
+ "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -1723,10 +1726,12 @@ dependencies = [
  "dbiji-core",
  "hex",
  "rusqlite",
+ "serde",
  "serde_json",
  "tempfile",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

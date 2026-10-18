@@ -11,9 +11,14 @@ authors.workspace = true
 dbiji-core.workspace = true
 tokio.workspace = true
 async-trait.workspace = true
-duckdb.workspace = true
+# `json`: the JSON extension is linked statically, so the JSON type works
+# without downloading extensions at run time.
+duckdb = { workspace = true, features = ["json"] }
 chrono.workspace = true
 tracing.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true }
+tempfile.workspace = true

@@ -496,11 +496,16 @@ impl PgSession {
         match body {
             Ok(b) => Ok(Box::new(PgCursor::new(b, self.shared.clone(), guard, self.cancel.clone(), timer, self.rt.clone()))),
             Err(mut e) => {
-                if let Some(t) = &timer
-                    && e.code.as_deref() == Some("57014")
-                    && t.has_fired()
-                {
-                    e = DbError::timeout("The statement was cancelled because it exceeded the timeout").with_code("57014");
+                if let Some(t) = timer {
+                    let fired = t.has_fired();
+                    // never release the session while a timeout cancel is still in flight
+                    if let Some(pending_cancel) = t.stop() {
+                        let _ = pending_cancel.await;
+                    }
+                    if fired && e.code.as_deref() == Some("57014") {
+                        e = DbError::timeout("The statement was cancelled because it exceeded the timeout")
+                            .with_code("57014");
+                    }
                 }
                 Err(e)
             }

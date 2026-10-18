@@ -848,8 +848,8 @@ impl PgSession {
         let sql = format!(
             "SELECT c.relname::text, pg_catalog.format_type(s.seqtypid, NULL), s.seqstart, s.seqincrement, s.seqmin, s.seqmax, \
              s.seqcache, s.seqcycle, d.description, \
-             (SELECT CASE WHEN tn.nspname = n.nspname THEN '' ELSE pg_catalog.quote_ident(tn.nspname) || '.' END \
-                     || pg_catalog.quote_ident(tc.relname) || '.' || pg_catalog.quote_ident(ta.attname) \
+             (SELECT pg_catalog.quote_ident(tn.nspname) || '.' || pg_catalog.quote_ident(tc.relname) || '.' \
+                     || pg_catalog.quote_ident(ta.attname) \
                 FROM pg_catalog.pg_depend dep JOIN pg_catalog.pg_class tc ON tc.oid = dep.refobjid \
                 JOIN pg_catalog.pg_namespace tn ON tn.oid = tc.relnamespace \
                 JOIN pg_catalog.pg_attribute ta ON ta.attrelid = dep.refobjid AND ta.attnum = dep.refobjsubid \
@@ -867,14 +867,23 @@ impl PgSession {
         };
         let mut out = Vec::with_capacity(rows.len());
         for r in rows {
+            let data_type = r.os(1)?;
+            let increment = r.oi(3)?;
+            let (type_min, type_max) = match data_type.as_deref() {
+                Some("smallint") => (i16::MIN as i64, i16::MAX as i64),
+                Some("integer") => (i32::MIN as i64, i32::MAX as i64),
+                _ => (i64::MIN, i64::MAX),
+            };
+            // MINVALUE / MAXVALUE equal to the defaults are left out of the definition
+            let (def_min, def_max) = if increment.unwrap_or(1) > 0 { (1, type_max) } else { (type_min, -1) };
             out.push(SequenceDef {
                 schema: Some(schema.to_string()),
                 name: r.s(0)?,
-                data_type: r.os(1)?,
+                data_type,
                 start: r.oi(2)?,
-                increment: r.oi(3)?,
-                min_value: r.oi(4)?,
-                max_value: r.oi(5)?,
+                increment,
+                min_value: r.oi(4)?.filter(|v| *v != def_min),
+                max_value: r.oi(5)?.filter(|v| *v != def_max),
                 cache: r.oi(6)?,
                 cycle: r.b(7)?,
                 comment: if comments { r.os(8)?.filter(|c| !c.is_empty()) } else { None },
@@ -1164,7 +1173,7 @@ impl PgSession {
             "index" => {
                 let row = self
                     .q1(
-                        "SELECT pg_catalog.pg_get_indexdef(i.oid), d.description FROM pg_catalog.pg_class i \
+                        "SELECT pg_catalog.pg_get_indexdef(i.oid), d.description, i.relkind::text FROM pg_catalog.pg_class i \
                          JOIN pg_catalog.pg_namespace n ON n.oid = i.relnamespace \
                          LEFT JOIN pg_catalog.pg_description d ON d.objoid = i.oid AND d.classoid = 'pg_catalog.pg_class'::regclass AND d.objsubid = 0 \
                          WHERE n.nspname = $1 AND i.relname = $2 AND i.relkind IN ('i','I')",
@@ -1172,7 +1181,8 @@ impl PgSession {
                     )
                     .await?
                     .ok_or_else(|| DbError::query(format!("Index {schema}.{} does not exist", obj.name)))?;
-                let mut s = vec![row.s(0)?];
+                let def = row.s(0)?;
+                let mut s = vec![if row.s(2)? == "I" { crate::sqltext::strip_on_only(&def) } else { def }];
                 if let Some(c) = row.os(1)? {
                     s.push(format!("COMMENT ON INDEX {} IS {}", qualified(Some(schema), &obj.name), string_literal(&c)));
                 }

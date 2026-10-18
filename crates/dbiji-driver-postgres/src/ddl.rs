@@ -15,7 +15,7 @@
 //!   generated (so DDL can be replayed into another schema).
 
 use crate::dialect::{qualified, quote_ident, string_literal};
-use crate::sqltext::{Tok, replace_on_target, strip_semicolon, tokenize};
+use crate::sqltext::{Tok, replace_on_target, strip_on_only, strip_semicolon, tokenize};
 use dbiji_core::ddl::*;
 use dbiji_core::meta::ObjectKind;
 use dbiji_core::{DataKind, DbKind};
@@ -671,7 +671,10 @@ impl DdlGenerator for PgDdl {
                 _ => false,
             });
             if names_index {
-                return replace_on_target(def, &tname(table)).unwrap_or_else(|| def.to_string());
+                // pg_get_indexdef reports partitioned indexes as `ON ONLY parent`;
+                // without ONLY the index is created on all partitions as well
+                let def = if table.table_kind == TableKind::PartitionedTable { strip_on_only(def) } else { def.to_string() };
+                return replace_on_target(&def, &tname(table)).unwrap_or(def);
             }
         }
         let mut s = format!(

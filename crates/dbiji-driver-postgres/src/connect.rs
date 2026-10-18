@@ -397,6 +397,10 @@ pub(crate) async fn open(params: &ConnectParams) -> DbResult<Connected> {
     if let Some(m) = props.ssl_mode_override {
         ssl.mode = m;
     }
+    if params.host.starts_with('/') {
+        // PostgreSQL never offers TLS on Unix domain sockets (libpq ignores sslmode there)
+        ssl.mode = SslMode::Disable;
+    }
     let tls = tls::build(&ssl, params.tls_host())?;
     let mut config = Config::new();
     let user = params

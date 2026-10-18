@@ -25,7 +25,7 @@ use postgres_types::{FromSql, Type};
 use std::error::Error as StdError;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
 use tokio::runtime::Handle;
 use tokio::sync::OwnedMutexGuard;
@@ -53,42 +53,65 @@ impl<'a> FromSql<'a> for Raw<'a> {
     }
 }
 
+const TIMER_ARMED: u8 = 0;
+const TIMER_FIRED: u8 = 1;
+const TIMER_DONE: u8 = 2;
+
 /// Client side statement timeout: cancels the statement when it fires.
+///
+/// The state moves from armed to either fired (the timer won and sends a
+/// cancel request) or done (the statement won); exactly one side wins, so a
+/// cancel request can never be sent after the statement was declared done.
 pub(crate) struct StatementTimer {
-    handle: tokio::task::JoinHandle<()>,
-    fired: Arc<AtomicBool>,
+    handle: Option<tokio::task::JoinHandle<()>>,
+    state: Arc<AtomicU8>,
     timeout: Duration,
 }
 
 impl StatementTimer {
     pub(crate) fn start(rt: &Handle, timeout: Duration, cancel: Arc<PgCancelHandle>) -> StatementTimer {
-        let fired = Arc::new(AtomicBool::new(false));
-        let f = fired.clone();
+        let state = Arc::new(AtomicU8::new(TIMER_ARMED));
+        let st = state.clone();
         let handle = rt.spawn(async move {
             tokio::time::sleep(timeout).await;
-            f.store(true, Ordering::Release);
-            if let Err(e) = cancel.send().await {
+            if st.compare_exchange(TIMER_ARMED, TIMER_FIRED, Ordering::AcqRel, Ordering::Acquire).is_ok()
+                && let Err(e) = cancel.send().await
+            {
                 tracing::warn!("statement timeout: cancel request failed: {e}");
             }
         });
-        StatementTimer { handle, fired, timeout }
+        StatementTimer { handle: Some(handle), state, timeout }
     }
 
-    /// The timeout elapsed and a cancel request was sent.
+    /// The timeout elapsed and a cancel request was (or is being) sent.
     pub(crate) fn has_fired(&self) -> bool {
-        self.fired.load(Ordering::Acquire)
+        self.state.load(Ordering::Acquire) == TIMER_FIRED
     }
 
-    fn disarm(&self) {
-        if !self.has_fired() {
-            self.handle.abort();
+    /// The statement no longer needs the timeout (first row received).
+    fn disarm(&mut self) {
+        if self.state.compare_exchange(TIMER_ARMED, TIMER_DONE, Ordering::AcqRel, Ordering::Acquire).is_ok()
+            && let Some(h) = self.handle.take()
+        {
+            h.abort();
         }
+    }
+
+    /// Stop the timer. When it already fired, returns the task sending the
+    /// cancel request: the session must not be reused before it finished.
+    pub(crate) fn stop(mut self) -> Option<tokio::task::JoinHandle<()>> {
+        self.disarm();
+        if self.has_fired() { self.handle.take() } else { None }
     }
 }
 
 impl Drop for StatementTimer {
     fn drop(&mut self) {
-        self.handle.abort();
+        if let Some(h) = self.handle.take()
+            && !self.has_fired()
+        {
+            h.abort();
+        }
     }
 }
 
@@ -241,20 +264,27 @@ impl PgCursor {
         c
     }
 
-    /// The statement is complete on the server: release the session.
+    /// The statement is complete on the server: release the session (after
+    /// a cancel request sent by the timeout, if any, has been processed).
     fn complete(&mut self) {
         self.finished = true;
         self.in_rows = false;
         self.body = Body::Empty;
-        if let Some(t) = self.timer.take() {
-            t.disarm();
-        }
         self.shared.cursor_open.store(false, Ordering::Release);
-        self.guard = None;
+        let guard = self.guard.take();
+        match self.timer.take().and_then(StatementTimer::stop) {
+            Some(pending_cancel) => {
+                self.rt.spawn(async move {
+                    let _ = pending_cancel.await;
+                    drop(guard);
+                });
+            }
+            None => drop(guard),
+        }
     }
 
     fn disarm_timer(&mut self) {
-        if let Some(t) = &self.timer {
+        if let Some(t) = &mut self.timer {
             t.disarm();
         }
     }
@@ -594,7 +624,9 @@ impl Drop for PgCursor {
         // The runtime handle allows dropping the cursor from any thread.
         self.rt.spawn(async move {
             abandon(body, shared, cancel).await;
-            drop(timer);
+            if let Some(pending_cancel) = timer.and_then(StatementTimer::stop) {
+                let _ = pending_cancel.await;
+            }
             drop(guard);
         });
     }

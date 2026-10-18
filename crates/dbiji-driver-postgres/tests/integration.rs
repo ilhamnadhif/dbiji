@@ -923,7 +923,7 @@ async fn metadata_of_every_object_kind() {
         let orders = ObjectRef::table(Some(schema.clone()), "orders");
         let cols = s.list_children(&orders, ObjectKind::Column).await.unwrap();
         assert_eq!(cols.len(), 9);
-        assert_eq!(cols[0].detail.as_deref(), Some("bigint NOT NULL (PK)"));
+        assert_eq!(cols[0].detail, Some(format!("bigint NOT NULL DEFAULT nextval('{schema}.orders_id_seq'::regclass) (PK)")));
         assert_eq!(cols[0].obj.table.as_deref(), Some("orders"));
         let idx = s.list_children(&orders, ObjectKind::Index).await.unwrap();
         assert_eq!(idx.len(), 5, "{:?}", names(&idx));
@@ -936,6 +936,10 @@ async fn metadata_of_every_object_kind() {
         let trg = s.list_children(&orders, ObjectKind::Trigger).await.unwrap();
         assert_eq!(names(&trg), vec!["orders_stmt", "orders_touch"]);
         assert!(trg[0].detail.as_deref().unwrap().ends_with("(disabled)"));
+        assert!(trg[1].detail.as_deref().unwrap().starts_with("BEFORE INSERT OR UPDATE OF note ON"), "{:?}", trg[1].detail);
+        let credit = s.list_children(&ObjectRef::table(Some(schema.clone()), "customers"), ObjectKind::Column).await.unwrap();
+        assert_eq!(credit[4].detail.as_deref(), Some("numeric(12,2) NOT NULL DEFAULT 0"));
+        assert!(cols[5].detail.as_deref().unwrap().contains("GENERATED ALWAYS AS"), "{:?}", cols[5].detail);
         let customers = ObjectRef::table(Some(schema.clone()), "customers");
         assert_eq!(names(&s.list_children(&customers, ObjectKind::UniqueKey).await.unwrap()), vec!["customers_code_key"]);
         let events = ObjectRef::table(Some(schema.clone()), "events");
@@ -1000,7 +1004,14 @@ async fn metadata_of_every_object_kind() {
         assert_eq!((seq.start, seq.increment, seq.cache), (Some(100), Some(5), Some(10)));
         assert_eq!(seq.data_type.as_deref(), Some("integer"));
         let oseq = s.sequence_definition(&ObjectRef::new(ObjectKind::Sequence, Some(schema.clone()), "orders_id_seq")).await.unwrap();
-        assert_eq!(oseq.owned_by.as_deref(), Some("orders.id"));
+        assert_eq!(oseq.owned_by, Some(format!("{schema}.orders.id")));
+        assert_eq!((seq.min_value, seq.max_value), (None, None), "defaults are omitted");
+        let deps = s.object_dependencies(&orders).await.unwrap();
+        assert!(deps.iter().any(|d| d.target.kind == ObjectKind::Trigger && d.target.name == "orders_touch" && d.target.table.as_deref() == Some("orders")), "{deps:?}");
+        let ddl = s.object_ddl(&ObjectRef::child(ObjectKind::Index, &events, "events_payload_idx")).await.unwrap();
+        assert!(ddl.starts_with(&format!("CREATE INDEX events_payload_idx ON {schema}.events USING gin")), "{ddl}");
+        let ddl = s.object_ddl(&events).await.unwrap();
+        assert!(!ddl.contains("ON ONLY"), "{ddl}");
 
         // DDL of every kind
         let ddl_of = |kind: ObjectKind, name: &str| ObjectRef::new(kind, Some(schema.clone()), name);
@@ -1210,6 +1221,16 @@ async fn ddl_round_trip_into_second_schema() {
             b.referenced_by.clone_from(&a.referenced_by);
             assert_eq!(a, b, "definition of {name}");
         }
+        // the partitioned index reaches every partition and is valid
+        let r = rows(
+            &mut s,
+            &format!(
+                "SELECT count(*) FILTER (WHERE NOT x.indisvalid), count(*) FROM pg_index x JOIN pg_class i ON i.oid = x.indexrelid \
+                 JOIN pg_namespace n ON n.oid = i.relnamespace WHERE n.nspname = '{s2}' AND i.relname LIKE 'events%payload%'"
+            ),
+        )
+        .await;
+        assert_eq!(r[0], vec![Value::Int(0), Value::Int(4)], "parent + 3 partitions, all valid");
         // alter_table produces executable statements
         let from = s.table_definition(&ObjectRef::table(Some(s2.clone()), "customers")).await.unwrap();
         let mut to = from.clone();

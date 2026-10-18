@@ -776,6 +776,28 @@ pub(crate) fn find_on_target(def: &str) -> Option<(usize, usize)> {
     None
 }
 
+/// Remove `ONLY` from `... ON ONLY table ...` (definitions of partitioned
+/// indexes): replaying the statement then creates the index on every partition.
+pub(crate) fn strip_on_only(def: &str) -> String {
+    let toks = tokenize(def);
+    for (i, t) in toks.iter().enumerate() {
+        if let Tok::Word(w) = t.tok
+            && w.eq_ignore_ascii_case("on")
+        {
+            if let (Some(only), Some(next)) = (toks.get(i + 1), toks.get(i + 2))
+                && matches!(only.tok, Tok::Word(o) if o.eq_ignore_ascii_case("only"))
+            {
+                let mut out = String::with_capacity(def.len());
+                out.push_str(&def[..only.start]);
+                out.push_str(&def[next.start..]);
+                return out;
+            }
+            break;
+        }
+    }
+    def.to_string()
+}
+
 /// Replace the table referenced by `ON ...` in an index / trigger definition.
 pub(crate) fn replace_on_target(def: &str, new_target: &str) -> Option<String> {
     let (s, e) = find_on_target(def)?;
@@ -911,5 +933,7 @@ mod tests {
         let t = "CREATE TRIGGER trg BEFORE INSERT OR UPDATE OF a ON s1.t FOR EACH ROW EXECUTE FUNCTION s1.f()";
         assert_eq!(replace_on_target(t, "x.y").unwrap(), "CREATE TRIGGER trg BEFORE INSERT OR UPDATE OF a ON x.y FOR EACH ROW EXECUTE FUNCTION s1.f()");
         assert_eq!(replace_on_target("CREATE INDEX i ON t (a)", "s.t").unwrap(), "CREATE INDEX i ON s.t (a)");
+        assert_eq!(strip_on_only("CREATE INDEX i ON ONLY s.p USING gin (x)"), "CREATE INDEX i ON s.p USING gin (x)");
+        assert_eq!(strip_on_only("CREATE INDEX \"only\" ON s.p (x)"), "CREATE INDEX \"only\" ON s.p (x)");
     }
 }

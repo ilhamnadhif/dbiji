@@ -155,7 +155,7 @@ pub fn run() -> ExitCode {
     if let Some(task) = &args.run_task {
         return headless::run_task(&backend, &paths, &settings, task);
     }
-    let mut services = services::Services::load(paths, &settings);
+    let mut services = services::Services::load(paths, &settings, backend.handle());
     services.warnings.append(&mut warnings);
     let (conns, mut conn_warnings) = connection_manager(&services);
     services.warnings.append(&mut conn_warnings);

@@ -788,6 +788,9 @@ impl eframe::App for DbijiApp {
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.save_session();
+        if let Some(s) = self.services.scheduler.clone() {
+            self.backend.block_on(async move { s.shutdown(std::time::Duration::from_secs(3)).await });
+        }
         self.ops.cancel_all();
         self.conns.disconnect_all(&self.backend);
     }

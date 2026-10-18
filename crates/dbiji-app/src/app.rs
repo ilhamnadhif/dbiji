@@ -35,6 +35,8 @@ pub struct DbijiApp {
     /// Exit after the first frame (startup benchmark).
     pub exit_after_first_frame: bool,
     active_tab: Option<u64>,
+    /// Benchmark mode: quit after this instant.
+    exit_at: Option<Instant>,
 }
 
 impl DbijiApp {
@@ -56,6 +58,10 @@ impl DbijiApp {
             first_frame: true,
             exit_after_first_frame: false,
             active_tab: None,
+            exit_at: std::env::var("DBIJI_BENCH_EXIT_AFTER_SECS")
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+                .map(|s| Instant::now() + std::time::Duration::from_secs(s)),
         };
         app.open_tab(Box::new(crate::tabs::welcome::WelcomeTab));
         app
@@ -343,6 +349,13 @@ impl eframe::App for DbijiApp {
             crate::bench::report_first_frame(self.started);
             if self.exit_after_first_frame {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+        }
+        if let Some(t) = self.exit_at {
+            if Instant::now() >= t {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            } else {
+                ctx.request_repaint_after(t - Instant::now());
             }
         }
         self.conns.poll(&self.backend);

@@ -1,0 +1,23 @@
+[package]
+name = "dbiji-visual"
+description = "ER diagrams, plan diagrams, query builder, charts and spatial viewer for DBiji"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+dbiji-core.workspace = true
+egui.workspace = true
+egui-phosphor.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+egui_plot.workspace = true
+petgraph.workspace = true
+resvg.workspace = true
+chrono.workspace = true
+
+[dev-dependencies]
+eframe.workspace = true

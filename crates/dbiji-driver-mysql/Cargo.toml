@@ -1,0 +1,26 @@
+[package]
+name = "dbiji-driver-mysql"
+description = "MySQL and MariaDB driver for DBiji"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+dbiji-core.workspace = true
+tokio.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+mysql_async.workspace = true
+rustls.workspace = true
+rustls-pemfile.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+hex.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true }

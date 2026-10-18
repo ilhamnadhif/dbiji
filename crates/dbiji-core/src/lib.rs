@@ -1,0 +1,34 @@
+//! Core of DBiji: shared value model, driver interface, metadata and DDL model,
+//! row storage with bounded memory, and small cross-cutting utilities
+//! (secrets, localisation).
+//!
+//! Every database driver implements [`driver::Driver`] and [`driver::Session`];
+//! the UI and all tooling crates talk to databases only through these traits.
+
+pub mod admin;
+pub mod config;
+pub mod ddl;
+pub mod dialect;
+pub mod driver;
+pub mod error;
+pub mod i18n;
+pub mod keywords;
+pub mod meta;
+pub mod plan;
+pub mod registry;
+pub mod rowstore;
+pub mod secret;
+pub mod value;
+
+pub use config::{ConnectionConfig, DbKind};
+pub use dialect::{Dialect, SqlSyntax};
+pub use driver::{
+    CancelHandle, ConnectParams, Driver, ExecOptions, QueryCursor, ResultHeader, ServerMessage,
+    Session, TransactionMode,
+};
+pub use error::{DbError, DbResult, ErrorKind};
+pub use i18n::{tr, trf};
+pub use meta::{ObjectKind, ObjectRef, SchemaRef};
+pub use rowstore::{RowStore, SharedRowStore};
+pub use secret::Secret;
+pub use value::{ColumnMeta, ColumnSource, DataKind, Row, Value};

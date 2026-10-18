@@ -1,0 +1,33 @@
+[package]
+name = "dbiji-transfer"
+description = "Data export, import, migration and mock data generation for DBiji"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+dbiji-core.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+csv.workspace = true
+rust_xlsxwriter.workspace = true
+calamine.workspace = true
+parquet.workspace = true
+quick-xml.workspace = true
+encoding_rs.workspace = true
+base64.workspace = true
+hex.workspace = true
+rand.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true }
+tempfile.workspace = true

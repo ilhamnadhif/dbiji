@@ -1,0 +1,22 @@
+[package]
+name = "dbiji-driver-sqlite"
+description = "SQLite driver for DBiji"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+dbiji-core.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+rusqlite.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+hex.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true }
+tempfile.workspace = true

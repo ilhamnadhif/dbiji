@@ -1,0 +1,19 @@
+[package]
+name = "dbiji-driver-duckdb"
+description = "DuckDB driver for DBiji (embedded engine, optional)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+dbiji-core.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+duckdb.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true }

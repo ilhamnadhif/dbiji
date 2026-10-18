@@ -1,0 +1,17 @@
+[package]
+name = "dbiji-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "dbiji"
+path = "src/main.rs"
+
+[dependencies]
+eframe.workspace = true
+egui.workspace = true
+egui_dock.workspace = true
+egui-phosphor.workspace = true
+egui_plot.workspace = true
+egui_extras.workspace = true

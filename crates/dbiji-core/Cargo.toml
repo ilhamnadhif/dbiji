@@ -1,0 +1,26 @@
+[package]
+name = "dbiji-core"
+description = "Core types, driver interface, metadata model and row storage for DBiji"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+parking_lot.workspace = true
+tempfile.workspace = true
+zeroize.workspace = true
+base64.workspace = true
+hex.workspace = true
+sys-locale.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true }

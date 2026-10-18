@@ -1525,6 +1525,8 @@ dependencies = [
  "dbiji-compare",
  "dbiji-config",
  "dbiji-core",
+ "dbiji-driver-clickhouse",
+ "dbiji-driver-mssql",
  "dbiji-driver-mysql",
  "dbiji-driver-postgres",
  "dbiji-grid",

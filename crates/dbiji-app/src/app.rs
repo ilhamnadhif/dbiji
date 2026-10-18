@@ -63,6 +63,10 @@ pub struct DbijiApp {
     script_counter: u32,
     /// `DBIJI_BENCH_SCENARIO=workload`: connections still to open editors for.
     bench_workload: Option<Vec<String>>,
+    /// "What's new" and update checks.
+    pub updates: crate::updates::Updates,
+    /// Settings or connections existed before this start (not a first start).
+    pub existing_install: bool,
 }
 
 impl DbijiApp {
@@ -96,7 +100,10 @@ impl DbijiApp {
             confirm_quit: false,
             quit_confirmed: false,
             bench_workload: None,
+            updates: Default::default(),
+            existing_install: false,
         };
+        app.existing_install = crate::updates::is_existing_install(&app.services.paths);
         app.open_tab(Box::new(crate::tabs::welcome::WelcomeTab));
         app
     }
@@ -447,6 +454,10 @@ impl DbijiApp {
             A::Disconnect => conn.map(AppCommand::Disconnect),
             A::Reconnect => conn.map(AppCommand::Reconnect),
             A::ToggleNavigator => Some(AppCommand::ToggleNavigator),
+            A::ToggleTheme => {
+                self.toggle_theme(ctx);
+                None
+            }
             A::CommandPalette => Some(AppCommand::ShowPalette),
             A::OpenHistory => Some(AppCommand::OpenHistory),
             A::OpenErDiagram => match (conn, self.nav.selected_schema()) {
@@ -777,6 +788,20 @@ impl DbijiApp {
     }
 
     /// Write `settings.json` / `keymap.json`.
+    /// Use `theme` from now on (and save it).
+    pub fn set_theme(&mut self, ctx: &egui::Context, theme: dbiji_config::settings::Theme) {
+        self.settings.general.theme = theme;
+        crate::theme::apply_settings(ctx, &self.settings);
+        self.save_settings();
+    }
+
+    /// Switch between the light and the dark theme.
+    pub fn toggle_theme(&mut self, ctx: &egui::Context) {
+        use dbiji_config::settings::Theme;
+        let next = if ctx.theme() == egui::Theme::Dark { Theme::Light } else { Theme::Dark };
+        self.set_theme(ctx, next);
+    }
+
     pub fn save_settings(&mut self) {
         if let Err(e) = dbiji_config::settings::save(&self.services.paths, &self.settings) {
             self.toasts.error(tr("Cannot save the settings"), Some(e.to_string()));
@@ -859,6 +884,15 @@ impl DbijiApp {
                     self.commands.push(AppCommand::ToggleNavigator);
                     ui.close();
                 }
+                ui.menu_button(format!("{} {}", icon::CIRCLE_HALF, tr("Theme")), |ui| {
+                    use dbiji_config::settings::Theme;
+                    for (t, label) in [(Theme::System, tr("System")), (Theme::Light, tr("Light")), (Theme::Dark, tr("Dark"))] {
+                        if ui.radio(self.settings.general.theme == t, label).clicked() {
+                            self.set_theme(ui.ctx(), t);
+                            ui.close();
+                        }
+                    }
+                });
                 if ui.button(tr("Command palette")).clicked() {
                     self.commands.push(AppCommand::ShowPalette);
                     ui.close();
@@ -875,6 +909,15 @@ impl DbijiApp {
                 }
                 if ui.button(tr("Create sample database")).clicked() {
                     self.commands.push(AppCommand::CreateSampleDatabase);
+                    ui.close();
+                }
+                ui.separator();
+                if ui.button(format!("{} {}", icon::SPARKLE, tr("What's new"))).clicked() {
+                    self.updates.show_whats_new();
+                    ui.close();
+                }
+                if ui.add_enabled(!self.updates.checking(), egui::Button::new(format!("{} {}", icon::ARROW_CIRCLE_UP, tr("Check for updates…")))).clicked() {
+                    self.updates.check_now(&self.backend, true);
                     ui.close();
                 }
                 if ui.button(tr("About DBiji")).clicked() {
@@ -944,6 +987,11 @@ impl DbijiApp {
                 if ui.small_button(label).on_hover_text(tr("Background operations")).clicked() {
                     self.ops.panel_open = !self.ops.panel_open;
                 }
+                let dark = ui.visuals().dark_mode;
+                let (theme_icon, tip) = if dark { (icon::SUN, tr("Switch to the light theme")) } else { (icon::MOON, tr("Switch to the dark theme")) };
+                if ui.small_button(theme_icon).on_hover_text(tip).clicked() {
+                    self.toggle_theme(ui.ctx());
+                }
                 let mem = dbiji_core::rowstore::global_resident_bytes();
                 ui.weak(format!("{} {:.0} MB", icon::MEMORY, mem as f64 / 1_048_576.0)).on_hover_text(tr("Memory used by result sets"));
             });
@@ -962,6 +1010,9 @@ impl eframe::App for DbijiApp {
             }
             if self.services.secrets.read().is_locked() {
                 self.dialogs.vault_open = true;
+            }
+            if !self.exit_after_first_frame && self.exit_at.is_none() && self.updates.start(&self.backend, &mut self.settings, self.existing_install) {
+                self.save_settings();
             }
             if self.exit_after_first_frame {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -1082,6 +1133,9 @@ impl eframe::App for DbijiApp {
             let mut open = true;
             egui::Window::new(format!("{} {}", icon::HOURGLASS, tr("Background operations"))).open(&mut open).default_width(360.0).show(&ctx, |ui| self.ops.ui(ui));
             self.ops.panel_open = open;
+        }
+        if self.updates.ui(&ctx, &mut self.settings, &mut self.toasts) {
+            self.save_settings();
         }
         self.toasts.show(&ctx);
 

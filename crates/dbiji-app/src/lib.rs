@@ -32,6 +32,7 @@ pub mod theme;
 pub mod toasts;
 pub mod tools;
 pub mod transferexec;
+pub mod updates;
 pub mod urls;
 pub mod widgets;
 

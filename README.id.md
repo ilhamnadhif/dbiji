@@ -30,8 +30,9 @@ hasil query jutaan baris tidak perlu muat di memori.
   data compare (dengan output Liquibase), desainer tabel, task dan penjadwal, backup / restore,
   session dan lock manager, dashboard server, debugger PostgreSQL, serta asisten AI opsional dengan
   kunci API Anda sendiri.
-- Antarmuka Inggris dan Indonesia, tema terang dan gelap, pintasan dan toolbar yang bisa diubah,
-  tanpa telemetri.
+- Antarmuka Inggris dan Indonesia, tema terang dan gelap (View → Theme atau tombol matahari / bulan di
+  status bar), pintasan dan toolbar yang bisa diubah, tanpa telemetri.
+- Catatan rilis setelah setiap pembaruan dan pemeriksaan versi baru sekali sehari (opsional).
 
 ## Instalasi
 
@@ -70,6 +71,13 @@ scripts/bundle-macos.sh                                # dist/DBiji.app dan dist
    (naik → turun → mati); `⌘S` menyimpan perubahan.
 
 Bahasa antarmuka dan tema diatur di **Settings → General**.
+
+## Pembaruan
+
+Setelah diperbarui, DBiji menampilkan apa saja yang berubah (juga di Help → What's new; semua catatan
+ada di [CHANGELOG.md](CHANGELOG.md)). Jika Anda mengizinkan, DBiji mencari rilis baru sekali sehari dan
+menawarkan **Download**, **Skip this version**, atau **Remind me later**; Help → Check for updates…
+langsung memeriksa. Pengguna Homebrew memperbarui dengan `brew upgrade --cask dbiji`.
 
 ## Baris perintah
 
@@ -115,7 +123,8 @@ Diukur pada build rilis (Apple M1 Pro) dengan `dbiji --bench all`:
 ## Keamanan dan data
 
 - Tanpa telemetri. DBiji hanya terhubung ke server yang Anda atur dan, jika diaktifkan, ke penyedia
-  AI Anda.
+  AI Anda serta ke GitHub untuk pemeriksaan pembaruan (satu permintaan anonim sehari untuk rilis
+  terbaru; ditanyakan sekali, bisa diubah di Settings → General).
 - Kata sandi dan kunci API disimpan di macOS Keychain atau `vault.bin` (Argon2id +
   XChaCha20-Poly1305); file konfigurasi ditulis dengan mode 0600.
 - Pengaturan, koneksi, skrip, riwayat, dan task ada di

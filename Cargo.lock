@@ -1501,7 +1501,7 @@ checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
 name = "dbiji-ai"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "dbiji-core",
@@ -1517,7 +1517,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-app"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1558,12 +1558,13 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "ureq",
  "uuid",
 ]
 
 [[package]]
 name = "dbiji-compare"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1579,7 +1580,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-config"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aes",
  "argon2",
@@ -1605,7 +1606,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -1625,7 +1626,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-driver-clickhouse"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -1644,7 +1645,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-driver-duckdb"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1659,7 +1660,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-driver-mssql"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1676,7 +1677,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-driver-mysql"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1694,7 +1695,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-driver-postgres"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1723,7 +1724,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-driver-sqlite"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1740,7 +1741,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-editor"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "dbiji-core",
  "eframe",
@@ -1755,7 +1756,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-grid"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "dbiji-core",
@@ -1773,7 +1774,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-net"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64 0.23.1",
  "dbiji-core",
@@ -1793,7 +1794,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-sql"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "dbiji-core",
  "flate2",
@@ -1805,7 +1806,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-tasks"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1823,7 +1824,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-transfer"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -1849,7 +1850,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-visual"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "dbiji-core",

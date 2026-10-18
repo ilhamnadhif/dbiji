@@ -2345,3 +2345,24 @@ Rows fetched into the grid cannot be saved as a task; choose to run the query ag
 Step {} {}: {}	Langkah {} {}: {}
 The {} rows are not sorted by key (use the hash join strategy): {}	Baris {} tidak terurut menurut key (gunakan strategi hash join): {}
 Type {} differs but is used by table columns; alter it manually	Tipe {} berbeda tetapi dipakai oleh kolom tabel; ubah secara manual
+A new version of DBiji is available	Versi baru DBiji tersedia
+All release notes	Semua catatan rilis
+Cannot check for updates	Tidak dapat memeriksa pembaruan
+Check automatically	Periksa otomatis
+Check for updates automatically (once a day)	Periksa pembaruan secara otomatis (sekali sehari)
+Check for updates automatically?	Periksa pembaruan secara otomatis?
+Check for updates…	Periksa pembaruan…
+Continue	Lanjut
+DBiji can look for a new release once a day. Only the GitHub release page is contacted; nothing about you or your databases is sent.	DBiji dapat mencari rilis baru sekali sehari. Hanya halaman rilis GitHub yang dihubungi; tidak ada data tentang Anda atau database Anda yang dikirim.
+DBiji {} is available — you have {}.	DBiji {} sudah tersedia — Anda memakai {}.
+DBiji {} is the latest version	DBiji {} adalah versi terbaru
+Don't check	Jangan periksa
+Download	Unduh
+Homebrew: brew upgrade --cask dbiji	Homebrew: brew upgrade --cask dbiji
+Remind me later	Ingatkan nanti
+Skip this version	Lewati versi ini
+Switch to the dark theme	Ganti ke tema gelap
+Switch to the light theme	Ganti ke tema terang
+What's new	Yang baru
+What's new in DBiji {}	Yang baru di DBiji {}
+Toggle Light / Dark Theme	Ganti Tema Terang / Gelap

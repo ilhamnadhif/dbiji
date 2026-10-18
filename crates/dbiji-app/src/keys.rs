@@ -123,6 +123,7 @@ pub fn action_icon(action: Action) -> &'static str {
         Action::Reconnect => i::ARROWS_CLOCKWISE,
         Action::Refresh => i::ARROW_CLOCKWISE,
         Action::ToggleNavigator => i::SIDEBAR,
+        Action::ToggleTheme => i::CIRCLE_HALF,
         Action::ZoomIn => i::MAGNIFYING_GLASS_PLUS,
         Action::ZoomOut => i::MAGNIFYING_GLASS_MINUS,
         Action::ResetZoom => i::MAGNIFYING_GLASS,

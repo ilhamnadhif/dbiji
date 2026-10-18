@@ -23,17 +23,25 @@ type H = Harness<'static, DbijiApp>;
 const CMD: Modifiers = Modifiers { alt: false, ctrl: false, shift: false, mac_cmd: true, command: true };
 
 fn harness(dir: &std::path::Path) -> H {
+    let mut settings = Settings::default();
+    // The update question would cover part of the window.
+    settings.updates.check_automatically = Some(false);
+    harness_with(dir, settings)
+}
+
+fn harness_with(dir: &std::path::Path, mut settings: Settings) -> H {
     let backend = Arc::new(Backend::new().unwrap());
     let services = Services::ephemeral(&dir.join("home"));
     let conns = ConnectionManager::new(dbiji_app::driver_registry(), Arc::new(MemorySecrets::default()), Arc::new(DirectNet));
-    let mut settings = Settings::default();
     settings.general.restore_session = false;
-    Harness::builder().with_size(egui::vec2(1400.0, 900.0)).with_max_steps(400).with_step_dt(1.0 / 60.0).build_eframe(move |cc| {
+    let h = Harness::builder().with_size(egui::vec2(1400.0, 900.0)).with_max_steps(400).with_step_dt(1.0 / 60.0).build_eframe(move |cc| {
         dbiji_app::theme::setup_fonts(&cc.egui_ctx);
-        dbiji_app::theme::apply_settings(&cc.egui_ctx, &settings);
         backend.set_context(cc.egui_ctx.clone());
         DbijiApp::new(backend, conns, services, settings)
-    })
+    });
+    // After the harness set its own theme, as eframe's start-up does.
+    dbiji_app::theme::apply_settings(&h.ctx, &h.state().settings);
+    h
 }
 
 /// Run frames, giving background tasks a moment between them.
@@ -132,7 +140,11 @@ fn setup() -> (Dir, H, String) {
     // Exports and backups go to ~/Downloads by default: never the real one.
     // SAFETY: the walkthroughs run one at a time (SERIAL) and nothing else
     // in this test binary reads the environment concurrently.
-    unsafe { std::env::set_var("HOME", &dir.0) };
+    // Help › Check for updates… never contacts GitHub from the tests.
+    unsafe {
+        std::env::set_var("HOME", &dir.0);
+        std::env::set_var("DBIJI_UPDATE_URL", "off");
+    }
     let mut h = harness(&dir.0);
     frames(&mut h, 3);
     assert!(has(&h, "Create sample database"), "welcome page: {:?}", labels(&h));
@@ -806,4 +818,109 @@ fn tool_tabs_run() {
     settle(&mut h, "table designer");
     let ddl = query_one(&db, "SELECT sql FROM sqlite_master WHERE name = 'zz_designed'");
     assert!(ddl.contains("code"), "{ddl}");
+}
+
+#[test]
+fn themes_whats_new_and_updates() {
+    let guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    dbiji_core::i18n::set_locale(dbiji_core::i18n::Locale::En);
+    let dir = Dir(std::env::temp_dir().join(format!("dbiji-ui-{}", uuid::Uuid::new_v4().simple())), guard);
+    // An existing installation: a settings file from an older version.
+    let paths = dbiji_config::AppPaths::with_root(dir.0.join("home"));
+    paths.ensure_dirs().unwrap();
+    std::fs::write(paths.settings_file(), "{}").unwrap();
+    let mut settings = Settings::default();
+    settings.general.theme = dbiji_config::settings::Theme::Light;
+    let mut h = harness_with(&dir.0, settings);
+    frames(&mut h, 3);
+    let version = dbiji_app::updates::current_version();
+
+    // "What's new" for this version, then the one-time question.
+    assert!(has(&h, &format!("What's new in DBiji {version}")), "{:?}", labels(&h));
+    assert_eq!(h.state().settings.updates.last_seen_version.as_deref(), Some(version));
+    assert!(!has(&h, "Check for updates automatically?"), "one popup at a time");
+    click(&mut h, "Continue");
+    assert!(!has(&h, "What's new in DBiji"));
+    assert!(has(&h, "Check for updates automatically?"), "{:?}", labels(&h));
+    click(&mut h, "Don't check");
+    assert_eq!(h.state().settings.updates.check_automatically, Some(false));
+    assert!(!has(&h, "Check for updates automatically?"));
+    // Help › What's new shows the notes again.
+    pause(&mut h);
+    h.query_all_by_label("Help").next().unwrap().click();
+    frames(&mut h, 2);
+    click(&mut h, "What's new");
+    assert!(has(&h, &format!("What's new in DBiji {version}")));
+    h.key_press(Key::Escape);
+    frames(&mut h, 2);
+    assert!(!has(&h, "What's new in DBiji"));
+
+    // Themes: View › Theme, the status bar button, the command palette.
+    assert_eq!(h.ctx.theme(), egui::Theme::Light);
+    pause(&mut h);
+    h.query_all_by_label("View").next().unwrap().click();
+    frames(&mut h, 2);
+    click(&mut h, "Theme");
+    click(&mut h, "Dark");
+    assert_eq!(h.ctx.theme(), egui::Theme::Dark);
+    assert_eq!(h.state().settings.general.theme, dbiji_config::settings::Theme::Dark);
+    pause(&mut h);
+    h.key_press(Key::Escape);
+    frames(&mut h, 2);
+    click(&mut h, egui_phosphor::regular::SUN);
+    assert_eq!(h.ctx.theme(), egui::Theme::Light);
+    click(&mut h, egui_phosphor::regular::MOON);
+    assert_eq!(h.ctx.theme(), egui::Theme::Dark);
+    pause(&mut h);
+    h.key_press_modifiers(CMD | Modifiers::SHIFT, Key::P);
+    frames(&mut h, 3);
+    h.event(egui::Event::Text("Toggle Light".into()));
+    frames(&mut h, 2);
+    h.key_press(Key::Enter);
+    frames(&mut h, 3);
+    assert_eq!(h.ctx.theme(), egui::Theme::Light);
+    // The choice is saved.
+    let saved = dbiji_config::settings::load(&paths);
+    assert_eq!(saved.general.theme, dbiji_config::settings::Theme::Light);
+
+    // A newer release: skip it, be reminded later, download.
+    let release = dbiji_app::updates::Release {
+        version: "99.0.0".into(),
+        url: "https://github.com/ilhamnadhif/dbiji/releases/tag/v99.0.0".into(),
+        download_url: Some("https://github.com/ilhamnadhif/dbiji/releases/download/v99.0.0/DBiji-99.0.0.dmg".into()),
+        notes: "### New\n- Everything".into(),
+    };
+    h.state_mut().updates.available = Some(release.clone());
+    frames(&mut h, 2);
+    assert!(has(&h, "A new version of DBiji is available"), "{:?}", labels(&h));
+    click(&mut h, "Remind me later");
+    assert!(!has(&h, "A new version of DBiji is available"));
+    assert_eq!(h.state().settings.updates.skipped_version, None);
+    h.state_mut().updates.available = Some(release.clone());
+    frames(&mut h, 2);
+    click(&mut h, "Skip this version");
+    assert_eq!(h.state().settings.updates.skipped_version.as_deref(), Some("99.0.0"));
+    h.state_mut().updates.available = Some(release.clone());
+    frames(&mut h, 2);
+    pause(&mut h);
+    h.query_all_by_label_contains("Download").last().unwrap().click();
+    let mut opened = None;
+    for _ in 0..6 {
+        h.step();
+        for c in &h.output().platform_output.commands {
+            if let egui::OutputCommand::OpenUrl(u) = c {
+                opened = Some(u.url.clone());
+            }
+        }
+    }
+    assert!(!has(&h, "A new version of DBiji is available"));
+    assert_eq!(opened.as_deref(), release.download_url.as_deref());
+    // Help › Check for updates… (offline in tests) reports the result.
+    pause(&mut h);
+    h.query_all_by_label("Help").next().unwrap().click();
+    frames(&mut h, 2);
+    click(&mut h, "Check for updates");
+    wait(&mut h, "update check result", |h| !h.state().updates.checking());
+    frames(&mut h, 2);
+    no_errors(&mut h, "updates");
 }

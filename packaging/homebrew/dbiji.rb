@@ -3,13 +3,13 @@
 # then update `version` and `sha256` (printed by the script) and submit to a tap:
 #   brew tap dbiji/tap && brew install --cask dbiji
 cask "dbiji" do
-  version "0.1.0"
+  version "0.2.0"
   sha256 "REPLACE_WITH_DMG_SHA256"
 
-  url "https://github.com/dbiji/dbiji/releases/download/v#{version}/DBiji-#{version}.dmg"
+  url "https://github.com/ilhamnadhif/dbiji/releases/download/v#{version}/DBiji-#{version}.dmg"
   name "DBiji"
   desc "Lightweight SQL database client written in Rust"
-  homepage "https://github.com/dbiji/dbiji"
+  homepage "https://github.com/ilhamnadhif/dbiji"
 
   depends_on macos: ">= :monterey"
 

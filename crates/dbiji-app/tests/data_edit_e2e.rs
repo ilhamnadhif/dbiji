@@ -54,11 +54,16 @@ impl Drop for H {
 
 impl H {
     fn new(url: &str) -> H {
+        Self::new_with(url, |_| {})
+    }
+
+    fn new_with(url: &str, adjust: impl FnOnce(&mut dbiji_core::config::ConnectionConfig)) -> H {
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         let backend = Arc::new(Backend::new().unwrap());
         let ctx = egui::Context::default();
         backend.set_context(ctx.clone());
         let (mut cfg, password) = dbiji_config::parse_connection_url(url).unwrap();
+        adjust(&mut cfg);
         cfg.save_password = true;
         if password.is_none() {
             cfg.auth = dbiji_core::config::AuthMethod::None;
@@ -126,6 +131,12 @@ impl H {
             assert!(t0.elapsed() < Duration::from_secs(30), "timed out waiting for {what}");
             std::thread::sleep(Duration::from_millis(5));
         }
+    }
+
+    fn try_sql(&self, sql: &str) -> Result<(), String> {
+        let s = self.cm.live(&self.id).unwrap().main.clone();
+        let owned = sql.to_string();
+        self.backend.block_on(async move { s.execute_update(&owned, &[]).await }).map(|_| ()).map_err(|e| e.to_string())
     }
 
     fn sql(&self, sql: &str) {
@@ -311,6 +322,59 @@ fn server_side_sort_asc_desc() {
         let _ = name;
         if let Some(p) = url.strip_prefix("sqlite://") {
             let _ = std::fs::remove_file(p);
+        }
+    }
+}
+
+/// Production-style connection (manual commit) on PostgreSQL / CockroachDB:
+/// changing the ORDER BY while a big table is still loading cancels the old
+/// query, which used to leave the transaction aborted ("25P02 current
+/// transaction is aborted").
+#[test]
+fn manual_commit_reorder_while_loading() {
+    for (name, url) in servers().into_iter().filter(|(n, _)| matches!(*n, "postgres" | "cockroach")) {
+        let table = format!("dbiji_big_{}", &uuid::Uuid::new_v4().simple().to_string()[..8]);
+        let setup = H::new(&url);
+        setup.sql(&format!("CREATE TABLE {table} AS SELECT g AS id, repeat('x', 100) AS pad FROM generate_series(1, 200000) g"));
+        let mut h = H::new_with(&url, |cfg| cfg.auto_commit = Some(false));
+        let mut view = TableDataView::new(h.id.clone(), ObjectRef::table(None, table.clone()), None);
+        h.until(&mut view, "first page", |v| v.panel.as_ref().is_some_and(|p| p.model.row_count() > 0));
+        for (dir, first) in [(" DESC", 200000), ("", 1), (" DESC", 200000)] {
+            {
+                let mut cx = AppContext {
+                    backend: &h.backend,
+                    conns: &mut h.cm,
+                    services: &h.services,
+                    settings: &mut h.settings,
+                    commands: &mut h.commands,
+                    toasts: &mut h.toasts,
+                    ops: &mut h.ops,
+                    keymap: &h.keymap,
+                    tab_active: true,
+                    current_tab: Some(1),
+                };
+                let order = format!("id{dir}");
+                view.panel.as_mut().unwrap().handle_for_tests(dbiji_grid::GridAction::ServerQueryChanged { where_clause: None, order_by: Some(order) }, &mut cx);
+            }
+            h.until(&mut view, "re-ordered", |v| {
+                let p = v.panel.as_ref().unwrap();
+                if let Some((msg, true)) = &p.status {
+                    panic!("[{name}] {msg}");
+                }
+                p.model.row_count() > 0 && p.model.cell(0, 0).and_then(|x| x.as_i64()) == Some(first)
+            });
+        }
+        // The view's manual-commit transaction holds a lock on the table
+        // until its session is closed (asynchronously): retry the DROP.
+        drop(view);
+        let (backend, id) = (h.backend.clone(), h.id.clone());
+        h.cm.disconnect(&backend, &id);
+        drop(h);
+        setup.sql("SET lock_timeout = '2s'");
+        let t0 = Instant::now();
+        while let Err(e) = setup.try_sql(&format!("DROP TABLE {table}")) {
+            assert!(t0.elapsed() < Duration::from_secs(60), "[{name}] DROP TABLE: {e}");
+            std::thread::sleep(Duration::from_millis(200));
         }
     }
 }

@@ -29,7 +29,9 @@ millions of rows never have to fit in memory.
   migration between databases, mock data, ER diagrams, visual query builder, schema and data compare
   (with Liquibase output), table designer, tasks and scheduler, backup / restore, session and lock
   manager, server dashboard, PostgreSQL debugger and an optional AI assistant with your own API key.
-- English and Indonesian UI, light and dark themes, customisable shortcuts and toolbar, no telemetry.
+- English and Indonesian UI, light and dark themes (View → Theme or the sun / moon button in the status
+  bar), customisable shortcuts and toolbar, no telemetry.
+- Release notes after every update and an optional, once-a-day check for new versions.
 
 ## Install
 
@@ -66,6 +68,13 @@ scripts/bundle-macos.sh                                # dist/DBiji.app and dist
 2. Open a SQL editor with `⌘]`, type a query and press `⌘↩`.
 3. Double-click a table in the navigator to edit its data; click a column header to sort it
    (ascending → descending → off); `⌘S` saves the changes.
+
+## Updates
+
+After an update DBiji shows what changed (also in Help → What's new; all notes are in
+[CHANGELOG.md](CHANGELOG.md)). If you allow it, DBiji looks for a new release once a day and offers
+**Download**, **Skip this version** or **Remind me later**; Help → Check for updates… checks right away.
+Homebrew users update with `brew upgrade --cask dbiji`.
 
 ## Command line
 
@@ -110,8 +119,9 @@ Measured on the release build (Apple M1 Pro) with `dbiji --bench all`:
 
 ## Security and data
 
-- No telemetry. DBiji only connects to the servers you configure and, if you enable it, to your AI
-  provider.
+- No telemetry. DBiji only connects to the servers you configure and, if you enable them, to your AI
+  provider and to GitHub for the update check (one anonymous request a day for the latest release;
+  asked once, changeable in Settings → General).
 - Passwords and API keys are stored in the macOS Keychain or in `vault.bin` (Argon2id +
   XChaCha20-Poly1305); configuration files are written with mode 0600.
 - Settings, connections, scripts, history and tasks live in

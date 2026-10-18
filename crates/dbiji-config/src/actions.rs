@@ -191,6 +191,8 @@ actions! {
     Refresh => ("view.refresh", "Refresh", View, Global),
     /// Show or hide the navigator.
     ToggleNavigator => ("view.toggle_navigator", "Toggle Navigator", View, Global),
+    /// Switch between the light and the dark theme.
+    ToggleTheme => ("view.toggle_theme", "Toggle Light / Dark Theme", View, Global),
     /// Increase the font size.
     ZoomIn => ("view.zoom_in", "Zoom In", View, Global),
     /// Decrease the font size.

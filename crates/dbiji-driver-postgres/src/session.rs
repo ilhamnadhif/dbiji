@@ -7,7 +7,7 @@ use crate::cursor::{Body, ColumnPlan, CopyBody, ExtendedBody, PgCursor, SimpleBo
 use crate::dialect::PgDialect;
 use crate::error::{map_error, pg};
 use crate::params::TextParam;
-use crate::sqltext::{CopyKind, ScriptInfo, Tok, tokenize};
+use crate::sqltext::{CopyKind, ScriptInfo, Tok, TxEffect, tokenize};
 use crate::types::{Conv, display_name, typmod_info};
 use async_trait::async_trait;
 use dbiji_core::admin::*;
@@ -194,10 +194,56 @@ impl PgSession {
         if self.is_cockroach() { 0 } else { self.info.version_number.0 }
     }
 
+    /// Take the session gate (see [`acquire_raw`](Self::acquire_raw)) and
+    /// settle the savepoint of the previous statement.
+    pub(crate) async fn acquire(&self) -> DbResult<OwnedMutexGuard<()>> {
+        let g = self.acquire_raw().await?;
+        self.settle_statement(false).await?;
+        Ok(g)
+    }
+
+    /// Inside a transaction every statement runs in the `dbiji_stmt`
+    /// savepoint (like psql's `ON_ERROR_ROLLBACK=interactive`): a statement
+    /// that fails or is cancelled — for example a big result replaced by a
+    /// new query — only undoes itself instead of aborting the whole
+    /// transaction. The savepoint of the previous statement is released, or
+    /// rolled back to when the transaction is in the failed state, and a new
+    /// one is set when `then_savepoint`; one round trip in the usual case.
+    async fn settle_statement(&self, then_savepoint: bool) -> DbResult<()> {
+        let pending = self.shared.stmt_savepoint.swap(false, std::sync::atomic::Ordering::AcqRel);
+        if !self.shared.in_tx() {
+            return Ok(());
+        }
+        let next = if then_savepoint { "SAVEPOINT dbiji_stmt" } else { "" };
+        let sql = match (pending, then_savepoint) {
+            (false, false) => return Ok(()),
+            (false, true) => next.to_string(),
+            (true, _) => format!("RELEASE SAVEPOINT dbiji_stmt; {next}"),
+        };
+        match self.batch(&sql).await {
+            Ok(()) => {}
+            // The statement failed or was cancelled: undo only that statement.
+            Err(e) if pending && e.code.as_deref() == Some("25P02") => {
+                self.batch(&format!("ROLLBACK TO SAVEPOINT dbiji_stmt; RELEASE SAVEPOINT dbiji_stmt; {next}")).await?;
+            }
+            // The user rolled back past it (ROLLBACK TO an outer savepoint).
+            Err(e) if pending && e.code.as_deref() == Some("3B001") => {
+                if then_savepoint {
+                    self.batch(next).await?;
+                }
+            }
+            Err(e) => return Err(e),
+        }
+        if then_savepoint {
+            self.shared.stmt_savepoint.store(true, std::sync::atomic::Ordering::Release);
+        }
+        Ok(())
+    }
+
     /// Take the session gate. Fails fast when a cursor is still open (a
     /// programming error on the caller side) and waits for the background
     /// cleanup of dropped cursors.
-    pub(crate) async fn acquire(&self) -> DbResult<OwnedMutexGuard<()>> {
+    pub(crate) async fn acquire_raw(&self) -> DbResult<OwnedMutexGuard<()>> {
         if self.client.is_none() || self.shared.is_closed() {
             return Err(self.shared.closed_error());
         }
@@ -406,6 +452,9 @@ impl PgSession {
             return Ok(Box::new(PgCursor::new(Body::Empty, self.shared.clone(), guard, self.cancel.clone(), None, self.rt.clone())));
         }
         self.implicit_begin(&script).await?;
+        // User savepoints are not wrapped: releasing ours would release theirs.
+        let wrap = !script.statements.iter().any(|s| s.tx != TxEffect::None || s.needs_autocommit);
+        self.settle_statement(wrap).await?;
         let timer = opts.timeout.filter(|t| !t.is_zero()).map(|t| StatementTimer::start(&self.rt, t, self.cancel.clone()));
         let copy_out = script.statements.len() == 1 && script.statements[0].copy == CopyKind::ToStdout;
         let body = if !params.is_empty() {
@@ -514,7 +563,7 @@ impl Session for PgSession {
     }
 
     async fn execute(&mut self, sql: &str, params: &[Value], opts: &ExecOptions) -> DbResult<Box<dyn QueryCursor>> {
-        let guard = self.acquire().await?;
+        let guard = self.acquire_raw().await?;
         self.execute_impl(sql, params, opts, guard).await
     }
 

@@ -476,16 +476,21 @@ async fn manual_transactions() {
         assert!(!s.in_transaction());
         assert_eq!(scalar(&mut other, &count_sql).await, count(1));
 
-        // a failed statement leaves the transaction open in failed state
+        // a failed statement only undoes itself: the transaction goes on
+        // (per-statement savepoint, like psql's ON_ERROR_ROLLBACK)
         exec(&mut s, &format!("INSERT INTO {schema}.tx VALUES (3)")).await;
         let e = execute_update(&mut *s, &format!("INSERT INTO {schema}.tx VALUES (3)"), &[]).await.unwrap_err();
         assert_eq!(e.code.as_deref(), Some("23505"));
         assert!(e.detail.as_deref().unwrap_or("").contains("already exists"), "{}", e.full_text());
         assert!(s.in_transaction());
-        let e = execute_update(&mut *s, "SELECT 1", &[]).await.unwrap_err();
-        assert_eq!(e.code.as_deref(), Some("25P02"));
-        // metadata calls in a failed transaction fail cleanly too
-        assert!(s.list_schemas().await.is_err());
+        assert_eq!(scalar(&mut s, "SELECT 1").await, Value::Int(1));
+        assert!(s.list_schemas().await.is_ok());
+        assert_eq!(scalar(&mut s, &format!("SELECT count(*) FROM {schema}.tx WHERE id = 3")).await, count(1));
+        // an explicit user savepoint is not disturbed
+        exec(&mut s, "SAVEPOINT mine").await;
+        exec(&mut s, &format!("INSERT INTO {schema}.tx VALUES (30)")).await;
+        exec(&mut s, "ROLLBACK TO SAVEPOINT mine").await;
+        assert_eq!(scalar(&mut s, &format!("SELECT count(*) FROM {schema}.tx WHERE id = 30")).await, count(0));
         s.rollback().await.unwrap();
         assert!(!s.in_transaction());
         // statements that cannot run in a transaction block run without implicit BEGIN
@@ -1685,6 +1690,40 @@ async fn large_schema_metadata_is_fast() {
         )
         .await;
         s.close().await.ok();
+    })
+    .await;
+}
+
+/// Manual commit: re-querying while a big result is still streaming (the
+/// data editor changing its ORDER BY) must not leave the transaction
+/// aborted (25P02), and work done earlier in the transaction is kept.
+#[tokio::test]
+async fn manual_mode_survives_an_abandoned_cursor() {
+    let Some(url) = common::url() else { return };
+    let params = params_from_url(&url);
+    with_schema(&params, |params, schema| async move {
+        let mut s = connect(&params).await;
+        exec(&mut s, &format!("CREATE TABLE {schema}.big AS SELECT g AS id, repeat('x', 100) AS pad FROM generate_series(1, 300000) g")).await;
+        exec(&mut s, &format!("CREATE TABLE {schema}.kept (id int)")).await;
+        s.set_transaction_mode(TransactionMode::Manual).await.unwrap();
+        exec(&mut s, &format!("INSERT INTO {schema}.kept VALUES (1)")).await;
+        for _ in 0..2 {
+            let mut c = s.execute(&format!("SELECT * FROM {schema}.big"), &[], &ExecOptions::default()).await.unwrap();
+            assert!(matches!(c.next_result().await.unwrap(), Some(ResultHeader::Rows(_))));
+            assert_eq!(c.fetch(200).await.unwrap().len(), 200);
+            drop(c);
+            let r = rows(&mut s, &format!("SELECT id FROM {schema}.big ORDER BY id DESC LIMIT 1")).await;
+            assert_eq!(r[0][0], Value::Int(300000));
+        }
+        // close() instead of drop
+        let mut c = s.execute(&format!("SELECT * FROM {schema}.big"), &[], &ExecOptions::default()).await.unwrap();
+        c.next_result().await.unwrap();
+        c.fetch(10).await.unwrap();
+        c.close().await.unwrap();
+        drop(c);
+        assert!(s.in_transaction());
+        assert_eq!(scalar(&mut s, &format!("SELECT count(*) FROM {schema}.kept")).await, Value::Int(1), "earlier work kept");
+        s.commit().await.unwrap();
     })
     .await;
 }

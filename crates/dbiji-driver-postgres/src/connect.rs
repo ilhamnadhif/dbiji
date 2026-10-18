@@ -37,6 +37,10 @@ pub(crate) struct SessionShared {
     pub cursor_open: AtomicBool,
     /// Serialises server round trips; held by open cursors and background drains.
     pub gate: Arc<tokio::sync::Mutex<()>>,
+    /// The last statement ran inside the `dbiji_stmt` savepoint, which is
+    /// released (or rolled back to, when the statement failed or was
+    /// cancelled) before the next round trip.
+    pub stmt_savepoint: AtomicBool,
 }
 
 impl SessionShared {
@@ -48,6 +52,7 @@ impl SessionShared {
             in_tx: AtomicBool::new(false),
             cursor_open: AtomicBool::new(false),
             gate: Arc::new(tokio::sync::Mutex::new(())),
+            stmt_savepoint: AtomicBool::new(false),
         })
     }
 

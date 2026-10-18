@@ -194,6 +194,13 @@ impl SettingsTab {
             c |= check(ui, &mut s.restore_session, tr("Reopen the editors of the last session on start"));
             ui.label("");
             c |= check(ui, &mut s.confirm_exit_with_unsaved, tr("Ask before quitting with unsaved changes"));
+            ui.label("");
+            let u = &mut cx.settings.updates;
+            let mut auto = u.check_automatically == Some(true);
+            if check(ui, &mut auto, tr("Check for updates automatically (once a day)")) {
+                u.check_automatically = Some(auto);
+                c = true;
+            }
             c
         })
     }

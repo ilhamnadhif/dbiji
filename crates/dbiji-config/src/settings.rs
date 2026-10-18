@@ -64,6 +64,8 @@ pub struct AppSettings {
     pub tasks: TaskSettings,
     /// Accessibility options.
     pub accessibility: AccessibilitySettings,
+    /// Update checks and release notes.
+    pub updates: UpdateSettings,
 }
 
 impl Default for AppSettings {
@@ -82,6 +84,7 @@ impl Default for AppSettings {
             security: SecuritySettings::default(),
             tasks: TaskSettings::default(),
             accessibility: AccessibilitySettings::default(),
+            updates: UpdateSettings::default(),
         }
     }
 }
@@ -689,6 +692,20 @@ impl Default for TaskSettings {
             scheduler_enabled: true,
         }
     }
+}
+
+/// Update checks and the "What's new" notes.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct UpdateSettings {
+    /// Look for a newer release once a day; `None` until the user answered.
+    pub check_automatically: Option<bool>,
+    /// Release the user chose to skip.
+    pub skipped_version: Option<String>,
+    /// Last automatic check (Unix seconds).
+    pub last_check: Option<i64>,
+    /// Version whose release notes were last shown.
+    pub last_seen_version: Option<String>,
 }
 
 /// Accessibility preferences.

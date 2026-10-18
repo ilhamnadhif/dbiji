@@ -274,6 +274,50 @@ async fn connect_task(
     Ok(Connected { session, params, tunnel, server, database, schema })
 }
 
+/// A connection opened without the UI (tasks, `dbiji --run-task`). Dropping
+/// it closes the tunnel; close the session first.
+pub struct HeadlessConnection {
+    pub session: Box<dyn dbiji_core::Session>,
+    pub params: ConnectParams,
+    pub driver: Arc<dyn Driver>,
+    pub config: ConnectionConfig,
+    _tunnel: Option<TunnelGuard>,
+}
+
+/// Connect to a saved connection with saved credentials only (no prompts).
+pub async fn connect_saved(
+    registry: &DriverRegistry,
+    store: &ConnectionStore,
+    secrets: &dyn SecretSource,
+    net: Arc<dyn NetConnector>,
+    id: &str,
+) -> DbResult<HeadlessConnection> {
+    let cfg = store.get(id).cloned().ok_or_else(|| DbError::config(format!("Unknown connection {id}")))?;
+    if matches!(cfg.auth, AuthMethod::Prompt) {
+        return Err(DbError::auth(format!(
+            "The connection \"{}\" asks for its password at every connect; save the password to use it in tasks",
+            cfg.name
+        )));
+    }
+    let driver = registry.get(cfg.kind).ok_or_else(|| DbError::unsupported(format!("No driver for {}", cfg.kind)))?;
+    let get = |slot| secrets.get(&store.network_secret_key(&cfg, slot)).ok().flatten();
+    let creds = Credentials {
+        password: get(SecretSlot::Password),
+        ssh_password: get(SecretSlot::SshPassword),
+        ssh_passphrase: get(SecretSlot::SshPassphrase),
+        proxy_password: get(SecretSlot::ProxyPassword),
+    };
+    let net_cfg = store.effective_network(&cfg);
+    let mut eff = cfg.clone();
+    eff.ssh = net_cfg.ssh;
+    eff.proxy = net_cfg.proxy;
+    let conn_type = store.connection_type(&cfg.connection_type);
+    let pgpass: Option<Arc<dyn Fn(&str, u16, &str, &str) -> Option<Secret> + Send + Sync>> =
+        Some(Arc::new(|h: &str, p: u16, d: &str, u: &str| dbiji_config::import::pgpass::lookup(h, p, d, u)));
+    let c = connect_task(driver.clone(), eff, conn_type, creds, net, pgpass).await?;
+    Ok(HeadlessConnection { session: c.session, params: c.params, driver, config: cfg, _tunnel: c.tunnel })
+}
+
 /// Configured + live connections.
 pub struct ConnectionManager {
     pub registry: DriverRegistry,

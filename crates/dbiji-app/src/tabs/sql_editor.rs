@@ -47,6 +47,7 @@ enum Bottom {
     Statistics,
     Output,
     Transaction,
+    Variables,
 }
 
 struct StatRow {
@@ -313,6 +314,10 @@ impl SqlEditorTab {
             };
             self.lang.set_dialect(d);
         }
+        if self.lang.templates.is_none() {
+            self.lang.templates = Some(cx.services.templates.clone());
+        }
+        self.lang.kind = kind;
         let e = &cx.settings.editor;
         self.lang.completion.max_items = e.autocomplete.max_items as usize;
         self.lang.completion.keyword_case = keyword_case(e.autocomplete.keyword_case);
@@ -1007,6 +1012,10 @@ impl SqlEditorTab {
             if ui.selectable_label(self.bottom == Bottom::Transaction, format!("{} {}", icon::CLOCK, tr("Transaction log"))).clicked() {
                 self.bottom = Bottom::Transaction;
             }
+            let vars = if self.variables.is_empty() { tr("Variables").to_string() } else { format!("{} ({})", tr("Variables"), self.variables.len()) };
+            if ui.selectable_label(self.bottom == Bottom::Variables, format!("{} {vars}", icon::BRACKETS_CURLY)).clicked() {
+                self.bottom = Bottom::Variables;
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.small_button(if self.maximized { icon::ARROWS_IN } else { icon::ARROWS_OUT }).on_hover_text(crate::keys::action_label(Action::MaximizeResults)).clicked() {
                     self.maximized = !self.maximized;
@@ -1098,6 +1107,36 @@ impl SqlEditorTab {
                             ui.weak(l.at.format("%H:%M:%S").to_string());
                             ui.add(egui::Label::new(RichText::new(&l.text).monospace().color(color)).selectable(true));
                         });
+                    }
+                });
+            }
+            Bottom::Variables => {
+                ui.weak(tr("Values of :name and ${name} parameters and @set variables; they are inserted as SQL text."));
+                let mut remove: Option<String> = None;
+                egui::Grid::new(("vars", self.editor.id())).num_columns(3).striped(true).spacing([12.0, 4.0]).show(ui, |ui| {
+                    for (k, v) in self.variables.iter_mut() {
+                        ui.monospace(k);
+                        ui.add(egui::TextEdit::singleline(v).desired_width(320.0).code_editor());
+                        if ui.small_button(icon::TRASH).on_hover_text(tr("Remove")).clicked() {
+                            remove = Some(k.clone());
+                        }
+                        ui.end_row();
+                    }
+                });
+                if let Some(k) = remove {
+                    self.variables.remove(&k);
+                }
+                ui.horizontal(|ui| {
+                    let id = ui.id().with("new_var");
+                    let mut name: String = ui.data_mut(|d| d.get_temp(id)).unwrap_or_default();
+                    ui.add(egui::TextEdit::singleline(&mut name).hint_text(tr("name")).desired_width(140.0));
+                    if ui.add_enabled(!name.trim().is_empty(), egui::Button::new(format!("{} {}", icon::PLUS, tr("Add variable")))).clicked() {
+                        self.variables.entry(name.trim().to_string()).or_default();
+                        name.clear();
+                    }
+                    ui.data_mut(|d| d.insert_temp(id, name));
+                    if !self.variables.is_empty() && ui.button(tr("Clear")).clicked() {
+                        self.variables.clear();
                     }
                 });
             }

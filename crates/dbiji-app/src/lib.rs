@@ -18,6 +18,7 @@ pub mod ops;
 pub mod palette;
 pub mod project_view;
 pub mod results;
+pub mod sample;
 pub mod router;
 pub mod services;
 pub mod sqllang;

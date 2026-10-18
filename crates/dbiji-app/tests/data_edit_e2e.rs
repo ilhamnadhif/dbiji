@@ -232,3 +232,42 @@ fn edit_save_and_cancel() {
         }
     }
 }
+
+#[test]
+fn virtual_model_dictionary_and_virtual_columns() {
+    let file = std::env::temp_dir().join(format!("dbiji-vm-e2e-{}.db", uuid::Uuid::new_v4().simple()));
+    let url = format!("sqlite://{}", file.display());
+    let mut h = H::new(&url);
+    h.sql("CREATE TABLE customer (id INTEGER PRIMARY KEY, name TEXT)");
+    h.sql("CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER REFERENCES customer(id), qty INTEGER, price REAL)");
+    h.sql("INSERT INTO customer VALUES (1, 'Ani'), (2, 'Budi')");
+    h.sql("INSERT INTO orders VALUES (1, 1, 2, 10.0), (2, 2, 3, 1.5)");
+    // Virtual model: dictionary on customer, virtual column on orders.
+    let p = h.services.projects.as_ref().unwrap();
+    let mut vm = p.virtual_model(&h.id).unwrap_or_default();
+    let cust = ObjectRef::table(None, "customer");
+    let ord = ObjectRef::table(None, "orders");
+    vm.set(
+        dbiji_config::project::VirtualTableKey::of(&cust),
+        dbiji_config::VirtualTable { dictionary: Some(dbiji_config::project::DictionaryConfig { description_columns: vec!["name".into()] }), ..Default::default() },
+    );
+    vm.set(
+        dbiji_config::project::VirtualTableKey::of(&ord),
+        dbiji_config::VirtualTable {
+            virtual_columns: vec![dbiji_config::project::VirtualColumn { name: "amount".into(), expression: "qty * price".into(), ..Default::default() }],
+            ..Default::default()
+        },
+    );
+    p.save_virtual_model(&h.id, &vm).unwrap();
+    let mut view = TableDataView::new(h.id.clone(), ord, None);
+    h.until(&mut view, "rows", |v| v.panel.as_ref().is_some_and(|p| p.model.row_count() == 2));
+    let fk_col = view.panel.as_ref().unwrap().model.columns().iter().position(|c| c.name == "customer_id").unwrap();
+    h.until(&mut view, "dictionary", |v| v.panel.as_ref().unwrap().model.dictionary(fk_col).is_some());
+    let p = view.panel.as_ref().unwrap();
+    let d = p.model.dictionary(fk_col).unwrap();
+    assert_eq!(d.describe("1"), Some("Ani"));
+    let vcol = p.model.columns().len();
+    assert_eq!(p.model.cell(0, vcol).and_then(|v| v.as_f64()), Some(20.0), "virtual column qty * price");
+    h.cm.disconnect_all(&h.backend);
+    let _ = std::fs::remove_file(&file);
+}

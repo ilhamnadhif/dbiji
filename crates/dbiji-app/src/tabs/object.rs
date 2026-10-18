@@ -24,6 +24,7 @@ enum TablePage {
     Indexes,
     Triggers,
     Partitions,
+    VirtualModel,
 }
 
 pub struct ObjectEditorTab {
@@ -39,6 +40,9 @@ pub struct ObjectEditorTab {
     selected_row: Option<usize>,
     /// Data page, created on first use.
     pub data: Option<Box<dyn crate::tabs::EmbeddedView>>,
+    /// Virtual model of the table being edited (virtual key, dictionary, virtual columns).
+    vmodel: Option<dbiji_config::VirtualTable>,
+    new_vcol: (String, String),
 }
 
 impl ObjectEditorTab {
@@ -55,6 +59,8 @@ impl ObjectEditorTab {
             stats: Loadable::NotLoaded,
             selected_row: None,
             data: None,
+            vmodel: None,
+            new_vcol: (String::new(), String::new()),
         }
     }
 
@@ -136,6 +142,7 @@ impl ObjectEditorTab {
                 (TablePage::Indexes, tr("Indexes")),
                 (TablePage::Triggers, tr("Triggers")),
                 (TablePage::Partitions, tr("Partitions")),
+                (TablePage::VirtualModel, tr("Virtual model")),
             ] {
                 ui.selectable_value(&mut self.table_page, p, label);
             }
@@ -264,6 +271,92 @@ impl ObjectEditorTab {
                     })
                     .collect();
                 widgets::simple_table(ui, "obj_trg", &[tr("Name"), tr("Timing"), tr("Events"), tr("Level"), tr("Enabled"), tr("Definition")], &rows, None);
+            }
+            TablePage::VirtualModel => {
+                let key = dbiji_config::project::VirtualTableKey::of(&self.obj);
+                let projects = cx.services.projects.as_ref();
+                if self.vmodel.is_none() {
+                    let vm = projects.and_then(|p| p.virtual_model(&self.conn).ok()).unwrap_or_default();
+                    self.vmodel = Some(vm.get(&key).cloned().unwrap_or_default());
+                }
+                let Some(vt) = self.vmodel.as_mut() else { return };
+                ui.label(tr("Client-side additions used by the data editor; stored in the project, not in the database."));
+                ui.add_space(4.0);
+                ui.strong(tr("Virtual key"));
+                ui.weak(tr("Columns that identify a row when the table has no primary or unique key."));
+                ui.horizontal_wrapped(|ui| {
+                    let mut keys = vt.virtual_key.clone().unwrap_or_default();
+                    for c in &t.columns {
+                        let mut on = keys.contains(&c.name);
+                        if ui.checkbox(&mut on, &c.name).changed() {
+                            if on {
+                                keys.push(c.name.clone());
+                            } else {
+                                keys.retain(|k| k != &c.name);
+                            }
+                        }
+                    }
+                    vt.virtual_key = if keys.is_empty() { None } else { Some(keys) };
+                });
+                ui.add_space(6.0);
+                ui.strong(tr("Dictionary"));
+                ui.weak(tr("When other tables reference this one, show these columns next to the key."));
+                ui.horizontal_wrapped(|ui| {
+                    let mut cols = vt.dictionary.clone().map(|d| d.description_columns).unwrap_or_default();
+                    for c in &t.columns {
+                        let mut on = cols.contains(&c.name);
+                        if ui.checkbox(&mut on, &c.name).changed() {
+                            if on {
+                                cols.push(c.name.clone());
+                            } else {
+                                cols.retain(|k| k != &c.name);
+                            }
+                        }
+                    }
+                    vt.dictionary = if cols.is_empty() { None } else { Some(dbiji_config::project::DictionaryConfig { description_columns: cols }) };
+                });
+                ui.add_space(6.0);
+                ui.strong(tr("Virtual columns"));
+                let mut remove = None;
+                egui::Grid::new("vcols").num_columns(3).spacing([10.0, 4.0]).show(ui, |ui| {
+                    for (i, c) in vt.virtual_columns.iter_mut().enumerate() {
+                        ui.add(egui::TextEdit::singleline(&mut c.name).desired_width(140.0));
+                        ui.add(egui::TextEdit::singleline(&mut c.expression).desired_width(320.0).code_editor());
+                        if ui.small_button(icon::TRASH).clicked() {
+                            remove = Some(i);
+                        }
+                        ui.end_row();
+                    }
+                    ui.add(egui::TextEdit::singleline(&mut self.new_vcol.0).hint_text(tr("name")).desired_width(140.0));
+                    ui.add(egui::TextEdit::singleline(&mut self.new_vcol.1).hint_text(tr("expression, e.g. price * quantity")).desired_width(320.0).code_editor());
+                    if ui.add_enabled(!self.new_vcol.0.trim().is_empty() && !self.new_vcol.1.trim().is_empty(), egui::Button::new(icon::PLUS)).clicked() {
+                        vt.virtual_columns.push(dbiji_config::project::VirtualColumn {
+                            name: self.new_vcol.0.trim().to_string(),
+                            expression: self.new_vcol.1.trim().to_string(),
+                            ..Default::default()
+                        });
+                        self.new_vcol = (String::new(), String::new());
+                    }
+                    ui.end_row();
+                });
+                if let Some(i) = remove {
+                    vt.virtual_columns.remove(i);
+                }
+                ui.add_space(6.0);
+                if ui.button(RichText::new(format!("{} {}", icon::FLOPPY_DISK, tr("Save virtual model"))).strong()).clicked() {
+                    if let Some(p) = projects {
+                        let mut vm = p.virtual_model(&self.conn).unwrap_or_default();
+                        if vt.is_empty() {
+                            vm.remove(&key);
+                        } else {
+                            vm.set(key.clone(), vt.clone());
+                        }
+                        match p.save_virtual_model(&self.conn, &vm) {
+                            Ok(()) => cx.toasts.success(tr("Virtual model saved")),
+                            Err(e) => cx.toasts.error(tr("Cannot save the virtual model"), Some(e.to_string())),
+                        }
+                    }
+                }
             }
             TablePage::Partitions => {
                 if let Some(p) = &t.partitioning {

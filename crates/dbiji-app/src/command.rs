@@ -47,6 +47,8 @@ pub enum AppCommand {
     DeleteConnection(String),
     ImportConnections,
     SaveConnections,
+    /// Create the SQLite sample database and a connection to it.
+    CreateSampleDatabase,
 
     // --------------------------------------------------------------- objects
     OpenObject { connection: String, object: ObjectRef, page: ObjectPage },

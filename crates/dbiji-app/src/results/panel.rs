@@ -74,6 +74,8 @@ pub struct ResultPanel {
     pub status: Option<(String, bool)>,
     fetch_op: Option<u64>,
     executed: Instant,
+    /// Dictionary lookups being loaded: (result column, job).
+    dict_jobs: Vec<(usize, Job<DbResult<HashMap<String, String>>>)>,
 }
 
 /// Collect the rows of a store (bounded) for charts / maps.
@@ -81,6 +83,17 @@ fn rows_of(model: &ResultModel, limit: usize) -> Vec<Row> {
     let mut s = model.store().lock();
     let n = s.len().min(limit);
     (0..n).filter_map(|i| s.get(i).cloned()).collect()
+}
+
+/// Virtual model entry of a table; the schema may be missing on either side
+/// (single-schema databases, unqualified result sources).
+fn vm_lookup<'a>(vm: &'a dbiji_config::VirtualModel, obj: &ObjectRef) -> Option<&'a dbiji_config::VirtualTable> {
+    vm.get_for(obj).or_else(|| {
+        vm.tables
+            .iter()
+            .find(|e| e.key.table.eq_ignore_ascii_case(&obj.name) && (e.key.schema.is_none() || obj.schema.is_none() || e.key.schema == obj.schema))
+            .map(|e| &e.table)
+    })
 }
 
 fn same_table(a: &ObjectRef, b_schema: Option<&str>, b_name: &str) -> bool {
@@ -132,6 +145,7 @@ impl ResultPanel {
             status: None,
             fetch_op: None,
             executed: Instant::now(),
+            dict_jobs: Vec::new(),
         }
     }
 
@@ -203,6 +217,19 @@ impl ResultPanel {
                 }
             }
         }
+        let mut done = Vec::new();
+        for (i, (col, job)) in self.dict_jobs.iter_mut().enumerate() {
+            if let Some(r) = job.poll() {
+                match r {
+                    Ok(map) => self.model.set_dictionary(*col, map),
+                    Err(e) => tracing::warn!("dictionary lookup failed: {e}"),
+                }
+                done.push(i);
+            }
+        }
+        for i in done.into_iter().rev() {
+            self.dict_jobs.remove(i);
+        }
         if let Some((rel, key, job)) = self.refs_job.as_mut() {
             if let Some(r) = job.poll() {
                 let (rel, key) = (*rel, key.clone());
@@ -258,7 +285,7 @@ impl ResultPanel {
             defs.iter().find(|((s, n), _)| n.eq_ignore_ascii_case(&obj.name) && (obj.schema.is_none() || s.is_none() || s.as_deref() == obj.schema.as_deref())).map(|(_, d)| d.clone())
         };
         let key_lookup = |obj: &ObjectRef| -> Option<Vec<String>> {
-            if let Some(vk) = virtual_model.as_ref().and_then(|m| m.get_for(obj)).and_then(|v| v.virtual_key.clone()).filter(|k| !k.is_empty()) {
+            if let Some(vk) = virtual_model.as_ref().and_then(|m| vm_lookup(m, obj)).and_then(|v| v.virtual_key.clone()).filter(|k| !k.is_empty()) {
                 return Some(vk);
             }
             let d = find(obj)?;
@@ -302,6 +329,40 @@ impl ResultPanel {
                         key_columns,
                     });
                 }
+            }
+        }
+        // Virtual model: virtual columns of the base table and dictionaries of referenced tables.
+        if let Some(vm) = &virtual_model {
+            if let Some(vt) = base.as_ref().and_then(|b| vm_lookup(vm, b)) {
+                for vc in &vt.virtual_columns {
+                    if let Err(err) = self.model.add_virtual_column(&vc.name, &vc.expression) {
+                        tracing::warn!("virtual column {}: {err:?}", vc.name);
+                    }
+                }
+            }
+            for link in links.iter().filter(|l| l.columns.len() == 1) {
+                let Some(dict) = vm_lookup(vm, &link.ref_table).and_then(|v| v.dictionary.clone()).filter(|d| !d.description_columns.is_empty()) else { continue };
+                let d = live.dialect.clone();
+                let key_col = link.ref_columns[0].clone();
+                let mut cols = vec![d.quote_ident(&key_col)];
+                cols.extend(dict.description_columns.iter().map(|c| d.quote_ident(c)));
+                let sql = d.limit_query(&format!("SELECT {} FROM {}", cols.join(", "), d.qualified_ref(&link.ref_table)), 20_000, 0);
+                let s = live.main.clone();
+                let col = link.columns[0];
+                self.dict_jobs.push((
+                    col,
+                    backend.spawn(async move {
+                        let (_, rows) = s.query_all(&sql, &[]).await?;
+                        Ok(rows
+                            .into_iter()
+                            .filter_map(|r| {
+                                let k = r.first()?.to_text().into_owned();
+                                let v = r.iter().skip(1).map(|v| v.to_text().into_owned()).collect::<Vec<_>>().join(" ");
+                                Some((k, v))
+                            })
+                            .collect())
+                    }),
+                ));
             }
         }
         self.model.set_editability(e.clone());

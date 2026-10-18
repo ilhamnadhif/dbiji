@@ -40,6 +40,7 @@ pub struct Dialogs {
     pub about_open: bool,
     pub shortcuts_open: bool,
     pub vault_open: bool,
+    pub drivers_open: bool,
     vault: vault::VaultDialog,
     pub import: Option<import::ImportDialog>,
     pub drop: Option<drop::DropDialog>,
@@ -127,6 +128,40 @@ impl Dialogs {
                 });
             });
             self.about_open = open;
+        }
+        if self.drivers_open {
+            let mut open = true;
+            egui::Window::new(format!("{} {}", icon::PLUGS, tr("Database drivers"))).open(&mut open).default_width(720.0).show(ctx, |ui| {
+                ui.label(tr("Drivers are built into DBiji (no downloads); network drivers are written in Rust, SQLite and DuckDB are embedded engines."));
+                ui.add_space(4.0);
+                let mut kinds = cx.conns.registry.kinds();
+                kinds.sort_by_key(|k| k.display_name());
+                let yes_no = |b: bool| if b { "✓" } else { "—" };
+                egui::Grid::new("drivers_grid").num_columns(9).striped(true).spacing([12.0, 4.0]).show(ui, |ui| {
+                    for h in [tr("Database"), tr("Driver"), tr("Transactions"), tr("Explain"), tr("Sessions"), tr("Locks"), tr("Backup"), tr("Debugger"), tr("Cancel")] {
+                        ui.strong(h);
+                    }
+                    ui.end_row();
+                    for k in kinds {
+                        let Some(d) = cx.conns.registry.get(k) else { continue };
+                        let info = d.info();
+                        let c = &info.capabilities;
+                        ui.label(format!("{} {}", crate::nav::db_icon(k), k.display_name()));
+                        ui.label(info.name).on_hover_text(info.description);
+                        ui.label(yes_no(c.transactions));
+                        ui.label(if c.explain_analyze { "✓ + ANALYZE" } else { yes_no(c.explain) });
+                        ui.label(yes_no(c.session_manager));
+                        ui.label(yes_no(c.lock_manager));
+                        ui.label(yes_no(c.backup));
+                        ui.label(yes_no(c.debugger));
+                        ui.label(yes_no(c.cancel));
+                        ui.end_row();
+                    }
+                });
+                ui.add_space(6.0);
+                ui.weak(tr("Not available: Oracle, Db2, Firebird, H2 and Trino (no Rust network driver yet)."));
+            });
+            self.drivers_open = open;
         }
         if self.shortcuts_open {
             let mut open = true;

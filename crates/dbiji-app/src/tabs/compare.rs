@@ -290,6 +290,17 @@ impl TabView for SchemaCompareTab {
             if ui.add_enabled(!script.is_empty() && self.apply_job.is_none(), egui::Button::new(format!("{} {}", icon::PLAY, tr("Apply to target…")))).clicked() {
                 self.confirm_apply = true;
             }
+            if ui.button(format!("{} {}", icon::GRAPH, tr("Diff diagram"))).on_hover_text(tr("ER diagram of the target with the differences highlighted")).clicked() {
+                if let (Some((a, b)), Some(tc)) = (self.snapshots.clone(), self.target.conn.clone()) {
+                    let old = dbiji_visual::er::ErModel::from_snapshot(&b, None);
+                    let new = dbiji_visual::er::ErModel::from_snapshot(&a, None);
+                    let model = dbiji_visual::er::ErModel::diff(&old, &new);
+                    let name = trf("Diff {}", &[&self.target.schema.as_ref().and_then(|s| s.schema.clone()).unwrap_or_default()]);
+                    let diagram = dbiji_visual::er::ErDiagram::new(name.clone(), model);
+                    let schema = self.target.schema.clone().unwrap_or_else(|| SchemaRef::new(None, None));
+                    cx.push(AppCommand::OpenTab(Box::new(crate::tabs::er::ErTab::from_saved(tc, schema, name, diagram))));
+                }
+            }
             if ui.button(format!("{} {}", icon::FILE_HTML, tr("HTML report…"))).clicked() {
                 if let Some(path) = rfd::FileDialog::new().set_file_name("schema-compare.html").save_file() {
                     let src = self.source.schema.as_ref().and_then(|s| s.schema.clone()).unwrap_or_default();

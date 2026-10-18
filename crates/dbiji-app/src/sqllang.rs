@@ -16,6 +16,9 @@ pub struct SqlLanguage {
     syntax: SqlSyntax,
     catalog: Option<Arc<SnapshotCatalog>>,
     pub completion: CompletionOptions,
+    /// SQL templates offered by name (FR-S5).
+    pub templates: Option<dbiji_config::TemplateLibrary>,
+    pub kind: Option<dbiji_core::DbKind>,
     generation: u64,
     /// Highlight cache keyed by the text length and a cheap hash.
     cache: RefCell<Option<(u64, Vec<(Range<usize>, TokenStyle)>)>>,
@@ -66,7 +69,7 @@ fn text_key(text: &str) -> u64 {
 impl SqlLanguage {
     pub fn new(dialect: Arc<dyn Dialect>) -> Self {
         let syntax = dialect.syntax().clone();
-        SqlLanguage { dialect, syntax, catalog: None, completion: CompletionOptions::default(), generation: 1, cache: RefCell::new(None) }
+        SqlLanguage { dialect, syntax, catalog: None, completion: CompletionOptions::default(), templates: None, kind: None, generation: 1, cache: RefCell::new(None) }
     }
 
     pub fn syntax(&self) -> &SqlSyntax {
@@ -110,23 +113,34 @@ impl EditorLanguage for SqlLanguage {
             None => &empty,
         };
         let r = dbiji_sql::complete(text, cursor, self.dialect.as_ref(), catalog, &self.completion);
-        if r.items.is_empty() {
+        // Templates whose name starts with the word before the cursor.
+        let cursor = cursor.min(text.len());
+        let word_start = text[..cursor].rfind(|c: char| !(c.is_alphanumeric() || c == '_')).map(|i| i + 1).unwrap_or(0);
+        let word = &text[word_start..cursor];
+        let mut items: Vec<CompletionEntry> = Vec::new();
+        if let (Some(lib), false) = (&self.templates, word.is_empty()) {
+            for t in lib.matching(word, self.kind) {
+                let (body, at) = dbiji_config::expand(&t, &Default::default());
+                let back = at.map(|a| body.chars().count().saturating_sub(a)).unwrap_or(0);
+                items.push(CompletionEntry::new(t.name.clone(), EntryKind::Snippet).with_insert(body).with_detail(t.description.clone()).with_cursor_back(back));
+            }
+        }
+        let replace = if items.is_empty() { r.replace_start..r.replace_end } else { word_start..cursor };
+        if !items.is_empty() && (r.replace_start != word_start || r.replace_end != cursor) {
+            // Different replace ranges: offer only the templates.
+        } else {
+            items.extend(r.items.into_iter().map(|i| {
+                let mut e = CompletionEntry::new(i.label, entry_kind(i.kind)).with_insert(i.insert).with_cursor_back(i.cursor_back);
+                if let Some(d) = i.detail {
+                    e = e.with_detail(d);
+                }
+                e
+            }));
+        }
+        if items.is_empty() {
             return None;
         }
-        Some(CompletionList {
-            replace: r.replace_start..r.replace_end,
-            items: r
-                .items
-                .into_iter()
-                .map(|i| {
-                    let mut e = CompletionEntry::new(i.label, entry_kind(i.kind)).with_insert(i.insert).with_cursor_back(i.cursor_back);
-                    if let Some(d) = i.detail {
-                        e = e.with_detail(d);
-                    }
-                    e
-                })
-                .collect(),
-        })
+        Some(CompletionList { replace, items })
     }
 
     fn should_auto_complete(&self, text: &str, cursor: usize, typed: char) -> bool {
@@ -181,5 +195,24 @@ impl EditorLanguage for SqlLanguage {
 
     fn highlight_generation(&self) -> u64 {
         self.generation
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn templates_and_keywords_are_offered() {
+        let mut lang = SqlLanguage::new(Arc::new(dbiji_core::dialect::GenericDialect::new()));
+        lang.templates = Some(dbiji_config::TemplateLibrary::default());
+        let list = lang.complete("sgb", 3).expect("proposals");
+        assert_eq!(list.replace, 0..3);
+        assert!(list.items.iter().any(|i| i.label == "sgb" && i.insert.contains("GROUP BY")), "{:?}", list.items.iter().map(|i| &i.label).collect::<Vec<_>>());
+        let list = lang.complete("SELECT * FR", 11).expect("keywords");
+        assert!(list.items.iter().any(|i| i.label.eq_ignore_ascii_case("FROM")));
+        let hl = lang.highlight("select 1 -- note");
+        assert!(hl.iter().any(|(_, s)| *s == TokenStyle::Keyword));
+        assert!(hl.iter().any(|(_, s)| *s == TokenStyle::Comment));
     }
 }

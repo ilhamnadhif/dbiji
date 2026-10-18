@@ -27,13 +27,14 @@ enum Section {
     Keyboard,
     Toolbar,
     ConnectionTypes,
+    NetworkProfiles,
     Ai,
     Security,
     Accessibility,
 }
 
 impl Section {
-    const ALL: [Section; 12] = [
+    const ALL: [Section; 13] = [
         Section::General,
         Section::Editor,
         Section::Results,
@@ -43,6 +44,7 @@ impl Section {
         Section::Keyboard,
         Section::Toolbar,
         Section::ConnectionTypes,
+        Section::NetworkProfiles,
         Section::Ai,
         Section::Security,
         Section::Accessibility,
@@ -59,6 +61,7 @@ impl Section {
             Section::Keyboard => tr("Keyboard shortcuts"),
             Section::Toolbar => tr("Toolbar"),
             Section::ConnectionTypes => tr("Connection types"),
+            Section::NetworkProfiles => tr("Network profiles"),
             Section::Ai => tr("AI assistant"),
             Section::Security => tr("Security"),
             Section::Accessibility => tr("Accessibility"),
@@ -76,6 +79,7 @@ impl Section {
             Section::Keyboard => icon::KEYBOARD,
             Section::Toolbar => icon::TOOLBOX,
             Section::ConnectionTypes => icon::TAG,
+            Section::NetworkProfiles => icon::SHARE_NETWORK,
             Section::Ai => icon::SPARKLE,
             Section::Security => icon::LOCK_KEY,
             Section::Accessibility => icon::EYE,
@@ -92,6 +96,10 @@ pub struct SettingsTab {
     ai_key_loaded: Option<AiProvider>,
     ai_key_saved: bool,
     selected_type: usize,
+    profile: Option<dbiji_core::config::NetworkProfile>,
+    profile_ssh_password: String,
+    profile_ssh_passphrase: String,
+    profile_proxy_password: String,
     new_master: String,
     new_master2: String,
     old_master: String,
@@ -109,6 +117,10 @@ impl Default for SettingsTab {
             ai_key_loaded: None,
             ai_key_saved: false,
             selected_type: 0,
+            profile: None,
+            profile_ssh_password: String::new(),
+            profile_ssh_passphrase: String::new(),
+            profile_proxy_password: String::new(),
             new_master: String::new(),
             new_master2: String::new(),
             old_master: String::new(),
@@ -592,6 +604,88 @@ impl SettingsTab {
         false
     }
 
+    fn network_profiles(&mut self, ui: &mut Ui, cx: &mut AppContext) -> bool {
+        use dbiji_core::config::{NetworkProfile, ProxyConfig, SecretSlot, SshConfig};
+        ui.label(tr("Reusable SSH tunnel and proxy settings; connections pick a profile on their SSH page."));
+        ui.add_space(4.0);
+        let profiles = cx.conns.store.network_profiles.clone();
+        ui.horizontal_top(|ui| {
+            ui.vertical(|ui| {
+                ui.set_width(200.0);
+                for p in &profiles {
+                    let used = cx.conns.configs().iter().filter(|c| c.network_profile.as_deref() == Some(p.id.as_str())).count();
+                    let sel = self.profile.as_ref().is_some_and(|x| x.id == p.id);
+                    if ui.selectable_label(sel, format!("{} {}  ({used})", icon::SHARE_NETWORK, p.name)).clicked() {
+                        self.profile = Some(p.clone());
+                        self.profile_ssh_password.clear();
+                        self.profile_ssh_passphrase.clear();
+                        self.profile_proxy_password.clear();
+                    }
+                }
+                if ui.button(format!("{} {}", icon::PLUS, tr("New profile"))).clicked() {
+                    self.profile = Some(NetworkProfile { id: uuid::Uuid::new_v4().to_string(), name: tr("New profile").to_string(), ssh: Some(SshConfig { enabled: true, ..Default::default() }), proxy: None });
+                }
+            });
+            ui.separator();
+            let Some(mut profile) = self.profile.take() else {
+                ui.weak(tr("Select or create a profile."));
+                return;
+            };
+            let p = &mut profile;
+            let mut deleted = false;
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    ui.label(tr("Name"));
+                    ui.add(egui::TextEdit::singleline(&mut p.name).desired_width(240.0));
+                });
+                heading(ui, "SSH");
+                let ssh = p.ssh.get_or_insert_with(SshConfig::default);
+                crate::dialogs::connection::ssh_form(ui, "profile_ssh", ssh, &mut self.profile_ssh_password, &mut self.profile_ssh_passphrase);
+                heading(ui, tr("Proxy"));
+                let proxy = p.proxy.get_or_insert_with(ProxyConfig::default);
+                crate::dialogs::connection::proxy_form(ui, "profile_proxy", proxy, &mut self.profile_proxy_password);
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    if ui.button(RichText::new(tr("Save profile")).strong()).clicked() {
+                        let id = p.id.clone();
+                        let ssh_save = p.ssh.as_ref().is_some_and(|s| s.enabled && s.save_credentials);
+                        let proxy_save = p.proxy.as_ref().is_some_and(|s| s.enabled && s.save_credentials);
+                        let pairs = [
+                            (SecretSlot::SshPassword, &self.profile_ssh_password, ssh_save),
+                            (SecretSlot::SshPassphrase, &self.profile_ssh_passphrase, ssh_save),
+                            (SecretSlot::ProxyPassword, &self.profile_proxy_password, proxy_save),
+                        ];
+                        for (slot, value, save) in pairs {
+                            let key = dbiji_config::profile_secret_key(&id, slot);
+                            let r = if save && !value.is_empty() { cx.conns.secrets.set(&key, &Secret::new(value.clone())) } else if !save { cx.conns.secrets.delete(&key) } else { Ok(()) };
+                            if let Err(e) = r {
+                                cx.toasts.error(tr("Cannot store the password securely"), Some(e.to_string()));
+                            }
+                        }
+                        cx.conns.store.set_network_profile(p.clone());
+                        cx.conns.dirty = true;
+                        cx.toasts.success(tr("Profile saved"));
+                    }
+                    if ui.button(tr("Delete profile")).clicked() {
+                        let n = cx.conns.store.remove_network_profile(&p.id);
+                        for slot in [SecretSlot::SshPassword, SecretSlot::SshPassphrase, SecretSlot::ProxyPassword] {
+                            let _ = cx.conns.secrets.delete(&dbiji_config::profile_secret_key(&p.id, slot));
+                        }
+                        cx.conns.dirty = true;
+                        if n > 0 {
+                            cx.toasts.info(trf("{} connection(s) now use their own network settings", &[&n]));
+                        }
+                        deleted = true;
+                    }
+                });
+            });
+            if !deleted {
+                self.profile = Some(profile);
+            }
+        });
+        false
+    }
+
     fn ai(&mut self, ui: &mut Ui, cx: &mut AppContext) -> bool {
         let provider = cx.settings.ai.provider;
         if self.ai_key_loaded != Some(provider) {
@@ -821,6 +915,7 @@ impl TabView for SettingsTab {
                     Section::Keyboard => self.keyboard(ui, cx),
                     Section::Toolbar => self.toolbar(ui, cx),
                     Section::ConnectionTypes => self.connection_types(ui, cx),
+                    Section::NetworkProfiles => self.network_profiles(ui, cx),
                     Section::Ai => self.ai(ui, cx),
                     Section::Security => self.security(ui, cx),
                     Section::Accessibility => self.accessibility(ui, cx),

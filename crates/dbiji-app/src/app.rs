@@ -216,6 +216,23 @@ impl DbijiApp {
                 Err(e) => self.toasts.error(tr("Cannot duplicate the connection"), Some(e.to_string())),
             },
             AppCommand::SaveConnections => self.conns.dirty = true,
+            AppCommand::CreateSampleDatabase => {
+                let dir = self.services.paths.data_dir().join("samples");
+                let _ = std::fs::create_dir_all(&dir);
+                let mut path = dir.join("dbiji-sample.db");
+                let mut n = 2;
+                while path.exists() {
+                    path = dir.join(format!("dbiji-sample-{n}.db"));
+                    n += 1;
+                }
+                match crate::sample::create(&path) {
+                    Ok(()) => {
+                        self.open_path(&path, false);
+                        self.toasts.success(tr("Sample database created"));
+                    }
+                    Err(e) => self.toasts.error(tr("Cannot create the sample database"), Some(e.full_text())),
+                }
+            }
             AppCommand::ImportConnections => {
                 if self.dialogs.import.is_none() {
                     self.dialogs.import = Some(crate::dialogs::import::ImportDialog::default());
@@ -764,6 +781,14 @@ impl DbijiApp {
             ui.menu_button(tr("Help"), |ui| {
                 if ui.button(tr("Keyboard shortcuts")).clicked() {
                     self.commands.push(AppCommand::ShowShortcuts);
+                    ui.close();
+                }
+                if ui.button(tr("Database drivers")).clicked() {
+                    self.dialogs.drivers_open = true;
+                    ui.close();
+                }
+                if ui.button(tr("Create sample database")).clicked() {
+                    self.commands.push(AppCommand::CreateSampleDatabase);
                     ui.close();
                 }
                 if ui.button(tr("About DBiji")).clicked() {

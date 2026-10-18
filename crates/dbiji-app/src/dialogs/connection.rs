@@ -223,8 +223,8 @@ impl ConnectionDialog {
                         ui.separator();
                         egui::ScrollArea::vertical().max_height(380.0).auto_shrink([false, true]).show(ui, |ui| match self.page {
                             Page::Main => self.main_page(ui, cx),
-                            Page::Ssh => self.ssh_page(ui),
-                            Page::Proxy => self.proxy_page(ui),
+                            Page::Ssh => self.ssh_page(ui, cx),
+                            Page::Proxy => self.proxy_page(ui, cx),
                             Page::Ssl => self.ssl_page(ui),
                             Page::Init => self.init_page(ui),
                             Page::Properties => self.properties_page(ui),
@@ -439,115 +439,43 @@ impl ConnectionDialog {
         });
     }
 
-    fn ssh_page(&mut self, ui: &mut Ui) {
-        let ssh = self.cfg.ssh.get_or_insert_with(SshConfig::default);
-        ui.checkbox(&mut ssh.enabled, tr("Use SSH tunnel"));
-        ui.add_enabled_ui(ssh.enabled, |ui| {
-            egui::Grid::new("ssh_grid").num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
-                ui.label(tr("SSH host"));
-                ui.horizontal(|ui| {
-                    ui.add(egui::TextEdit::singleline(&mut ssh.host).desired_width(220.0));
-                    ui.label(tr("Port"));
-                    ui.add(egui::DragValue::new(&mut ssh.port).range(1..=65535));
-                });
-                ui.end_row();
-                ui.label(tr("User"));
-                ui.add(egui::TextEdit::singleline(&mut ssh.user).desired_width(220.0));
-                ui.end_row();
-                ui.label(tr("Authentication"));
-                ui.horizontal(|ui| {
-                    let is_pw = matches!(ssh.auth, SshAuth::Password);
-                    let is_key = matches!(ssh.auth, SshAuth::PublicKey { .. });
-                    let is_agent = matches!(ssh.auth, SshAuth::Agent);
-                    if ui.radio(is_pw, tr("Password")).clicked() {
-                        ssh.auth = SshAuth::Password;
-                    }
-                    if ui.radio(is_key, tr("Private key")).clicked() && !is_key {
-                        ssh.auth = SshAuth::PublicKey { key_path: default_key_path() };
-                    }
-                    if ui.radio(is_agent, tr("SSH agent")).clicked() {
-                        ssh.auth = SshAuth::Agent;
-                    }
-                });
-                ui.end_row();
-                match &mut ssh.auth {
-                    SshAuth::Password => {
-                        ui.label(tr("Password"));
-                        ui.add(egui::TextEdit::singleline(&mut self.ssh_password).password(true).desired_width(220.0));
-                        ui.end_row();
-                    }
-                    SshAuth::PublicKey { key_path } => {
-                        ui.label(tr("Private key file"));
-                        ui.horizontal(|ui| {
-                            ui.add(egui::TextEdit::singleline(key_path).desired_width(260.0));
-                            if ui.button(icon::FOLDER_OPEN).clicked() {
-                                if let Some(p) = rfd::FileDialog::new().pick_file() {
-                                    *key_path = p.display().to_string();
-                                }
-                            }
-                        });
-                        ui.end_row();
-                        ui.label(tr("Passphrase"));
-                        ui.add(egui::TextEdit::singleline(&mut self.ssh_passphrase).password(true).desired_width(220.0));
-                        ui.end_row();
-                    }
-                    SshAuth::Agent => {}
+    fn network_profile_selector(&mut self, ui: &mut Ui, cx: &mut AppContext) -> bool {
+        let profiles: Vec<(String, String)> = cx.conns.store.network_profiles.iter().map(|p| (p.id.clone(), p.name.clone())).collect();
+        if profiles.is_empty() && self.cfg.network_profile.is_none() {
+            return false;
+        }
+        ui.horizontal(|ui| {
+            ui.label(tr("Network profile"));
+            let current = self.cfg.network_profile.as_ref().and_then(|id| profiles.iter().find(|(i, _)| i == id)).map(|(_, n)| n.clone()).unwrap_or_else(|| tr("(none — settings below)").to_string());
+            egui::ComboBox::from_id_salt("net_profile").selected_text(current).show_ui(ui, |ui| {
+                ui.selectable_value(&mut self.cfg.network_profile, None, tr("(none — settings below)"));
+                for (id, name) in &profiles {
+                    ui.selectable_value(&mut self.cfg.network_profile, Some(id.clone()), name);
                 }
-                ui.label("");
-                ui.checkbox(&mut ssh.save_credentials, tr("Save credentials"));
-                ui.end_row();
-                ui.label(tr("Local port"));
-                let mut lp = ssh.local_port.map(|p| p.to_string()).unwrap_or_default();
-                if ui.add(egui::TextEdit::singleline(&mut lp).hint_text(tr("automatic")).desired_width(80.0)).changed() {
-                    ssh.local_port = lp.trim().parse().ok();
-                }
-                ui.end_row();
-                ui.label(tr("Keep-alive (s)"));
-                ui.add(egui::DragValue::new(&mut ssh.keepalive_secs).range(0..=3600));
-                ui.end_row();
-                ui.label(tr("Host key check"));
-                egui::ComboBox::from_id_salt("hostkey").selected_text(host_key_label(ssh.host_key_policy)).show_ui(ui, |ui| {
-                    for p in [HostKeyPolicy::AcceptNew, HostKeyPolicy::Strict, HostKeyPolicy::AcceptAll] {
-                        ui.selectable_value(&mut ssh.host_key_policy, p, host_key_label(p));
-                    }
-                });
-                ui.end_row();
             });
         });
+        if self.cfg.network_profile.is_some() {
+            ui.weak(tr("SSH and proxy settings come from the network profile (Settings → Network profiles)."));
+            true
+        } else {
+            false
+        }
     }
 
-    fn proxy_page(&mut self, ui: &mut Ui) {
+    fn ssh_page(&mut self, ui: &mut Ui, cx: &mut AppContext) {
+        if self.network_profile_selector(ui, cx) {
+            return;
+        }
+        let ssh = self.cfg.ssh.get_or_insert_with(SshConfig::default);
+        ssh_form(ui, "ssh_grid", ssh, &mut self.ssh_password, &mut self.ssh_passphrase);
+    }
+
+    fn proxy_page(&mut self, ui: &mut Ui, cx: &mut AppContext) {
+        if self.network_profile_selector(ui, cx) {
+            return;
+        }
         let proxy = self.cfg.proxy.get_or_insert_with(ProxyConfig::default);
-        ui.checkbox(&mut proxy.enabled, tr("Use proxy"));
-        ui.add_enabled_ui(proxy.enabled, |ui| {
-            egui::Grid::new("proxy_grid").num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
-                ui.label(tr("Type"));
-                ui.horizontal(|ui| {
-                    ui.radio_value(&mut proxy.kind, ProxyKind::Socks5, "SOCKS5");
-                    ui.radio_value(&mut proxy.kind, ProxyKind::Http, "HTTP CONNECT");
-                });
-                ui.end_row();
-                ui.label(tr("Proxy host"));
-                ui.horizontal(|ui| {
-                    ui.add(egui::TextEdit::singleline(&mut proxy.host).desired_width(220.0));
-                    ui.label(tr("Port"));
-                    ui.add(egui::DragValue::new(&mut proxy.port).range(1..=65535));
-                });
-                ui.end_row();
-                ui.label(tr("User"));
-                let mut user = proxy.user.clone().unwrap_or_default();
-                if ui.add(egui::TextEdit::singleline(&mut user).desired_width(220.0)).changed() {
-                    proxy.user = if user.is_empty() { None } else { Some(user) };
-                }
-                ui.end_row();
-                ui.label(tr("Password"));
-                ui.add(egui::TextEdit::singleline(&mut self.proxy_password).password(true).desired_width(220.0));
-                ui.end_row();
-                ui.label("");
-                ui.checkbox(&mut proxy.save_credentials, tr("Save credentials"));
-                ui.end_row();
-            });
-        });
+        proxy_form(ui, "proxy_grid", proxy, &mut self.proxy_password);
     }
 
     fn ssl_page(&mut self, ui: &mut Ui) {
@@ -768,3 +696,116 @@ fn host_key_label(p: HostKeyPolicy) -> &'static str {
 fn default_key_path() -> String {
     std::env::var("HOME").map(|h| format!("{h}/.ssh/id_ed25519")).unwrap_or_default()
 }
+
+/// SSH tunnel settings form (connection dialog and network profiles).
+pub fn ssh_form(ui: &mut Ui, id: &str, ssh: &mut SshConfig, password: &mut String, passphrase: &mut String) {
+    ui.checkbox(&mut ssh.enabled, tr("Use SSH tunnel"));
+    ui.add_enabled_ui(ssh.enabled, |ui| {
+        egui::Grid::new(id).num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
+            ui.label(tr("SSH host"));
+            ui.horizontal(|ui| {
+                ui.add(egui::TextEdit::singleline(&mut ssh.host).desired_width(220.0));
+                ui.label(tr("Port"));
+                ui.add(egui::DragValue::new(&mut ssh.port).range(1..=65535));
+            });
+            ui.end_row();
+            ui.label(tr("User"));
+            ui.add(egui::TextEdit::singleline(&mut ssh.user).desired_width(220.0));
+            ui.end_row();
+            ui.label(tr("Authentication"));
+            ui.horizontal(|ui| {
+                let is_pw = matches!(ssh.auth, SshAuth::Password);
+                let is_key = matches!(ssh.auth, SshAuth::PublicKey { .. });
+                let is_agent = matches!(ssh.auth, SshAuth::Agent);
+                if ui.radio(is_pw, tr("Password")).clicked() {
+                    ssh.auth = SshAuth::Password;
+                }
+                if ui.radio(is_key, tr("Private key")).clicked() && !is_key {
+                    ssh.auth = SshAuth::PublicKey { key_path: default_key_path() };
+                }
+                if ui.radio(is_agent, tr("SSH agent")).clicked() {
+                    ssh.auth = SshAuth::Agent;
+                }
+            });
+            ui.end_row();
+            match &mut ssh.auth {
+                SshAuth::Password => {
+                    ui.label(tr("Password"));
+                    ui.add(egui::TextEdit::singleline(password).password(true).desired_width(220.0));
+                    ui.end_row();
+                }
+                SshAuth::PublicKey { key_path } => {
+                    ui.label(tr("Private key file"));
+                    ui.horizontal(|ui| {
+                        ui.add(egui::TextEdit::singleline(key_path).desired_width(260.0));
+                        if ui.button(icon::FOLDER_OPEN).clicked() {
+                            if let Some(p) = rfd::FileDialog::new().pick_file() {
+                                *key_path = p.display().to_string();
+                            }
+                        }
+                    });
+                    ui.end_row();
+                    ui.label(tr("Passphrase"));
+                    ui.add(egui::TextEdit::singleline(passphrase).password(true).desired_width(220.0));
+                    ui.end_row();
+                }
+                SshAuth::Agent => {}
+            }
+            ui.label("");
+            ui.checkbox(&mut ssh.save_credentials, tr("Save credentials"));
+            ui.end_row();
+            ui.label(tr("Local port"));
+            let mut lp = ssh.local_port.map(|p| p.to_string()).unwrap_or_default();
+            if ui.add(egui::TextEdit::singleline(&mut lp).hint_text(tr("automatic")).desired_width(80.0)).changed() {
+                ssh.local_port = lp.trim().parse().ok();
+            }
+            ui.end_row();
+            ui.label(tr("Keep-alive (s)"));
+            ui.add(egui::DragValue::new(&mut ssh.keepalive_secs).range(0..=3600));
+            ui.end_row();
+            ui.label(tr("Host key check"));
+            egui::ComboBox::from_id_salt((id, "hostkey")).selected_text(host_key_label(ssh.host_key_policy)).show_ui(ui, |ui| {
+                for p in [HostKeyPolicy::AcceptNew, HostKeyPolicy::Strict, HostKeyPolicy::AcceptAll] {
+                    ui.selectable_value(&mut ssh.host_key_policy, p, host_key_label(p));
+                }
+            });
+            ui.end_row();
+        });
+    });
+}
+
+
+/// Proxy settings form (connection dialog and network profiles).
+pub fn proxy_form(ui: &mut Ui, id: &str, proxy: &mut ProxyConfig, password: &mut String) {
+    ui.checkbox(&mut proxy.enabled, tr("Use proxy"));
+    ui.add_enabled_ui(proxy.enabled, |ui| {
+        egui::Grid::new(id).num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
+            ui.label(tr("Type"));
+            ui.horizontal(|ui| {
+                ui.radio_value(&mut proxy.kind, ProxyKind::Socks5, "SOCKS5");
+                ui.radio_value(&mut proxy.kind, ProxyKind::Http, "HTTP CONNECT");
+            });
+            ui.end_row();
+            ui.label(tr("Proxy host"));
+            ui.horizontal(|ui| {
+                ui.add(egui::TextEdit::singleline(&mut proxy.host).desired_width(220.0));
+                ui.label(tr("Port"));
+                ui.add(egui::DragValue::new(&mut proxy.port).range(1..=65535));
+            });
+            ui.end_row();
+            ui.label(tr("User"));
+            let mut user = proxy.user.clone().unwrap_or_default();
+            if ui.add(egui::TextEdit::singleline(&mut user).desired_width(220.0)).changed() {
+                proxy.user = if user.is_empty() { None } else { Some(user) };
+            }
+            ui.end_row();
+            ui.label(tr("Password"));
+            ui.add(egui::TextEdit::singleline(password).password(true).desired_width(220.0));
+            ui.end_row();
+            ui.label("");
+            ui.checkbox(&mut proxy.save_credentials, tr("Save credentials"));
+            ui.end_row();
+        });
+    });
+}
+

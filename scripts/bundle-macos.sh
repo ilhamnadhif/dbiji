@@ -77,19 +77,6 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleExecutable</key><string>dbiji</string>
   <key>CFBundleIconFile</key><string>DBiji</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleDocumentTypes</key>
-  <array>
-    <dict>
-      <key>CFBundleTypeName</key><string>SQL script</string>
-      <key>CFBundleTypeExtensions</key><array><string>sql</string></array>
-      <key>CFBundleTypeRole</key><string>Editor</string>
-    </dict>
-    <dict>
-      <key>CFBundleTypeName</key><string>SQLite database</string>
-      <key>CFBundleTypeExtensions</key><array><string>db</string><string>sqlite</string><string>sqlite3</string></array>
-      <key>CFBundleTypeRole</key><string>Editor</string>
-    </dict>
-  </array>
   <key>LSMinimumSystemVersion</key><string>12.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSSupportsAutomaticGraphicsSwitching</key><true/>

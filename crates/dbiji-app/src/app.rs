@@ -935,6 +935,11 @@ impl eframe::App for DbijiApp {
             self.conns.take_error(&id);
         }
         self.shortcuts(&ctx);
+        // Files dropped on the window: scripts open in editors, database files as connections.
+        let dropped: Vec<std::path::PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().filter_map(|f| f.path.clone()).collect());
+        for path in dropped {
+            self.open_path(&path, false);
+        }
 
         egui::Panel::top("dbiji_menu").show(ui, |ui| self.menu_bar(ui));
         egui::Panel::top("dbiji_toolbar").show(ui, |ui| self.toolbar(ui));

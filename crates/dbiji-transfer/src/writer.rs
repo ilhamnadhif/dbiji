@@ -11,6 +11,8 @@ use std::sync::Arc;
 /// Statement parameters per `INSERT` are capped below the smallest server
 /// limit (SQL Server: 2100).
 const MAX_PARAMS: usize = 2000;
+/// Row constructors per `INSERT ... VALUES` (SQL Server's limit is 1000).
+const MAX_ROWS_PER_INSERT: usize = 1000;
 /// Row errors kept in summaries with [`OnError::LogAndContinue`].
 const MAX_LOGGED_ERRORS: usize = 10_000;
 /// Row errors kept in summaries with [`OnError::SkipRow`].
@@ -137,7 +139,7 @@ impl<'a> BatchWriter<'a> {
     ) -> Self {
         let dialect = session.dialect();
         let ncols = target.columns.len().max(1);
-        let rows_per_statement = rows_per_statement.max(1).min((MAX_PARAMS / ncols).max(1));
+        let rows_per_statement = rows_per_statement.clamp(1, MAX_ROWS_PER_INSERT).min((MAX_PARAMS / ncols).max(1));
         let upsert_sql = if target.key_index.is_empty() {
             None
         } else {

@@ -85,7 +85,7 @@ pub struct ImportMapping {
     pub key_columns: Vec<String>,
     /// Rows read and committed per batch.
     pub batch_size: usize,
-    /// Rows per `INSERT` statement (capped so a statement has at most 2000 parameters).
+    /// Rows per `INSERT` statement (capped at 1000 rows and 2000 parameters per statement).
     pub rows_per_statement: usize,
     /// Transaction boundaries.
     pub transaction: TransactionScope,

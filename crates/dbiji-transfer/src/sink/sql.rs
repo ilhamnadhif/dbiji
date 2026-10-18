@@ -274,7 +274,7 @@ impl RowSink for SqlSink {
             }
             self.out.write_str(&text)?;
         } else {
-            let per_stmt = self.opts.rows_per_statement.max(1);
+            let per_stmt = self.opts.rows_per_statement.clamp(1, 1000);
             if self.pending_rows == 0 {
                 self.stmt.push_str(&self.insert_prefix);
                 self.stmt.push_str(if per_stmt == 1 { " " } else { "\n" });

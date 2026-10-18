@@ -357,7 +357,7 @@ pub struct SqlOptions {
     pub schema_name: Option<String>,
     /// Qualify the table name with its schema.
     pub qualify_with_schema: bool,
-    /// Rows per `INSERT` statement (multi-row `VALUES`).
+    /// Rows per `INSERT` statement (multi-row `VALUES`), at most 1000 (SQL Server limit).
     pub rows_per_statement: usize,
     /// Insert or upsert.
     pub mode: SqlInsertMode,

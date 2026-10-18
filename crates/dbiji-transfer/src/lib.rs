@@ -55,8 +55,8 @@ pub use tokio_util::sync::CancellationToken;
 
 pub use convert::{ConvertOptions, convert_value};
 pub use export::{
-    DEFAULT_FILE_NAME_PATTERN, ExportItem, ExportItemSummary, ExportJob, ExportJobSummary, SessionFactory,
-    expand_file_name, run_export, run_export_batched, run_export_job, run_export_job_with,
+    DEFAULT_BATCH_SIZE, DEFAULT_FILE_NAME_PATTERN, ExportItem, ExportItemSummary, ExportJob, ExportJobSummary,
+    SessionFactory, expand_file_name, run_export, run_export_batched, run_export_job, run_export_job_with,
 };
 pub use format::{BinaryEncoding, ValueFormat, format_value};
 pub use import::csv::{CsvHeader, CsvReadOptions, CsvSource};

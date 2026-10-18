@@ -63,6 +63,9 @@ struct XmlParser {
     empty_as_null: bool,
     record_depth: Option<usize>,
     record: Record,
+    /// Name and direct text content of the current record element.
+    record_name: String,
+    record_text: String,
     field: Option<FieldState>,
     done: bool,
 }
@@ -107,6 +110,15 @@ fn resolve_entity(name: &str) -> Option<&'static str> {
     })
 }
 
+/// Append character data to the open field, or to the record's own text.
+fn push_text(field: &mut Option<FieldState>, record_text: &mut String, directly_in_record: bool, piece: &str) {
+    if let Some(f) = field.as_mut() {
+        f.text.push_str(piece);
+    } else if directly_in_record {
+        record_text.push_str(piece);
+    }
+}
+
 impl XmlParser {
     fn next_record(&mut self) -> DbResult<Option<Record>> {
         if self.done {
@@ -135,6 +147,8 @@ impl XmlParser {
                         None if is_record(&self.record_element, self.depth, &name) => {
                             self.record_depth = Some(self.depth);
                             self.record.clear();
+                            self.record_text.clear();
+                            self.record_name.clone_from(&name);
                             if self.attributes_as_columns {
                                 for a in e.attributes().flatten() {
                                     let qname = AsRef::<str>::as_ref(&a.key).to_string();
@@ -174,39 +188,37 @@ impl XmlParser {
                         } else if self.depth == rd {
                             self.record_depth = None;
                             self.depth = self.depth.saturating_sub(1);
+                            // A record that carries text (`<tag>a</tag>`) gets a column named after it.
+                            let text = std::mem::take(&mut self.record_text);
+                            if !text.trim().is_empty() {
+                                self.record.push((self.record_name.clone(), Some(text)));
+                            }
                             return Ok(Some(std::mem::take(&mut self.record)));
                         }
                     }
                     self.depth = self.depth.saturating_sub(1);
                 }
                 Event::Text(t) => {
-                    if let Some(f) = self.field.as_mut() {
-                        f.text.push_str(&t.xml10_content());
-                    }
+                    let piece = t.xml10_content();
+                    push_text(&mut self.field, &mut self.record_text, self.record_depth == Some(self.depth), &piece);
                 }
                 Event::CData(c) => {
-                    if let Some(f) = self.field.as_mut() {
-                        f.text.push_str(&c.xml10_content());
-                    }
+                    let piece = c.xml10_content();
+                    push_text(&mut self.field, &mut self.record_text, self.record_depth == Some(self.depth), &piece);
                 }
                 Event::GeneralRef(r) => {
-                    if let Some(f) = self.field.as_mut() {
-                        if r.is_char_ref() {
-                            match r.resolve_char_ref() {
-                                Ok(Some(c)) => f.text.push(c),
-                                _ => f.text.push('\u{FFFD}'),
-                            }
-                        } else {
-                            match resolve_entity(&r) {
-                                Some(s) => f.text.push_str(s),
-                                None => {
-                                    f.text.push('&');
-                                    f.text.push_str(&r);
-                                    f.text.push(';');
-                                }
-                            }
+                    let piece = if r.is_char_ref() {
+                        match r.resolve_char_ref() {
+                            Ok(Some(c)) => c.to_string(),
+                            _ => '\u{FFFD}'.to_string(),
                         }
-                    }
+                    } else {
+                        match resolve_entity(&r) {
+                            Some(s) => s.to_string(),
+                            None => format!("&{};", &*r),
+                        }
+                    };
+                    push_text(&mut self.field, &mut self.record_text, self.record_depth == Some(self.depth), &piece);
                 }
                 Event::Eof => {
                     self.done = true;
@@ -279,6 +291,8 @@ impl XmlSource {
             empty_as_null: options.empty_as_null,
             record_depth: None,
             record: Vec::new(),
+            record_name: String::new(),
+            record_text: String::new(),
             field: None,
             done: false,
         };
@@ -420,6 +434,14 @@ c</name>
         assert_eq!(rows[1][0], Value::text("8"));
         assert_eq!(rows[1][1], Value::Null);
         assert_eq!(rows[1][4], Value::text("x"));
+    }
+
+    #[tokio::test]
+    async fn text_only_records() {
+        let xml = "<tags>\n  <tag>a &amp; b</tag>\n  <tag lang=\"en\">c</tag>\n</tags>";
+        let (names, rows) = rows_of(xml, XmlReadOptions::default()).await;
+        assert_eq!(names, vec!["tag", "lang"]);
+        assert_eq!(rows, vec![vec![Value::text("a & b"), Value::Null], vec![Value::text("c"), Value::text("en")]]);
     }
 
     #[tokio::test]

@@ -38,6 +38,10 @@ const REFINE_BATCH: usize = 120;
 /// Most lines re-highlighted individually in one frame (large documents).
 const LOCAL_HIGHLIGHT_LINES: usize = 500;
 
+/// Longest time (seconds) a large document goes without a full highlight
+/// pass while the user keeps typing.
+const MAX_HIGHLIGHT_STALENESS: f64 = 2.0;
+
 /// Characters of a single line that are laid out; longer lines (minified
 /// dumps) show this prefix followed by an ellipsis. Editing still operates
 /// on the whole line.
@@ -137,6 +141,7 @@ pub struct DocLayout {
     hl_pending: bool,
     hl_local_pending: bool,
     hl_due: Option<f64>,
+    hl_pending_since: Option<f64>,
     hl_ever: bool,
     inexact: usize,
     refine_cursor: usize,
@@ -462,15 +467,25 @@ impl DocLayout {
         }
         let generation = lang.highlight_generation();
         let gen_changed = self.hl_generation != Some(generation);
+        if self.hl_pending && self.hl_pending_since.is_none() {
+            self.hl_pending_since = Some(now);
+        }
         let due = self.hl_due.is_some_and(|t| now >= t) && !edited_this_frame;
+        // While typing continuously, still refresh multi-line constructs now
+        // and then.
+        let stale = self
+            .hl_pending_since
+            .is_some_and(|t| now - t >= MAX_HIGHLIGHT_STALENESS);
         let run_full = gen_changed
-            || (self.hl_pending && (!self.hl_ever || text.len() <= policy.sync_limit || due));
+            || (self.hl_pending
+                && (!self.hl_ever || text.len() <= policy.sync_limit || due || stale));
         if run_full {
             self.full_highlight(text, index, lang);
             self.hl_generation = Some(generation);
             self.hl_pending = false;
             self.hl_local_pending = false;
             self.hl_due = None;
+            self.hl_pending_since = None;
             self.hl_ever = true;
             return None;
         }
@@ -1077,8 +1092,25 @@ mod tests {
             .update_highlight(&text, &index, &Words, policy, 1.1, false)
             .expect("pending");
         assert!((wait - 0.15).abs() < 1e-9);
+        // Continuous typing still gets a full pass after the staleness limit.
+        layout.splice(&text, &index, 1, 1, 1);
+        assert!(
+            layout
+                .update_highlight(&text, &index, &Words, policy, 2.0, true)
+                .is_some()
+        );
         assert_eq!(
-            layout.update_highlight(&text, &index, &Words, policy, 1.3, false),
+            layout.update_highlight(&text, &index, &Words, policy, 3.1, true),
+            None
+        );
+        layout.splice(&text, &index, 1, 1, 1);
+        assert!(
+            layout
+                .update_highlight(&text, &index, &Words, policy, 3.2, true)
+                .is_some()
+        );
+        assert_eq!(
+            layout.update_highlight(&text, &index, &Words, policy, 3.5, false),
             None
         );
     }

@@ -18,7 +18,7 @@ use crate::text::{
     floor_char_boundary, normalize_newlines, word_range_at,
 };
 use crate::undo::{EditKind, EditRecord, Replay, UndoStack};
-use crate::widget::{ContextAction, EditorEvent};
+use crate::widget::ContextAction;
 
 /// Severity of a [`Diagnostic`].
 #[derive(
@@ -106,7 +106,6 @@ pub struct EditorState {
     pub(crate) ime_cleared_at: Option<usize>,
     pub(crate) pending_focus: bool,
     pub(crate) pending_scroll: Option<ScrollRequest>,
-    pub(crate) pending_events: Vec<EditorEvent>,
     pub(crate) scroll_offset: Vec2,
     pub(crate) restore_scroll: Option<Vec2>,
     pub(crate) viewport_size: Vec2,
@@ -244,7 +243,6 @@ impl EditorState {
             ime_cleared_at: None,
             pending_focus: false,
             pending_scroll: None,
-            pending_events: Vec::new(),
             scroll_offset: Vec2::ZERO,
             restore_scroll: None,
             viewport_size: Vec2::new(600.0, 400.0),

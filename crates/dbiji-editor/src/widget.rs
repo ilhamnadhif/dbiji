@@ -279,7 +279,7 @@ impl<'a> SqlEditor<'a> {
         st.now = ui.input(|i| i.time);
         st.edited_this_frame = false;
         let start_version = st.version();
-        let mut events = std::mem::take(&mut st.pending_events);
+        let mut events = Vec::new();
         st.undo.set_limit(options.undo_limit);
 
         // Metrics.

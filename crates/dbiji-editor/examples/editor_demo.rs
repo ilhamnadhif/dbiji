@@ -87,6 +87,9 @@ struct Demo {
     log: Vec<String>,
     dictionary: HashSet<String>,
     analyzed_version: Option<u64>,
+    /// Smoke testing: close after this many frames (`DBIJI_DEMO_EXIT_AFTER_FRAMES`).
+    exit_after: Option<u64>,
+    frames: u64,
 }
 
 impl Demo {
@@ -122,6 +125,10 @@ impl Demo {
             log: Vec::new(),
             dictionary: HashSet::new(),
             analyzed_version: None,
+            exit_after: std::env::var("DBIJI_DEMO_EXIT_AFTER_FRAMES")
+                .ok()
+                .and_then(|v| v.parse().ok()),
+            frames: 0,
         }
     }
 
@@ -232,6 +239,23 @@ impl Demo {
 impl eframe::App for Demo {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        self.frames += 1;
+        if let Some(n) = self.exit_after {
+            if self.frames == 2 {
+                self.editor.request_focus(&ctx);
+                self.editor.trigger_completion();
+            }
+            if self.frames >= n {
+                println!(
+                    "demo ran {} frames: {} lines, cursor {:?}",
+                    self.frames,
+                    self.editor.line_count(),
+                    self.editor.line_col()
+                );
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            ctx.request_repaint();
+        }
         if ctx.global_style().visuals.dark_mode != self.dark {
             ctx.set_visuals(if self.dark {
                 egui::Visuals::dark()
@@ -240,8 +264,16 @@ impl eframe::App for Demo {
             });
         }
         let theme = EditorTheme::from_visuals(ui.visuals());
+        // The toy analysis re-tokenizes the whole text, so it is skipped for
+        // the large samples (a real app would run it in the background).
         if self.analyzed_version != Some(self.editor.version()) {
-            self.analyze();
+            if self.editor.text().len() <= 200_000 {
+                self.analyze();
+            } else {
+                self.editor.set_diagnostics(Vec::new());
+                self.editor.set_spell_issues(Vec::new());
+                self.analyzed_version = Some(self.editor.version());
+            }
         }
 
         egui::Panel::top("toolbar").show(ui, |ui| {

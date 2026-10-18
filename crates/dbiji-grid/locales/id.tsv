@@ -1,0 +1,304 @@
+# Indonesian translations of the dbiji-grid user interface.
+# Format: English source text<TAB>Indonesian text (escapes \n \t, # comments),
+# identical to dbiji-core/locales/id.tsv. Merge these lines into that file:
+# `tr()` only reads the table embedded in dbiji-core.
+ (of {} fetched)	 (dari {} yang diambil)
+ · total {}	 · total {}
+'{}' is a keyword; write [{}] to refer to a column with that name	'{}' adalah kata kunci; tulis [{}] untuk merujuk kolom dengan nama itu
+'{}' is not a boolean	'{}' bukan nilai boolean
+'{}' is not a number	'{}' bukan angka
+(empty)	(kosong)
+(none)	(tidak ada)
+(tree truncated)	(pohon dipotong)
+, selected cell: row {}, {} = {}	, sel terpilih: baris {}, {} = {}
+A {} value is not a boolean	Nilai {} bukan boolean
+Add	Tambah
+Add as secondary ASC	Tambahkan sebagai urutan kedua ASC
+Add column…	Tambah kolom…
+Add row	Tambah baris
+Add virtual column	Tambah kolom virtual
+Add virtual column…	Tambah kolom virtual…
+Advanced copy	Salin lanjutan
+Advanced copy…	Salin lanjutan…
+All columns are hidden	Semua kolom disembunyikan
+Always	Selalu
+Apply	Terapkan
+Apply filter and order (Enter)	Terapkan filter dan urutan (Enter)
+Auto	Otomatis
+Auto refresh	Muat ulang otomatis
+Auto-size column	Sesuaikan lebar kolom
+Average	Rata-rata
+Avg	Rata-rata
+Binary value, {}	Nilai biner, {}
+CSV	CSV
+Calc	Kalkulasi
+Calculate total row count	Hitung jumlah total baris
+Cancel	Batal
+Cannot decode image: {}	Gambar tidak dapat didekode: {}
+Cannot negate a {} value	Nilai {} tidak dapat dinegasikan
+Cannot read image: {}	Gambar tidak dapat dibaca: {}
+Chart	Grafik
+Choose one or more columns to group the fetched rows	Pilih satu kolom atau lebih untuk mengelompokkan baris yang diambil
+Clear client filter	Hapus filter klien
+Clear filter and order	Hapus filter dan urutan
+Clear sorting	Hapus pengurutan
+Click to copy	Klik untuk menyalin
+Click to select all	Klik untuk memilih semua
+Client	Klien
+Client side filter expression (see help)	Ekspresi filter di sisi klien (lihat bantuan)
+Cmd+click a link cell to navigate	Cmd+klik sel tautan untuk bernavigasi
+Column	Kolom
+Column '{}' does not allow NULL	Kolom '{}' tidak mengizinkan NULL
+Column '{}' is computed and cannot be edited	Kolom '{}' merupakan hasil perhitungan dan tidak dapat diubah
+Column name '{}' is ambiguous; use the exact spelling	Nama kolom '{}' ambigu; gunakan ejaan yang persis
+Column names	Nama kolom
+Columns	Kolom
+Columns: name, [any name] or "any name". Literals: 12, 1.5, 'text', TRUE, FALSE, NULL.\nOperators: + - * / %  ||  = <> < <= > >=  AND OR NOT  IS [NOT] NULL  [NOT] LIKE/ILIKE  [NOT] IN (...)  BETWEEN a AND b.\nFunctions: upper lower length substr trim ltrim rtrim replace left right round abs coalesce concat if nullif to_number to_text.	Kolom: nama, [nama apa pun] atau "nama apa pun". Literal: 12, 1.5, 'teks', TRUE, FALSE, NULL.\nOperator: + - * / %  ||  = <> < <= > >=  AND OR NOT  IS [NOT] NULL  [NOT] LIKE/ILIKE  [NOT] IN (...)  BETWEEN a AND b.\nFungsi: upper lower length substr trim ltrim rtrim replace left right round abs coalesce concat if nullif to_number to_text.
+Columns: {}	Kolom: {}
+Computed key	Kunci hasil perhitungan
+Copied {} cell(s)	{} sel disalin
+Copied {} cell(s) as {}	{} sel disalin sebagai {}
+Copy	Salin
+Copy as	Salin sebagai
+Copy column name	Salin nama kolom
+Copy column values	Salin nilai kolom
+Copy text	Salin teks
+Count	Jumlah
+Custom (s)	Kustom (dtk)
+Data grid, {} rows, {} columns	Grid data, {} baris, {} kolom
+Date pattern	Pola tanggal
+Decimals	Desimal
+Define virtual key…	Tentukan kunci virtual…
+Delete row(s)	Hapus baris
+Delete selected rows	Hapus baris terpilih
+Delimiter	Pemisah
+Discard	Buang
+Discard pending changes	Buang perubahan tertunda
+Discard {} pending change(s)?	Buang {} perubahan tertunda?
+Distinct	Unik
+Division by zero	Pembagian dengan nol
+Double-click to edit	Klik ganda untuk mengubah
+Duplicate row(s)	Duplikat baris
+Duplicate selected rows	Duplikat baris terpilih
+Edit cell	Ubah sel
+Edit virtual column	Ubah kolom virtual
+Edit virtual column…	Ubah kolom virtual…
+Editable: {}	Dapat diubah: {}
+Editing is disabled	Pengubahan dinonaktifkan
+Empty column name	Nama kolom kosong
+Enter to retry, Esc to cancel	Enter untuk mencoba lagi, Esc untuk membatalkan
+Expected AND in BETWEEN but found '{}'	Diharapkan AND dalam BETWEEN tetapi ditemukan '{}'
+Expected NULL after IS but found '{}'	Diharapkan NULL setelah IS tetapi ditemukan '{}'
+Expected {} but found '{}'	Diharapkan {} tetapi ditemukan '{}'
+Export selection…	Ekspor pilihan…
+Export…	Ekspor…
+Expression	Ekspresi
+Expression help	Bantuan ekspresi
+Expression is empty	Ekspresi kosong
+Expression is nested too deeply	Ekspresi bersarang terlalu dalam
+Expression is valid	Ekspresi valid
+Fetch all rows	Ambil semua baris
+Fetch next page	Ambil halaman berikutnya
+Fetching…	Mengambil…
+Filter by value	Filter berdasarkan nilai
+Filter columns	Saring kolom
+Filter the grid to this group	Filter grid ke kelompok ini
+Filter, e.g. amount > 100 and city = 'Bandung'	Filter, mis. amount > 100 and city = 'Bandung'
+First row	Baris pertama
+Flags	Penanda
+Format	Format
+Formatted values	Nilai terformat
+Generate SQL	Buat SQL
+Generated SQL ({} rows)	SQL yang dibuat ({} baris)
+Geometry type: {}	Jenis geometri: {}
+Grid	Grid
+Group by	Kelompokkan menurut
+Grouping	Pengelompokan
+Grouping…	Mengelompokkan…
+HTML table	Tabel HTML
+Hex	Heks
+Hide column	Sembunyikan kolom
+History	Riwayat
+Image	Gambar
+Internal error: logical operator	Kesalahan internal: operator logika
+Interval	Interval
+Invalid JSON: {}	JSON tidak valid: {}
+Invalid XML at byte {}: {}	XML tidak valid pada byte {}: {}
+Invalid XML: unclosed element	XML tidak valid: elemen tidak ditutup
+Invalid number '{}'	Angka tidak valid '{}'
+Invalid value for '{}': {}	Nilai tidak valid untuk '{}': {}
+JSON	JSON
+JSON tree	Pohon JSON
+Keep	Pertahankan
+Kind	Jenis
+Last row	Baris terakhir
+Live	Langsung
+Loading related rows…	Memuat baris terkait…
+Markdown table	Tabel Markdown
+Max	Maks
+Max length	Panjang maks
+Measure	Ukuran
+Median	Median
+Metadata	Metadata
+Min	Min
+Min length	Panjang min
+More than {} groups; the rest were dropped	Lebih dari {} kelompok; sisanya diabaikan
+Multiple tables	Beberapa tabel
+NULL	NULL
+NULL as	NULL sebagai
+NULLs	NULL
+Name	Nama
+Navigate to {}	Buka {}
+Never	Tidak pernah
+Next row	Baris berikutnya
+No columns	Tidak ada kolom
+No foreign key relations are known for this result	Tidak ada relasi kunci asing yang diketahui untuk hasil ini
+No matching values	Tidak ada nilai yang cocok
+No rows	Tidak ada baris
+No source table	Tidak ada tabel sumber
+No such column	Kolom tidak ada
+No such row	Baris tidak ada
+No unique key	Tidak ada kunci unik
+Not a supported image (PNG, JPEG, GIF, BMP, WebP)	Bukan gambar yang didukung (PNG, JPEG, GIF, BMP, WebP)
+Nothing is selected	Tidak ada yang dipilih
+Nothing to undo	Tidak ada yang dapat diurungkan
+Nullable	Boleh NULL
+Numbers	Angka
+ORDER BY	ORDER BY
+Off	Mati
+Only the first {} cells were analysed	Hanya {} sel pertama yang dianalisis
+Open	Buka
+Operator {} needs numbers, got '{}'	Operator {} memerlukan angka, didapat '{}'
+Options	Opsi
+Order by	Urutkan menurut
+Paste	Tempel
+Pasted {} cell(s)	{} sel ditempel
+Preview	Pratinjau
+Previous row	Baris sebelumnya
+Quote	Tanda kutip
+Read-only	Hanya-baca
+Read-only connection	Koneksi hanya-baca
+Read-only: a key column is computed by an expression and cannot identify rows.	Hanya-baca: kolom kunci dihitung dari ekspresi dan tidak dapat mengidentifikasi baris.
+Read-only: the connection is read-only.	Hanya-baca: koneksi bersifat hanya-baca.
+Read-only: the result columns cannot be traced back to a table (custom query or expressions).	Hanya-baca: kolom hasil tidak dapat ditelusuri ke sebuah tabel (query kustom atau ekspresi).
+Read-only: the result combines columns of several tables (join).	Hanya-baca: hasil menggabungkan kolom dari beberapa tabel (join).
+Read-only: the table has no primary or unique key in the result. Define a virtual key to enable editing.	Hanya-baca: tabel tidak memiliki primary key atau kunci unik di dalam hasil. Tentukan kunci virtual agar dapat mengubah data.
+Record	Rekaman
+References	Referensi
+Refresh	Muat ulang
+Refresh (Cmd+R)	Muat ulang (Cmd+R)
+Remove virtual column	Hapus kolom virtual
+Reset format	Atur ulang format
+Revert	Kembalikan
+Row numbers	Nomor baris
+Row {} of {}	Baris {} dari {}
+Row {}: {}	Baris {}: {}
+SQL INSERT	SQL INSERT
+SQL copied to the clipboard	SQL disalin ke papan klip
+SRID {}	SRID {}
+Save	Simpan
+Save to file…	Simpan ke berkas…
+Save {} pending change(s) (Cmd+S)	Simpan {} perubahan tertunda (Cmd+S)
+Search…	Cari…
+Select a cell to paste into	Pilih sel tujuan penempelan
+Select a cell to see its value	Pilih sel untuk melihat nilainya
+Select a row to see related rows	Pilih baris untuk melihat baris terkait
+Select all	Pilih semua
+Select cells to calculate statistics	Pilih sel untuk menghitung statistik
+Selected rows only	Hanya baris terpilih
+Server	Server
+Set	Atur
+Set DEFAULT	Atur ke DEFAULT
+Set NULL	Atur ke NULL
+Show all	Tampilkan semua
+Show column	Tampilkan kolom
+Showing the first {} of {} rows	Menampilkan {} baris pertama dari {}
+Showing the first {} rows	Menampilkan {} baris pertama
+Size	Ukuran
+Sort and filter fetched rows in DBiji (client) or re-run the query with WHERE / ORDER BY (server)	Urutkan dan filter baris yang diambil di DBiji (klien) atau jalankan ulang query dengan WHERE / ORDER BY (server)
+Sorting / filtering…	Mengurutkan / memfilter…
+Sorting/filtering failed	Pengurutan/pemfilteran gagal
+Sorting/filtering failed after {} ms	Pengurutan/pemfilteran gagal setelah {} md
+Sorting/filtering was cancelled	Pengurutan/pemfilteran dibatalkan
+Source	Sumber
+Spatial view	Tampilan spasial
+Sum	Total
+Tab separated (TSV)	Dipisah tab (TSV)
+Table	Tabel
+Text	Teks
+The foreign key value is NULL	Nilai kunci asing adalah NULL
+The key is NULL; there are no related rows	Kunci bernilai NULL; tidak ada baris terkait
+The row is marked for deletion	Baris ditandai untuk dihapus
+The selection has {} cells; at most {} can be copied at once. Use Export instead.	Pilihan berisi {} sel; paling banyak {} sel dapat disalin sekaligus. Gunakan Ekspor.
+Thousands separator	Pemisah ribuan
+Timestamp pattern	Pola stempel waktu
+Type	Tipe
+Undo	Urungkan
+Unexpected '!' (use NOT or !=)	'!' tidak terduga (gunakan NOT atau !=)
+Unexpected '.'	'.' tidak terduga
+Unexpected '{}'	'{}' tidak terduga
+Unexpected '{}' after the end of the expression	'{}' tidak terduga setelah akhir ekspresi
+Unexpected '|' (use || to concatenate)	'|' tidak terduga (gunakan || untuk menggabungkan)
+Unexpected NOT	NOT tidak terduga
+Unexpected character '{}'	Karakter tidak terduga '{}'
+Unexpected end of expression	Akhir ekspresi tidak terduga
+Unknown column '{}'	Kolom tidak dikenal '{}'
+Unknown column '{}' (did you mean '{}'?)	Kolom tidak dikenal '{}' (mungkin maksud Anda '{}'?)
+Unknown column '{}' in ORDER BY	Kolom tidak dikenal '{}' dalam ORDER BY
+Unknown function '{}'	Fungsi tidak dikenal '{}'
+Unknown function '{}' (did you mean '{}'?)	Fungsi tidak dikenal '{}' (mungkin maksud Anda '{}'?)
+Unterminated [column name]	[nama kolom] tidak ditutup
+Unterminated quoted column name	Nama kolom berkutip tidak ditutup
+Unterminated string literal	Literal string tidak ditutup
+Value	Nilai
+Value for '{}' is {} characters long; the column allows at most {}	Nilai untuk '{}' sepanjang {} karakter; kolom hanya mengizinkan paling banyak {}
+Value panel	Panel nilai
+View value	Lihat nilai
+Virtual column	Kolom virtual
+Virtual columns	Kolom virtual
+Virtual columns are computed and cannot be edited	Kolom virtual dihitung otomatis dan tidak dapat diubah
+WHERE condition sent to the database	Kondisi WHERE yang dikirim ke database
+WHERE condition, e.g. status = 'open'	Kondisi WHERE, mis. status = 'open'
+When needed	Bila perlu
+Wrap	Bungkus baris
+XML	XML
+[DEFAULT]	[DEFAULT]
+[NULL]	[NULL]
+abs() expects a number	abs() memerlukan angka
+at least {}	paling sedikit {}
+auto increment	nomor otomatis
+auto refresh paused	muat ulang otomatis dijeda
+column [DESC], …	kolom [DESC], …
+computed	dihitung
+counting…	menghitung…
+end of expression	akhir ekspresi
+fetching…	mengambil…
+foreign key	kunci asing
+key	kunci
+marked for deletion	ditandai untuk dihapus
+modified	diubah
+more available	masih ada data
+new row	baris baru
+no	tidak
+round() expects a number	round() memerlukan angka
+row {}	baris {}
+substr() length must not be negative	panjang substr() tidak boleh negatif
+virtual	virtual
+yes	ya
+{} at position {}	{} pada posisi {}
+{} chars	{} karakter
+{} contains '{}'	{} mengandung '{}'
+{} elements	{} elemen
+{} groups in {} rows	{} kelompok dalam {} baris
+{} min	{} mnt
+{} newly fetched rows are not in the client sort/filter yet	{} baris yang baru diambil belum masuk pengurutan/filter klien
+{} of {} values	{} dari {} nilai
+{} row(s) marked for deletion	{} baris ditandai untuk dihapus
+{} rows	{} baris
+{} s	{} dtk
+{} to {}	{} sampai {}
+{} updated, {} inserted, {} deleted	{} diubah, {} ditambahkan, {} dihapus
+{} where {}	{} dengan {}
+{}() expects an integer argument	{}() memerlukan argumen bilangan bulat
+{}() takes {} argument(s), got {}	{}() menerima {} argumen, didapat {}
+… {} more bytes	… {} byte lagi

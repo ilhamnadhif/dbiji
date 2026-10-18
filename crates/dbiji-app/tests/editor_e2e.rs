@@ -41,7 +41,9 @@ mod tempdir {
 }
 
 fn servers() -> Vec<(&'static str, String)> {
-    let mut out = Vec::new();
+    // SQLite is embedded: always tested, on a throw-away file.
+    let file = std::env::temp_dir().join(format!("dbiji-editor-e2e-{}.db", uuid::Uuid::new_v4().simple()));
+    let mut out = vec![("sqlite", format!("sqlite://{}", file.display()))];
     for (name, var) in [("postgres", "DBIJI_TEST_PG"), ("mysql", "DBIJI_TEST_MYSQL"), ("mariadb", "DBIJI_TEST_MARIADB")] {
         if let Ok(url) = std::env::var(var) {
             if !url.trim().is_empty() {
@@ -212,6 +214,9 @@ fn editor_executes_statements_scripts_parameters_and_explain() {
         h.action(&mut tab, Action::FormatSql);
         assert!(tab.text().contains("SELECT"), "{name}: formatted: {}", tab.text());
         h.cm.disconnect_all(&h.backend);
+        if let Some(p) = url.strip_prefix("sqlite://") {
+            let _ = std::fs::remove_file(p);
+        }
     }
 }
 
@@ -226,5 +231,8 @@ fn read_only_connections_block_writes() {
         h.frame(&mut tab);
         assert!(!tab.is_running(), "{name}: must not run");
         assert!(tab.output_text().contains("read-only"), "{name}: {}", tab.output_text());
+        if let Some(p) = url.strip_prefix("sqlite://") {
+            let _ = std::fs::remove_file(p);
+        }
     }
 }

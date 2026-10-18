@@ -248,11 +248,10 @@ impl TableDef {
     /// Best key for identifying rows: primary key, else the first unique key whose
     /// columns are all NOT NULL, else the first unique key.
     pub fn row_key(&self) -> Option<&KeyDef> {
-        if let Some(pk) = &self.primary_key {
-            if !pk.columns.is_empty() {
+        if let Some(pk) = &self.primary_key
+            && !pk.columns.is_empty() {
                 return Some(pk);
             }
-        }
         self.unique_keys
             .iter()
             .find(|k| k.columns.iter().all(|c| self.column(c).is_some_and(|c| !c.nullable)))

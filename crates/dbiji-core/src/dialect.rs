@@ -490,11 +490,10 @@ pub mod ansi {
     /// Body lines of `CREATE TABLE (...)`: columns, PK, uniques, checks, optionally FKs.
     pub fn create_table_body(q: &Quoter<'_>, t: &TableDef, include_fks: bool) -> Vec<String> {
         let mut lines: Vec<String> = t.columns.iter().map(|c| column_definition(q, c)).collect();
-        if let Some(pk) = &t.primary_key {
-            if !pk.columns.is_empty() {
+        if let Some(pk) = &t.primary_key
+            && !pk.columns.is_empty() {
                 lines.push(key_clause(q, "PRIMARY KEY", pk));
             }
-        }
         for u in &t.unique_keys {
             lines.push(key_clause(q, "UNIQUE", u));
         }
@@ -782,11 +781,10 @@ pub mod ansi {
         fn alter_sequence(&self, from: &SequenceDef, to: &SequenceDef) -> Vec<String> {
             let name = self.q().qualified(to.schema.as_deref(), &to.name);
             let mut parts = Vec::new();
-            if from.increment != to.increment {
-                if let Some(v) = to.increment {
+            if from.increment != to.increment
+                && let Some(v) = to.increment {
                     parts.push(format!("INCREMENT BY {v}"));
                 }
-            }
             if from.min_value != to.min_value {
                 parts.push(to.min_value.map(|v| format!("MINVALUE {v}")).unwrap_or("NO MINVALUE".into()));
             }

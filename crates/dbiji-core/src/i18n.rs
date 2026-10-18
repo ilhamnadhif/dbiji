@@ -141,8 +141,8 @@ pub fn format_placeholders(template: &str, args: &[&dyn Display]) -> String {
     let bytes = template.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'{' {
-            if let Some(close) = template[i + 1..].find('}') {
+        if bytes[i] == b'{'
+            && let Some(close) = template[i + 1..].find('}') {
                 let inner = &template[i + 1..i + 1 + close];
                 if inner.is_empty() {
                     if let Some(a) = args.get(next) {
@@ -160,7 +160,6 @@ pub fn format_placeholders(template: &str, args: &[&dyn Display]) -> String {
                     continue;
                 }
             }
-        }
         let ch = template[i..].chars().next().expect("char boundary");
         out.push(ch);
         i += ch.len_utf8();

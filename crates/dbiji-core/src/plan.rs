@@ -61,12 +61,11 @@ impl PlanNode {
         if let Some(r) = &self.relation {
             s.push_str(" on ");
             s.push_str(r);
-            if let Some(a) = &self.alias {
-                if a != r {
+            if let Some(a) = &self.alias
+                && a != r {
                     s.push(' ');
                     s.push_str(a);
                 }
-            }
         }
         if let Some(i) = &self.index {
             s.push_str(&format!(" ({i})"));

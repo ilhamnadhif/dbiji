@@ -230,11 +230,10 @@ impl ObjectRef {
         }
         parts.push(&self.name);
         let mut s = parts.join(".");
-        if let Some(sig) = &self.signature {
-            if sig.starts_with('(') {
+        if let Some(sig) = &self.signature
+            && sig.starts_with('(') {
                 s.push_str(sig);
             }
-        }
         s
     }
 }

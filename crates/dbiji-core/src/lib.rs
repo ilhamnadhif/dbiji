@@ -5,6 +5,11 @@
 //! Every database driver implements [`driver::Driver`] and [`driver::Session`];
 //! the UI and all tooling crates talk to databases only through these traits.
 
+// `DbError` carries the full server diagnostics (code, detail, hint,
+// position, context) and is returned by value everywhere; boxing it would
+// cost an allocation per error for no measurable gain.
+#![allow(clippy::result_large_err)]
+
 pub mod admin;
 pub mod config;
 pub mod ddl;

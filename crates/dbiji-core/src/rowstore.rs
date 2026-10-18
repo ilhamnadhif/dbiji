@@ -144,7 +144,7 @@ impl RowStore {
         let need_new = self
             .pages
             .last()
-            .is_none_or(|p| p.rows.as_ref().map_or(true, |r| r.len() >= self.page_rows));
+            .is_none_or(|p| p.rows.as_ref().is_none_or(|r| r.len() >= self.page_rows));
         if need_new {
             self.tick += 1;
             self.pages.push(Page {

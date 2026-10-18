@@ -301,7 +301,7 @@ fn truncate_chars(s: &str, max: usize) -> Cow<'_, str> {
 fn time_text(t: &NaiveTime, fractional: bool) -> String {
     if fractional && t.nanosecond() != 0 {
         let micros = t.nanosecond() / 1000;
-        if t.nanosecond() % 1000 == 0 {
+        if t.nanosecond().is_multiple_of(1000) {
             format!("{}.{:06}", t.format("%H:%M:%S"), micros)
                 .trim_end_matches('0')
                 .to_string()

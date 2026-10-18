@@ -178,6 +178,9 @@ impl DbijiApp {
                 self.open_tab(Box::new(crate::tabs::settings::SettingsTab::default()));
             }
             AppCommand::SettingsChanged => self.apply_settings(ctx),
+            AppCommand::OpenErDiagram { connection, schema, tables } => {
+                self.open_tab(Box::new(crate::tabs::er::ErTab::new(connection, schema, tables)));
+            }
             AppCommand::OpenHistory => {
                 self.open_tab(Box::new(crate::tabs::history::HistoryTab::default()));
             }

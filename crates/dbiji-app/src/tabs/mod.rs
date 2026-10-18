@@ -1,6 +1,7 @@
 //! Central tab area: SQL editors, object editors, diagrams, admin views ...
 //! Tabs live in an `egui_dock` tree so they can be moved, split and detached.
 
+pub mod er;
 pub mod history;
 pub mod object;
 pub mod settings;

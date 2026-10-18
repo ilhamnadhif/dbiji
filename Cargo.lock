@@ -1544,6 +1544,7 @@ dependencies = [
  "dbiji-config",
  "dbiji-core",
  "dbiji-net",
+ "dbiji-visual",
  "eframe",
  "egui",
  "egui-phosphor",

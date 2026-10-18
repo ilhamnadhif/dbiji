@@ -15,29 +15,33 @@ use std::path::Path;
 /// Environment variable carrying the password.
 pub const PASSWORD_ENV: &str = "MYSQL_PWD";
 
-fn tool(flavor: Flavor, custom: Option<&str>, mysql: &str, mariadb: &str) -> String {
+/// The program to run and the flavor of its command line options.
+fn tool(flavor: Flavor, custom: Option<&str>, mysql: &str, mariadb: &str) -> (String, Flavor) {
     tool_with(flavor, custom, mysql, mariadb, on_path)
 }
 
 /// MariaDB prefers its own `mariadb-*` tools and falls back to the MySQL
-/// names when only those are installed (they work with MariaDB servers).
+/// ones when only those are installed; they then get MySQL options.
 fn tool_with(
     flavor: Flavor,
     custom: Option<&str>,
     mysql: &str,
     mariadb: &str,
     installed: impl Fn(&str) -> bool,
-) -> String {
+) -> (String, Flavor) {
     match custom.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(p) => p.to_string(),
+        Some(p) => (p.to_string(), flavor),
         None => match flavor {
-            Flavor::MySql => mysql.to_string(),
-            Flavor::MariaDb if !installed(mariadb) && installed(mysql) => mysql.to_string(),
-            Flavor::MariaDb => mariadb.to_string(),
+            Flavor::MySql => (mysql.to_string(), Flavor::MySql),
+            Flavor::MariaDb if !installed(mariadb) && installed(mysql) => {
+                (mysql.to_string(), Flavor::MySql)
+            }
+            Flavor::MariaDb => (mariadb.to_string(), Flavor::MariaDb),
         },
     }
 }
 
+#[cfg(not(test))]
 fn on_path(program: &str) -> bool {
     std::env::var_os("PATH").is_some_and(|paths| {
         std::env::split_paths(&paths).any(|dir| {
@@ -45,6 +49,12 @@ fn on_path(program: &str) -> bool {
             p.is_file() || (cfg!(windows) && p.with_extension("exe").is_file())
         })
     })
+}
+
+/// Unit tests do not depend on the tools installed on the machine.
+#[cfg(test)]
+fn on_path(_program: &str) -> bool {
+    true
 }
 
 /// Connection options shared by all tools.
@@ -128,13 +138,18 @@ pub fn backup_command(
     if opts.output.as_os_str().is_empty() {
         return Err(DbError::config("No output file given for the backup"));
     }
-    let program = tool(
+    let (program, options) = tool(
         flavor,
         opts.tool_path.as_deref(),
         "mysqldump",
         "mariadb-dump",
     );
-    let mut args = connection_args(flavor, params);
+    let mut args = connection_args(options, params);
+    if flavor == Flavor::MariaDb && options == Flavor::MySql {
+        // MySQL's mysqldump on a MariaDB server: no histograms, no MySQL GTIDs.
+        args.push("--column-statistics=0".into());
+        args.push("--set-gtid-purged=OFF".into());
+    }
     if opts.single_transaction {
         args.push("--single-transaction".into());
     }
@@ -216,8 +231,8 @@ pub fn restore_command(
     if opts.input.as_os_str().is_empty() {
         return Err(DbError::config("No input file given for the restore"));
     }
-    let program = tool(flavor, opts.tool_path.as_deref(), "mysql", "mariadb");
-    let mut args = connection_args(flavor, params);
+    let (program, options) = tool(flavor, opts.tool_path.as_deref(), "mysql", "mariadb");
+    let mut args = connection_args(options, params);
     if !opts.exit_on_error {
         args.push("--force".into());
     }
@@ -246,8 +261,8 @@ pub fn client_command(
     params: &ConnectParams,
     script: &Path,
 ) -> DbResult<CommandSpec> {
-    let program = tool(flavor, params.property("client_path"), "mysql", "mariadb");
-    let mut args = connection_args(flavor, params);
+    let (program, options) = tool(flavor, params.property("client_path"), "mysql", "mariadb");
+    let mut args = connection_args(options, params);
     args.push("--table".into());
     args.push("--show-warnings".into());
     if let Some(db) = params.database.clone().filter(|d| !d.is_empty()) {
@@ -432,40 +447,40 @@ mod tests {
 
     #[test]
     fn mariadb_falls_back_to_mysql_tools() {
+        let pick = |custom, installed: &dyn Fn(&str) -> bool| {
+            tool_with(
+                Flavor::MariaDb,
+                custom,
+                "mysqldump",
+                "mariadb-dump",
+                installed,
+            )
+        };
         let only_mysql = |p: &str| p == "mysqldump";
+        assert_eq!(pick(None, &only_mysql), ("mysqldump".into(), Flavor::MySql));
         assert_eq!(
-            tool_with(
-                Flavor::MariaDb,
-                None,
-                "mysqldump",
-                "mariadb-dump",
-                only_mysql
-            ),
-            "mysqldump"
+            pick(None, &|_| true),
+            ("mariadb-dump".into(), Flavor::MariaDb)
         );
         assert_eq!(
-            tool_with(Flavor::MariaDb, None, "mysqldump", "mariadb-dump", |_| true),
-            "mariadb-dump"
+            pick(None, &|_| false),
+            ("mariadb-dump".into(), Flavor::MariaDb)
         );
         assert_eq!(
-            tool_with(Flavor::MariaDb, None, "mysqldump", "mariadb-dump", |_| {
-                false
-            }),
-            "mariadb-dump"
-        );
-        assert_eq!(
-            tool_with(
-                Flavor::MariaDb,
-                Some("/x/dump"),
-                "mysqldump",
-                "mariadb-dump",
-                only_mysql
-            ),
-            "/x/dump"
+            pick(Some("/x/dump"), &only_mysql),
+            ("/x/dump".into(), Flavor::MariaDb)
         );
         assert_eq!(
             tool_with(Flavor::MySql, None, "mysqldump", "mariadb-dump", |_| false),
-            "mysqldump"
+            ("mysqldump".into(), Flavor::MySql)
+        );
+        // MySQL options and MariaDB compatibility switches for the fallback.
+        let mut p = params();
+        p.ssl.mode = SslMode::Prefer;
+        let args = connection_args(Flavor::MySql, &p);
+        assert!(
+            args.contains(&"--ssl-mode=PREFERRED".to_string()),
+            "{args:?}"
         );
     }
 }

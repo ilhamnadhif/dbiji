@@ -936,7 +936,7 @@ impl eframe::App for DbijiApp {
         }
         self.shortcuts(&ctx);
         // Files dropped on the window: scripts open in editors, database files as connections.
-        let dropped: Vec<std::path::PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().filter_map(|f| f.path.clone()).collect());
+        let dropped: Vec<std::path::PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).filter(|p| !p.as_os_str().is_empty()).collect());
         for path in dropped {
             self.open_path(&path, false);
         }

@@ -28,7 +28,9 @@ chrono.workspace = true
 uuid.workspace = true
 hex.workspace = true
 tracing.workspace = true
+parking_lot.workspace = true
 bytes = "1"
+socket2 = { version = "0.6", features = ["all"] }
 
 [dev-dependencies]
 tokio = { workspace = true }

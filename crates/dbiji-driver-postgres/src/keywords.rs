@@ -1,0 +1,328 @@
+//! PostgreSQL vocabulary: keywords (by category, from `kwlist.h` of
+//! PostgreSQL 17), built-in functions including JSON, array, string,
+//! date/time, aggregate, window and common PostGIS functions, and type names.
+
+/// `RESERVED_KEYWORD`: never usable as identifiers without quotes.
+pub(crate) const RESERVED: &[&str] = &[
+    "ALL", "ANALYSE", "ANALYZE", "AND", "ANY", "ARRAY", "AS", "ASC", "ASYMMETRIC", "BOTH", "CASE", "CAST",
+    "CHECK", "COLLATE", "COLUMN", "CONSTRAINT", "CREATE", "CURRENT_CATALOG", "CURRENT_DATE", "CURRENT_ROLE",
+    "CURRENT_TIME", "CURRENT_TIMESTAMP", "CURRENT_USER", "DEFAULT", "DEFERRABLE", "DESC", "DISTINCT", "DO",
+    "ELSE", "END", "EXCEPT", "FALSE", "FETCH", "FOR", "FOREIGN", "FROM", "GRANT", "GROUP", "HAVING", "IN",
+    "INITIALLY", "INTERSECT", "INTO", "LATERAL", "LEADING", "LIMIT", "LOCALTIME", "LOCALTIMESTAMP", "NOT",
+    "NULL", "OFFSET", "ON", "ONLY", "OR", "ORDER", "PLACING", "PRIMARY", "REFERENCES", "RETURNING", "SELECT",
+    "SESSION_USER", "SOME", "SYMMETRIC", "SYSTEM_USER", "TABLE", "THEN", "TO", "TRAILING", "TRUE", "UNION",
+    "UNIQUE", "USER", "USING", "VARIADIC", "WHEN", "WHERE", "WINDOW", "WITH",
+];
+
+/// `TYPE_FUNC_NAME_KEYWORD`: reserved, but allowed as function or type names.
+pub(crate) const TYPE_FUNC_NAME: &[&str] = &[
+    "AUTHORIZATION", "BINARY", "COLLATION", "CONCURRENTLY", "CROSS", "CURRENT_SCHEMA", "FREEZE", "FULL",
+    "ILIKE", "INNER", "IS", "ISNULL", "JOIN", "LEFT", "LIKE", "NATURAL", "NOTNULL", "OUTER", "OVERLAPS",
+    "RIGHT", "SIMILAR", "TABLESAMPLE", "VERBOSE",
+];
+
+/// `COL_NAME_KEYWORD`: non-reserved, but cannot be function or type names.
+pub(crate) const COL_NAME: &[&str] = &[
+    "BETWEEN", "BIGINT", "BIT", "BOOLEAN", "CHAR", "CHARACTER", "COALESCE", "DEC", "DECIMAL", "EXISTS",
+    "EXTRACT", "FLOAT", "GREATEST", "GROUPING", "INOUT", "INT", "INTEGER", "INTERVAL", "JSON", "JSON_ARRAY",
+    "JSON_ARRAYAGG", "JSON_EXISTS", "JSON_OBJECT", "JSON_OBJECTAGG", "JSON_QUERY", "JSON_SCALAR",
+    "JSON_SERIALIZE", "JSON_TABLE", "JSON_VALUE", "LEAST", "MERGE_ACTION", "NATIONAL", "NCHAR", "NONE",
+    "NORMALIZE", "NULLIF", "NUMERIC", "OUT", "OVERLAY", "POSITION", "PRECISION", "REAL", "ROW", "SETOF",
+    "SMALLINT", "SUBSTRING", "TIME", "TIMESTAMP", "TREAT", "TRIM", "VALUES", "VARCHAR", "XMLATTRIBUTES",
+    "XMLCONCAT", "XMLELEMENT", "XMLEXISTS", "XMLFOREST", "XMLNAMESPACES", "XMLPARSE", "XMLPI", "XMLROOT",
+    "XMLSERIALIZE", "XMLTABLE",
+];
+
+/// `UNRESERVED_KEYWORD` (never quoted; kept for completeness checks).
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) const UNRESERVED: &[&str] = &[
+    "ABORT", "ABSENT", "ABSOLUTE", "ACCESS", "ACTION", "ADD", "ADMIN", "AFTER", "AGGREGATE", "ALSO", "ALTER",
+    "ALWAYS", "ASENSITIVE", "ASSERTION", "ASSIGNMENT", "AT", "ATOMIC", "ATTACH", "ATTRIBUTE", "BACKWARD",
+    "BEFORE", "BEGIN", "BREADTH", "BY", "CACHE", "CALL", "CALLED", "CASCADE", "CASCADED", "CATALOG", "CHAIN",
+    "CHARACTERISTICS", "CHECKPOINT", "CLASS", "CLOSE", "CLUSTER", "COLUMNS", "COMMENT", "COMMENTS", "COMMIT",
+    "COMMITTED", "COMPRESSION", "CONDITIONAL", "CONFIGURATION", "CONFLICT", "CONNECTION", "CONSTRAINTS",
+    "CONTENT", "CONTINUE", "CONVERSION", "COPY", "COST", "CSV", "CUBE", "CURRENT", "CURSOR", "CYCLE", "DATA",
+    "DATABASE", "DAY", "DEALLOCATE", "DECLARE", "DEFAULTS", "DEFERRED", "DEFINER", "DELETE", "DELIMITER",
+    "DELIMITERS", "DEPENDS", "DEPTH", "DETACH", "DICTIONARY", "DISABLE", "DISCARD", "DOCUMENT", "DOMAIN",
+    "DOUBLE", "DROP", "EACH", "EMPTY", "ENABLE", "ENCODING", "ENCRYPTED", "ENUM", "ERROR", "ESCAPE", "EVENT",
+    "EXCLUDE", "EXCLUDING", "EXCLUSIVE", "EXECUTE", "EXPLAIN", "EXPRESSION", "EXTENSION", "EXTERNAL", "FAMILY",
+    "FILTER", "FINALIZE", "FIRST", "FOLLOWING", "FORCE", "FORMAT", "FORWARD", "FUNCTION", "FUNCTIONS",
+    "GENERATED", "GLOBAL", "GRANTED", "GROUPS", "HANDLER", "HEADER", "HOLD", "HOUR", "IDENTITY", "IF",
+    "IMMEDIATE", "IMMUTABLE", "IMPLICIT", "IMPORT", "INCLUDE", "INCLUDING", "INCREMENT", "INDENT", "INDEX",
+    "INDEXES", "INHERIT", "INHERITS", "INLINE", "INPUT", "INSENSITIVE", "INSERT", "INSTEAD", "INVOKER",
+    "ISOLATION", "KEEP", "KEY", "KEYS", "LABEL", "LANGUAGE", "LARGE", "LAST", "LEAKPROOF", "LEVEL", "LISTEN",
+    "LOAD", "LOCAL", "LOCATION", "LOCK", "LOCKED", "LOGGED", "MAPPING", "MATCH", "MATCHED", "MATERIALIZED",
+    "MAXVALUE", "MERGE", "METHOD", "MINUTE", "MINVALUE", "MODE", "MONTH", "MOVE", "NAME", "NAMES", "NESTED",
+    "NEW", "NEXT", "NFC", "NFD", "NFKC", "NFKD", "NO", "NORMALIZED", "NOTHING", "NOTIFY", "NOWAIT", "NULLS",
+    "OBJECT", "OF", "OFF", "OIDS", "OLD", "OMIT", "OPERATOR", "OPTION", "OPTIONS", "ORDINALITY", "OTHERS",
+    "OVER", "OVERRIDING", "OWNED", "OWNER", "PARALLEL", "PARAMETER", "PARSER", "PARTIAL", "PARTITION",
+    "PASSING", "PASSWORD", "PATH", "PERIOD", "PLAN", "PLANS", "POLICY", "PRECEDING", "PREPARE", "PREPARED",
+    "PRESERVE", "PRIOR", "PRIVILEGES", "PROCEDURAL", "PROCEDURE", "PROCEDURES", "PROGRAM", "PUBLICATION",
+    "QUOTE", "QUOTES", "RANGE", "READ", "REASSIGN", "RECURSIVE", "REF", "REFERENCING", "REFRESH", "REINDEX",
+    "RELATIVE", "RELEASE", "RENAME", "REPEATABLE", "REPLACE", "REPLICA", "RESET", "RESTART", "RESTRICT",
+    "RETURN", "RETURNS", "REVOKE", "ROLE", "ROLLBACK", "ROLLUP", "ROUTINE", "ROUTINES", "ROWS", "RULE",
+    "SAVEPOINT", "SCALAR", "SCHEMA", "SCHEMAS", "SCROLL", "SEARCH", "SECOND", "SECURITY", "SEQUENCE",
+    "SEQUENCES", "SERIALIZABLE", "SERVER", "SESSION", "SET", "SETS", "SHARE", "SHOW", "SIMPLE", "SKIP",
+    "SNAPSHOT", "SOURCE", "SQL", "STABLE", "STANDALONE", "START", "STATEMENT", "STATISTICS", "STDIN",
+    "STDOUT", "STORAGE", "STORED", "STRICT", "STRING", "STRIP", "SUBSCRIPTION", "SUPPORT", "SYSID", "SYSTEM",
+    "TABLES", "TABLESPACE", "TARGET", "TEMP", "TEMPLATE", "TEMPORARY", "TEXT", "TIES", "TRANSACTION",
+    "TRANSFORM", "TRIGGER", "TRUNCATE", "TRUSTED", "TYPE", "TYPES", "UESCAPE", "UNBOUNDED", "UNCOMMITTED",
+    "UNCONDITIONAL", "UNENCRYPTED", "UNKNOWN", "UNLISTEN", "UNLOGGED", "UNTIL", "UPDATE", "VACUUM", "VALID",
+    "VALIDATE", "VALIDATOR", "VALUE", "VERSION", "VIEW", "VIEWS", "VIRTUAL", "VOLATILE", "WHITESPACE",
+    "WITHIN", "WITHOUT", "WORK", "WRAPPER", "WRITE", "XML", "YEAR", "YES", "ZONE",
+];
+
+/// Every keyword (for highlighting and completion).
+pub(crate) const ALL_KEYWORDS: &[&str] = &[
+    // reserved
+    "ALL", "ANALYSE", "ANALYZE", "AND", "ANY", "ARRAY", "AS", "ASC", "ASYMMETRIC", "BOTH", "CASE", "CAST",
+    "CHECK", "COLLATE", "COLUMN", "CONSTRAINT", "CREATE", "CURRENT_CATALOG", "CURRENT_DATE", "CURRENT_ROLE",
+    "CURRENT_TIME", "CURRENT_TIMESTAMP", "CURRENT_USER", "DEFAULT", "DEFERRABLE", "DESC", "DISTINCT", "DO",
+    "ELSE", "END", "EXCEPT", "FALSE", "FETCH", "FOR", "FOREIGN", "FROM", "GRANT", "GROUP", "HAVING", "IN",
+    "INITIALLY", "INTERSECT", "INTO", "LATERAL", "LEADING", "LIMIT", "LOCALTIME", "LOCALTIMESTAMP", "NOT",
+    "NULL", "OFFSET", "ON", "ONLY", "OR", "ORDER", "PLACING", "PRIMARY", "REFERENCES", "RETURNING", "SELECT",
+    "SESSION_USER", "SOME", "SYMMETRIC", "SYSTEM_USER", "TABLE", "THEN", "TO", "TRAILING", "TRUE", "UNION",
+    "UNIQUE", "USER", "USING", "VARIADIC", "WHEN", "WHERE", "WINDOW", "WITH",
+    // type / function names
+    "AUTHORIZATION", "BINARY", "COLLATION", "CONCURRENTLY", "CROSS", "CURRENT_SCHEMA", "FREEZE", "FULL",
+    "ILIKE", "INNER", "IS", "ISNULL", "JOIN", "LEFT", "LIKE", "NATURAL", "NOTNULL", "OUTER", "OVERLAPS",
+    "RIGHT", "SIMILAR", "TABLESAMPLE", "VERBOSE",
+    // column names
+    "BETWEEN", "BIGINT", "BIT", "BOOLEAN", "CHAR", "CHARACTER", "COALESCE", "DEC", "DECIMAL", "EXISTS",
+    "EXTRACT", "FLOAT", "GREATEST", "GROUPING", "INOUT", "INT", "INTEGER", "INTERVAL", "JSON", "JSON_ARRAY",
+    "JSON_ARRAYAGG", "JSON_EXISTS", "JSON_OBJECT", "JSON_OBJECTAGG", "JSON_QUERY", "JSON_SCALAR",
+    "JSON_SERIALIZE", "JSON_TABLE", "JSON_VALUE", "LEAST", "MERGE_ACTION", "NATIONAL", "NCHAR", "NONE",
+    "NORMALIZE", "NULLIF", "NUMERIC", "OUT", "OVERLAY", "POSITION", "PRECISION", "REAL", "ROW", "SETOF",
+    "SMALLINT", "SUBSTRING", "TIME", "TIMESTAMP", "TREAT", "TRIM", "VALUES", "VARCHAR", "XMLATTRIBUTES",
+    "XMLCONCAT", "XMLELEMENT", "XMLEXISTS", "XMLFOREST", "XMLNAMESPACES", "XMLPARSE", "XMLPI", "XMLROOT",
+    "XMLSERIALIZE", "XMLTABLE",
+    // unreserved
+    "ABORT", "ABSENT", "ABSOLUTE", "ACCESS", "ACTION", "ADD", "ADMIN", "AFTER", "AGGREGATE", "ALSO", "ALTER",
+    "ALWAYS", "ASENSITIVE", "ASSERTION", "ASSIGNMENT", "AT", "ATOMIC", "ATTACH", "ATTRIBUTE", "BACKWARD",
+    "BEFORE", "BEGIN", "BREADTH", "BY", "CACHE", "CALL", "CALLED", "CASCADE", "CASCADED", "CATALOG", "CHAIN",
+    "CHARACTERISTICS", "CHECKPOINT", "CLASS", "CLOSE", "CLUSTER", "COLUMNS", "COMMENT", "COMMENTS", "COMMIT",
+    "COMMITTED", "COMPRESSION", "CONDITIONAL", "CONFIGURATION", "CONFLICT", "CONNECTION", "CONSTRAINTS",
+    "CONTENT", "CONTINUE", "CONVERSION", "COPY", "COST", "CSV", "CUBE", "CURRENT", "CURSOR", "CYCLE", "DATA",
+    "DATABASE", "DAY", "DEALLOCATE", "DECLARE", "DEFAULTS", "DEFERRED", "DEFINER", "DELETE", "DELIMITER",
+    "DELIMITERS", "DEPENDS", "DEPTH", "DETACH", "DICTIONARY", "DISABLE", "DISCARD", "DOCUMENT", "DOMAIN",
+    "DOUBLE", "DROP", "EACH", "EMPTY", "ENABLE", "ENCODING", "ENCRYPTED", "ENUM", "ERROR", "ESCAPE", "EVENT",
+    "EXCLUDE", "EXCLUDING", "EXCLUSIVE", "EXECUTE", "EXPLAIN", "EXPRESSION", "EXTENSION", "EXTERNAL", "FAMILY",
+    "FILTER", "FINALIZE", "FIRST", "FOLLOWING", "FORCE", "FORMAT", "FORWARD", "FUNCTION", "FUNCTIONS",
+    "GENERATED", "GLOBAL", "GRANTED", "GROUPS", "HANDLER", "HEADER", "HOLD", "HOUR", "IDENTITY", "IF",
+    "IMMEDIATE", "IMMUTABLE", "IMPLICIT", "IMPORT", "INCLUDE", "INCLUDING", "INCREMENT", "INDENT", "INDEX",
+    "INDEXES", "INHERIT", "INHERITS", "INLINE", "INPUT", "INSENSITIVE", "INSERT", "INSTEAD", "INVOKER",
+    "ISOLATION", "KEEP", "KEY", "KEYS", "LABEL", "LANGUAGE", "LARGE", "LAST", "LEAKPROOF", "LEVEL", "LISTEN",
+    "LOAD", "LOCAL", "LOCATION", "LOCK", "LOCKED", "LOGGED", "MAPPING", "MATCH", "MATCHED", "MATERIALIZED",
+    "MAXVALUE", "MERGE", "METHOD", "MINUTE", "MINVALUE", "MODE", "MONTH", "MOVE", "NAME", "NAMES", "NESTED",
+    "NEW", "NEXT", "NFC", "NFD", "NFKC", "NFKD", "NO", "NORMALIZED", "NOTHING", "NOTIFY", "NOWAIT", "NULLS",
+    "OBJECT", "OF", "OFF", "OIDS", "OLD", "OMIT", "OPERATOR", "OPTION", "OPTIONS", "ORDINALITY", "OTHERS",
+    "OVER", "OVERRIDING", "OWNED", "OWNER", "PARALLEL", "PARAMETER", "PARSER", "PARTIAL", "PARTITION",
+    "PASSING", "PASSWORD", "PATH", "PERIOD", "PLAN", "PLANS", "POLICY", "PRECEDING", "PREPARE", "PREPARED",
+    "PRESERVE", "PRIOR", "PRIVILEGES", "PROCEDURAL", "PROCEDURE", "PROCEDURES", "PROGRAM", "PUBLICATION",
+    "QUOTE", "QUOTES", "RANGE", "READ", "REASSIGN", "RECURSIVE", "REF", "REFERENCING", "REFRESH", "REINDEX",
+    "RELATIVE", "RELEASE", "RENAME", "REPEATABLE", "REPLACE", "REPLICA", "RESET", "RESTART", "RESTRICT",
+    "RETURN", "RETURNS", "REVOKE", "ROLE", "ROLLBACK", "ROLLUP", "ROUTINE", "ROUTINES", "ROWS", "RULE",
+    "SAVEPOINT", "SCALAR", "SCHEMA", "SCHEMAS", "SCROLL", "SEARCH", "SECOND", "SECURITY", "SEQUENCE",
+    "SEQUENCES", "SERIALIZABLE", "SERVER", "SESSION", "SET", "SETS", "SHARE", "SHOW", "SIMPLE", "SKIP",
+    "SNAPSHOT", "SOURCE", "SQL", "STABLE", "STANDALONE", "START", "STATEMENT", "STATISTICS", "STDIN",
+    "STDOUT", "STORAGE", "STORED", "STRICT", "STRING", "STRIP", "SUBSCRIPTION", "SUPPORT", "SYSID", "SYSTEM",
+    "TABLES", "TABLESPACE", "TARGET", "TEMP", "TEMPLATE", "TEMPORARY", "TEXT", "TIES", "TRANSACTION",
+    "TRANSFORM", "TRIGGER", "TRUNCATE", "TRUSTED", "TYPE", "TYPES", "UESCAPE", "UNBOUNDED", "UNCOMMITTED",
+    "UNCONDITIONAL", "UNENCRYPTED", "UNKNOWN", "UNLISTEN", "UNLOGGED", "UNTIL", "UPDATE", "VACUUM", "VALID",
+    "VALIDATE", "VALIDATOR", "VALUE", "VERSION", "VIEW", "VIEWS", "VIRTUAL", "VOLATILE", "WHITESPACE",
+    "WITHIN", "WITHOUT", "WORK", "WRAPPER", "WRITE", "XML", "YEAR", "YES", "ZONE",
+    // PL/pgSQL and client words commonly highlighted
+    "ALIAS", "ASSERT", "CONSTANT", "DIAGNOSTICS", "ELSIF", "EXCEPTION", "EXIT", "FOREACH", "GET", "INFO",
+    "LOG", "LOOP", "NOTICE", "OPEN", "PERFORM", "QUERY", "RAISE", "RETURN", "REVERSE", "SLICE", "SQLSTATE",
+    "STACKED", "WARNING", "WHILE", "UPSERT",
+];
+
+/// Built-in functions (lower case).
+pub(crate) const FUNCTIONS: &[&str] = &[
+    // math
+    "abs", "acos", "acosd", "acosh", "asin", "asind", "asinh", "atan", "atan2", "atan2d", "atand", "atanh",
+    "cbrt", "ceil", "ceiling", "cos", "cosd", "cosh", "cot", "cotd", "degrees", "div", "erf", "erfc", "exp",
+    "factorial", "floor", "gcd", "lcm", "ln", "log", "log10", "min_scale", "mod", "pi", "power", "radians",
+    "random", "random_normal", "round", "scale", "setseed", "sign", "sin", "sind", "sinh", "sqrt", "tan",
+    "tand", "tanh", "trim_scale", "trunc", "width_bucket",
+    // strings
+    "ascii", "bit_length", "btrim", "char_length", "character_length", "chr", "concat", "concat_ws",
+    "convert", "convert_from", "convert_to", "decode", "encode", "format", "initcap", "left", "length",
+    "lower", "lpad", "ltrim", "md5", "normalize", "octet_length", "overlay", "parse_ident",
+    "pg_client_encoding", "position", "quote_ident", "quote_literal", "quote_nullable", "regexp_count",
+    "regexp_instr", "regexp_like", "regexp_match", "regexp_matches", "regexp_replace",
+    "regexp_split_to_array", "regexp_split_to_table", "regexp_substr", "repeat", "replace", "reverse",
+    "right", "rpad", "rtrim", "sha224", "sha256", "sha384", "sha512", "split_part", "starts_with",
+    "string_to_array", "string_to_table", "strpos", "substr", "substring", "to_ascii", "to_bin", "to_hex",
+    "to_oct", "translate", "trim", "unistr", "upper", "casefold", "crc32", "crc32c",
+    // formatting
+    "to_char", "to_date", "to_number", "to_timestamp",
+    // date / time
+    "age", "clock_timestamp", "current_date", "current_time", "current_timestamp", "date_add", "date_bin",
+    "date_part", "date_subtract", "date_trunc", "extract", "isfinite", "justify_days", "justify_hours",
+    "justify_interval", "localtime", "localtimestamp", "make_date", "make_interval", "make_time",
+    "make_timestamp", "make_timestamptz", "now", "statement_timestamp", "timeofday", "transaction_timestamp",
+    "timezone", "pg_sleep", "pg_sleep_for", "pg_sleep_until",
+    // conditional
+    "coalesce", "nullif", "greatest", "least", "num_nulls", "num_nonnulls",
+    // aggregates
+    "any_value", "array_agg", "avg", "bit_and", "bit_or", "bit_xor", "bool_and", "bool_or", "count", "every",
+    "json_agg", "json_agg_strict", "json_object_agg", "json_object_agg_strict", "json_object_agg_unique",
+    "jsonb_agg", "jsonb_agg_strict", "jsonb_object_agg", "jsonb_object_agg_strict", "max", "min",
+    "range_agg", "range_intersect_agg", "string_agg", "sum", "xmlagg", "corr", "covar_pop", "covar_samp",
+    "regr_avgx", "regr_avgy", "regr_count", "regr_intercept", "regr_r2", "regr_slope", "regr_sxx",
+    "regr_sxy", "regr_syy", "stddev", "stddev_pop", "stddev_samp", "variance", "var_pop", "var_samp",
+    "mode", "percentile_cont", "percentile_disc", "grouping",
+    // window
+    "row_number", "rank", "dense_rank", "percent_rank", "cume_dist", "ntile", "lag", "lead", "first_value",
+    "last_value", "nth_value",
+    // json / jsonb
+    "to_json", "to_jsonb", "array_to_json", "row_to_json", "json_build_array", "jsonb_build_array",
+    "json_build_object", "jsonb_build_object", "json_object", "jsonb_object", "json_array_elements",
+    "jsonb_array_elements", "json_array_elements_text", "jsonb_array_elements_text", "json_array_length",
+    "jsonb_array_length", "json_each", "jsonb_each", "json_each_text", "jsonb_each_text",
+    "json_extract_path", "jsonb_extract_path", "json_extract_path_text", "jsonb_extract_path_text",
+    "json_object_keys", "jsonb_object_keys", "json_populate_record", "jsonb_populate_record",
+    "jsonb_populate_record_valid", "json_populate_recordset", "jsonb_populate_recordset", "json_to_record",
+    "jsonb_to_record", "json_to_recordset", "jsonb_to_recordset", "json_strip_nulls", "jsonb_strip_nulls",
+    "jsonb_set", "jsonb_set_lax", "jsonb_insert", "jsonb_pretty", "json_typeof", "jsonb_typeof",
+    "jsonb_path_exists", "jsonb_path_match", "jsonb_path_query", "jsonb_path_query_array",
+    "jsonb_path_query_first", "jsonb_path_exists_tz", "jsonb_path_query_tz", "json_scalar",
+    "json_serialize", "json_array", "json_arrayagg", "json_objectagg", "json_exists", "json_query",
+    "json_value", "json_table", "jsonb_concat", "jsonb_contains",
+    // arrays
+    "array_append", "array_cat", "array_dims", "array_fill", "array_length", "array_lower", "array_ndims",
+    "array_position", "array_positions", "array_prepend", "array_remove", "array_replace", "array_reverse",
+    "array_sample", "array_shuffle", "array_sort", "array_to_string", "array_upper", "cardinality",
+    "trim_array", "unnest", "generate_series", "generate_subscripts",
+    // ranges
+    "isempty", "lower_inc", "upper_inc", "lower_inf", "upper_inf", "range_merge", "multirange",
+    // network
+    "abbrev", "broadcast", "family", "host", "hostmask", "inet_merge", "inet_same_family", "masklen",
+    "netmask", "network", "set_masklen", "macaddr8_set7bit", "trunc",
+    // text search
+    "array_to_tsvector", "get_current_ts_config", "numnode", "phraseto_tsquery", "plainto_tsquery",
+    "querytree", "setweight", "strip", "to_tsquery", "to_tsvector", "json_to_tsvector", "jsonb_to_tsvector",
+    "ts_delete", "ts_filter", "ts_headline", "ts_rank", "ts_rank_cd", "ts_rewrite", "tsquery_phrase",
+    "tsvector_to_array", "websearch_to_tsquery",
+    // uuid
+    "gen_random_uuid", "uuidv4", "uuidv7", "uuid_extract_timestamp", "uuid_extract_version",
+    "uuid_generate_v1", "uuid_generate_v4",
+    // xml
+    "xmlcomment", "xmlconcat", "xmlelement", "xmlforest", "xmlpi", "xmlroot", "xmlparse", "xmlserialize",
+    "xmlexists", "xml_is_well_formed", "xml_is_well_formed_content", "xml_is_well_formed_document",
+    "xpath", "xpath_exists", "xmltable", "table_to_xml", "query_to_xml",
+    // sequences
+    "nextval", "currval", "setval", "lastval",
+    // session / system information
+    "current_catalog", "current_database", "current_query", "current_role", "current_schema",
+    "current_schemas", "current_user", "inet_client_addr", "inet_client_port", "inet_server_addr",
+    "inet_server_port", "pg_backend_pid", "pg_blocking_pids", "pg_conf_load_time", "pg_current_logfile",
+    "pg_my_temp_schema", "pg_postmaster_start_time", "pg_safe_snapshot_blocking_pids", "pg_trigger_depth",
+    "session_user", "system_user", "user", "version", "pg_typeof", "pg_column_size", "pg_column_compression",
+    "pg_database_size", "pg_indexes_size", "pg_relation_size", "pg_size_bytes", "pg_size_pretty",
+    "pg_table_size", "pg_tablespace_size", "pg_total_relation_size", "pg_relation_filepath",
+    "pg_get_constraintdef", "pg_get_expr", "pg_get_functiondef", "pg_get_function_arguments",
+    "pg_get_function_identity_arguments", "pg_get_function_result", "pg_get_indexdef", "pg_get_keywords",
+    "pg_get_partkeydef", "pg_get_ruledef", "pg_get_serial_sequence", "pg_get_statisticsobjdef",
+    "pg_get_triggerdef", "pg_get_userbyid", "pg_get_viewdef", "pg_describe_object", "pg_identify_object",
+    "format_type", "obj_description", "col_description", "shobj_description", "to_regclass",
+    "to_regtype", "to_regproc", "to_regprocedure", "to_regnamespace", "to_regrole", "has_any_column_privilege",
+    "has_column_privilege", "has_database_privilege", "has_function_privilege", "has_schema_privilege",
+    "has_sequence_privilege", "has_table_privilege", "has_tablespace_privilege", "has_type_privilege",
+    "pg_has_role", "row_security_active", "current_setting", "set_config", "pg_cancel_backend",
+    "pg_terminate_backend", "pg_reload_conf", "pg_rotate_logfile", "pg_switch_wal", "pg_current_wal_lsn",
+    "pg_wal_lsn_diff", "pg_is_in_recovery", "pg_last_xact_replay_timestamp", "pg_current_xact_id",
+    "pg_current_xact_id_if_assigned", "pg_xact_status", "txid_current", "txid_current_snapshot",
+    "pg_advisory_lock", "pg_advisory_lock_shared", "pg_advisory_unlock", "pg_advisory_unlock_all",
+    "pg_advisory_xact_lock", "pg_try_advisory_lock", "pg_try_advisory_xact_lock", "pg_notify",
+    "pg_listening_channels", "pg_stat_reset", "pg_stat_get_activity", "pg_ls_dir", "pg_read_file",
+    "pg_stat_file", "pg_input_is_valid", "pg_input_error_info", "row", "array",
+    // PostGIS
+    "st_addpoint", "st_area", "st_asbinary", "st_asewkb", "st_asewkt", "st_asgeojson", "st_asgml",
+    "st_askml", "st_asmvt", "st_asmvtgeom", "st_assvg", "st_astext", "st_astwkb", "st_azimuth",
+    "st_boundary", "st_buffer", "st_buildarea", "st_centroid", "st_closestpoint", "st_clusterdbscan",
+    "st_clusterkmeans", "st_collect", "st_concavehull", "st_contains", "st_containsproperly",
+    "st_convexhull", "st_coveredby", "st_covers", "st_crosses", "st_delaunaytriangles", "st_difference",
+    "st_dimension", "st_disjoint", "st_distance", "st_distancesphere", "st_distancespheroid", "st_dump",
+    "st_dumppoints", "st_dwithin", "st_endpoint", "st_envelope", "st_equals", "st_estimatedextent",
+    "st_expand", "st_extent", "st_exteriorring", "st_flipcoordinates", "st_force2d", "st_force3d",
+    "st_forcepolygonccw", "st_frechetdistance", "st_geogfromtext", "st_geographyfromtext",
+    "st_geohash", "st_geomfromewkb", "st_geomfromewkt", "st_geomfromgeojson", "st_geomfromgml",
+    "st_geomfromkml", "st_geomfromtext", "st_geomfromwkb", "st_geometryn", "st_geometrytype",
+    "st_hausdorffdistance", "st_interiorringn", "st_intersection", "st_intersects", "st_isclosed",
+    "st_isempty", "st_isring", "st_issimple", "st_isvalid", "st_isvalidreason", "st_length",
+    "st_length2d", "st_lineinterpolatepoint", "st_linelocatepoint", "st_linemerge", "st_linesubstring",
+    "st_longestline", "st_makebox2d", "st_makeenvelope", "st_makeline", "st_makepoint", "st_makepointm",
+    "st_makepolygon", "st_makevalid", "st_maxdistance", "st_memsize", "st_multi", "st_ndims",
+    "st_npoints", "st_nrings", "st_numgeometries", "st_numinteriorrings", "st_numpoints",
+    "st_orderingequals", "st_overlaps", "st_perimeter", "st_point", "st_pointn", "st_pointonsurface",
+    "st_points", "st_polygon", "st_polygonize", "st_project", "st_reduceprecision", "st_relate",
+    "st_removepoint", "st_reverse", "st_rotate", "st_scale", "st_segmentize", "st_setpoint", "st_setsrid",
+    "st_shortestline", "st_simplify", "st_simplifypreservetopology", "st_snap", "st_snaptogrid",
+    "st_split", "st_srid", "st_startpoint", "st_subdivide", "st_summary", "st_symdifference",
+    "st_tileenvelope", "st_touches", "st_transform", "st_translate", "st_union", "st_voronoipolygons",
+    "st_within", "st_x", "st_xmax", "st_xmin", "st_y", "st_ymax", "st_ymin", "st_z", "st_zmax", "st_zmin",
+    "postgis_full_version", "postgis_version",
+];
+
+/// Built-in and common extension data types.
+pub(crate) const DATA_TYPES: &[&str] = &[
+    "bigint", "bigserial", "bit", "bit varying", "bool", "boolean", "box", "bpchar", "bytea", "char",
+    "character", "character varying", "cidr", "circle", "date", "daterange", "datemultirange", "decimal",
+    "double precision", "float", "float4", "float8", "inet", "int", "int2", "int4", "int4range",
+    "int4multirange", "int8", "int8range", "int8multirange", "integer", "interval", "json", "jsonb",
+    "jsonpath", "line", "lseg", "macaddr", "macaddr8", "money", "name", "numeric", "numrange",
+    "nummultirange", "oid", "path", "pg_lsn", "pg_snapshot", "point", "polygon", "real", "record",
+    "refcursor", "regclass", "regcollation", "regconfig", "regdictionary", "regnamespace", "regoper",
+    "regoperator", "regproc", "regprocedure", "regrole", "regtype", "serial", "serial2", "serial4",
+    "serial8", "smallint", "smallserial", "text", "time", "timetz", "time with time zone",
+    "time without time zone", "timestamp", "timestamptz", "timestamp with time zone",
+    "timestamp without time zone", "tsmultirange", "tsquery", "tsrange", "tstzmultirange", "tstzrange",
+    "tsvector", "txid_snapshot", "uuid", "varbit", "varchar", "void", "xid", "xid8", "xml", "trigger",
+    "event_trigger", "anyelement", "anyarray", "anynonarray", "anyenum", "anyrange", "anymultirange",
+    "anycompatible", "cstring", "internal", "language_handler", "fdw_handler", "unknown",
+    "citext", "hstore", "ltree", "lquery", "cube", "geometry", "geography", "box2d", "box3d", "raster",
+    "vector", "halfvec", "sparsevec",
+];
+
+/// PostgreSQL's `quote_ident` rule: every keyword except unreserved ones needs quoting.
+pub(crate) fn needs_keyword_quoting(word: &str) -> bool {
+    let up = word.to_ascii_uppercase();
+    let u = up.as_str();
+    RESERVED.binary_search(&u).is_ok() || TYPE_FUNC_NAME.binary_search(&u).is_ok() || COL_NAME.binary_search(&u).is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keyword_lists_are_sorted_for_binary_search() {
+        for list in [RESERVED, TYPE_FUNC_NAME, COL_NAME, UNRESERVED] {
+            let mut sorted = list.to_vec();
+            sorted.sort_unstable();
+            assert_eq!(sorted, list.to_vec());
+        }
+    }
+
+    #[test]
+    fn all_keywords_cover_every_category() {
+        for list in [RESERVED, TYPE_FUNC_NAME, COL_NAME, UNRESERVED] {
+            for k in list {
+                assert!(ALL_KEYWORDS.contains(k), "{k} missing from ALL_KEYWORDS");
+            }
+        }
+    }
+
+    #[test]
+    fn quoting_rules() {
+        assert!(needs_keyword_quoting("select"));
+        assert!(needs_keyword_quoting("user"));
+        assert!(needs_keyword_quoting("left"));
+        assert!(needs_keyword_quoting("time"));
+        assert!(!needs_keyword_quoting("name"));
+        assert!(!needs_keyword_quoting("data"));
+        assert!(!needs_keyword_quoting("users"));
+    }
+}

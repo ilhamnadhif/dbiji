@@ -1422,3 +1422,4 @@ Virtual model saved	Virtual model disimpan
 When other tables reference this one, show these columns next to the key.	Saat tabel lain merujuk tabel ini, tampilkan kolom ini di samping kunci.
 expression, e.g. price * quantity	ekspresi, mis. price * quantity
 {} connection(s) now use their own network settings	{} koneksi kini memakai pengaturan jaringannya sendiri
+Recent scripts	Skrip terbaru

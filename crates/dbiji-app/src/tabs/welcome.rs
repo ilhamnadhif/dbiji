@@ -10,6 +10,22 @@ use egui_phosphor::regular as icon;
 #[derive(Default)]
 pub struct WelcomeTab;
 
+/// Most recently modified scripts of the default project (cached for a few seconds).
+fn recent_scripts(ui: &Ui, cx: &AppContext) -> Vec<dbiji_config::project::ScriptInfo> {
+    let id = egui::Id::new("welcome_recent_scripts");
+    let now = ui.input(|i| i.time);
+    if let Some((t, list)) = ui.data(|d| d.get_temp::<(f64, std::sync::Arc<Vec<dbiji_config::project::ScriptInfo>>)>(id)) {
+        if now - t < 5.0 {
+            return (*list).clone();
+        }
+    }
+    let mut list = cx.services.projects.as_ref().and_then(|p| p.default_project().ok()).and_then(|p| p.list_scripts().ok()).unwrap_or_default();
+    list.sort_by_key(|s| std::cmp::Reverse(s.modified));
+    list.truncate(8);
+    ui.data_mut(|d| d.insert_temp(id, (now, std::sync::Arc::new(list.clone()))));
+    list
+}
+
 impl TabView for WelcomeTab {
     fn title(&self) -> String {
         tr("Welcome").to_string()
@@ -57,6 +73,16 @@ impl TabView for WelcomeTab {
                     if ui.link(format!("{} {}  —  {}", crate::nav::db_icon(c.kind), c.name, c.summary())).clicked() {
                         cx.push(AppCommand::Connect(c.id.clone()));
                         cx.push(AppCommand::NewSqlEditor { connection: Some(c.id.clone()), schema: None, text: None });
+                    }
+                }
+                let scripts = recent_scripts(ui, cx);
+                if !scripts.is_empty() {
+                    ui.add_space(16.0);
+                    ui.label(RichText::new(tr("Recent scripts")).strong());
+                    for s in scripts {
+                        if ui.link(format!("{} {}", icon::FILE_SQL, s.relative)).on_hover_text(s.path.display().to_string()).clicked() {
+                            cx.push(AppCommand::OpenScript(s.path.clone()));
+                        }
                     }
                 }
             });

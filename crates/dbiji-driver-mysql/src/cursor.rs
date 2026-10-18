@@ -32,6 +32,10 @@ use tokio::time::{Instant, sleep_until};
 
 /// How long an abandoned result is drained before `KILL QUERY` is sent.
 const SOFT_DRAIN: Duration = Duration::from_millis(150);
+/// `KILL QUERY` is sent again when rows still arrive this long after it.
+const KILL_RETRY: Duration = Duration::from_secs(1);
+/// At most this many `KILL QUERY` per statement.
+const MAX_KILLS: u32 = 3;
 /// After this time an abandoned result that still streams is given up and
 /// the connection is closed.
 const HARD_DRAIN: Duration = Duration::from_secs(30);
@@ -101,7 +105,9 @@ pub(crate) fn spawn(
         timed_out: false,
         abandoned: false,
         killed: false,
-        pending_kill: None,
+        kills: 0,
+        last_kill: None,
+        pending_kills: Vec::new(),
     };
     tokio::spawn(run(conn, job, req_rx, watch, ret_tx, tx_state));
     (
@@ -127,10 +133,13 @@ struct Watch {
     timed_out: bool,
     abandoned: bool,
     killed: bool,
+    /// `KILL QUERY` sent so far, and when the last one was started.
+    kills: u32,
+    last_kill: Option<Instant>,
     /// `KILL QUERY` in flight: the result keeps being read meanwhile, and
-    /// the connection is only reused once it is done (a late KILL would
+    /// the connection is only reused once they are done (a late KILL would
     /// interrupt the next statement).
-    pending_kill: Option<tokio::task::JoinHandle<()>>,
+    pending_kills: Vec<tokio::task::JoinHandle<()>>,
 }
 
 fn far_future() -> Instant {
@@ -144,22 +153,54 @@ impl Watch {
             return;
         }
         self.killed = true;
+        self.send_kill();
+    }
+
+    fn send_kill(&mut self) {
+        if self.kills >= MAX_KILLS {
+            return;
+        }
+        self.kills += 1;
+        self.last_kill = Some(Instant::now());
         let killer = self.killer.clone();
-        self.pending_kill = Some(tokio::spawn(async move {
+        let n = self.kills;
+        self.pending_kills.push(tokio::spawn(async move {
             let started = std::time::Instant::now();
             let id = killer.connection_id();
-            let line = match killer.kill_query().await {
-                Ok(()) => format!("KILL QUERY {id} sent in {:?}", started.elapsed()),
-                Err(e) => format!("KILL QUERY {id} failed after {:?}: {e}", started.elapsed()),
+            let line = match killer.kill_query_checked().await {
+                Ok(true) => format!("KILL QUERY {id} #{n} sent in {:?}", started.elapsed()),
+                Ok(false) => format!(
+                    "KILL QUERY {id} #{n}: no such thread ({:?})",
+                    started.elapsed()
+                ),
+                Err(e) => format!(
+                    "KILL QUERY {id} #{n} failed after {:?}: {e}",
+                    started.elapsed()
+                ),
             };
             tracing::debug!("{line}");
-            *LAST_KILL.lock() = line;
+            let mut last = LAST_KILL.lock();
+            if n == 1 {
+                last.clear();
+            } else {
+                last.push_str("; ");
+            }
+            last.push_str(&line);
         }));
     }
 
-    /// Wait until a `KILL QUERY` in flight has reached the server.
+    /// When the next `KILL QUERY` is due while an abandoned result drains.
+    fn next_kill(&self, soft: Instant) -> Option<Instant> {
+        match self.last_kill {
+            None => Some(soft),
+            Some(_) if self.kills >= MAX_KILLS => None,
+            Some(t) => Some(t + KILL_RETRY),
+        }
+    }
+
+    /// Wait until the `KILL QUERY` in flight have reached the server.
     async fn kill_done(&mut self) {
-        if let Some(h) = self.pending_kill.take() {
+        for h in std::mem::take(&mut self.pending_kills) {
             let _ = h.await;
         }
     }
@@ -213,10 +254,14 @@ impl Watch {
     ) -> Option<F::Output> {
         tokio::pin!(fut);
         loop {
+            let next_kill = self.next_kill(soft);
             tokio::select! {
                 biased;
                 out = &mut fut => return Some(out),
-                _ = sleep_until(soft), if !self.killed => self.kill(),
+                _ = sleep_until(next_kill.unwrap_or_else(far_future)), if next_kill.is_some() => {
+                    self.killed = true;
+                    self.send_kill();
+                }
                 _ = sleep_until(hard) => return None,
             }
         }

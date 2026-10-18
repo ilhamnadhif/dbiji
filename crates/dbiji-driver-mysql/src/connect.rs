@@ -477,7 +477,18 @@ impl Killer {
         self.kill(format!("KILL {}", self.connection_id)).await
     }
 
+    /// `KILL QUERY`, telling whether the target thread still existed.
+    pub async fn kill_query_checked(&self) -> DbResult<bool> {
+        self.kill_checked(format!("KILL QUERY {}", self.connection_id))
+            .await
+    }
+
     async fn kill(&self, sql: String) -> DbResult<()> {
+        self.kill_checked(sql).await.map(|_| ())
+    }
+
+    /// `Ok(false)`: the server has no thread with that id (already gone).
+    async fn kill_checked(&self, sql: String) -> DbResult<bool> {
         let opts = self.opts.clone();
         let fut = async move {
             let mut side = Conn::new(opts).await?;
@@ -486,8 +497,8 @@ impl Killer {
             r
         };
         match tokio::time::timeout(self.timeout, fut).await {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(mysql_async::Error::Server(e))) if e.code == codes::NO_SUCH_THREAD => Ok(()),
+            Ok(Ok(())) => Ok(true),
+            Ok(Err(mysql_async::Error::Server(e))) if e.code == codes::NO_SUCH_THREAD => Ok(false),
             Ok(Err(e)) => Err(map_error(e, None)),
             Err(_) => Err(DbError::timeout(
                 "Timed out while sending KILL QUERY to the server",

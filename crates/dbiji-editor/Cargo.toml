@@ -12,9 +12,10 @@ dbiji-core.workspace = true
 egui.workspace = true
 egui-phosphor.workspace = true
 serde.workspace = true
-serde_json.workspace = true
 tracing.workspace = true
 regex.workspace = true
 
 [dev-dependencies]
 eframe.workspace = true
+serde_json.workspace = true
+image.workspace = true

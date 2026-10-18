@@ -16,6 +16,7 @@ pub mod keys;
 pub mod nav;
 pub mod ops;
 pub mod palette;
+pub mod project_view;
 pub mod results;
 pub mod router;
 pub mod services;

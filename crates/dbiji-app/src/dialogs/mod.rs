@@ -1,6 +1,7 @@
 //! Modal and floating dialogs owned by the application.
 
 pub mod connection;
+pub mod drop;
 pub mod import;
 pub mod vault;
 
@@ -41,6 +42,7 @@ pub struct Dialogs {
     pub vault_open: bool,
     vault: vault::VaultDialog,
     pub import: Option<import::ImportDialog>,
+    pub drop: Option<drop::DropDialog>,
 }
 
 impl Dialogs {
@@ -82,7 +84,7 @@ impl Dialogs {
 
     /// A dialog that takes keyboard input is open (shortcuts are suspended).
     pub fn captures_keyboard(&self) -> bool {
-        self.palette_open || self.vault_open || self.delete.is_some() || !self.prompts.is_empty() || self.import.is_some() || !self.connection.is_empty()
+        self.palette_open || self.vault_open || self.delete.is_some() || self.drop.is_some() || !self.prompts.is_empty() || self.import.is_some() || !self.connection.is_empty()
     }
 
     /// Credentials entered by the user since the last call.
@@ -105,6 +107,11 @@ impl Dialogs {
         if let Some(d) = self.import.as_mut() {
             if !d.show(ctx, cx) {
                 self.import = None;
+            }
+        }
+        if let Some(d) = self.drop.as_mut() {
+            if !d.show(ctx, cx) {
+                self.drop = None;
             }
         }
         if self.about_open {

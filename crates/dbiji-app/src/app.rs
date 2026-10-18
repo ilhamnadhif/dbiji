@@ -26,6 +26,9 @@ pub struct DbijiApp {
     pub dock: DockState<Tab>,
     next_tab_id: u64,
     pub nav: Navigator,
+    project: crate::project_view::ProjectView,
+    /// Left panel shows the project (scripts, bookmarks, diagrams) instead of the database navigator.
+    show_project: bool,
     show_nav: bool,
     pub toasts: Toasts,
     pub ops: Operations,
@@ -57,6 +60,8 @@ impl DbijiApp {
             dock: DockState::new(Vec::new()),
             next_tab_id: 1,
             nav: Navigator::default(),
+            project: Default::default(),
+            show_project: false,
             show_nav: true,
             toasts: Toasts::default(),
             ops: Operations::default(),
@@ -233,6 +238,26 @@ impl DbijiApp {
             AppCommand::OpenSchemaCompare { connection, schema } => {
                 self.open_tab(Box::new(crate::tabs::compare::SchemaCompareTab::new(connection, schema)));
             }
+            AppCommand::DropObjects { connection, objects } => {
+                if !objects.is_empty() && self.conns.is_connected(&connection) {
+                    self.dialogs.drop = Some(crate::dialogs::drop::DropDialog::new(connection, objects));
+                }
+            }
+            AppCommand::AddBookmark { connection, object } => {
+                let label = object.display_path();
+                let r = self
+                    .services
+                    .projects
+                    .as_ref()
+                    .ok_or_else(|| dbiji_core::DbError::config("no project"))
+                    .and_then(|p| p.default_project())
+                    .and_then(|p| p.add_bookmark(dbiji_config::Bookmark::new(connection, object, label)));
+                match r {
+                    Ok(_) => self.toasts.success(tr("Bookmark added")),
+                    Err(e) => self.toasts.error(tr("Cannot add the bookmark"), Some(e.to_string())),
+                }
+            }
+            AppCommand::OpenSavedDiagram(path) => self.open_saved_diagram(&path),
             AppCommand::OpenHistory => {
                 self.open_tab(Box::new(crate::tabs::history::HistoryTab::default()));
             }
@@ -474,6 +499,34 @@ impl DbijiApp {
             }
         }
         self.open_tab(Box::new(crate::tabs::sql_editor::SqlEditorTab::new(conn, schema, text, Some(path), false, title)));
+    }
+
+    /// Open a diagram saved in the project (JSON with connection, schema and diagram).
+    pub fn open_saved_diagram(&mut self, path: &std::path::Path) {
+        let name = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let doc = match self.services.projects.as_ref().and_then(|p| p.default_project().ok()).map(|p| p.load_diagram(&name)) {
+            Some(Ok(d)) => d,
+            Some(Err(e)) => {
+                self.toasts.error(tr("Cannot open the diagram"), Some(e.to_string()));
+                return;
+            }
+            None => return,
+        };
+        let conn = doc.get("connection").and_then(|v| v.as_str()).map(str::to_string).unwrap_or_default();
+        let schema = dbiji_core::meta::SchemaRef::new(
+            doc.get("database").and_then(|v| v.as_str()).map(str::to_string),
+            doc.get("schema").and_then(|v| v.as_str()).map(str::to_string),
+        );
+        let diagram = doc.get("diagram").map(|d| d.to_string()).and_then(|j| dbiji_visual::er::ErDiagram::from_json(&j).ok());
+        match diagram {
+            Some(d) => {
+                if !conn.is_empty() && !self.conns.is_connected(&conn) {
+                    self.request_connect(&conn);
+                }
+                self.open_tab(Box::new(crate::tabs::er::ErTab::from_saved(conn, schema, name, d)));
+            }
+            None => self.toasts.error(tr("Cannot open the diagram"), Some(path.display().to_string())),
+        }
     }
 
     /// Finish "Generate SQL" requests whose table definitions arrived.
@@ -743,7 +796,22 @@ impl eframe::App for DbijiApp {
                 .resizable(true)
                 .default_size(280.0)
                 .size_range(160.0..=600.0)
-                .show(ui, |ui| self.nav.ui(ui, &mut cx));
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        if ui.selectable_label(!self.show_project, format!("{} {}", icon::DATABASE, tr("Database"))).clicked() {
+                            self.show_project = false;
+                        }
+                        if ui.selectable_label(self.show_project, format!("{} {}", icon::FOLDER_SIMPLE, tr("Project"))).clicked() {
+                            self.show_project = true;
+                        }
+                    });
+                    ui.separator();
+                    if self.show_project {
+                        self.project.ui(ui, &mut cx);
+                    } else {
+                        self.nav.ui(ui, &mut cx);
+                    }
+                });
         }
         self.active_tab = self.dock.find_active_focused().map(|(_, t)| t.id);
         egui::CentralPanel::default().frame(egui::Frame::new()).show(ui, |ui| {

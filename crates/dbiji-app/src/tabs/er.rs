@@ -239,6 +239,21 @@ impl TabView for ErTab {
         self.dirty && self.saved_name.is_some()
     }
 
+    fn session_state(&self) -> Option<serde_json::Value> {
+        let path = self.saved_name.as_ref().map(|n| std::path::PathBuf::from(format!("{n}.json")));
+        let tab = dbiji_config::SessionTab {
+            kind: dbiji_config::project::TabKind::ErDiagram,
+            title: Some(self.name_edit.clone()),
+            path,
+            connection_id: Some(self.conn.clone()),
+            database: self.schema.database.clone(),
+            schema: self.schema.schema.clone(),
+            content: (!self.tables.is_empty()).then(|| self.tables.join("\n")),
+            ..Default::default()
+        };
+        serde_json::to_value(tab).ok()
+    }
+
     fn ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
         let backend = cx.backend;
         let Some(live) = cx.conns.live_mut(&self.conn) else {

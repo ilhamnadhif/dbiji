@@ -543,6 +543,19 @@ impl DbijiApp {
         let Some(projects) = self.services.projects.as_ref() else { return };
         let state = projects.load_session();
         let mut opened = 0;
+        let mut to_connect: Vec<String> = Vec::new();
+        for t in &state.tabs {
+            if matches!(t.kind, dbiji_config::project::TabKind::ObjectEditor | dbiji_config::project::TabKind::DataEditor | dbiji_config::project::TabKind::ErDiagram) {
+                if let Some(c) = t.connection_id.clone().filter(|c| self.conns.config(c).is_some() && !to_connect.contains(c)) {
+                    to_connect.push(c);
+                }
+            }
+        }
+        for c in to_connect {
+            if !self.conns.is_connected(&c) {
+                self.request_connect(&c);
+            }
+        }
         for t in state.tabs {
             match t.kind {
                 dbiji_config::project::TabKind::SqlScript if t.path.as_ref().is_some_and(|p| p.exists()) => {
@@ -558,6 +571,29 @@ impl DbijiApp {
                     self.script_counter += 1;
                     let title = t.title.clone().unwrap_or_else(|| format!("Script-{}", self.script_counter));
                     self.open_tab(Box::new(crate::tabs::sql_editor::SqlEditorTab::new(conn, schema, t.content.clone().unwrap_or_default(), None, console, title)));
+                    opened += 1;
+                }
+                dbiji_config::project::TabKind::ObjectEditor | dbiji_config::project::TabKind::DataEditor => {
+                    let (Some(conn), Some(obj)) = (t.connection_id.clone().filter(|c| self.conns.config(c).is_some()), t.object.clone()) else { continue };
+                    let page = if t.kind == dbiji_config::project::TabKind::DataEditor { crate::command::ObjectPage::Data } else { crate::command::ObjectPage::Properties };
+                    self.open_tab(Box::new(crate::tabs::object::ObjectEditorTab::new(conn, obj, page)));
+                    opened += 1;
+                }
+                dbiji_config::project::TabKind::ErDiagram => {
+                    let Some(conn) = t.connection_id.clone().filter(|c| self.conns.config(c).is_some()) else { continue };
+                    match &t.path {
+                        Some(p) => {
+                            let dir = self.services.projects.as_ref().and_then(|m| m.default_project().ok()).map(|pr| pr.diagrams_dir());
+                            if let Some(dir) = dir {
+                                self.open_saved_diagram(&dir.join(p));
+                            }
+                        }
+                        None => {
+                            let schema = dbiji_core::meta::SchemaRef::new(t.database.clone(), t.schema.clone());
+                            let tables = t.content.clone().map(|c| c.split('\n').map(str::to_string).filter(|s| !s.is_empty()).collect()).unwrap_or_default();
+                            self.open_tab(Box::new(crate::tabs::er::ErTab::new(conn, schema, tables)));
+                        }
+                    }
                     opened += 1;
                 }
                 _ => {}

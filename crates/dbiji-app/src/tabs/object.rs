@@ -536,6 +536,17 @@ impl TabView for ObjectEditorTab {
         }
     }
 
+    fn session_state(&self) -> Option<serde_json::Value> {
+        let tab = dbiji_config::SessionTab {
+            kind: if self.page == ObjectPage::Data { dbiji_config::project::TabKind::DataEditor } else { dbiji_config::project::TabKind::ObjectEditor },
+            title: Some(self.obj.name.clone()),
+            connection_id: Some(self.conn.clone()),
+            object: Some(self.obj.clone()),
+            ..Default::default()
+        };
+        serde_json::to_value(tab).ok()
+    }
+
     fn focus_context(&self) -> crate::keys::ActionContext {
         match (&self.data, self.page) {
             (Some(d), ObjectPage::Data) => d.focus_context(),

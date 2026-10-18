@@ -176,9 +176,16 @@ impl ConnectionDialog {
             .open(&mut open)
             .collapsible(false)
             .resizable(true)
-            .default_size([760.0, 560.0])
+            .default_size([780.0, 520.0])
+            .max_height((ctx.content_rect().height() - 80.0).max(360.0))
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
             .show(ctx, |ui| {
+                // Fixed body height: the vertical separators would otherwise
+                // stretch the window to the full screen height.
+                let body = (ctx.content_rect().height() - 220.0).clamp(240.0, 420.0);
                 ui.horizontal_top(|ui| {
+                    ui.set_max_height(body);
                     if self.is_new {
                         ui.vertical(|ui| {
                             ui.set_width(150.0);
@@ -219,7 +226,7 @@ impl ConnectionDialog {
                             }
                         });
                         ui.separator();
-                        egui::ScrollArea::vertical().max_height(380.0).auto_shrink([false, true]).show(ui, |ui| match self.page {
+                        egui::ScrollArea::vertical().max_height(body - 50.0).auto_shrink([false, true]).show(ui, |ui| match self.page {
                             Page::Main => self.main_page(ui, cx),
                             Page::Ssh => self.ssh_page(ui, cx),
                             Page::Proxy => self.proxy_page(ui, cx),

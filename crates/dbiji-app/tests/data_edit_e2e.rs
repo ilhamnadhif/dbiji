@@ -276,3 +276,43 @@ fn virtual_model_dictionary_and_virtual_columns() {
     h.cm.disconnect_all(&h.backend);
     let _ = std::fs::remove_file(&file);
 }
+
+#[test]
+fn server_side_sort_asc_desc() {
+    for (name, url) in servers() {
+        let mut h = H::new(&url);
+        let table = format!("dbiji_sort_{}", &uuid::Uuid::new_v4().simple().to_string()[..8]);
+        h.sql(&format!("CREATE TABLE {table} (id INT PRIMARY KEY, name VARCHAR(10))"));
+        h.sql(&format!("INSERT INTO {table} VALUES (2, 'b'), (3, 'c'), (1, 'a')"));
+        let mut view = TableDataView::new(h.id.clone(), ObjectRef::table(None, table.clone()), None);
+        h.until(&mut view, "rows", |v| v.panel.as_ref().is_some_and(|p| p.model.row_count() == 3));
+        for (dir, expect) in [("", [1, 2, 3]), (" DESC", [3, 2, 1])] {
+            {
+                let mut cx = AppContext {
+                    backend: &h.backend,
+                    conns: &mut h.cm,
+                    services: &h.services,
+                    settings: &mut h.settings,
+                    commands: &mut h.commands,
+                    toasts: &mut h.toasts,
+                    ops: &mut h.ops,
+                    keymap: &h.keymap,
+                    tab_active: true,
+                    current_tab: Some(1),
+                };
+                let d = cx.conns.live(&h.id).unwrap().dialect.clone();
+                let order = format!("{}{dir}", d.quote_ident("id"));
+                view.panel.as_mut().unwrap().handle_for_tests(dbiji_grid::GridAction::ServerQueryChanged { where_clause: None, order_by: Some(order) }, &mut cx);
+            }
+            h.until(&mut view, "sorted", |v| {
+                let p = v.panel.as_ref().unwrap();
+                !p.src.is_fetching() && p.model.row_count() == 3 && (0..3).all(|r| p.model.cell(r, 0).and_then(|x| x.as_i64()) == Some(expect[r]))
+            });
+        }
+        h.sql(&format!("DROP TABLE {table}"));
+        let _ = name;
+        if let Some(p) = url.strip_prefix("sqlite://") {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+}

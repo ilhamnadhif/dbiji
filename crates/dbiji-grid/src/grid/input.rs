@@ -256,17 +256,17 @@ impl GridFrame<'_> {
             let col = self.geo.cols[pos];
             self.autosize_column(ui, col);
         }
-        // Click on the sort zone.
+        // A click on a header (not a drag, not on a resize border) cycles the
+        // sort of that column: ascending → descending → unsorted. Shift / ⌘
+        // add the column to the existing sort.
         if header.clicked()
             && let Some(p) = header.interact_pointer_pos()
             && let Some(pos) = self.geo.col_at(p.x, sx, false)
+            && resize_target(self, p.x).is_none()
         {
-            let right = self.geo.col_left(pos + 1, sx);
-            if p.x >= right - SORT_ZONE && resize_target(self, p.x).is_none() {
-                let col = self.geo.cols[pos];
-                let keys = next_sort(&self.state.sort, col, mods.shift || mods.command);
-                apply_sort(self.model, self.state, self.options, keys, &self.ctx, &mut self.actions);
-            }
+            let col = self.geo.cols[pos];
+            let keys = next_sort(&self.state.sort, col, mods.shift || mods.command);
+            apply_sort(self.model, self.state, self.options, keys, &self.ctx, &mut self.actions);
         }
     }
 

@@ -159,3 +159,35 @@ fn every_tab_draws_without_panicking() {
         settings.next_section_for_tests();
     }
 }
+
+#[test]
+fn connection_dialog_fits_the_screen() {
+    let mut h = H::new();
+    let mut dialogs = dbiji_app::dialogs::Dialogs::default();
+    dialogs.new_connection(Some(dbiji_core::DbKind::Postgres), None, &h.cm, Default::default());
+    let screen = egui::vec2(1280.0, 760.0);
+    for _ in 0..6 {
+        h.time += 1.0 / 60.0;
+        let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, screen)), time: Some(h.time), ..Default::default() };
+        let ctx = h.ctx.clone();
+        let mut out = ctx.run_ui(input, |ui| {
+            let mut cx = AppContext {
+                backend: &h.backend,
+                conns: &mut h.cm,
+                services: &h.services,
+                settings: &mut h.settings,
+                commands: &mut h.commands,
+                toasts: &mut h.toasts,
+                ops: &mut h.ops,
+                keymap: &h.keymap,
+                tab_active: true,
+                current_tab: None,
+            };
+            dialogs.show(ui.ctx(), &mut cx);
+        });
+        out.textures_delta.clear();
+    }
+    let layer = h.ctx.memory(|m| m.areas().top_layer_id(egui::Order::Middle)).expect("dialog drawn");
+    let rect = h.ctx.memory(|m| m.area_rect(layer.id)).expect("dialog rect");
+    assert!(rect.height() < screen.y - 40.0 && rect.top() >= 0.0 && rect.bottom() <= screen.y, "dialog {rect:?} does not fit {screen:?}");
+}

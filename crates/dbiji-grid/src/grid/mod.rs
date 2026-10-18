@@ -455,13 +455,19 @@ pub(crate) fn server_condition(
 ) -> String {
     let generic = dbiji_core::dialect::GenericDialect::new();
     let d: &dyn Dialect = options.dialect.as_deref().unwrap_or(&generic);
-    let name = model
-        .editability()
-        .as_ref()
-        .ok()
-        .and_then(|t| t.column_names.get(col).cloned().flatten())
-        .or_else(|| model.column_meta(col).and_then(|m| m.source.as_ref().map(|s| s.column.clone())))
-        .unwrap_or_else(|| model.column_name(col).to_string());
+    // Query results are filtered as `SELECT * FROM (<query>) q WHERE ...`, so
+    // they use the result column names; table data uses the table's names.
+    let name = if options.sql_table_name.is_none() {
+        model.column_name(col).to_string()
+    } else {
+        model
+            .editability()
+            .as_ref()
+            .ok()
+            .and_then(|t| t.column_names.get(col).cloned().flatten())
+            .or_else(|| model.column_meta(col).and_then(|m| m.source.as_ref().map(|s| s.column.clone())))
+            .unwrap_or_else(|| model.column_name(col).to_string())
+    };
     let c = d.quote_ident(&name);
     let type_name = model.column_meta(col).map(|m| m.type_name.as_str()).filter(|t| !t.is_empty());
     match op {
@@ -490,10 +496,14 @@ pub(crate) fn server_order_by(model: &ResultModel, options: &GridOptions, keys: 
     keys.iter()
         .filter(|k| !model.is_virtual_column(k.column))
         .map(|k| {
-            let name = model
-                .column_meta(k.column)
-                .and_then(|m| m.source.as_ref().map(|s| s.column.clone()))
-                .unwrap_or_else(|| model.column_name(k.column).to_string());
+            let name = if options.sql_table_name.is_none() {
+                model.column_name(k.column).to_string()
+            } else {
+                model
+                    .column_meta(k.column)
+                    .and_then(|m| m.source.as_ref().map(|s| s.column.clone()))
+                    .unwrap_or_else(|| model.column_name(k.column).to_string())
+            };
             format!("{}{}", d.quote_ident(&name), if k.descending { " DESC" } else { "" })
         })
         .collect::<Vec<_>>()

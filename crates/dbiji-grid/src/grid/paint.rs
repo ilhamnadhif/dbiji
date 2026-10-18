@@ -560,7 +560,8 @@ impl GridFrame<'_> {
             // Sort indicator.
             let sort_idx = self.state.sort.iter().position(|k| k.column == col);
             let zone = Rect::from_min_max(pos2(r.right() - SORT_ZONE, r.top()), r.max);
-            let zone_hover = hover.is_some_and(|p| zone.contains(p));
+            // The whole header cell sorts on click; hint the sort arrow while hovering it.
+            let zone_hover = hover.is_some_and(|p| r.contains(p));
             if let Some(i) = sort_idx {
                 let k = self.state.sort[i];
                 let icon =

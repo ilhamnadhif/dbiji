@@ -848,3 +848,11 @@ fn read_clipboard() -> Option<String> {
 pub fn has_data(kind: ObjectKind) -> bool {
     kind.has_data()
 }
+
+#[doc(hidden)]
+impl ResultPanel {
+    /// Feed a grid action (headless tests).
+    pub fn handle_for_tests(&mut self, action: GridAction, cx: &mut AppContext) {
+        self.handle(action, cx);
+    }
+}

@@ -267,6 +267,40 @@ pub(crate) fn is_valid_json(s: &str) -> bool {
     serde_json::from_str::<serde::de::IgnoredAny>(s).is_ok()
 }
 
+/// Append a valid JSON document. Documents spanning several lines are
+/// minified (whitespace outside strings removed, number texts untouched) so
+/// every record stays on one line in JSON Lines output.
+fn push_embedded_json(out: &mut String, doc: &str) {
+    let doc = doc.trim();
+    if !doc.contains(['\n', '\r']) {
+        out.push_str(doc);
+        return;
+    }
+    let mut in_string = false;
+    let mut escaped = false;
+    for c in doc.chars() {
+        if in_string {
+            out.push(c);
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match c {
+            ' ' | '\t' | '\n' | '\r' => {}
+            '"' => {
+                in_string = true;
+                out.push(c);
+            }
+            c => out.push(c),
+        }
+    }
+}
+
 /// Append the JSON rendering of `v`. With `fmt`, temporal values use its patterns.
 pub(crate) fn push_json_value(out: &mut String, v: &Value, binary: BinaryEncoding, fmt: Option<&ValueFormat>) {
     match v {
@@ -282,7 +316,7 @@ pub(crate) fn push_json_value(out: &mut String, v: &Value, binary: BinaryEncodin
             let _ = write!(out, "{f}");
         }
         Value::Decimal(s) if is_json_number(s) => out.push_str(s),
-        Value::Json(s) if is_valid_json(s) => out.push_str(s.trim()),
+        Value::Json(s) if is_valid_json(s) => push_embedded_json(out, s),
         Value::Text(s) => push_json_string(out, s),
         Value::Bytes(b) => push_json_string(out, &binary.encode(b)),
         Value::Array(items) => {
@@ -339,6 +373,11 @@ mod tests {
         assert_eq!(render(Value::decimal("007")), "\"007\"");
         assert_eq!(render(Value::Float(f64::NAN)), "\"NaN\"");
         assert_eq!(render(Value::json(" {\"a\": [1, 2]} ")), "{\"a\": [1, 2]}");
+        // Multi-line documents are minified; strings and numbers are kept exactly.
+        assert_eq!(
+            render(Value::json("{\n  \"k y\": \"a  b\\\" c\",\n  \"n\": 1.50e3\n}\n")),
+            "{\"k y\":\"a  b\\\" c\",\"n\":1.50e3}"
+        );
         assert_eq!(render(Value::json("{bad")), "\"{bad\"");
         assert_eq!(render(Value::bytes(vec![0u8, 1, 2])), "\"AAEC\"");
         assert_eq!(

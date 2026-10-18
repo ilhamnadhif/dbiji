@@ -95,8 +95,9 @@ async fn json_round_trip(format: ExportFormat, opts: ExportOptions, what: &str) 
         assert!(!had_errors);
         text.into_owned()
     };
-    // The output is valid JSON (per line for JSON Lines).
+    // The output is valid JSON (per line for JSON Lines, one line per row).
     if format == ExportFormat::JsonLines {
+        assert_eq!(text.lines().count(), rows.len(), "{what}: one line per row");
         for line in text.lines() {
             serde_json::from_str::<serde_json::Value>(line).unwrap_or_else(|e| panic!("{what}: {e}: {line}"));
         }

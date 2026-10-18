@@ -174,6 +174,13 @@ impl DbijiApp {
             AppCommand::DeleteConnection(id) => self.dialogs.confirm_delete_connection(&id, &self.conns),
             AppCommand::ShowPalette => self.dialogs.palette_open = true,
             AppCommand::Action(a) => self.dispatch_action(ctx, a),
+            AppCommand::OpenSettings => {
+                self.open_tab(Box::new(crate::tabs::settings::SettingsTab::default()));
+            }
+            AppCommand::SettingsChanged => self.apply_settings(ctx),
+            AppCommand::OpenHistory => {
+                self.open_tab(Box::new(crate::tabs::history::HistoryTab::default()));
+            }
             AppCommand::ToggleNavigator => self.show_nav = !self.show_nav,
             AppCommand::ToggleOperations => self.ops.panel_open = !self.ops.panel_open,
             AppCommand::ShowAbout => self.dialogs.about_open = true,
@@ -306,6 +313,21 @@ impl DbijiApp {
         if let Some(path) = self.dock.find_tab_from(|t| t.id == id) {
             let _ = self.dock.set_active_tab(path);
         }
+    }
+
+    /// Apply edited preferences (theme, language, limits, keymap) and save them.
+    fn apply_settings(&mut self, ctx: &egui::Context) {
+        crate::theme::apply_settings(ctx, &self.settings);
+        dbiji_core::i18n::set_locale(self.settings.general.effective_locale());
+        self.settings.results.apply_memory_limits();
+        let (keymap, _) = crate::keys::Keymap::from_config(&self.settings.keymap, crate::keys::IS_MAC);
+        self.keymap = keymap;
+        if let Some(h) = &self.services.history {
+            let mut h = h.lock();
+            h.set_redaction(self.settings.history.redact_secrets);
+            let _ = h.set_retention(Some(self.settings.history.retention()));
+        }
+        self.save_settings();
     }
 
     /// Write `settings.json` / `keymap.json`.

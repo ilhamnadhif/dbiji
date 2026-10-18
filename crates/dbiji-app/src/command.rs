@@ -55,6 +55,8 @@ pub enum AppCommand {
 
     // ----------------------------------------------------------------- tools
     OpenSettings,
+    /// Preferences were edited: apply and save them.
+    SettingsChanged,
     OpenHistory,
     OpenTasks,
     OpenErDiagram { connection: String, schema: SchemaRef, tables: Vec<String> },

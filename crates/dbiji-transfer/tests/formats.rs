@@ -636,6 +636,39 @@ async fn parquet_type_mismatch_is_an_error_with_row() {
     assert!(!path.exists());
 }
 
+#[tokio::test]
+async fn failed_exports_leave_no_files() {
+    let dir = tempfile::tempdir().unwrap();
+    // Parquet needs at least one column.
+    let path = dir.path().join("none.parquet");
+    let mut src = VecSource::new(vec![], vec![]);
+    let mut sink = create_sink(ExportFormat::Parquet, &ExportOptions::default(), ExportTarget::path(&path), None).unwrap();
+    assert!(run_export(&mut src, sink.as_mut(), &Progress::new(), &CancellationToken::new()).await.is_err());
+    assert!(!path.exists());
+    // A failing source aborts a text export and removes its file.
+    struct Failing(Vec<ColumnMeta>);
+    #[async_trait::async_trait]
+    impl RowSource for Failing {
+        fn columns(&self) -> &[ColumnMeta] {
+            &self.0
+        }
+        async fn next_batch(&mut self, _max: usize) -> dbiji_core::DbResult<Vec<Row>> {
+            Err(dbiji_core::DbError::connection("connection reset"))
+        }
+    }
+    for format in [ExportFormat::Csv, ExportFormat::Json, ExportFormat::Xlsx, ExportFormat::Sql] {
+        let path = dir.path().join(format!("fail.{}", format.extension()));
+        let mut src = Failing(cols());
+        let mut sink = create_sink(format, &ExportOptions::default(), ExportTarget::path(&path), None).unwrap();
+        let err = run_export(&mut src, sink.as_mut(), &Progress::new(), &CancellationToken::new()).await.unwrap_err();
+        assert_eq!(err.kind, dbiji_core::ErrorKind::Connection);
+        assert!(!path.exists(), "{format:?}");
+    }
+    // Unknown encodings are rejected up front.
+    let o = ExportOptions { encoding: "no-such".into(), ..Default::default() };
+    assert!(create_sink(ExportFormat::Csv, &o, ExportTarget::path(dir.path().join("x.csv")), None).is_err());
+}
+
 #[test]
 fn format_metadata() {
     assert_eq!(ExportFormat::DbUnit.extension(), "xml");

@@ -27,61 +27,42 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
 
 /// Extract the literal argument of tr("...")/trf("...") calls, handling escapes.
 fn extract(src: &str, out: &mut BTreeSet<String>) {
-    let bytes = src.as_bytes();
-    let mut i = 0;
-    while i + 4 < bytes.len() {
-        let rest = &src[i..];
-        let (skip, ok) = if rest.starts_with("tr(\"") {
-            (4, true)
-        } else if rest.starts_with("trf(\"") {
-            (5, true)
-        } else {
-            (1, false)
-        };
-        if !ok {
-            i += 1;
-            continue;
-        }
+    let mut starts: Vec<(usize, usize)> = src.match_indices("tr(\"").map(|(i, m)| (i, m.len())).collect();
+    starts.extend(src.match_indices("trf(\"").map(|(i, m)| (i, m.len())));
+    for (i, len) in starts {
         // must not be part of a longer identifier (e.g. `attr("`)
-        if i > 0 {
-            let prev = bytes[i - 1] as char;
+        if let Some(prev) = src[..i].chars().next_back() {
             if prev.is_alphanumeric() || prev == '_' {
-                i += skip;
                 continue;
             }
         }
-        let mut j = i + skip;
         let mut s = String::new();
         let mut closed = false;
-        while j < bytes.len() {
-            let c = src[j..].chars().next().unwrap_or('\0');
-            if c == '\\' {
-                let n = src[j + 1..].chars().next().unwrap_or('\0');
-                match n {
-                    'n' => s.push('\n'),
-                    't' => s.push('\t'),
-                    '"' => s.push('"'),
-                    '\\' => s.push('\\'),
-                    '\'' => s.push('\''),
-                    other => {
+        let mut chars = src[i + len..].chars();
+        while let Some(c) = chars.next() {
+            match c {
+                '\\' => match chars.next() {
+                    Some('n') => s.push('\n'),
+                    Some('t') => s.push('\t'),
+                    Some('"') => s.push('"'),
+                    Some('\\') => s.push('\\'),
+                    Some('\'') => s.push('\''),
+                    Some(o) => {
                         s.push('\\');
-                        s.push(other);
+                        s.push(o);
                     }
+                    None => break,
+                },
+                '"' => {
+                    closed = true;
+                    break;
                 }
-                j += 1 + n.len_utf8();
-                continue;
+                c => s.push(c),
             }
-            if c == '"' {
-                closed = true;
-                break;
-            }
-            s.push(c);
-            j += c.len_utf8();
         }
         if closed && !s.is_empty() {
             out.insert(s);
         }
-        i = j.max(i + 1);
     }
 }
 

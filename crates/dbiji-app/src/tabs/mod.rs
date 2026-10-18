@@ -1,6 +1,7 @@
 //! Central tab area: SQL editors, object editors, diagrams, admin views ...
 //! Tabs live in an `egui_dock` tree so they can be moved, split and detached.
 
+pub mod object;
 pub mod welcome;
 
 use crate::cx::AppContext;
@@ -157,4 +158,28 @@ macro_rules! impl_tab_any {
             self
         }
     };
+}
+
+/// A view embedded inside another tab (e.g. the data page of an object editor).
+pub trait EmbeddedView {
+    fn ui(&mut self, ui: &mut Ui, cx: &mut AppContext);
+    fn is_dirty(&self) -> bool {
+        false
+    }
+    fn on_action(&mut self, action: &str, cx: &mut AppContext) -> bool {
+        let _ = (action, cx);
+        false
+    }
+}
+
+/// Data editor for a table or view (filled in by the results module).
+pub fn make_table_data_view(cx: &mut AppContext, conn: &str, obj: &dbiji_core::ObjectRef) -> Option<Box<dyn EmbeddedView>> {
+    let _ = (cx, conn, obj);
+    None
+}
+
+/// Read-only highlighted code (DDL, plans, logs).
+pub fn code(ui: &mut Ui, cx: &mut AppContext, id: impl std::hash::Hash + std::fmt::Debug, text: &str) {
+    let _ = cx;
+    crate::widgets::code_view(ui, id, text);
 }

@@ -18,6 +18,7 @@ pub mod tabs;
 pub mod theme;
 pub mod toasts;
 pub mod urls;
+pub mod widgets;
 
 use std::process::ExitCode;
 use std::sync::Arc;

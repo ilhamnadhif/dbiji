@@ -24,7 +24,11 @@ pub enum ColumnDisplay {
 
 impl ColumnDisplay {
     /// All variants in menu order.
-    pub const ALL: [ColumnDisplay; 3] = [ColumnDisplay::All, ColumnDisplay::KeysOnly, ColumnDisplay::None];
+    pub const ALL: [ColumnDisplay; 3] = [
+        ColumnDisplay::All,
+        ColumnDisplay::KeysOnly,
+        ColumnDisplay::None,
+    ];
 
     /// English label (route through `tr` for display).
     pub fn label(self) -> &'static str {
@@ -74,7 +78,12 @@ pub struct ErSettings {
 
 impl Default for ErSettings {
     fn default() -> Self {
-        ErSettings { columns: ColumnDisplay::All, show_types: true, show_comments: false, notation: Notation::CrowsFoot }
+        ErSettings {
+            columns: ColumnDisplay::All,
+            show_types: true,
+            show_comments: false,
+            notation: Notation::CrowsFoot,
+        }
     }
 }
 
@@ -94,14 +103,22 @@ pub struct ErNote {
 
 impl Default for ErNote {
     fn default() -> Self {
-        ErNote { text: String::new(), pos: Pos2::ZERO, size: vec2(180.0, 90.0) }
+        ErNote {
+            text: String::new(),
+            pos: Pos2::ZERO,
+            size: vec2(180.0, 90.0),
+        }
     }
 }
 
 impl ErNote {
     /// Creates a note at `pos` with the default size.
     pub fn new(text: impl Into<String>, pos: Pos2) -> Self {
-        ErNote { text: text.into(), pos, ..Default::default() }
+        ErNote {
+            text: text.into(),
+            pos,
+            ..Default::default()
+        }
     }
 
     /// Rectangle of the note in diagram coordinates.
@@ -133,7 +150,13 @@ impl ErDiagram {
     pub fn new(name: impl Into<String>, model: ErModel) -> Self {
         let settings = ErSettings::default();
         let positions = auto_layout(&model, &LayoutOptions::from_settings(settings));
-        ErDiagram { name: name.into(), model, positions, notes: Vec::new(), settings }
+        ErDiagram {
+            name: name.into(),
+            model,
+            positions,
+            notes: Vec::new(),
+            settings,
+        }
     }
 
     /// Recomputes every position with the automatic layout.
@@ -179,7 +202,9 @@ impl ErDiagram {
 
     /// Geometry of a box with the current settings.
     pub fn geometry(&self, key: &str) -> Option<TableGeometry> {
-        self.model.table(key).map(|t| table_geometry(t, &self.settings))
+        self.model
+            .table(key)
+            .map(|t| table_geometry(t, &self.settings))
     }
 
     /// Rectangle of a box in diagram coordinates.
@@ -213,8 +238,8 @@ impl ErDiagram {
     /// Loads a diagram saved with [`Self::to_json`]; boxes without a
     /// position are placed automatically.
     pub fn from_json(json: &str) -> DbResult<Self> {
-        let mut d: ErDiagram =
-            serde_json::from_str(json).map_err(|e| DbError::config(trf("Invalid diagram file: {}", &[&e])))?;
+        let mut d: ErDiagram = serde_json::from_str(json)
+            .map_err(|e| DbError::config(trf("Invalid diagram file: {}", &[&e])))?;
         d.place_missing();
         Ok(d)
     }
@@ -227,7 +252,10 @@ mod tests {
 
     fn model() -> ErModel {
         let mut m = ErModel::default();
-        m.tables.push(ErTable::new(None, "a", ErTableKind::Table).with_column(ErColumn::new("id", "int").primary_key()));
+        m.tables.push(
+            ErTable::new(None, "a", ErTableKind::Table)
+                .with_column(ErColumn::new("id", "int").primary_key()),
+        );
         m.tables.push(
             ErTable::new(None, "b", ErTableKind::Table)
                 .with_column(ErColumn::new("id", "int").primary_key())
@@ -261,7 +289,9 @@ mod tests {
         let mut d = ErDiagram::new("test", model());
         d.positions.insert("a".into(), Pos2::new(5000.0, 5000.0));
         let mut m = model();
-        m.tables.push(ErTable::new(None, "c", ErTableKind::Table).with_column(ErColumn::new("id", "int")));
+        m.tables.push(
+            ErTable::new(None, "c", ErTableKind::Table).with_column(ErColumn::new("id", "int")),
+        );
         m.tables.retain(|t| t.key != "b");
         m.relations.clear();
         d.refresh_model(m);

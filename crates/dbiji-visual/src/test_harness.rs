@@ -16,7 +16,12 @@ impl Harness {
         let mut fonts = egui::FontDefinitions::default();
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
         ctx.set_fonts(fonts);
-        Harness { ctx, time: 0.0, size: vec2(width, height), modifiers: Modifiers::NONE }
+        Harness {
+            ctx,
+            time: 0.0,
+            size: vec2(width, height),
+            modifiers: Modifiers::NONE,
+        }
     }
 
     /// Runs one frame with `events`; `f` builds the UI inside a central panel.
@@ -34,7 +39,9 @@ impl Harness {
             egui::CentralPanel::default().show(ui, |ui| f(ui));
         });
         out.textures_delta.clear();
-        let prims = self.ctx.tessellate(std::mem::take(&mut out.shapes), out.pixels_per_point);
+        let prims = self
+            .ctx
+            .tessellate(std::mem::take(&mut out.shapes), out.pixels_per_point);
         assert!(prims.iter().all(|p| match &p.primitive {
             egui::epaint::Primitive::Mesh(m) => m.is_valid(),
             _ => true,
@@ -52,7 +59,12 @@ impl Harness {
     }
 
     fn button(&self, pos: Pos2, button: PointerButton, pressed: bool) -> Event {
-        Event::PointerButton { pos, button, pressed, modifiers: self.modifiers }
+        Event::PointerButton {
+            pos,
+            button,
+            pressed,
+            modifiers: self.modifiers,
+        }
     }
 
     pub fn hover(&mut self, pos: Pos2, f: &mut dyn FnMut(&mut Ui)) {
@@ -97,15 +109,38 @@ impl Harness {
 
     pub fn key(&mut self, key: Key, f: &mut dyn FnMut(&mut Ui)) {
         let m = self.modifiers;
-        self.frame(vec![Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: m }], f);
-        self.frame(vec![Event::Key { key, physical_key: None, pressed: false, repeat: false, modifiers: m }], f);
+        self.frame(
+            vec![Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: m,
+            }],
+            f,
+        );
+        self.frame(
+            vec![Event::Key {
+                key,
+                physical_key: None,
+                pressed: false,
+                repeat: false,
+                modifiers: m,
+            }],
+            f,
+        );
     }
 
     pub fn scroll(&mut self, at: Pos2, delta: Vec2, f: &mut dyn FnMut(&mut Ui)) {
         self.frame(vec![Event::PointerMoved(at)], f);
         let m = self.modifiers;
         self.frame(
-            vec![Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta, phase: egui::TouchPhase::Move, modifiers: m }],
+            vec![Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                delta,
+                phase: egui::TouchPhase::Move,
+                modifiers: m,
+            }],
             f,
         );
         self.idle(5, f);

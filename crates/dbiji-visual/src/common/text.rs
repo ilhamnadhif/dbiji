@@ -11,7 +11,8 @@ use std::borrow::Cow;
 
 /// Helvetica advance widths for ASCII 32..=126.
 const HELVETICA: [u16; 95] = [
-    278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, // ' '..'/'
+    278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278,
+    278, // ' '..'/'
     556, 556, 556, 556, 556, 556, 556, 556, 556, 556, // '0'..'9'
     278, 278, 584, 584, 584, 556, 1015, // ':'..'@'
     667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, // 'A'..'M'
@@ -24,7 +25,8 @@ const HELVETICA: [u16; 95] = [
 
 /// Helvetica-Bold advance widths for ASCII 32..=126.
 const HELVETICA_BOLD: [u16; 95] = [
-    278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278, // ' '..'/'
+    278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278,
+    278, // ' '..'/'
     556, 556, 556, 556, 556, 556, 556, 556, 556, 556, // '0'..'9'
     333, 333, 584, 584, 584, 611, 975, // ':'..'@'
     722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, // 'A'..'M'
@@ -86,7 +88,12 @@ pub(crate) fn text_width(text: &str, font_size: f32, bold: bool) -> f32 {
 
 /// Truncates `text` with an ellipsis so that its estimated width does not
 /// exceed `max_width`.
-pub(crate) fn truncate_to_width(text: &str, max_width: f32, font_size: f32, bold: bool) -> Cow<'_, str> {
+pub(crate) fn truncate_to_width(
+    text: &str,
+    max_width: f32,
+    font_size: f32,
+    bold: bool,
+) -> Cow<'_, str> {
     if text_width(text, font_size, bold) <= max_width {
         return Cow::Borrowed(text);
     }

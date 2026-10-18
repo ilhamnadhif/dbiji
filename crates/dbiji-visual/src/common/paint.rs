@@ -22,9 +22,23 @@ pub(crate) fn font_px(world_size: f32, zoom: f32) -> Option<f32> {
 /// Lays out a single line of text, eliding it with `…` when it is wider than
 /// `max_width` (pass `f32::INFINITY` for no limit). The galley uses the
 /// placeholder color so the paint color can change without re-layout.
-pub(crate) fn single_line(painter: &Painter, text: &str, size: f32, monospace: bool, max_width: f32) -> Arc<Galley> {
-    let family = if monospace { FontFamily::Monospace } else { FontFamily::Proportional };
-    let mut job = LayoutJob::simple_singleline(text.to_owned(), FontId::new(size, family), Color32::PLACEHOLDER);
+pub(crate) fn single_line(
+    painter: &Painter,
+    text: &str,
+    size: f32,
+    monospace: bool,
+    max_width: f32,
+) -> Arc<Galley> {
+    let family = if monospace {
+        FontFamily::Monospace
+    } else {
+        FontFamily::Proportional
+    };
+    let mut job = LayoutJob::simple_singleline(
+        text.to_owned(),
+        FontId::new(size, family),
+        Color32::PLACEHOLDER,
+    );
     if max_width.is_finite() {
         job.wrap = TextWrapping::truncate_at_width(max_width.max(1.0));
     }
@@ -32,7 +46,13 @@ pub(crate) fn single_line(painter: &Painter, text: &str, size: f32, monospace: b
 }
 
 /// Paints `galley` anchored at `pos` with `align`.
-pub(crate) fn paint_galley(painter: &Painter, pos: Pos2, align: Align2, galley: Arc<Galley>, color: Color32) -> Rect {
+pub(crate) fn paint_galley(
+    painter: &Painter,
+    pos: Pos2,
+    align: Align2,
+    galley: Arc<Galley>,
+    color: Color32,
+) -> Rect {
     let rect = align.anchor_size(pos, galley.size());
     painter.galley(rect.min, galley, color);
     rect
@@ -55,7 +75,13 @@ pub(crate) fn text(
 }
 
 /// Draws a polyline as dashes (`dash` and `gap` in screen points).
-pub(crate) fn dashed_polyline(painter: &Painter, points: &[Pos2], stroke: Stroke, dash: f32, gap: f32) {
+pub(crate) fn dashed_polyline(
+    painter: &Painter,
+    points: &[Pos2],
+    stroke: Stroke,
+    dash: f32,
+    gap: f32,
+) {
     if points.len() < 2 {
         return;
     }

@@ -27,7 +27,13 @@ pub struct DashboardItem {
 
 impl Default for DashboardItem {
     fn default() -> Self {
-        DashboardItem { id: 0, title: String::new(), sql: String::new(), chart: ChartConfig::default(), refresh_secs: 60 }
+        DashboardItem {
+            id: 0,
+            title: String::new(),
+            sql: String::new(),
+            chart: ChartConfig::default(),
+            refresh_secs: 60,
+        }
     }
 }
 
@@ -45,7 +51,11 @@ pub struct CustomDashboard {
 
 impl Default for CustomDashboard {
     fn default() -> Self {
-        CustomDashboard { name: String::new(), items: Vec::new(), columns: 2 }
+        CustomDashboard {
+            name: String::new(),
+            items: Vec::new(),
+            columns: 2,
+        }
     }
 }
 
@@ -101,10 +111,25 @@ pub enum CustomDashboardEvent {
 
 impl CustomDashboardState {
     /// Stores the result of an item's query (`now`: app clock in seconds).
-    pub fn set_result(&mut self, item: &DashboardItem, columns: Vec<ColumnMeta>, rows: Vec<Row>, now: f64) {
+    pub fn set_result(
+        &mut self,
+        item: &DashboardItem,
+        columns: Vec<ColumnMeta>,
+        rows: Vec<Row>,
+        now: f64,
+    ) {
         let data = ChartData::build(&columns, &rows, &item.chart);
         self.pending.remove(&item.id);
-        self.results.insert(item.id, ItemResult { columns, rows, data, fetched_at: now, error: None });
+        self.results.insert(
+            item.id,
+            ItemResult {
+                columns,
+                rows,
+                data,
+                fetched_at: now,
+                error: None,
+            },
+        );
         self.charts.entry(item.id).or_default().reset_view = true;
     }
 
@@ -151,7 +176,11 @@ impl CustomDashboardState {
             .items
             .iter()
             .filter(|i| i.refresh_secs > 0 && !self.pending.contains(&i.id))
-            .filter_map(|i| self.requested_at.get(&i.id).map(|t| (t + i.refresh_secs as f64 - now).max(0.0)))
+            .filter_map(|i| {
+                self.requested_at
+                    .get(&i.id)
+                    .map(|t| (t + i.refresh_secs as f64 - now).max(0.0))
+            })
             .reduce(f64::min)
     }
 
@@ -179,12 +208,25 @@ pub fn show_custom_dashboard(
     let before = dashboard.clone();
     let mut events: Vec<CustomDashboardEvent> = Vec::new();
     ui.horizontal(|ui| {
-        ui.add(egui::TextEdit::singleline(&mut dashboard.name).hint_text(tr("Dashboard name")).desired_width(220.0));
-        if ui.button(format!("{} {}", icon::PLUS, tr("Add chart"))).clicked() {
-            let id = dashboard.add_item(DashboardItem { title: tr("New chart").to_string(), ..Default::default() });
+        ui.add(
+            egui::TextEdit::singleline(&mut dashboard.name)
+                .hint_text(tr("Dashboard name"))
+                .desired_width(220.0),
+        );
+        if ui
+            .button(format!("{} {}", icon::PLUS, tr("Add chart")))
+            .clicked()
+        {
+            let id = dashboard.add_item(DashboardItem {
+                title: tr("New chart").to_string(),
+                ..Default::default()
+            });
             state.editing = Some(id);
         }
-        if ui.button(format!("{} {}", icon::ARROWS_CLOCKWISE, tr("Refresh all"))).clicked() {
+        if ui
+            .button(format!("{} {}", icon::ARROWS_CLOCKWISE, tr("Refresh all")))
+            .clicked()
+        {
             for item in &dashboard.items {
                 if !item.sql.trim().is_empty() && !state.pending.contains(&item.id) {
                     state.request(item.id, now);
@@ -204,31 +246,38 @@ pub fn show_custom_dashboard(
     let cols = dashboard.columns.clamp(1, 4);
     let mut delete: Option<u64> = None;
     let mut move_up: Option<u64> = None;
-    egui::ScrollArea::vertical().id_salt("dbiji_custom_dashboard").auto_shrink(false).show(ui, |ui| {
-        if dashboard.items.is_empty() {
-            ui.add_space(20.0);
-            ui.vertical_centered(|ui| ui.weak(tr("Add a chart and give it a query to build a dashboard.")));
-        }
-        let avail = ui.available_width();
-        let card_w = ((avail - 10.0 * (cols as f32 - 1.0)) / cols as f32).max(200.0);
-        let ids: Vec<u64> = dashboard.items.iter().map(|i| i.id).collect();
-        for row in ids.chunks(cols) {
-            ui.horizontal_top(|ui| {
-                for &id in row {
-                    let Some(idx) = dashboard.items.iter().position(|i| i.id == id) else { continue };
-                    ui.allocate_ui(vec2(card_w, 320.0), |ui| {
-                        ui.set_width(card_w);
-                        egui::Frame::group(ui.style()).show(ui, |ui| {
-                            ui.set_width(card_w - 14.0);
-                            let item = &mut dashboard.items[idx];
-                            card(ui, item, state, now, &mut events, &mut delete, &mut move_up);
+    egui::ScrollArea::vertical()
+        .id_salt("dbiji_custom_dashboard")
+        .auto_shrink(false)
+        .show(ui, |ui| {
+            if dashboard.items.is_empty() {
+                ui.add_space(20.0);
+                ui.vertical_centered(|ui| {
+                    ui.weak(tr("Add a chart and give it a query to build a dashboard."))
+                });
+            }
+            let avail = ui.available_width();
+            let card_w = ((avail - 10.0 * (cols as f32 - 1.0)) / cols as f32).max(200.0);
+            let ids: Vec<u64> = dashboard.items.iter().map(|i| i.id).collect();
+            for row in ids.chunks(cols) {
+                ui.horizontal_top(|ui| {
+                    for &id in row {
+                        let Some(idx) = dashboard.items.iter().position(|i| i.id == id) else {
+                            continue;
+                        };
+                        ui.allocate_ui(vec2(card_w, 320.0), |ui| {
+                            ui.set_width(card_w);
+                            egui::Frame::group(ui.style()).show(ui, |ui| {
+                                ui.set_width(card_w - 14.0);
+                                let item = &mut dashboard.items[idx];
+                                card(ui, item, state, now, &mut events, &mut delete, &mut move_up);
+                            });
                         });
-                    });
-                }
-            });
-            ui.add_space(10.0);
-        }
-    });
+                    }
+                });
+                ui.add_space(10.0);
+            }
+        });
     if let Some(id) = delete {
         dashboard.items.retain(|i| i.id != id);
         state.results.remove(&id);
@@ -240,11 +289,13 @@ pub fn show_custom_dashboard(
     }
     if let Some(id) = move_up
         && let Some(i) = dashboard.items.iter().position(|x| x.id == id)
-            && i > 0 {
-                dashboard.items.swap(i, i - 1);
-            }
+        && i > 0
+    {
+        dashboard.items.swap(i, i - 1);
+    }
     if let Some(wait) = state.next_due_in(dashboard, now) {
-        ui.ctx().request_repaint_after(std::time::Duration::from_secs_f64(wait.clamp(0.05, 3600.0)));
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_secs_f64(wait.clamp(0.05, 3600.0)));
     }
     if *dashboard != before {
         events.push(CustomDashboardEvent::Changed);
@@ -265,42 +316,79 @@ fn card(
     let id = item.id;
     let editing = state.editing == Some(id);
     ui.horizontal(|ui| {
-        ui.strong(if item.title.is_empty() { tr("Untitled") } else { item.title.as_str() });
+        ui.strong(if item.title.is_empty() {
+            tr("Untitled")
+        } else {
+            item.title.as_str()
+        });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.small_button(icon::TRASH).on_hover_text(tr("Delete chart")).clicked() {
+            if ui
+                .small_button(icon::TRASH)
+                .on_hover_text(tr("Delete chart"))
+                .clicked()
+            {
                 *delete = Some(id);
             }
-            if ui.small_button(icon::ARROW_LEFT).on_hover_text(tr("Move earlier")).clicked() {
+            if ui
+                .small_button(icon::ARROW_LEFT)
+                .on_hover_text(tr("Move earlier"))
+                .clicked()
+            {
                 *move_up = Some(id);
             }
-            if ui.selectable_label(editing, icon::PENCIL_SIMPLE).on_hover_text(tr("Edit chart")).clicked() {
+            if ui
+                .selectable_label(editing, icon::PENCIL_SIMPLE)
+                .on_hover_text(tr("Edit chart"))
+                .clicked()
+            {
                 state.editing = if editing { None } else { Some(id) };
             }
             let pending = state.pending.contains(&id);
             if pending {
                 ui.spinner();
-            } else if ui.small_button(icon::ARROWS_CLOCKWISE).on_hover_text(tr("Refresh")).clicked() && !item.sql.trim().is_empty() {
+            } else if ui
+                .small_button(icon::ARROWS_CLOCKWISE)
+                .on_hover_text(tr("Refresh"))
+                .clicked()
+                && !item.sql.trim().is_empty()
+            {
                 state.request(id, now);
                 events.push(CustomDashboardEvent::Refresh(id));
             }
             if let Some(r) = state.results.get(&id) {
-                ui.weak(trf("{}s ago", &[&((now - r.fetched_at).max(0.0).round() as i64)]));
+                ui.weak(trf(
+                    "{}s ago",
+                    &[&((now - r.fetched_at).max(0.0).round() as i64)],
+                ));
             }
         });
     });
     if editing {
         let before = item.chart.clone();
-        egui::Grid::new(("dbiji_dash_item", id)).num_columns(2).spacing(vec2(8.0, 4.0)).show(ui, |ui| {
-            ui.label(tr("Title"));
-            ui.text_edit_singleline(&mut item.title);
-            ui.end_row();
-            ui.label(tr("Refresh (s)"));
-            ui.add(egui::DragValue::new(&mut item.refresh_secs).range(0..=86_400)).on_hover_text(tr("0 = refresh manually"));
-            ui.end_row();
-        });
+        egui::Grid::new(("dbiji_dash_item", id))
+            .num_columns(2)
+            .spacing(vec2(8.0, 4.0))
+            .show(ui, |ui| {
+                ui.label(tr("Title"));
+                ui.text_edit_singleline(&mut item.title);
+                ui.end_row();
+                ui.label(tr("Refresh (s)"));
+                ui.add(egui::DragValue::new(&mut item.refresh_secs).range(0..=86_400))
+                    .on_hover_text(tr("0 = refresh manually"));
+                ui.end_row();
+            });
         ui.label(tr("SQL"));
-        ui.add(egui::TextEdit::multiline(&mut item.sql).code_editor().desired_rows(4).desired_width(f32::INFINITY));
-        let columns = state.results.get(&id).map(|r| r.columns.clone()).unwrap_or_default();
+        ui.add(
+            egui::TextEdit::multiline(&mut item.sql)
+                .code_editor()
+                .desired_rows(4)
+                .desired_width(f32::INFINITY),
+        );
+        let columns = state
+            .results
+            .get(&id)
+            .map(|r| r.columns.clone())
+            .unwrap_or_default();
         if columns.is_empty() {
             ui.weak(tr("Run the query once to choose the chart columns."));
         } else {
@@ -310,7 +398,9 @@ fn card(
             state.rebuild(item);
         }
         ui.horizontal(|ui| {
-            if ui.button(format!("{} {}", icon::PLAY, tr("Run"))).clicked() && !item.sql.trim().is_empty() {
+            if ui.button(format!("{} {}", icon::PLAY, tr("Run"))).clicked()
+                && !item.sql.trim().is_empty()
+            {
                 state.request(id, now);
                 events.push(CustomDashboardEvent::Refresh(id));
             }
@@ -322,7 +412,10 @@ fn card(
     }
     match state.results.get(&id) {
         Some(r) if r.error.is_some() => {
-            ui.colored_label(ui.visuals().error_fg_color, RichText::new(r.error.clone().unwrap_or_default()).small());
+            ui.colored_label(
+                ui.visuals().error_fg_color,
+                RichText::new(r.error.clone().unwrap_or_default()).small(),
+            );
         }
         Some(r) => {
             let chart_state = state.charts.entry(id).or_default();
@@ -352,17 +445,44 @@ mod tests {
     #[test]
     fn refresh_scheduling() {
         let mut d = CustomDashboard::default();
-        let a = d.add_item(DashboardItem { title: "a".into(), sql: "select 1".into(), refresh_secs: 10, ..Default::default() });
-        let b = d.add_item(DashboardItem { title: "b".into(), sql: "select 2".into(), refresh_secs: 0, ..Default::default() });
-        let _empty = d.add_item(DashboardItem { title: "c".into(), ..Default::default() });
+        let a = d.add_item(DashboardItem {
+            title: "a".into(),
+            sql: "select 1".into(),
+            refresh_secs: 10,
+            ..Default::default()
+        });
+        let b = d.add_item(DashboardItem {
+            title: "b".into(),
+            sql: "select 2".into(),
+            refresh_secs: 0,
+            ..Default::default()
+        });
+        let _empty = d.add_item(DashboardItem {
+            title: "c".into(),
+            ..Default::default()
+        });
         assert_eq!((a, b), (1, 2));
         let mut s = CustomDashboardState::default();
         assert_eq!(s.take_due(&d, 0.0), vec![a, b]);
-        assert!(s.take_due(&d, 1.0).is_empty(), "pending items are not requested twice");
+        assert!(
+            s.take_due(&d, 1.0).is_empty(),
+            "pending items are not requested twice"
+        );
         let item_a = d.item(a).unwrap().clone();
         s.set_result(
-            &DashboardItem { chart: ChartConfig { kind: ChartKind::Bar, x_column: Some(0), y_columns: vec![1], ..Default::default() }, ..item_a },
-            vec![ColumnMeta::new("k", "text", DataKind::Text), ColumnMeta::new("v", "int", DataKind::Int)],
+            &DashboardItem {
+                chart: ChartConfig {
+                    kind: ChartKind::Bar,
+                    x_column: Some(0),
+                    y_columns: vec![1],
+                    ..Default::default()
+                },
+                ..item_a
+            },
+            vec![
+                ColumnMeta::new("k", "text", DataKind::Text),
+                ColumnMeta::new("v", "int", DataKind::Int),
+            ],
             vec![vec![Value::text("x"), Value::Int(3)]],
             2.0,
         );
@@ -371,7 +491,11 @@ mod tests {
         assert_eq!(s.result(b).unwrap().error.as_deref(), Some("boom"));
         assert_eq!(s.next_due_in(&d, 5.0), Some(5.0));
         assert!(s.take_due(&d, 9.0).is_empty());
-        assert_eq!(s.take_due(&d, 10.0), vec![a], "manual items are not refreshed automatically");
+        assert_eq!(
+            s.take_due(&d, 10.0),
+            vec![a],
+            "manual items are not refreshed automatically"
+        );
         let json = serde_json::to_string(&d).unwrap();
         assert_eq!(serde_json::from_str::<CustomDashboard>(&json).unwrap(), d);
     }

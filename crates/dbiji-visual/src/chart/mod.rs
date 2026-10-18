@@ -11,5 +11,5 @@ mod view;
 
 pub use config::{ChartAggregate, ChartConfig, ChartKind};
 pub use data::{ChartData, ChartSeries, PieSlice, XKind};
-pub use svg::export_chart_svg;
+pub use svg::{export_chart_png, export_chart_svg};
 pub use view::{ChartState, chart_config_ui, show_chart};

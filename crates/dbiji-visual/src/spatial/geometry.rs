@@ -18,7 +18,12 @@ pub struct Coord {
 impl Coord {
     /// 2D coordinate.
     pub fn xy(x: f64, y: f64) -> Self {
-        Coord { x, y, z: None, m: None }
+        Coord {
+            x,
+            y,
+            z: None,
+            m: None,
+        }
     }
 }
 
@@ -118,7 +123,12 @@ pub struct Bounds {
 impl Bounds {
     /// Box of one point.
     pub fn point(x: f64, y: f64) -> Bounds {
-        Bounds { min_x: x, min_y: y, max_x: x, max_y: y }
+        Bounds {
+            min_x: x,
+            min_y: y,
+            max_x: x,
+            max_y: y,
+        }
     }
 
     /// Smallest box containing both.
@@ -148,17 +158,28 @@ impl Bounds {
 
     /// Centre.
     pub fn center(&self) -> (f64, f64) {
-        ((self.min_x + self.max_x) * 0.5, (self.min_y + self.max_y) * 0.5)
+        (
+            (self.min_x + self.max_x) * 0.5,
+            (self.min_y + self.max_y) * 0.5,
+        )
     }
 
     /// Grows the box by `d` on every side.
     pub fn expand(self, d: f64) -> Bounds {
-        Bounds { min_x: self.min_x - d, min_y: self.min_y - d, max_x: self.max_x + d, max_y: self.max_y + d }
+        Bounds {
+            min_x: self.min_x - d,
+            min_y: self.min_y - d,
+            max_x: self.max_x + d,
+            max_y: self.max_y + d,
+        }
     }
 
     /// Boxes overlap (touching counts).
     pub fn intersects(&self, o: &Bounds) -> bool {
-        self.min_x <= o.max_x && o.min_x <= self.max_x && self.min_y <= o.max_y && o.min_y <= self.max_y
+        self.min_x <= o.max_x
+            && o.min_x <= self.max_x
+            && self.min_y <= o.max_y
+            && o.min_y <= self.max_y
     }
 
     /// Point inside (inclusive).
@@ -195,7 +216,9 @@ impl Geom {
         match self {
             Geom::Point(p) => p.as_ref().and_then(|c| bounds_of([c])),
             Geom::LineString(cs) | Geom::MultiPoint(cs) => bounds_of(cs),
-            Geom::Polygon(rings) | Geom::MultiLineString(rings) => bounds_of(rings.iter().flatten()),
+            Geom::Polygon(rings) | Geom::MultiLineString(rings) => {
+                bounds_of(rings.iter().flatten())
+            }
             Geom::MultiPolygon(polys) => bounds_of(polys.iter().flatten().flatten()),
             Geom::GeometryCollection(gs) => gs.iter().fold(None, |acc, g| merge(acc, g.bounds())),
         }
@@ -330,7 +353,11 @@ fn write_rings(rings: &[Vec<Coord>], dims: Dims, out: &mut String) {
 impl Geometry {
     /// 2D geometry without SRID.
     pub fn new(geom: Geom) -> Self {
-        Geometry { srid: None, dims: Dims::Xy, geom }
+        Geometry {
+            srid: None,
+            dims: Dims::Xy,
+            geom,
+        }
     }
 
     /// Bounding box in x/y (`None` when empty).
@@ -374,15 +401,43 @@ mod tests {
         let g = Geometry {
             srid: Some(4326),
             dims: Dims::Xy,
-            geom: Geom::Polygon(vec![vec![Coord::xy(0.0, 0.0), Coord::xy(4.0, 0.0), Coord::xy(4.0, 3.5), Coord::xy(0.0, 0.0)]]),
+            geom: Geom::Polygon(vec![vec![
+                Coord::xy(0.0, 0.0),
+                Coord::xy(4.0, 0.0),
+                Coord::xy(4.0, 3.5),
+                Coord::xy(0.0, 0.0),
+            ]]),
         };
         assert_eq!(g.to_wkt(), "SRID=4326;POLYGON((0 0,4 0,4 3.5,0 0))");
-        assert_eq!(g.bounds(), Some(Bounds { min_x: 0.0, min_y: 0.0, max_x: 4.0, max_y: 3.5 }));
+        assert_eq!(
+            g.bounds(),
+            Some(Bounds {
+                min_x: 0.0,
+                min_y: 0.0,
+                max_x: 4.0,
+                max_y: 3.5
+            })
+        );
         assert_eq!(Geometry::new(Geom::Point(None)).to_wkt(), "POINT EMPTY");
-        let z = Geometry { srid: None, dims: Dims::Xyz, geom: Geom::Point(Some(Coord { x: 1.0, y: 2.0, z: Some(3.0), m: None })) };
+        let z = Geometry {
+            srid: None,
+            dims: Dims::Xyz,
+            geom: Geom::Point(Some(Coord {
+                x: 1.0,
+                y: 2.0,
+                z: Some(3.0),
+                m: None,
+            })),
+        };
         assert_eq!(z.to_wkt(), "POINT Z (1 2 3)");
-        let c = Geometry::new(Geom::GeometryCollection(vec![Geom::Point(Some(Coord::xy(1.0, 1.0))), Geom::LineString(vec![])]));
-        assert_eq!(c.to_wkt(), "GEOMETRYCOLLECTION(POINT(1 1),LINESTRING EMPTY)");
+        let c = Geometry::new(Geom::GeometryCollection(vec![
+            Geom::Point(Some(Coord::xy(1.0, 1.0))),
+            Geom::LineString(vec![]),
+        ]));
+        assert_eq!(
+            c.to_wkt(),
+            "GEOMETRYCOLLECTION(POINT(1 1),LINESTRING EMPTY)"
+        );
         assert_eq!(c.num_points(), 1);
         assert!(Geometry::new(Geom::MultiPolygon(vec![])).bounds().is_none());
         assert_eq!(Dims::from_flags(true, true).count(), 4);

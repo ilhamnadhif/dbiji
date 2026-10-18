@@ -4,7 +4,13 @@
 /// 1000 keep up to `decimals` fraction digits (trailing zeros removed).
 pub(crate) fn compact(v: f64, decimals: usize) -> String {
     if !v.is_finite() {
-        return if v.is_nan() { "NaN".into() } else if v > 0.0 { "∞".into() } else { "-∞".into() };
+        return if v.is_nan() {
+            "NaN".into()
+        } else if v > 0.0 {
+            "∞".into()
+        } else {
+            "-∞".into()
+        };
     }
     let a = v.abs();
     let (scaled, suffix) = if a >= 1e12 {
@@ -28,7 +34,11 @@ pub(crate) fn trim_decimals(v: f64, decimals: usize) -> String {
         return compact(v, decimals);
     }
     let s = format!("{v:.decimals$}");
-    let s = if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.').to_string() } else { s };
+    let s = if s.contains('.') {
+        s.trim_end_matches('0').trim_end_matches('.').to_string()
+    } else {
+        s
+    };
     if s == "-0" { "0".into() } else { s }
 }
 
@@ -39,7 +49,10 @@ pub(crate) fn grouped(v: f64) -> String {
     }
     if v.fract().abs() > 1e-9 && v.abs() < 1e15 {
         let s = trim_decimals(v, 2);
-        let (int, frac) = s.split_once('.').map(|(a, b)| (a.to_string(), format!(".{b}"))).unwrap_or((s.clone(), String::new()));
+        let (int, frac) = s
+            .split_once('.')
+            .map(|(a, b)| (a.to_string(), format!(".{b}")))
+            .unwrap_or((s.clone(), String::new()));
         return format!("{}{frac}", group_int(&int));
     }
     group_int(&format!("{:.0}", v))
@@ -96,7 +109,11 @@ pub(crate) fn bytes(v: f64) -> String {
     if unit == 0 {
         format!("{} {}", trim_decimals(value, 0), UNITS[unit])
     } else {
-        format!("{} {}", trim_decimals(value, if value.abs() >= 100.0 { 0 } else { 1 }), UNITS[unit])
+        format!(
+            "{} {}",
+            trim_decimals(value, if value.abs() >= 100.0 { 0 } else { 1 }),
+            UNITS[unit]
+        )
     }
 }
 

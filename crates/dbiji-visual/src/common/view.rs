@@ -21,14 +21,20 @@ pub struct ViewTransform {
 
 impl Default for ViewTransform {
     fn default() -> Self {
-        ViewTransform { zoom: 1.0, pan: vec2(20.0, 20.0) }
+        ViewTransform {
+            zoom: 1.0,
+            pan: vec2(20.0, 20.0),
+        }
     }
 }
 
 impl ViewTransform {
     /// Creates a transform.
     pub fn new(zoom: f32, pan: Vec2) -> Self {
-        ViewTransform { zoom: sanitize_zoom(zoom), pan }
+        ViewTransform {
+            zoom: sanitize_zoom(zoom),
+            pan,
+        }
     }
 
     /// World point to screen point.
@@ -101,7 +107,9 @@ pub(crate) fn handle_pan_zoom(
     primary_pans: bool,
 ) -> PanZoom {
     let mut out = PanZoom::default();
-    if response.dragged_by(egui::PointerButton::Middle) || (primary_pans && response.dragged_by(egui::PointerButton::Primary)) {
+    if response.dragged_by(egui::PointerButton::Middle)
+        || (primary_pans && response.dragged_by(egui::PointerButton::Primary))
+    {
         let d = response.drag_delta();
         if d != Vec2::ZERO {
             view.pan += d;
@@ -109,13 +117,19 @@ pub(crate) fn handle_pan_zoom(
         }
     }
     if response.contains_pointer() {
-        let (zoom_delta, scroll, pointer) =
-            ui.input(|i| (i.zoom_delta(), i.smooth_scroll_delta, i.pointer.latest_pos()));
+        let (zoom_delta, scroll, pointer) = ui.input(|i| {
+            (
+                i.zoom_delta(),
+                i.smooth_scroll_delta,
+                i.pointer.latest_pos(),
+            )
+        });
         if zoom_delta != 1.0
-            && let Some(p) = pointer {
-                view.zoom_around(origin, p, zoom_delta, zoom_range.0, zoom_range.1);
-                out.changed = true;
-            }
+            && let Some(p) = pointer
+        {
+            view.zoom_around(origin, p, zoom_delta, zoom_range.0, zoom_range.1);
+            out.changed = true;
+        }
         if scroll != Vec2::ZERO {
             view.pan += scroll;
             out.changed = true;

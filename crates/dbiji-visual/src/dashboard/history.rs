@@ -71,11 +71,12 @@ impl MetricHistory {
             return;
         }
         if let Some(&(last_t, _)) = self.samples.back()
-            && t < last_t {
-                // time went backwards (clock change, new time base)
-                self.samples.clear();
-                self.last_raw = None;
-            }
+            && t < last_t
+        {
+            // time went backwards (clock change, new time base)
+            self.samples.clear();
+            self.last_raw = None;
+        }
         match self.kind {
             MetricKind::Gauge => {
                 if self.samples.back().is_some_and(|&(lt, _)| lt == t) {
@@ -127,7 +128,10 @@ impl MetricHistory {
     pub fn window(&self, from: f64, to: f64) -> impl Iterator<Item = (f64, f64)> + '_ {
         // samples are time ordered: skip quickly to the start
         let start = self.samples.partition_point(|&(t, _)| t < from);
-        self.samples.range(start..).copied().take_while(move |&(t, _)| t <= to)
+        self.samples
+            .range(start..)
+            .copied()
+            .take_while(move |&(t, _)| t <= to)
     }
 
     /// Statistics of the samples in a window.
@@ -141,7 +145,17 @@ impl MetricHistory {
             sum += v;
             last = v;
         }
-        if count == 0 { None } else { Some(WindowStats { min, max, avg: sum / count as f64, last, count }) }
+        if count == 0 {
+            None
+        } else {
+            Some(WindowStats {
+                min,
+                max,
+                avg: sum / count as f64,
+                last,
+                count,
+            })
+        }
     }
 
     /// Drops samples older than `t`.
@@ -178,7 +192,13 @@ impl DashboardState {
 
     /// Empty state keeping at most `capacity` samples per metric.
     pub fn with_capacity(capacity: usize) -> Self {
-        DashboardState { metrics: Vec::new(), index: HashMap::new(), capacity, max_age_secs: 3600.0, last_t: None }
+        DashboardState {
+            metrics: Vec::new(),
+            index: HashMap::new(),
+            capacity,
+            max_age_secs: 3600.0,
+            last_t: None,
+        }
     }
 
     /// Records one poll of server metrics taken at `t_secs` (any monotonic
@@ -233,7 +253,10 @@ impl DashboardState {
             }
             map.entry(m.group.clone()).or_default().push(m);
         }
-        order.into_iter().filter_map(|g| map.remove(&g).map(|v| (g, v))).collect()
+        order
+            .into_iter()
+            .filter_map(|g| map.remove(&g).map(|v| (g, v)))
+            .collect()
     }
 
     /// Time of the newest sample.
@@ -312,7 +335,11 @@ mod tests {
         assert_eq!(groups[0].1.len(), 2);
         assert_eq!(s.latest_time(), Some(29.0));
         let c = s.metric("x.commit").unwrap();
-        assert!(c.samples().iter().all(|&(t, v)| t >= 19.0 && (v - 10.0).abs() < 1e-9));
+        assert!(
+            c.samples()
+                .iter()
+                .all(|&(t, v)| t >= 19.0 && (v - 10.0).abs() < 1e-9)
+        );
         assert!(s.metric("missing").is_none());
         s.clear();
         assert!(s.metrics().is_empty());

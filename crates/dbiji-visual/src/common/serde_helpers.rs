@@ -43,12 +43,20 @@ pub(crate) mod pos2_map {
     use super::*;
 
     pub fn serialize<S: Serializer>(m: &BTreeMap<String, Pos2>, s: S) -> Result<S::Ok, S::Error> {
-        let plain: BTreeMap<&str, [f32; 2]> = m.iter().map(|(k, p)| (k.as_str(), [finite(p.x), finite(p.y)])).collect();
+        let plain: BTreeMap<&str, [f32; 2]> = m
+            .iter()
+            .map(|(k, p)| (k.as_str(), [finite(p.x), finite(p.y)]))
+            .collect();
         plain.serialize(s)
     }
 
-    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<BTreeMap<String, Pos2>, D::Error> {
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        d: D,
+    ) -> Result<BTreeMap<String, Pos2>, D::Error> {
         let plain = BTreeMap::<String, [f32; 2]>::deserialize(d)?;
-        Ok(plain.into_iter().map(|(k, [x, y])| (k, Pos2::new(x, y))).collect())
+        Ok(plain
+            .into_iter()
+            .map(|(k, [x, y])| (k, Pos2::new(x, y)))
+            .collect())
     }
 }

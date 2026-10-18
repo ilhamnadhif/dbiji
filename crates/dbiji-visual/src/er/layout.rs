@@ -79,7 +79,10 @@ impl Default for LayoutOptions {
 impl LayoutOptions {
     /// Default options for boxes drawn with `settings`.
     pub fn from_settings(settings: ErSettings) -> Self {
-        LayoutOptions { settings, ..Default::default() }
+        LayoutOptions {
+            settings,
+            ..Default::default()
+        }
     }
 }
 
@@ -98,16 +101,22 @@ pub fn auto_layout(model: &ErModel, options: &LayoutOptions) -> BTreeMap<String,
     idx.sort_by(|&a, &b| model.tables[a].key.cmp(&model.tables[b].key));
     idx.dedup_by(|a, b| model.tables[*a].key == model.tables[*b].key);
     let keys: Vec<&str> = idx.iter().map(|&i| model.tables[i].key.as_str()).collect();
-    let sizes: Vec<Vec2> = idx.iter().map(|&i| table_geometry(&model.tables[i], &options.settings).size).collect();
+    let sizes: Vec<Vec2> = idx
+        .iter()
+        .map(|&i| table_geometry(&model.tables[i], &options.settings).size)
+        .collect();
     let index: HashMap<&str, usize> = keys.iter().enumerate().map(|(i, k)| (*k, i)).collect();
     let n = keys.len();
 
     let mut edges: BTreeSet<(usize, usize)> = BTreeSet::new();
     for r in &model.relations {
-        if let (Some(&child), Some(&parent)) = (index.get(r.from_table.as_str()), index.get(r.to_table.as_str()))
-            && child != parent {
-                edges.insert((parent, child));
-            }
+        if let (Some(&child), Some(&parent)) = (
+            index.get(r.from_table.as_str()),
+            index.get(r.to_table.as_str()),
+        ) && child != parent
+        {
+            edges.insert((parent, child));
+        }
     }
 
     let mut uf = UnionFind::<usize>::new(n);
@@ -133,7 +142,12 @@ pub fn auto_layout(model: &ErModel, options: &LayoutOptions) -> BTreeMap<String,
             blocks.push(layered_block(&nodes, &e, &sizes, options));
         }
     }
-    blocks.sort_by(|a, b| b.nodes.len().cmp(&a.nodes.len()).then_with(|| a.nodes.first().cmp(&b.nodes.first())));
+    blocks.sort_by(|a, b| {
+        b.nodes
+            .len()
+            .cmp(&a.nodes.len())
+            .then_with(|| a.nodes.first().cmp(&b.nodes.first()))
+    });
     if !isolated.is_empty() {
         blocks.push(grid_block(&isolated, &sizes, options));
     }
@@ -143,7 +157,10 @@ pub fn auto_layout(model: &ErModel, options: &LayoutOptions) -> BTreeMap<String,
     for (block, offset) in blocks.iter().zip(offsets) {
         for (&v, p) in block.nodes.iter().zip(&block.pos) {
             if let Some(key) = keys.get(v) {
-                out.insert((*key).to_string(), pos2((p.x + offset.x).round(), (p.y + offset.y).round()));
+                out.insert(
+                    (*key).to_string(),
+                    pos2((p.x + offset.x).round(), (p.y + offset.y).round()),
+                );
             }
         }
     }
@@ -161,22 +178,38 @@ pub fn layout_incremental(
     options: &LayoutOptions,
 ) -> BTreeMap<String, Pos2> {
     let keys: BTreeSet<&str> = model.tables.iter().map(|t| t.key.as_str()).collect();
-    let mut out: BTreeMap<String, Pos2> =
-        positions.iter().filter(|(k, _)| keys.contains(k.as_str())).map(|(k, p)| (k.clone(), *p)).collect();
+    let mut out: BTreeMap<String, Pos2> = positions
+        .iter()
+        .filter(|(k, _)| keys.contains(k.as_str()))
+        .map(|(k, p)| (k.clone(), *p))
+        .collect();
     if out.is_empty() {
         return auto_layout(model, options);
     }
-    let sizes: HashMap<&str, Vec2> =
-        model.tables.iter().map(|t| (t.key.as_str(), table_geometry(t, &options.settings).size)).collect();
-    let mut missing: BTreeSet<&str> = keys.iter().copied().filter(|k| !out.contains_key(*k)).collect();
+    let sizes: HashMap<&str, Vec2> = model
+        .tables
+        .iter()
+        .map(|t| (t.key.as_str(), table_geometry(t, &options.settings).size))
+        .collect();
+    let mut missing: BTreeSet<&str> = keys
+        .iter()
+        .copied()
+        .filter(|k| !out.contains_key(*k))
+        .collect();
     if missing.is_empty() {
         return out;
     }
     let mut neighbours: HashMap<&str, BTreeSet<&str>> = HashMap::new();
     for r in &model.relations {
         if r.from_table != r.to_table {
-            neighbours.entry(r.from_table.as_str()).or_default().insert(r.to_table.as_str());
-            neighbours.entry(r.to_table.as_str()).or_default().insert(r.from_table.as_str());
+            neighbours
+                .entry(r.from_table.as_str())
+                .or_default()
+                .insert(r.to_table.as_str());
+            neighbours
+                .entry(r.to_table.as_str())
+                .or_default()
+                .insert(r.from_table.as_str());
         }
     }
     let gap = options.node_spacing.max(10.0);
@@ -189,10 +222,12 @@ pub fn layout_incremental(
 
     // Place tables adjacent to placed ones first (breadth first, key order).
     loop {
-        let next = missing
-            .iter()
-            .copied()
-            .find(|k| neighbours.get(k).map(|ns| ns.iter().any(|n| out.contains_key(*n))).unwrap_or(false));
+        let next = missing.iter().copied().find(|k| {
+            neighbours
+                .get(k)
+                .map(|ns| ns.iter().any(|n| out.contains_key(*n)))
+                .unwrap_or(false)
+        });
         let Some(key) = next else { break };
         missing.remove(key);
         let size = sizes.get(key).copied().unwrap_or(vec2(160.0, 60.0));
@@ -212,16 +247,25 @@ pub fn layout_incremental(
     // Unrelated new tables: lay them out on their own, right of everything.
     if !missing.is_empty() {
         let sub = ErModel {
-            tables: model.tables.iter().filter(|t| missing.contains(t.key.as_str())).cloned().collect(),
+            tables: model
+                .tables
+                .iter()
+                .filter(|t| missing.contains(t.key.as_str()))
+                .cloned()
+                .collect(),
             relations: model
                 .relations
                 .iter()
-                .filter(|r| missing.contains(r.from_table.as_str()) && missing.contains(r.to_table.as_str()))
+                .filter(|r| {
+                    missing.contains(r.from_table.as_str()) && missing.contains(r.to_table.as_str())
+                })
                 .cloned()
                 .collect(),
         };
         let sub_pos = auto_layout(&sub, options);
-        let bounds = index.bounds().unwrap_or(Rect::from_min_size(Pos2::ZERO, Vec2::ZERO));
+        let bounds = index
+            .bounds()
+            .unwrap_or(Rect::from_min_size(Pos2::ZERO, Vec2::ZERO));
         let offset = vec2(bounds.max.x + options.component_spacing, bounds.min.y);
         for (k, p) in sub_pos {
             out.insert(k, pos2((p.x + offset.x).round(), (p.y + offset.y).round()));
@@ -242,13 +286,24 @@ struct LNode {
     layer: usize,
 }
 
-fn layered_block(nodes: &[usize], edges: &[(usize, usize)], sizes: &[Vec2], opt: &LayoutOptions) -> Block {
+fn layered_block(
+    nodes: &[usize],
+    edges: &[(usize, usize)],
+    sizes: &[Vec2],
+    opt: &LayoutOptions,
+) -> Block {
     let m = nodes.len();
     let local: HashMap<usize, usize> = nodes.iter().enumerate().map(|(i, &g)| (g, i)).collect();
     let horizontal = opt.direction == LayoutDirection::LeftRight;
     let along_of = |s: Vec2| if horizontal { s.y } else { s.x };
     let across_of = |s: Vec2| if horizontal { s.x } else { s.y };
-    let size_of = |l: usize| nodes.get(l).and_then(|&g| sizes.get(g)).copied().unwrap_or(vec2(160.0, 60.0));
+    let size_of = |l: usize| {
+        nodes
+            .get(l)
+            .and_then(|&g| sizes.get(g))
+            .copied()
+            .unwrap_or(vec2(160.0, 60.0))
+    };
 
     // 1-2: graph and cycle breaking.
     let mut g: DiGraph<(), ()> = DiGraph::with_capacity(m, edges.len());
@@ -265,7 +320,11 @@ fn layered_block(nodes: &[usize], edges: &[(usize, usize)], sizes: &[Vec2], opt:
         .edge_references()
         .map(|e| {
             let (s, t) = (e.source().index(), e.target().index());
-            if reversed.contains(&e.id()) { (t, s) } else { (s, t) }
+            if reversed.contains(&e.id()) {
+                (t, s)
+            } else {
+                (s, t)
+            }
         })
         .filter(|(s, t)| s != t)
         .collect();
@@ -289,9 +348,10 @@ fn layered_block(nodes: &[usize], edges: &[(usize, usize)], sizes: &[Vec2], opt:
     }
     for &v in topo.iter().rev() {
         if parents[v].is_empty()
-            && let Some(min_child) = children[v].iter().map(|&c| layer[c]).min() {
-                layer[v] = min_child.saturating_sub(1).max(layer[v]);
-            }
+            && let Some(min_child) = children[v].iter().map(|&c| layer[c]).min()
+        {
+            layer[v] = min_child.saturating_sub(1).max(layer[v]);
+        }
     }
 
     // 4: width-bounded splitting.
@@ -301,8 +361,16 @@ fn layered_block(nodes: &[usize], edges: &[(usize, usize)], sizes: &[Vec2], opt:
             (s.x + opt.node_spacing) * (s.y + opt.node_spacing)
         })
         .sum();
-    let aspect = if opt.aspect_ratio.is_finite() && opt.aspect_ratio > 0.05 { opt.aspect_ratio } else { 1.6 };
-    let target = if horizontal { (area / aspect).sqrt() } else { (area * aspect).sqrt() };
+    let aspect = if opt.aspect_ratio.is_finite() && opt.aspect_ratio > 0.05 {
+        opt.aspect_ratio
+    } else {
+        1.6
+    };
+    let target = if horizontal {
+        (area / aspect).sqrt()
+    } else {
+        (area * aspect).sqrt()
+    };
     let max_node = (0..m).map(|v| along_of(size_of(v))).fold(0.0, f32::max);
     let max_extent = target.max(max_node) * 1.15;
     let mut min_layer = layer.clone();
@@ -319,11 +387,18 @@ fn layered_block(nodes: &[usize], edges: &[(usize, usize)], sizes: &[Vec2], opt:
             by_layer[layer[v]].push(v);
         }
         let extent = |vs: &[usize]| -> f32 {
-            vs.iter().map(|&v| along_of(size_of(v))).sum::<f32>() + opt.node_spacing * vs.len().saturating_sub(1) as f32
+            vs.iter().map(|&v| along_of(size_of(v))).sum::<f32>()
+                + opt.node_spacing * vs.len().saturating_sub(1) as f32
         };
-        let Some(l) = (start..num_layers).find(|&l| extent(&by_layer[l]) > max_extent) else { break };
+        let Some(l) = (start..num_layers).find(|&l| extent(&by_layer[l]) > max_extent) else {
+            break;
+        };
         let mut cand = by_layer[l].clone();
-        let prev: BTreeSet<usize> = if l > 0 { by_layer[l - 1].iter().copied().collect() } else { BTreeSet::new() };
+        let prev: BTreeSet<usize> = if l > 0 {
+            by_layer[l - 1].iter().copied().collect()
+        } else {
+            BTreeSet::new()
+        };
         cand.sort_by_key(|&v| {
             let ups = parents[v].iter().filter(|p| prev.contains(p)).count();
             (children[v].is_empty(), std::cmp::Reverse(ups), v)
@@ -352,15 +427,33 @@ fn layered_block(nodes: &[usize], edges: &[(usize, usize)], sizes: &[Vec2], opt:
     let ln: Vec<LNode> = (0..m)
         .map(|v| {
             let s = size_of(v);
-            LNode { along: along_of(s), across: across_of(s), layer: layer[v] }
+            LNode {
+                along: along_of(s),
+                across: across_of(s),
+                layer: layer[v],
+            }
         })
         .collect();
     let up: Vec<Vec<usize>> = parents.clone();
     let down: Vec<Vec<usize>> = children.clone();
-    let up_adj: Vec<Vec<usize>> =
-        (0..m).map(|v| up[v].iter().copied().filter(|&u| ln[u].layer + 1 == ln[v].layer).collect()).collect();
-    let down_adj: Vec<Vec<usize>> =
-        (0..m).map(|v| down[v].iter().copied().filter(|&u| ln[v].layer + 1 == ln[u].layer).collect()).collect();
+    let up_adj: Vec<Vec<usize>> = (0..m)
+        .map(|v| {
+            up[v]
+                .iter()
+                .copied()
+                .filter(|&u| ln[u].layer + 1 == ln[v].layer)
+                .collect()
+        })
+        .collect();
+    let down_adj: Vec<Vec<usize>> = (0..m)
+        .map(|v| {
+            down[v]
+                .iter()
+                .copied()
+                .filter(|&u| ln[v].layer + 1 == ln[u].layer)
+                .collect()
+        })
+        .collect();
     let num_layers = ln.iter().map(|n| n.layer).max().map_or(1, |l| l + 1);
 
     // 6: ordering. Barycenters use normalised ranks so neighbours in
@@ -371,7 +464,16 @@ fn layered_block(nodes: &[usize], edges: &[(usize, usize)], sizes: &[Vec2], opt:
     for (l, layer) in layers.iter_mut().enumerate() {
         let mut items: Vec<(f32, usize)> = (0..m)
             .filter(|&v| ln[v].layer == l)
-            .map(|v| (if l == 0 { v as f32 } else { barycenter(&up[v], &rank).unwrap_or(f32::MAX) }, v))
+            .map(|v| {
+                (
+                    if l == 0 {
+                        v as f32
+                    } else {
+                        barycenter(&up[v], &rank).unwrap_or(f32::MAX)
+                    },
+                    v,
+                )
+            })
             .collect();
         items.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
         *layer = items.into_iter().map(|(_, v)| v).collect();
@@ -424,8 +526,11 @@ fn layered_block(nodes: &[usize], edges: &[(usize, usize)], sizes: &[Vec2], opt:
     }
     for iter in 0..10 {
         let use_up = iter % 2 == 0;
-        let order: Vec<usize> =
-            if use_up { (1..num_layers).collect() } else { (0..num_layers.saturating_sub(1)).rev().collect() };
+        let order: Vec<usize> = if use_up {
+            (1..num_layers).collect()
+        } else {
+            (0..num_layers.saturating_sub(1)).rev().collect()
+        };
         let nb = if use_up { &up } else { &down };
         for l in order {
             let layer = &layers[l];
@@ -439,7 +544,10 @@ fn layered_block(nodes: &[usize], edges: &[(usize, usize)], sizes: &[Vec2], opt:
                     }
                 })
                 .collect();
-            let weights: Vec<f32> = layer.iter().map(|&v| if nb[v].is_empty() { 0.05 } else { 1.0 }).collect();
+            let weights: Vec<f32> = layer
+                .iter()
+                .map(|&v| if nb[v].is_empty() { 0.05 } else { 1.0 })
+                .collect();
             let widths: Vec<f32> = layer.iter().map(|&v| ln[v].along).collect();
             let gaps = vec![gap; layer.len().saturating_sub(1)];
             let placed = place_in_layer(&widths, &desired, &weights, &gaps);
@@ -475,7 +583,6 @@ fn set_ranks(layer: &[usize], rank: &mut [f32], position: &mut [usize]) {
     }
 }
 
-
 /// Shifts positions so the block starts at the origin and computes its size.
 fn normalize(nodes: &[usize], mut pos: Vec<Pos2>, size_of: impl Fn(usize) -> Vec2) -> Block {
     let mut min = pos2(f32::INFINITY, f32::INFINITY);
@@ -486,12 +593,20 @@ fn normalize(nodes: &[usize], mut pos: Vec<Pos2>, size_of: impl Fn(usize) -> Vec
         max = max.max(*p + s);
     }
     if !min.x.is_finite() {
-        return Block { nodes: nodes.to_vec(), pos, size: Vec2::ZERO };
+        return Block {
+            nodes: nodes.to_vec(),
+            pos,
+            size: Vec2::ZERO,
+        };
     }
     for p in &mut pos {
         *p = pos2(p.x - min.x, p.y - min.y);
     }
-    Block { nodes: nodes.to_vec(), pos, size: max - min }
+    Block {
+        nodes: nodes.to_vec(),
+        pos,
+        size: max - min,
+    }
 }
 
 /// Kahn's algorithm, smallest index first (deterministic). Nodes on cycles
@@ -527,10 +642,21 @@ fn barycenter(neighbours: &[usize], rank: &[f32]) -> Option<f32> {
 
 /// Sorts a layer by the barycenter of the given neighbours; nodes without
 /// neighbours keep their rank.
-fn reorder_layer(layer: &mut [usize], neighbours: &[Vec<usize>], rank: &mut [f32], position: &mut [usize]) {
+fn reorder_layer(
+    layer: &mut [usize],
+    neighbours: &[Vec<usize>],
+    rank: &mut [f32],
+    position: &mut [usize],
+) {
     let mut items: Vec<(f32, usize, usize)> = layer
         .iter()
-        .map(|&v| (barycenter(&neighbours[v], rank).unwrap_or(rank[v]), position[v], v))
+        .map(|&v| {
+            (
+                barycenter(&neighbours[v], rank).unwrap_or(rank[v]),
+                position[v],
+                v,
+            )
+        })
         .collect();
     items.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
     for (i, (_, _, v)) in items.into_iter().enumerate() {
@@ -540,7 +666,12 @@ fn reorder_layer(layer: &mut [usize], neighbours: &[Vec<usize>], rank: &mut [f32
 }
 
 /// Crossings between consecutive layers `l` and `l + 1` (Fenwick tree count of inversions).
-fn crossings_between(upper: &[usize], lower_len: usize, down: &[Vec<usize>], position: &[usize]) -> usize {
+fn crossings_between(
+    upper: &[usize],
+    lower_len: usize,
+    down: &[Vec<usize>],
+    position: &[usize],
+) -> usize {
     let mut pairs: Vec<(usize, usize)> = Vec::new();
     for &u in upper {
         for &v in &down[u] {
@@ -572,7 +703,10 @@ fn crossings_between(upper: &[usize], lower_len: usize, down: &[Vec<usize>], pos
 }
 
 fn total_crossings(layers: &[Vec<usize>], down: &[Vec<usize>], position: &[usize]) -> usize {
-    layers.windows(2).map(|w| crossings_between(&w[0], w[1].len(), down, position)).sum()
+    layers
+        .windows(2)
+        .map(|w| crossings_between(&w[0], w[1].len(), down, position))
+        .sum()
 }
 
 /// Crossings between the edges of `u` and `v` (u left of v) towards one neighbour layer.
@@ -602,8 +736,10 @@ fn transpose(
         for layer in layers.iter_mut() {
             for i in 0..layer.len().saturating_sub(1) {
                 let (u, v) = (layer[i], layer[i + 1]);
-                let before = pair_crossings(u, v, up, position) + pair_crossings(u, v, down, position);
-                let after = pair_crossings(v, u, up, position) + pair_crossings(v, u, down, position);
+                let before =
+                    pair_crossings(u, v, up, position) + pair_crossings(u, v, down, position);
+                let after =
+                    pair_crossings(v, u, up, position) + pair_crossings(v, u, down, position);
                 if after < before {
                     layer.swap(i, i + 1);
                     position[u] = i + 1;
@@ -622,7 +758,12 @@ fn transpose(
 /// Places boxes of one layer (in order) as close as possible to their
 /// desired centres while keeping `gaps[i]` between box `i` and `i + 1`:
 /// weighted isotonic regression via pool adjacent violators.
-pub(crate) fn place_in_layer(widths: &[f32], desired: &[f32], weights: &[f32], gaps: &[f32]) -> Vec<f32> {
+pub(crate) fn place_in_layer(
+    widths: &[f32],
+    desired: &[f32],
+    weights: &[f32],
+    gaps: &[f32],
+) -> Vec<f32> {
     let n = widths.len();
     if n == 0 {
         return Vec::new();
@@ -672,7 +813,10 @@ pub(crate) fn place_in_layer(widths: &[f32], desired: &[f32], weights: &[f32], g
 fn grid_block(nodes: &[usize], sizes: &[Vec2], opt: &LayoutOptions) -> Block {
     let gap = opt.node_spacing;
     let get = |g: usize| sizes.get(g).copied().unwrap_or(vec2(160.0, 60.0));
-    let area: f32 = nodes.iter().map(|&g| (get(g).x + gap) * (get(g).y + gap)).sum();
+    let area: f32 = nodes
+        .iter()
+        .map(|&g| (get(g).x + gap) * (get(g).y + gap))
+        .sum();
     let max_w = nodes.iter().map(|&g| get(g).x).fold(0.0, f32::max);
     let limit = (area * opt.aspect_ratio.max(0.1)).sqrt().max(max_w);
     let (mut x, mut y, mut row_h) = (0.0f32, 0.0f32, 0.0f32);
@@ -690,12 +834,19 @@ fn grid_block(nodes: &[usize], sizes: &[Vec2], opt: &LayoutOptions) -> Block {
         x += s.x + gap;
         row_h = row_h.max(s.y);
     }
-    Block { nodes: nodes.to_vec(), pos, size }
+    Block {
+        nodes: nodes.to_vec(),
+        pos,
+        size,
+    }
 }
 
 fn pack_blocks(blocks: &[Block], opt: &LayoutOptions) -> Vec<Vec2> {
     let gap = opt.component_spacing;
-    let area: f32 = blocks.iter().map(|b| (b.size.x + gap) * (b.size.y + gap)).sum();
+    let area: f32 = blocks
+        .iter()
+        .map(|b| (b.size.x + gap) * (b.size.y + gap))
+        .sum();
     let max_w = blocks.iter().map(|b| b.size.x).fold(0.0, f32::max);
     let limit = (area * opt.aspect_ratio.max(0.1)).sqrt().max(max_w);
     let (mut x, mut y, mut row_h) = (0.0f32, 0.0f32, 0.0f32);
@@ -724,7 +875,11 @@ struct SpatialIndex {
 
 impl SpatialIndex {
     fn new(cell: f32) -> Self {
-        SpatialIndex { cell, rects: Vec::new(), cells: HashMap::new() }
+        SpatialIndex {
+            cell,
+            rects: Vec::new(),
+            cells: HashMap::new(),
+        }
     }
 
     fn cell_range(&self, r: Rect) -> (i32, i32, i32, i32) {
@@ -748,9 +903,12 @@ impl SpatialIndex {
         for cx in x0..=x1 {
             for cy in y0..=y1 {
                 if let Some(ids) = self.cells.get(&(cx, cy))
-                    && ids.iter().any(|&i| self.rects.get(i).is_some_and(|o| o.intersects(r))) {
-                        return true;
-                    }
+                    && ids
+                        .iter()
+                        .any(|&i| self.rects.get(i).is_some_and(|o| o.intersects(r)))
+                {
+                    return true;
+                }
             }
         }
         false
@@ -767,7 +925,10 @@ fn find_free_spot(index: &SpatialIndex, near: &[Rect], size: Vec2, gap: f32) -> 
     let anchor = if near.is_empty() {
         Pos2::ZERO
     } else {
-        let c = near.iter().fold(Vec2::ZERO, |acc, r| acc + r.center().to_vec2()) / near.len() as f32;
+        let c = near
+            .iter()
+            .fold(Vec2::ZERO, |acc, r| acc + r.center().to_vec2())
+            / near.len() as f32;
         (c - size * 0.5).to_pos2()
     };
     // Candidates hugging the related boxes first.
@@ -799,7 +960,9 @@ fn find_free_spot(index: &SpatialIndex, near: &[Rect], size: Vec2, gap: f32) -> 
             }
         }
     }
-    let b = index.bounds().unwrap_or(Rect::from_min_size(Pos2::ZERO, Vec2::ZERO));
+    let b = index
+        .bounds()
+        .unwrap_or(Rect::from_min_size(Pos2::ZERO, Vec2::ZERO));
     pos2(b.max.x + gap * 2.0, b.min.y)
 }
 
@@ -815,7 +978,10 @@ pub(crate) mod tests {
             Lcg(seed.wrapping_mul(6364136223846793005).wrapping_add(1))
         }
         pub(crate) fn next(&mut self) -> u64 {
-            self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            self.0 = self
+                .0
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             self.0 >> 33
         }
         pub(crate) fn below(&mut self, n: u64) -> u64 {
@@ -832,9 +998,16 @@ pub(crate) mod tests {
             let mut t = ErTable::new(Some("bench"), format!("table_{i:03}"), ErTableKind::Table);
             t.columns.push(ErColumn::new("id", "bigint").primary_key());
             for c in 0..9 {
-                let ty = ["varchar(120)", "integer", "timestamp with time zone", "numeric(12,2)", "boolean", "text"]
-                    [rng.below(6) as usize];
-                t.columns.push(ErColumn::new(format!("column_{c}_{}", rng.below(1000)), ty));
+                let ty = [
+                    "varchar(120)",
+                    "integer",
+                    "timestamp with time zone",
+                    "numeric(12,2)",
+                    "boolean",
+                    "text",
+                ][rng.below(6) as usize];
+                t.columns
+                    .push(ErColumn::new(format!("column_{c}_{}", rng.below(1000)), ty));
             }
             m.tables.push(t);
         }
@@ -848,7 +1021,8 @@ pub(crate) mod tests {
                 let parent = rng.below(i as u64) as usize;
                 let col = format!("ref_{k}_id");
                 if let Some(t) = m.tables.get_mut(i) {
-                    t.columns.push(ErColumn::new(col.clone(), "bigint").foreign_key());
+                    t.columns
+                        .push(ErColumn::new(col.clone(), "bigint").foreign_key());
                 }
                 m.relations.push(ErRelation {
                     name: format!("fk_{i}_{k}"),
@@ -885,11 +1059,20 @@ pub(crate) mod tests {
         m
     }
 
-    fn rects(model: &ErModel, pos: &BTreeMap<String, Pos2>, settings: &ErSettings) -> Vec<(String, Rect)> {
+    fn rects(
+        model: &ErModel,
+        pos: &BTreeMap<String, Pos2>,
+        settings: &ErSettings,
+    ) -> Vec<(String, Rect)> {
         model
             .tables
             .iter()
-            .map(|t| (t.key.clone(), Rect::from_min_size(pos[&t.key], table_geometry(t, settings).size)))
+            .map(|t| {
+                (
+                    t.key.clone(),
+                    Rect::from_min_size(pos[&t.key], table_geometry(t, settings).size),
+                )
+            })
             .collect()
     }
 
@@ -897,7 +1080,14 @@ pub(crate) mod tests {
         for i in 0..rs.len() {
             for j in i + 1..rs.len() {
                 let (a, b) = (&rs[i], &rs[j]);
-                assert!(!a.1.shrink(0.5).intersects(b.1.shrink(0.5)), "{} {:?} overlaps {} {:?}", a.0, a.1, b.0, b.1);
+                assert!(
+                    !a.1.shrink(0.5).intersects(b.1.shrink(0.5)),
+                    "{} {:?} overlaps {} {:?}",
+                    a.0,
+                    a.1,
+                    b.0,
+                    b.1
+                );
             }
         }
     }
@@ -907,7 +1097,10 @@ pub(crate) mod tests {
         for (n, seed) in [(1, 1), (2, 2), (12, 3), (60, 4), (200, 5)] {
             let model = generated_model(n, seed);
             for direction in [LayoutDirection::LeftRight, LayoutDirection::TopDown] {
-                let opts = LayoutOptions { direction, ..Default::default() };
+                let opts = LayoutOptions {
+                    direction,
+                    ..Default::default()
+                };
                 let a = auto_layout(&model, &opts);
                 assert_eq!(a.len(), n);
                 let b = auto_layout(&model, &opts);
@@ -917,7 +1110,11 @@ pub(crate) mod tests {
                 let mut shuffled = model.clone();
                 shuffled.tables.reverse();
                 shuffled.relations.reverse();
-                assert_eq!(auto_layout(&shuffled, &opts), a, "layout must not depend on input order");
+                assert_eq!(
+                    auto_layout(&shuffled, &opts),
+                    a,
+                    "layout must not depend on input order"
+                );
                 for p in a.values() {
                     assert!(p.x.is_finite() && p.y.is_finite() && p.x >= 0.0 && p.y >= 0.0);
                 }
@@ -930,7 +1127,10 @@ pub(crate) mod tests {
         // a <- b <- c chain (c references b references a)
         let mut m = ErModel::default();
         for name in ["a", "b", "c"] {
-            m.tables.push(ErTable::new(None, name, ErTableKind::Table).with_column(ErColumn::new("id", "int").primary_key()));
+            m.tables.push(
+                ErTable::new(None, name, ErTableKind::Table)
+                    .with_column(ErColumn::new("id", "int").primary_key()),
+            );
         }
         for (from, to) in [("b", "a"), ("c", "b")] {
             m.relations.push(ErRelation {
@@ -945,14 +1145,23 @@ pub(crate) mod tests {
         }
         let lr = auto_layout(&m, &LayoutOptions::default());
         assert!(lr["a"].x < lr["b"].x && lr["b"].x < lr["c"].x, "{lr:?}");
-        let td = auto_layout(&m, &LayoutOptions { direction: LayoutDirection::TopDown, ..Default::default() });
+        let td = auto_layout(
+            &m,
+            &LayoutOptions {
+                direction: LayoutDirection::TopDown,
+                ..Default::default()
+            },
+        );
         assert!(td["a"].y < td["b"].y && td["b"].y < td["c"].y, "{td:?}");
     }
 
     #[test]
     fn hub_layers_wrap_and_aspect_is_reasonable() {
         let mut m = ErModel::default();
-        m.tables.push(ErTable::new(None, "hub", ErTableKind::Table).with_column(ErColumn::new("id", "int").primary_key()));
+        m.tables.push(
+            ErTable::new(None, "hub", ErTableKind::Table)
+                .with_column(ErColumn::new("id", "int").primary_key()),
+        );
         for i in 0..80 {
             let name = format!("child_{i:02}");
             m.tables.push(
@@ -974,24 +1183,43 @@ pub(crate) mod tests {
         let pos = auto_layout(&m, &opts);
         let rs = rects(&m, &pos, &opts.settings);
         assert_no_overlaps(&rs);
-        let bounds = rs.iter().map(|(_, r)| *r).reduce(|a, b| a.union(b)).unwrap();
+        let bounds = rs
+            .iter()
+            .map(|(_, r)| *r)
+            .reduce(|a, b| a.union(b))
+            .unwrap();
         let ratio = bounds.width() / bounds.height();
-        assert!((0.4..=4.0).contains(&ratio), "aspect ratio {ratio} of {bounds:?}");
+        assert!(
+            (0.4..=4.0).contains(&ratio),
+            "aspect ratio {ratio} of {bounds:?}"
+        );
         // the hub stays left of every child
-        assert!(m.tables.iter().skip(1).all(|t| pos[&t.key].x > pos["hub"].x));
+        assert!(
+            m.tables
+                .iter()
+                .skip(1)
+                .all(|t| pos[&t.key].x > pos["hub"].x)
+        );
     }
 
     #[test]
     fn isolated_and_disconnected_tables_are_packed() {
         let mut m = ErModel::default();
         for i in 0..30 {
-            m.tables.push(ErTable::new(None, format!("t{i:02}"), ErTableKind::Table).with_column(ErColumn::new("id", "int")));
+            m.tables.push(
+                ErTable::new(None, format!("t{i:02}"), ErTableKind::Table)
+                    .with_column(ErColumn::new("id", "int")),
+            );
         }
         let opts = LayoutOptions::default();
         let pos = auto_layout(&m, &opts);
         let rs = rects(&m, &pos, &opts.settings);
         assert_no_overlaps(&rs);
-        let bounds = rs.iter().map(|(_, r)| *r).reduce(|a, b| a.union(b)).unwrap();
+        let bounds = rs
+            .iter()
+            .map(|(_, r)| *r)
+            .reduce(|a, b| a.union(b))
+            .unwrap();
         assert!(bounds.width() < 6.0 * bounds.height() && bounds.height() < 6.0 * bounds.width());
     }
 
@@ -1000,7 +1228,10 @@ pub(crate) mod tests {
         // parents p0, p1; children c0 -> p1, c1 -> p0: optimal order has no crossing
         let mut m = ErModel::default();
         for name in ["p0", "p1", "c0", "c1"] {
-            m.tables.push(ErTable::new(None, name, ErTableKind::Table).with_column(ErColumn::new("id", "int")));
+            m.tables.push(
+                ErTable::new(None, name, ErTableKind::Table)
+                    .with_column(ErColumn::new("id", "int")),
+            );
         }
         for (from, to) in [("c0", "p1"), ("c1", "p0")] {
             m.relations.push(ErRelation {
@@ -1014,7 +1245,9 @@ pub(crate) mod tests {
             });
         }
         // two components here; join them with a shared root so they are layered together
-        m.tables.push(ErTable::new(None, "root", ErTableKind::Table).with_column(ErColumn::new("id", "int")));
+        m.tables.push(
+            ErTable::new(None, "root", ErTableKind::Table).with_column(ErColumn::new("id", "int")),
+        );
         for p in ["p0", "p1"] {
             m.relations.push(ErRelation {
                 name: format!("{p}_root"),
@@ -1028,19 +1261,36 @@ pub(crate) mod tests {
         }
         let pos = auto_layout(&m, &LayoutOptions::default());
         let (p0, p1, c0, c1) = (pos["p0"].y, pos["p1"].y, pos["c0"].y, pos["c1"].y);
-        assert_eq!(p0 < p1, c1 < c0, "edges p0-c1 and p1-c0 must not cross: {pos:?}");
+        assert_eq!(
+            p0 < p1,
+            c1 < c0,
+            "edges p0-c1 and p1-c0 must not cross: {pos:?}"
+        );
     }
 
     #[test]
     fn pav_respects_gaps_and_targets() {
-        let out = place_in_layer(&[10.0, 10.0, 10.0], &[0.0, 0.0, 0.0], &[1.0, 1.0, 1.0], &[5.0, 5.0]);
+        let out = place_in_layer(
+            &[10.0, 10.0, 10.0],
+            &[0.0, 0.0, 0.0],
+            &[1.0, 1.0, 1.0],
+            &[5.0, 5.0],
+        );
         assert_eq!(out.len(), 3);
         assert!((out[1] - out[0] - 15.0).abs() < 1e-4 && (out[2] - out[1] - 15.0).abs() < 1e-4);
-        assert!((out[1]).abs() < 1e-4, "centred on the common target: {out:?}");
+        assert!(
+            (out[1]).abs() < 1e-4,
+            "centred on the common target: {out:?}"
+        );
         let out = place_in_layer(&[10.0, 10.0], &[0.0, 100.0], &[1.0, 1.0], &[5.0]);
         assert_eq!(out, vec![0.0, 100.0]);
         // pair specific gaps
-        let out = place_in_layer(&[10.0, 10.0, 10.0], &[0.0, 0.0, 0.0], &[1.0, 1.0, 1.0], &[2.0, 20.0]);
+        let out = place_in_layer(
+            &[10.0, 10.0, 10.0],
+            &[0.0, 0.0, 0.0],
+            &[1.0, 1.0, 1.0],
+            &[2.0, 20.0],
+        );
         assert!((out[1] - out[0] - 12.0).abs() < 1e-4 && (out[2] - out[1] - 30.0).abs() < 1e-4);
         assert!(place_in_layer(&[], &[], &[], &[]).is_empty());
     }
@@ -1066,7 +1316,11 @@ pub(crate) mod tests {
             }
         }
         assert_no_overlaps(&rects(&model, &inc, &opts.settings));
-        assert_eq!(layout_incremental(&model, &inc, &opts), inc, "deterministic and stable");
+        assert_eq!(
+            layout_incremental(&model, &inc, &opts),
+            inc,
+            "deterministic and stable"
+        );
         // empty positions fall back to a full layout
         assert_eq!(layout_incremental(&model, &BTreeMap::new(), &opts), full);
     }

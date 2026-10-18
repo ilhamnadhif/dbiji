@@ -13,8 +13,8 @@
 use super::diagram::{ColumnDisplay, ErDiagram, ErNote, Notation};
 use super::export::{MarkerShape, marker_segments, unique_child};
 use super::geometry::{
-    COMMENT_FONT, COMMENT_HEIGHT, CORNER_RADIUS, HEADER_FONT, HEADER_HEIGHT, PAD_X, ROW_FONT, ROW_HEIGHT, SCHEMA_FONT,
-    TableGeometry,
+    COMMENT_FONT, COMMENT_HEIGHT, CORNER_RADIUS, HEADER_FONT, HEADER_HEIGHT, PAD_X, ROW_FONT,
+    ROW_HEIGHT, SCHEMA_FONT, TableGeometry,
 };
 use super::model::{DiffStatus, ErRelation, ErTable, ErTableKind};
 use super::scene::{ErScene, SceneTable};
@@ -24,8 +24,8 @@ use crate::common::text::text_width;
 use crate::common::view::{ViewTransform, distance_to_polyline, handle_pan_zoom, round_pos};
 use dbiji_core::{tr, trf};
 use egui::{
-    Align2, Color32, CornerRadius, CursorIcon, Id, Key, Modifiers, Painter, PointerButton, Pos2, Rect, Response,
-    Sense, Stroke, StrokeKind, TextEdit, Ui, Vec2, pos2, vec2,
+    Align2, Color32, CornerRadius, CursorIcon, Id, Key, Modifiers, Painter, PointerButton, Pos2,
+    Rect, Response, Sense, Stroke, StrokeKind, TextEdit, Ui, Vec2, pos2, vec2,
 };
 use egui_phosphor::regular as icon;
 use std::collections::BTreeSet;
@@ -273,11 +273,24 @@ impl Palette {
         let dark = v.dark_mode;
         Palette {
             canvas: v.extreme_bg_color,
-            grid: v.widgets.noninteractive.bg_stroke.color.gamma_multiply(0.45),
+            grid: v
+                .widgets
+                .noninteractive
+                .bg_stroke
+                .color
+                .gamma_multiply(0.45),
             box_fill: v.window_fill,
             box_stroke: Stroke::new(1.0, v.widgets.noninteractive.bg_stroke.color),
-            header_table: colors::tint(v, colors::categorical(0, dark), if dark { 0.22 } else { 0.14 }),
-            header_view: colors::tint(v, colors::categorical(6, dark), if dark { 0.22 } else { 0.14 }),
+            header_table: colors::tint(
+                v,
+                colors::categorical(0, dark),
+                if dark { 0.22 } else { 0.14 },
+            ),
+            header_view: colors::tint(
+                v,
+                colors::categorical(6, dark),
+                if dark { 0.22 } else { 0.14 },
+            ),
             text: v.text_color(),
             weak: v.weak_text_color(),
             strong: v.strong_text_color(),
@@ -287,8 +300,16 @@ impl Palette {
             row_hover: v.selection.bg_fill.gamma_multiply(0.35),
             pk: colors::categorical(3, dark),
             fk: colors::categorical(0, dark),
-            note_fill: colors::tint(v, Color32::from_rgb(0xfa, 0xd3, 0x4a), if dark { 0.20 } else { 0.32 }),
-            note_stroke: colors::tint(v, Color32::from_rgb(0xd9, 0xb1, 0x2a), if dark { 0.45 } else { 0.6 }),
+            note_fill: colors::tint(
+                v,
+                Color32::from_rgb(0xfa, 0xd3, 0x4a),
+                if dark { 0.20 } else { 0.32 },
+            ),
+            note_stroke: colors::tint(
+                v,
+                Color32::from_rgb(0xd9, 0xb1, 0x2a),
+                if dark { 0.45 } else { 0.6 },
+            ),
         }
     }
 
@@ -333,10 +354,16 @@ pub fn show_er(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState) ->
     let pal = Palette::new(ui.visuals());
 
     // keep indices valid after external model edits
-    if state.selected_relation.is_some_and(|i| i >= diagram.model.relations.len()) {
+    if state
+        .selected_relation
+        .is_some_and(|i| i >= diagram.model.relations.len())
+    {
         state.selected_relation = None;
     }
-    if state.selected_note.is_some_and(|i| i >= diagram.notes.len()) {
+    if state
+        .selected_note
+        .is_some_and(|i| i >= diagram.notes.len())
+    {
         state.selected_note = None;
     }
     if state.editing_note.is_some_and(|i| i >= diagram.notes.len()) {
@@ -352,7 +379,11 @@ pub fn show_er(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState) ->
             ui.painter_at(rect).rect_filled(rect, 0.0, pal.canvas);
             ui.ctx().request_repaint();
             state.scene_cache = Some((scene_key(diagram), scene));
-            return ErResponse { events, hovered: None, response: Some(response) };
+            return ErResponse {
+                events,
+                hovered: None,
+                response: Some(response),
+            };
         }
     }
 
@@ -364,13 +395,22 @@ pub fn show_er(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState) ->
 
     let pointer = ui.input(|i| i.pointer.latest_pos());
     let in_minimap = |p: Pos2| state.minimap_rect.is_some_and(|m| m.contains(p));
-    let hover_pos = pointer.filter(|p| rect.contains(*p) && !in_minimap(*p) && response.contains_pointer());
+    let hover_pos =
+        pointer.filter(|p| rect.contains(*p) && !in_minimap(*p) && response.contains_pointer());
     let view = state.view();
     let draw_order = draw_order(&scene, diagram, state);
     state.hover = if state.drag.is_some() && !matches!(state.drag, Some(ErDrag::Connect { .. })) {
         state.hover.clone()
     } else {
-        hover_pos.and_then(|p| hit_test(&scene, diagram, &draw_order, view.to_world(origin, p), view.zoom))
+        hover_pos.and_then(|p| {
+            hit_test(
+                &scene,
+                diagram,
+                &draw_order,
+                view.to_world(origin, p),
+                view.zoom,
+            )
+        })
     };
     let selection_before = state.selection.clone();
 
@@ -388,10 +428,18 @@ pub fn show_er(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState) ->
             Some(ErHover::Note(i)) => {
                 state.selected_note = Some(i);
                 let corner = diagram.notes.get(i).map(|n| n.rect().max).unwrap_or(world);
-                if (corner - world).length() * view.zoom < 14.0 { ErDrag::ResizeNote(i) } else { ErDrag::MoveNote(i) }
+                if (corner - world).length() * view.zoom < 14.0 {
+                    ErDrag::ResizeNote(i)
+                } else {
+                    ErDrag::MoveNote(i)
+                }
             }
             Some(ErHover::Column { table, column }) if state.edit_mode && !mods.shift => {
-                ErDrag::Connect { from_table: table, from_column: column, current: world }
+                ErDrag::Connect {
+                    from_table: table,
+                    from_column: column,
+                    current: world,
+                }
             }
             Some(ErHover::Table(key)) | Some(ErHover::Column { table: key, .. }) => {
                 if !state.selection.contains(&key) {
@@ -400,9 +448,15 @@ pub fn show_er(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState) ->
                     }
                     state.selection.insert(key.clone());
                 }
-                ErDrag::MoveTables { keys: state.selection.iter().cloned().collect(), moved: false }
+                ErDrag::MoveTables {
+                    keys: state.selection.iter().cloned().collect(),
+                    moved: false,
+                }
             }
-            _ if mods.shift => ErDrag::Select { origin: world, current: world },
+            _ if mods.shift => ErDrag::Select {
+                origin: world,
+                current: world,
+            },
             _ => ErDrag::Pan,
         });
     }
@@ -455,24 +509,33 @@ pub fn show_er(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState) ->
                 events.push(ErEvent::TableMoved(keys));
                 full_rebuild = true;
             }
-            Some(ErDrag::MoveNote(_)) | Some(ErDrag::ResizeNote(_)) => events.push(ErEvent::NotesChanged),
+            Some(ErDrag::MoveNote(_)) | Some(ErDrag::ResizeNote(_)) => {
+                events.push(ErEvent::NotesChanged)
+            }
             Some(ErDrag::Select { origin: o, current }) => {
                 let band = Rect::from_two_pos(o, current);
                 for st in &scene.tables {
                     if band.intersects(st.rect)
-                        && let Some(t) = diagram.model.tables.get(st.table) {
-                            state.selection.insert(t.key.clone());
-                        }
+                        && let Some(t) = diagram.model.tables.get(st.table)
+                    {
+                        state.selection.insert(t.key.clone());
+                    }
                 }
             }
-            Some(ErDrag::Connect { from_table, from_column, current }) => {
+            Some(ErDrag::Connect {
+                from_table,
+                from_column,
+                current,
+            }) => {
                 if let Some(target) = hit_test(&scene, diagram, &draw_order, current, view.zoom) {
                     let to_columns = match &target {
                         ErHover::Column { column, .. } => Some(vec![column.clone()]),
                         ErHover::Table(k) => diagram.model.table(k).map(|t| t.pk_columns()),
                         _ => None,
                     };
-                    if let (Some(to_table), Some(to_columns)) = (target.table().map(str::to_string), to_columns) {
+                    if let (Some(to_table), Some(to_columns)) =
+                        (target.table().map(str::to_string), to_columns)
+                    {
                         events.push(ErEvent::CreateRelation {
                             from_table,
                             from_columns: vec![from_column],
@@ -490,7 +553,15 @@ pub fn show_er(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState) ->
     let mods = ui.input(|i| i.modifiers);
     if response.clicked() {
         response.request_focus();
-        let hit = hover_pos.and_then(|p| hit_test(&scene, diagram, &draw_order, view.to_world(origin, p), view.zoom));
+        let hit = hover_pos.and_then(|p| {
+            hit_test(
+                &scene,
+                diagram,
+                &draw_order,
+                view.to_world(origin, p),
+                view.zoom,
+            )
+        });
         state.selected_relation = None;
         state.selected_note = None;
         match hit {
@@ -524,7 +595,11 @@ pub fn show_er(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState) ->
     if response.double_clicked() {
         match state.hover.clone() {
             Some(ErHover::Table(k)) | Some(ErHover::Column { table: k, .. }) => {
-                events.push(if state.edit_mode { ErEvent::EditTable(k) } else { ErEvent::OpenTable(k) });
+                events.push(if state.edit_mode {
+                    ErEvent::EditTable(k)
+                } else {
+                    ErEvent::OpenTable(k)
+                });
             }
             Some(ErHover::Note(i)) => state.editing_note = Some(i),
             Some(ErHover::Relation(i)) if state.edit_mode => {
@@ -536,7 +611,9 @@ pub fn show_er(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState) ->
         }
     }
     if response.secondary_clicked() {
-        let world = hover_pos.map(|p| view.to_world(origin, p)).unwrap_or(Pos2::ZERO);
+        let world = hover_pos
+            .map(|p| view.to_world(origin, p))
+            .unwrap_or(Pos2::ZERO);
         state.context = Some(match state.hover.clone() {
             Some(ErHover::Table(k)) | Some(ErHover::Column { table: k, .. }) => {
                 if !state.selection.contains(&k) {
@@ -574,7 +651,9 @@ pub fn show_er(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState) ->
     }
 
     if state.selection != selection_before {
-        events.push(ErEvent::SelectionChanged(state.selection.iter().cloned().collect()));
+        events.push(ErEvent::SelectionChanged(
+            state.selection.iter().cloned().collect(),
+        ));
     }
 
     // --- painting
@@ -584,19 +663,25 @@ pub fn show_er(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState) ->
 
     // note editor
     if let Some(i) = state.editing_note
-        && let Some(note) = diagram.notes.get_mut(i) {
-            let r = view.rect_to_screen(origin, note.rect()).shrink(2.0);
-            if r.intersects(rect) {
-                let edit = ui.put(r, TextEdit::multiline(&mut note.text).frame(egui::Frame::NONE).desired_width(r.width()));
-                if !edit.has_focus() && !edit.lost_focus() {
-                    edit.request_focus();
-                }
-                if edit.lost_focus() {
-                    state.editing_note = None;
-                    events.push(ErEvent::NotesChanged);
-                }
+        && let Some(note) = diagram.notes.get_mut(i)
+    {
+        let r = view.rect_to_screen(origin, note.rect()).shrink(2.0);
+        if r.intersects(rect) {
+            let edit = ui.put(
+                r,
+                TextEdit::multiline(&mut note.text)
+                    .frame(egui::Frame::NONE)
+                    .desired_width(r.width()),
+            );
+            if !edit.has_focus() && !edit.lost_focus() {
+                edit.request_focus();
+            }
+            if edit.lost_focus() {
+                state.editing_note = None;
+                events.push(ErEvent::NotesChanged);
             }
         }
+    }
 
     // minimap
     state.minimap_rect = None;
@@ -606,16 +691,25 @@ pub fn show_er(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState) ->
 
     // tooltip
     if state.drag.is_none()
-        && let Some(h) = state.hover.clone() {
-            let r = response.clone();
-            r.on_hover_ui_at_pointer(|ui| hover_tooltip(ui, diagram, &h));
-        }
-    if matches!(state.hover, Some(ErHover::Table(_)) | Some(ErHover::Column { .. })) && state.drag.is_none() {
+        && let Some(h) = state.hover.clone()
+    {
+        let r = response.clone();
+        r.on_hover_ui_at_pointer(|ui| hover_tooltip(ui, diagram, &h));
+    }
+    if matches!(
+        state.hover,
+        Some(ErHover::Table(_)) | Some(ErHover::Column { .. })
+    ) && state.drag.is_none()
+    {
         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
     }
 
     state.scene_cache = Some((scene_key(diagram), scene));
-    ErResponse { events, hovered: state.hover.clone(), response: Some(response) }
+    ErResponse {
+        events,
+        hovered: state.hover.clone(),
+        response: Some(response),
+    }
 }
 
 /// Content hash of everything the scene geometry depends on.
@@ -658,30 +752,51 @@ fn fit(state: &mut ErViewState, diagram: &ErDiagram, scene: &ErScene, size: Vec2
 /// Tables in paint order: unselected first, selected on top.
 fn draw_order(scene: &ErScene, diagram: &ErDiagram, state: &ErViewState) -> Vec<usize> {
     let selected = |st: &SceneTable| {
-        diagram.model.tables.get(st.table).map(|t| state.selection.contains(&t.key)).unwrap_or(false)
+        diagram
+            .model
+            .tables
+            .get(st.table)
+            .map(|t| state.selection.contains(&t.key))
+            .unwrap_or(false)
     };
-    let mut order: Vec<usize> = (0..scene.tables.len()).filter(|&i| !selected(&scene.tables[i])).collect();
+    let mut order: Vec<usize> = (0..scene.tables.len())
+        .filter(|&i| !selected(&scene.tables[i]))
+        .collect();
     order.extend((0..scene.tables.len()).filter(|&i| selected(&scene.tables[i])));
     order
 }
 
-fn hit_test(scene: &ErScene, diagram: &ErDiagram, order: &[usize], world: Pos2, zoom: f32) -> Option<ErHover> {
+fn hit_test(
+    scene: &ErScene,
+    diagram: &ErDiagram,
+    order: &[usize],
+    world: Pos2,
+    zoom: f32,
+) -> Option<ErHover> {
     for (i, n) in diagram.notes.iter().enumerate().rev() {
         if n.rect().contains(world) {
             return Some(ErHover::Note(i));
         }
     }
     for &ti in order.iter().rev() {
-        let Some(st) = scene.tables.get(ti) else { continue };
+        let Some(st) = scene.tables.get(ti) else {
+            continue;
+        };
         if !st.rect.contains(world) {
             continue;
         }
-        let Some(t) = diagram.model.tables.get(st.table) else { continue };
+        let Some(t) = diagram.model.tables.get(st.table) else {
+            continue;
+        };
         let rel_y = world.y - st.rect.top();
         if let Some(ci) = st.geom.row_at(rel_y)
-            && let Some(c) = t.columns.get(ci) {
-                return Some(ErHover::Column { table: t.key.clone(), column: c.name.clone() });
-            }
+            && let Some(c) = t.columns.get(ci)
+        {
+            return Some(ErHover::Column {
+                table: t.key.clone(),
+                column: c.name.clone(),
+            });
+        }
         return Some(ErHover::Table(t.key.clone()));
     }
     let tolerance = 5.0 / zoom.max(1e-3);
@@ -700,11 +815,28 @@ fn hit_test(scene: &ErScene, diagram: &ErDiagram, order: &[usize], world: Pos2, 
 
 // ---------------------------------------------------------------- toolbar
 
-fn toolbar(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState, events: &mut Vec<ErEvent>) {
+fn toolbar(
+    ui: &mut Ui,
+    diagram: &mut ErDiagram,
+    state: &mut ErViewState,
+    events: &mut Vec<ErEvent>,
+) {
     ui.horizontal(|ui| {
-        let center = if state.last_canvas.is_positive() { state.last_canvas.center() } else { Pos2::ZERO };
-        let origin = if state.last_canvas.is_positive() { state.last_canvas.min } else { Pos2::ZERO };
-        if ui.button(icon::MAGNIFYING_GLASS_MINUS).on_hover_text(tr("Zoom out")).clicked() {
+        let center = if state.last_canvas.is_positive() {
+            state.last_canvas.center()
+        } else {
+            Pos2::ZERO
+        };
+        let origin = if state.last_canvas.is_positive() {
+            state.last_canvas.min
+        } else {
+            Pos2::ZERO
+        };
+        if ui
+            .button(icon::MAGNIFYING_GLASS_MINUS)
+            .on_hover_text(tr("Zoom out"))
+            .clicked()
+        {
             let mut v = state.view();
             v.zoom_around(origin, center, 1.0 / 1.25, ZOOM_RANGE.0, ZOOM_RANGE.1);
             state.set_view(v);
@@ -715,15 +847,29 @@ fn toolbar(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState, events
             .clicked()
         {
             let mut v = state.view();
-            v.zoom_around(origin, center, 1.0 / v.zoom.max(1e-3), ZOOM_RANGE.0, ZOOM_RANGE.1);
+            v.zoom_around(
+                origin,
+                center,
+                1.0 / v.zoom.max(1e-3),
+                ZOOM_RANGE.0,
+                ZOOM_RANGE.1,
+            );
             state.set_view(v);
         }
-        if ui.button(icon::MAGNIFYING_GLASS_PLUS).on_hover_text(tr("Zoom in")).clicked() {
+        if ui
+            .button(icon::MAGNIFYING_GLASS_PLUS)
+            .on_hover_text(tr("Zoom in"))
+            .clicked()
+        {
             let mut v = state.view();
             v.zoom_around(origin, center, 1.25, ZOOM_RANGE.0, ZOOM_RANGE.1);
             state.set_view(v);
         }
-        if ui.button(icon::CORNERS_OUT).on_hover_text(tr("Zoom to fit")).clicked() {
+        if ui
+            .button(icon::CORNERS_OUT)
+            .on_hover_text(tr("Zoom to fit"))
+            .clicked()
+        {
             state.fit_pending = true;
         }
         ui.separator();
@@ -737,8 +883,10 @@ fn toolbar(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState, events
             })
             .response
             .on_hover_text(tr("Columns shown in the boxes"));
-        ui.toggle_value(&mut diagram.settings.show_types, tr("Types")).on_hover_text(tr("Show column types"));
-        ui.toggle_value(&mut diagram.settings.show_comments, tr("Comments")).on_hover_text(tr("Show table comments"));
+        ui.toggle_value(&mut diagram.settings.show_types, tr("Types"))
+            .on_hover_text(tr("Show column types"));
+        ui.toggle_value(&mut diagram.settings.show_comments, tr("Comments"))
+            .on_hover_text(tr("Show table comments"));
         egui::ComboBox::from_id_salt("dbiji_er_notation")
             .selected_text(tr(diagram.settings.notation.label()))
             .show_ui(ui, |ui| {
@@ -750,19 +898,38 @@ fn toolbar(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState, events
             events.push(ErEvent::SettingsChanged);
         }
         ui.separator();
-        if ui.button(format!("{} {}", icon::TREE_STRUCTURE, tr("Auto layout"))).on_hover_text(tr("Arrange all tables automatically")).clicked() {
+        if ui
+            .button(format!("{} {}", icon::TREE_STRUCTURE, tr("Auto layout")))
+            .on_hover_text(tr("Arrange all tables automatically"))
+            .clicked()
+        {
             diagram.relayout();
             state.fit_pending = true;
-            events.push(ErEvent::TableMoved(diagram.model.tables.iter().map(|t| t.key.clone()).collect()));
+            events.push(ErEvent::TableMoved(
+                diagram.model.tables.iter().map(|t| t.key.clone()).collect(),
+            ));
         }
-        ui.toggle_value(&mut state.show_minimap, icon::MAP_TRIFOLD).on_hover_text(tr("Show overview map"));
-        ui.toggle_value(&mut state.edit_mode, format!("{} {}", icon::PENCIL_SIMPLE, tr("Edit mode")))
-            .on_hover_text(tr("Edit the schema from the diagram: create and change tables and foreign keys"));
-        if ui.button(icon::EXPORT).on_hover_text(tr("Export image")).clicked() {
+        ui.toggle_value(&mut state.show_minimap, icon::MAP_TRIFOLD)
+            .on_hover_text(tr("Show overview map"));
+        ui.toggle_value(
+            &mut state.edit_mode,
+            format!("{} {}", icon::PENCIL_SIMPLE, tr("Edit mode")),
+        )
+        .on_hover_text(tr(
+            "Edit the schema from the diagram: create and change tables and foreign keys",
+        ));
+        if ui
+            .button(icon::EXPORT)
+            .on_hover_text(tr("Export image"))
+            .clicked()
+        {
             events.push(ErEvent::ExportRequested);
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.weak(trf("{} tables, {} relations", &[&diagram.model.tables.len(), &diagram.model.relations.len()]));
+            ui.weak(trf(
+                "{} tables, {} relations",
+                &[&diagram.model.tables.len(), &diagram.model.relations.len()],
+            ));
         });
     });
 }
@@ -784,7 +951,11 @@ enum MenuAction {
 }
 
 fn target_keys(key: &str, selection: &BTreeSet<String>) -> Vec<String> {
-    if selection.contains(key) && selection.len() > 1 { selection.iter().cloned().collect() } else { vec![key.to_string()] }
+    if selection.contains(key) && selection.len() > 1 {
+        selection.iter().cloned().collect()
+    } else {
+        vec![key.to_string()]
+    }
 }
 
 fn context_menu_ui(
@@ -806,21 +977,53 @@ fn context_menu_ui(
             let keys = target_keys(key, selection);
             ui.label(egui::RichText::new(key.as_str()).strong());
             ui.separator();
-            item(ui, format!("{} {}", icon::ARROW_SQUARE_OUT, tr("Open")), MenuAction::Emit(ErEvent::OpenTable(key.clone())));
-            item(ui, format!("{} {}", icon::TABLE, tr("View data")), MenuAction::Emit(ErEvent::ViewData(key.clone())));
-            item(ui, format!("{} {}", icon::CODE, tr("Generate DDL")), MenuAction::Emit(ErEvent::GenerateDdl(keys.clone())));
+            item(
+                ui,
+                format!("{} {}", icon::ARROW_SQUARE_OUT, tr("Open")),
+                MenuAction::Emit(ErEvent::OpenTable(key.clone())),
+            );
+            item(
+                ui,
+                format!("{} {}", icon::TABLE, tr("View data")),
+                MenuAction::Emit(ErEvent::ViewData(key.clone())),
+            );
+            item(
+                ui,
+                format!("{} {}", icon::CODE, tr("Generate DDL")),
+                MenuAction::Emit(ErEvent::GenerateDdl(keys.clone())),
+            );
             item(
                 ui,
                 format!("{} {}", icon::GRAPH, tr("Add related tables")),
                 MenuAction::Emit(ErEvent::AddRelatedTables(key.clone())),
             );
-            item(ui, format!("{} {}", icon::LINK, tr("Select related tables")), MenuAction::SelectRelated(key.clone()));
-            item(ui, format!("{} {}", icon::EYE_SLASH, tr("Remove from diagram")), MenuAction::RemoveTables(keys.clone()));
+            item(
+                ui,
+                format!("{} {}", icon::LINK, tr("Select related tables")),
+                MenuAction::SelectRelated(key.clone()),
+            );
+            item(
+                ui,
+                format!("{} {}", icon::EYE_SLASH, tr("Remove from diagram")),
+                MenuAction::RemoveTables(keys.clone()),
+            );
             if edit_mode {
                 ui.separator();
-                item(ui, format!("{} {}", icon::PENCIL_SIMPLE, tr("Edit table…")), MenuAction::Emit(ErEvent::EditTable(key.clone())));
-                item(ui, format!("{} {}", icon::PLUS, tr("Add column…")), MenuAction::Emit(ErEvent::AddColumn(key.clone())));
-                item(ui, format!("{} {}", icon::TRASH, tr("Delete table…")), MenuAction::Emit(ErEvent::DeleteTables(keys)));
+                item(
+                    ui,
+                    format!("{} {}", icon::PENCIL_SIMPLE, tr("Edit table…")),
+                    MenuAction::Emit(ErEvent::EditTable(key.clone())),
+                );
+                item(
+                    ui,
+                    format!("{} {}", icon::PLUS, tr("Add column…")),
+                    MenuAction::Emit(ErEvent::AddColumn(key.clone())),
+                );
+                item(
+                    ui,
+                    format!("{} {}", icon::TRASH, tr("Delete table…")),
+                    MenuAction::Emit(ErEvent::DeleteTables(keys)),
+                );
             }
         }
         ContextTarget::Relation(i) => {
@@ -833,31 +1036,76 @@ fn context_menu_ui(
                     MenuAction::SelectTables(vec![r.from_table.clone(), r.to_table.clone()]),
                 );
                 if edit_mode {
-                    item(ui, format!("{} {}", icon::PENCIL_SIMPLE, tr("Edit foreign key…")), MenuAction::Emit(ErEvent::EditRelation(r.clone())));
-                    item(ui, format!("{} {}", icon::TRASH, tr("Delete foreign key…")), MenuAction::Emit(ErEvent::DeleteRelation(r.clone())));
+                    item(
+                        ui,
+                        format!("{} {}", icon::PENCIL_SIMPLE, tr("Edit foreign key…")),
+                        MenuAction::Emit(ErEvent::EditRelation(r.clone())),
+                    );
+                    item(
+                        ui,
+                        format!("{} {}", icon::TRASH, tr("Delete foreign key…")),
+                        MenuAction::Emit(ErEvent::DeleteRelation(r.clone())),
+                    );
                 }
             }
         }
         ContextTarget::Note(i) => {
-            item(ui, format!("{} {}", icon::PENCIL_SIMPLE, tr("Edit note")), MenuAction::EditNote(*i));
-            item(ui, format!("{} {}", icon::TRASH, tr("Delete note")), MenuAction::DeleteNote(*i));
+            item(
+                ui,
+                format!("{} {}", icon::PENCIL_SIMPLE, tr("Edit note")),
+                MenuAction::EditNote(*i),
+            );
+            item(
+                ui,
+                format!("{} {}", icon::TRASH, tr("Delete note")),
+                MenuAction::DeleteNote(*i),
+            );
         }
         ContextTarget::Background(pos) => {
-            item(ui, format!("{} {}", icon::CORNERS_OUT, tr("Zoom to fit")), MenuAction::Fit);
-            item(ui, format!("{} {}", icon::TREE_STRUCTURE, tr("Auto layout")), MenuAction::Relayout);
-            item(ui, format!("{} {}", icon::SELECTION_ALL, tr("Select all")), MenuAction::SelectAll);
-            item(ui, format!("{} {}", icon::NOTE, tr("Add note")), MenuAction::AddNote(*pos));
-            item(ui, format!("{} {}", icon::EXPORT, tr("Export image…")), MenuAction::Emit(ErEvent::ExportRequested));
+            item(
+                ui,
+                format!("{} {}", icon::CORNERS_OUT, tr("Zoom to fit")),
+                MenuAction::Fit,
+            );
+            item(
+                ui,
+                format!("{} {}", icon::TREE_STRUCTURE, tr("Auto layout")),
+                MenuAction::Relayout,
+            );
+            item(
+                ui,
+                format!("{} {}", icon::SELECTION_ALL, tr("Select all")),
+                MenuAction::SelectAll,
+            );
+            item(
+                ui,
+                format!("{} {}", icon::NOTE, tr("Add note")),
+                MenuAction::AddNote(*pos),
+            );
+            item(
+                ui,
+                format!("{} {}", icon::EXPORT, tr("Export image…")),
+                MenuAction::Emit(ErEvent::ExportRequested),
+            );
             if edit_mode {
                 ui.separator();
-                item(ui, format!("{} {}", icon::PLUS, tr("Create table here…")), MenuAction::Emit(ErEvent::CreateTable { pos: *pos }));
+                item(
+                    ui,
+                    format!("{} {}", icon::PLUS, tr("Create table here…")),
+                    MenuAction::Emit(ErEvent::CreateTable { pos: *pos }),
+                );
             }
         }
     }
     action
 }
 
-fn apply_action(action: MenuAction, diagram: &mut ErDiagram, state: &mut ErViewState, events: &mut Vec<ErEvent>) {
+fn apply_action(
+    action: MenuAction,
+    diagram: &mut ErDiagram,
+    state: &mut ErViewState,
+    events: &mut Vec<ErEvent>,
+) {
     state.context = None;
     match action {
         MenuAction::Emit(e) => events.push(e),
@@ -874,15 +1122,21 @@ fn apply_action(action: MenuAction, diagram: &mut ErDiagram, state: &mut ErViewS
             state.selection = s;
         }
         MenuAction::SelectTables(keys) => state.selection = keys.into_iter().collect(),
-        MenuAction::SelectAll => state.selection = diagram.model.tables.iter().map(|t| t.key.clone()).collect(),
+        MenuAction::SelectAll => {
+            state.selection = diagram.model.tables.iter().map(|t| t.key.clone()).collect()
+        }
         MenuAction::Fit => state.fit_pending = true,
         MenuAction::Relayout => {
             diagram.relayout();
             state.fit_pending = true;
-            events.push(ErEvent::TableMoved(diagram.model.tables.iter().map(|t| t.key.clone()).collect()));
+            events.push(ErEvent::TableMoved(
+                diagram.model.tables.iter().map(|t| t.key.clone()).collect(),
+            ));
         }
         MenuAction::AddNote(pos) => {
-            diagram.notes.push(ErNote::new(String::new(), round_pos(pos)));
+            diagram
+                .notes
+                .push(ErNote::new(String::new(), round_pos(pos)));
             state.editing_note = Some(diagram.notes.len() - 1);
             events.push(ErEvent::NotesChanged);
         }
@@ -900,13 +1154,17 @@ fn apply_action(action: MenuAction, diagram: &mut ErDiagram, state: &mut ErViewS
 
 fn keyboard(ui: &Ui, diagram: &mut ErDiagram, state: &mut ErViewState, events: &mut Vec<ErEvent>) {
     let (delete, escape, select_all) = ui.input_mut(|i| {
-        let delete = i.consume_key(Modifiers::NONE, Key::Delete) || i.consume_key(Modifiers::NONE, Key::Backspace);
+        let delete = i.consume_key(Modifiers::NONE, Key::Delete)
+            || i.consume_key(Modifiers::NONE, Key::Backspace);
         let escape = i.consume_key(Modifiers::NONE, Key::Escape);
         let select_all = i.consume_key(Modifiers::COMMAND, Key::A);
         (delete, escape, select_all)
     });
     if escape {
-        if matches!(state.drag, Some(ErDrag::Connect { .. }) | Some(ErDrag::Select { .. })) {
+        if matches!(
+            state.drag,
+            Some(ErDrag::Connect { .. }) | Some(ErDrag::Select { .. })
+        ) {
             state.drag = None;
         } else {
             state.selection.clear();
@@ -925,10 +1183,15 @@ fn keyboard(ui: &Ui, diagram: &mut ErDiagram, state: &mut ErViewState, events: &
                 events.push(ErEvent::NotesChanged);
             }
         } else if state.edit_mode {
-            if let Some(r) = state.selected_relation.and_then(|i| diagram.model.relations.get(i)) {
+            if let Some(r) = state
+                .selected_relation
+                .and_then(|i| diagram.model.relations.get(i))
+            {
                 events.push(ErEvent::DeleteRelation(r.clone()));
             } else if !state.selection.is_empty() {
-                events.push(ErEvent::DeleteTables(state.selection.iter().cloned().collect()));
+                events.push(ErEvent::DeleteTables(
+                    state.selection.iter().cloned().collect(),
+                ));
             }
         }
     }
@@ -950,7 +1213,9 @@ fn paint_canvas(
     let origin = rect.min;
     let zoom = view.zoom;
     painter.rect_filled(rect, 0.0, pal.canvas);
-    let visible = view.rect_to_world(origin, rect).expand(40.0 / zoom.max(1e-3));
+    let visible = view
+        .rect_to_world(origin, rect)
+        .expand(40.0 / zoom.max(1e-3));
 
     // grid
     let step = 100.0;
@@ -971,7 +1236,11 @@ fn paint_canvas(
     }
 
     // highlight sets
-    let hovered_table = state.hover.as_ref().and_then(|h| h.table()).map(str::to_string);
+    let hovered_table = state
+        .hover
+        .as_ref()
+        .and_then(|h| h.table())
+        .map(str::to_string);
     let hovered_relation = match &state.hover {
         Some(ErHover::Relation(i)) => Some(*i),
         _ => None,
@@ -980,7 +1249,10 @@ fn paint_canvas(
     let mut hot_tables: BTreeSet<String> = BTreeSet::new();
     for (i, r) in diagram.model.relations.iter().enumerate() {
         let touches = |k: &str| hovered_table.as_deref() == Some(k) || state.selection.contains(k);
-        if touches(&r.from_table) || touches(&r.to_table) || hovered_relation == Some(i) || state.selected_relation == Some(i)
+        if touches(&r.from_table)
+            || touches(&r.to_table)
+            || hovered_relation == Some(i)
+            || state.selected_relation == Some(i)
         {
             hot_relations.insert(i);
             hot_tables.insert(r.from_table.clone());
@@ -996,30 +1268,50 @@ fn paint_canvas(
             if (pass == 0) == hot || !sr.route.bbox.intersects(visible) {
                 continue;
             }
-            let Some(r) = diagram.model.relations.get(sr.relation) else { continue };
+            let Some(r) = diagram.model.relations.get(sr.relation) else {
+                continue;
+            };
             let color = if hot { pal.highlight } else { pal.line };
-            let width = if hot { 2.0 } else { (1.2 * zoom.sqrt()).clamp(0.8, 1.6) };
+            let width = if hot {
+                2.0
+            } else {
+                (1.2 * zoom.sqrt()).clamp(0.8, 1.6)
+            };
             let stroke = Stroke::new(width, color);
-            let pts: Vec<Pos2> = sr.route.points.iter().map(|p| view.to_screen(origin, *p)).collect();
-            let dashed = diagram.settings.notation == Notation::CrowsFoot && !r.identifying && zoom >= 0.45;
+            let pts: Vec<Pos2> = sr
+                .route
+                .points
+                .iter()
+                .map(|p| view.to_screen(origin, *p))
+                .collect();
+            let dashed =
+                diagram.settings.notation == Notation::CrowsFoot && !r.identifying && zoom >= 0.45;
             if dashed {
                 paint::dashed_polyline(painter, &pts, stroke, 6.0, 4.0);
             } else {
                 painter.line(pts, stroke);
             }
             if detail
-                && let (Some(&s), Some(&e)) = (sr.route.points.first(), sr.route.points.last()) {
-                    let shapes = marker_segments(
-                        s,
-                        sr.route.start_dir,
-                        e,
-                        sr.route.end_dir,
-                        r,
-                        diagram.settings.notation,
-                        unique_child(diagram, r),
-                    );
-                    paint_markers(painter, &shapes, view, origin, Stroke::new(width.max(1.2), color), pal.box_fill);
-                }
+                && let (Some(&s), Some(&e)) = (sr.route.points.first(), sr.route.points.last())
+            {
+                let shapes = marker_segments(
+                    s,
+                    sr.route.start_dir,
+                    e,
+                    sr.route.end_dir,
+                    r,
+                    diagram.settings.notation,
+                    unique_child(diagram, r),
+                );
+                paint_markers(
+                    painter,
+                    &shapes,
+                    view,
+                    origin,
+                    Stroke::new(width.max(1.2), color),
+                    pal.box_fill,
+                );
+            }
         }
     }
 
@@ -1029,27 +1321,55 @@ fn paint_canvas(
         _ => None,
     };
     let connect_source = match &state.drag {
-        Some(ErDrag::Connect { from_table, from_column, .. }) => Some((from_table.as_str(), from_column.as_str())),
+        Some(ErDrag::Connect {
+            from_table,
+            from_column,
+            ..
+        }) => Some((from_table.as_str(), from_column.as_str())),
         _ => None,
     };
     let selected = |st: &SceneTable| {
-        diagram.model.tables.get(st.table).map(|t| state.selection.contains(&t.key)).unwrap_or(false)
+        diagram
+            .model
+            .tables
+            .get(st.table)
+            .map(|t| state.selection.contains(&t.key))
+            .unwrap_or(false)
     };
-    let order: Vec<&SceneTable> =
-        scene.tables.iter().filter(|st| !selected(st)).chain(scene.tables.iter().filter(|st| selected(st))).collect();
+    let order: Vec<&SceneTable> = scene
+        .tables
+        .iter()
+        .filter(|st| !selected(st))
+        .chain(scene.tables.iter().filter(|st| selected(st)))
+        .collect();
     for st in order {
         if !st.rect.intersects(visible) {
             continue;
         }
-        let Some(t) = diagram.model.tables.get(st.table) else { continue };
+        let Some(t) = diagram.model.tables.get(st.table) else {
+            continue;
+        };
         let srect = view.rect_to_screen(origin, st.rect);
         let is_selected = state.selection.contains(&t.key);
-        let is_hot = hot_tables.contains(&t.key) || hovered_table.as_deref() == Some(t.key.as_str());
+        let is_hot =
+            hot_tables.contains(&t.key) || hovered_table.as_deref() == Some(t.key.as_str());
         let row_highlight = hovered_column
             .filter(|(tk, _)| *tk == t.key)
             .or(connect_source.filter(|(tk, _)| *tk == t.key))
             .map(|(_, c)| c);
-        paint_table(ui, painter, pal, t, &st.geom, srect, zoom, diagram, is_selected, is_hot, row_highlight);
+        paint_table(
+            ui,
+            painter,
+            pal,
+            t,
+            &st.geom,
+            srect,
+            zoom,
+            diagram,
+            is_selected,
+            is_hot,
+            row_highlight,
+        );
     }
 
     // notes
@@ -1060,19 +1380,24 @@ fn paint_canvas(
         let r = view.rect_to_screen(origin, n.rect());
         let radius = (4.0 * zoom).clamp(0.0, 8.0);
         painter.rect_filled(r, radius, pal.note_fill);
-        let stroke = if state.selected_note == Some(i) { pal.selection } else { Stroke::new(1.0, pal.note_stroke) };
+        let stroke = if state.selected_note == Some(i) {
+            pal.selection
+        } else {
+            Stroke::new(1.0, pal.note_stroke)
+        };
         painter.rect_stroke(r, radius, stroke, StrokeKind::Inside);
         if state.editing_note != Some(i)
-            && let Some(px) = font_px(12.0, zoom) {
-                let galley = painter.layout(
-                    n.text.clone(),
-                    egui::FontId::proportional(px),
-                    Color32::PLACEHOLDER,
-                    (r.width() - 12.0 * zoom).max(10.0),
-                );
-                let clip = painter.with_clip_rect(r.shrink(2.0).intersect(painter.clip_rect()));
-                clip.galley(r.min + vec2(6.0, 5.0) * zoom, galley, pal.text);
-            }
+            && let Some(px) = font_px(12.0, zoom)
+        {
+            let galley = painter.layout(
+                n.text.clone(),
+                egui::FontId::proportional(px),
+                Color32::PLACEHOLDER,
+                (r.width() - 12.0 * zoom).max(10.0),
+            );
+            let clip = painter.with_clip_rect(r.shrink(2.0).intersect(painter.clip_rect()));
+            clip.galley(r.min + vec2(6.0, 5.0) * zoom, galley, pal.text);
+        }
         // resize handle
         if zoom > 0.4 {
             let c = r.max;
@@ -1087,28 +1412,52 @@ fn paint_canvas(
         Some(ErDrag::Select { origin: o, current }) => {
             let band = view.rect_to_screen(origin, Rect::from_two_pos(*o, *current));
             painter.rect_filled(band, 0.0, pal.selection.color.gamma_multiply(0.12));
-            painter.rect_stroke(band, 0.0, Stroke::new(1.0, pal.selection.color), StrokeKind::Inside);
+            painter.rect_stroke(
+                band,
+                0.0,
+                Stroke::new(1.0, pal.selection.color),
+                StrokeKind::Inside,
+            );
         }
-        Some(ErDrag::Connect { from_table, from_column, current }) => {
+        Some(ErDrag::Connect {
+            from_table,
+            from_column,
+            current,
+        }) => {
             if let Some(&ti) = scene.index.get(from_table)
-                && let (Some(st), Some(t)) = (scene.tables.get(ti), diagram.model.table(from_table)) {
-                    let y = st.rect.top() + st.geom.anchor_y(t, Some(from_column));
-                    let start_world = if current.x >= st.rect.center().x { pos2(st.rect.right(), y) } else { pos2(st.rect.left(), y) };
-                    let a = view.to_screen(origin, start_world);
-                    let b = view.to_screen(origin, *current);
-                    paint::dashed_polyline(painter, &[a, b], Stroke::new(2.0, pal.highlight), 6.0, 4.0);
-                    painter.circle_filled(b, 4.0, pal.highlight);
-                    if let Some(target) = hit_test(scene, diagram, &draw_order(scene, diagram, state), *current, zoom)
-                        && let Some(k) = target.table()
-                            && let Some(tr_rect) = scene.index.get(k).and_then(|&i| scene.tables.get(i)).map(|s| s.rect) {
-                                painter.rect_stroke(
-                                    view.rect_to_screen(origin, tr_rect).expand(3.0),
-                                    (CORNER_RADIUS * zoom).clamp(0.0, 12.0),
-                                    Stroke::new(2.0, pal.highlight),
-                                    StrokeKind::Outside,
-                                );
-                            }
+                && let (Some(st), Some(t)) = (scene.tables.get(ti), diagram.model.table(from_table))
+            {
+                let y = st.rect.top() + st.geom.anchor_y(t, Some(from_column));
+                let start_world = if current.x >= st.rect.center().x {
+                    pos2(st.rect.right(), y)
+                } else {
+                    pos2(st.rect.left(), y)
+                };
+                let a = view.to_screen(origin, start_world);
+                let b = view.to_screen(origin, *current);
+                paint::dashed_polyline(painter, &[a, b], Stroke::new(2.0, pal.highlight), 6.0, 4.0);
+                painter.circle_filled(b, 4.0, pal.highlight);
+                if let Some(target) = hit_test(
+                    scene,
+                    diagram,
+                    &draw_order(scene, diagram, state),
+                    *current,
+                    zoom,
+                ) && let Some(k) = target.table()
+                    && let Some(tr_rect) = scene
+                        .index
+                        .get(k)
+                        .and_then(|&i| scene.tables.get(i))
+                        .map(|s| s.rect)
+                {
+                    painter.rect_stroke(
+                        view.rect_to_screen(origin, tr_rect).expand(3.0),
+                        (CORNER_RADIUS * zoom).clamp(0.0, 12.0),
+                        Stroke::new(2.0, pal.highlight),
+                        StrokeKind::Outside,
+                    );
                 }
+            }
         }
         _ => {}
     }
@@ -1147,24 +1496,52 @@ fn diff_legend(ui: &Ui, painter: &Painter, rect: Rect, diagram: &ErDiagram, pal:
     ];
     let font = egui::FontId::proportional(12.0);
     let row_h = 18.0;
-    let frame = Rect::from_min_size(rect.min + vec2(10.0, 10.0), vec2(150.0, row_h * items.len() as f32 + 10.0));
+    let frame = Rect::from_min_size(
+        rect.min + vec2(10.0, 10.0),
+        vec2(150.0, row_h * items.len() as f32 + 10.0),
+    );
     painter.rect_filled(frame, 4.0, pal.box_fill.gamma_multiply(0.95));
     painter.rect_stroke(frame, 4.0, pal.box_stroke, StrokeKind::Inside);
     for (i, (status, n)) in items.iter().enumerate() {
         let y = frame.top() + 5.0 + row_h * (i as f32 + 0.5);
         let swatch = Rect::from_center_size(pos2(frame.left() + 14.0, y), vec2(12.0, 12.0));
-        painter.rect_filled(swatch, 3.0, pal.header(v, ErTableKind::Table, Some(*status)));
-        painter.rect_stroke(swatch, 3.0, Stroke::new(1.5, status_stroke(Some(*status)).unwrap_or(pal.weak)), StrokeKind::Inside);
-        painter.text(pos2(frame.left() + 28.0, y), Align2::LEFT_CENTER, format!("{} ({n})", tr(status.label())), font.clone(), pal.text);
+        painter.rect_filled(
+            swatch,
+            3.0,
+            pal.header(v, ErTableKind::Table, Some(*status)),
+        );
+        painter.rect_stroke(
+            swatch,
+            3.0,
+            Stroke::new(1.5, status_stroke(Some(*status)).unwrap_or(pal.weak)),
+            StrokeKind::Inside,
+        );
+        painter.text(
+            pos2(frame.left() + 28.0, y),
+            Align2::LEFT_CENTER,
+            format!("{} ({n})", tr(status.label())),
+            font.clone(),
+            pal.text,
+        );
     }
 }
 
-fn paint_markers(painter: &Painter, shapes: &[MarkerShape], view: ViewTransform, origin: Pos2, stroke: Stroke, fill: Color32) {
+fn paint_markers(
+    painter: &Painter,
+    shapes: &[MarkerShape],
+    view: ViewTransform,
+    origin: Pos2,
+    stroke: Stroke,
+    fill: Color32,
+) {
     let zoom = view.zoom;
     for s in shapes {
         match s {
             MarkerShape::Line(a, b) => {
-                painter.line_segment([view.to_screen(origin, *a), view.to_screen(origin, *b)], stroke);
+                painter.line_segment(
+                    [view.to_screen(origin, *a), view.to_screen(origin, *b)],
+                    stroke,
+                );
             }
             MarkerShape::Circle(c, r) => {
                 painter.circle(view.to_screen(origin, *c), r * zoom, fill, stroke);
@@ -1201,7 +1578,16 @@ fn paint_table(
     let header_h = HEADER_HEIGHT * zoom;
     let header = Rect::from_min_size(srect.min, vec2(srect.width(), header_h.min(srect.height())));
     let header_fill = pal.header(v, t.kind, t.status);
-    painter.rect_filled(header, CornerRadius { nw: radius, ne: radius, sw: 0, se: 0 }, header_fill);
+    painter.rect_filled(
+        header,
+        CornerRadius {
+            nw: radius,
+            ne: radius,
+            sw: 0,
+            se: 0,
+        },
+        header_fill,
+    );
     if srect.height() > header_h + 1.0 {
         painter.hline(srect.x_range(), header.bottom(), pal.box_stroke);
     }
@@ -1209,10 +1595,23 @@ fn paint_table(
     // header text
     if let Some(px) = font_px(HEADER_FONT, zoom) {
         let icon_px = px;
-        let icon_glyph = if t.kind == ErTableKind::View { icon::EYE } else { icon::TABLE };
+        let icon_glyph = if t.kind == ErTableKind::View {
+            icon::EYE
+        } else {
+            icon::TABLE
+        };
         let cy = header.center().y;
         let left = srect.left() + PAD_X * zoom;
-        paint::text(painter, pos2(left, cy), Align2::LEFT_CENTER, icon_glyph, icon_px, pal.weak, false, f32::INFINITY);
+        paint::text(
+            painter,
+            pos2(left, cy),
+            Align2::LEFT_CENTER,
+            icon_glyph,
+            icon_px,
+            pal.weak,
+            false,
+            f32::INFINITY,
+        );
         let name_x = left + 18.0 * zoom;
         let schema = t.schema.as_deref().filter(|s| !s.is_empty());
         let schema_w = match (schema, font_px(SCHEMA_FONT, zoom)) {
@@ -1232,32 +1631,47 @@ fn paint_table(
             _ => 0.0,
         };
         let max_w = (srect.right() - PAD_X * zoom - schema_w - name_x).max(10.0);
-        paint::text(painter, pos2(name_x, cy), Align2::LEFT_CENTER, &t.name, px, pal.strong, false, max_w);
+        paint::text(
+            painter,
+            pos2(name_x, cy),
+            Align2::LEFT_CENTER,
+            &t.name,
+            px,
+            pal.strong,
+            false,
+            max_w,
+        );
     }
 
     // comment line
     if let Some(c) = &geom.comment
-        && let Some(px) = font_px(COMMENT_FONT, zoom) {
-            let y = header.bottom() + COMMENT_HEIGHT * zoom * 0.5;
-            paint::text(
-                painter,
-                pos2(srect.left() + PAD_X * zoom, y),
-                Align2::LEFT_CENTER,
-                c,
-                px,
-                pal.weak,
-                false,
-                (srect.width() - 2.0 * PAD_X * zoom).max(10.0),
-            );
-        }
+        && let Some(px) = font_px(COMMENT_FONT, zoom)
+    {
+        let y = header.bottom() + COMMENT_HEIGHT * zoom * 0.5;
+        paint::text(
+            painter,
+            pos2(srect.left() + PAD_X * zoom, y),
+            Align2::LEFT_CENTER,
+            c,
+            px,
+            pal.weak,
+            false,
+            (srect.width() - 2.0 * PAD_X * zoom).max(10.0),
+        );
+    }
 
     // rows
     let row_px = font_px(ROW_FONT, zoom);
     let show_types = diagram.settings.show_types;
     for (i, &ci) in geom.rows.iter().enumerate() {
-        let Some(col) = t.columns.get(ci) else { continue };
+        let Some(col) = t.columns.get(ci) else {
+            continue;
+        };
         let top = srect.top() + geom.row_top(i) * zoom;
-        let row_rect = Rect::from_min_size(pos2(srect.left(), top), vec2(srect.width(), ROW_HEIGHT * zoom));
+        let row_rect = Rect::from_min_size(
+            pos2(srect.left(), top),
+            vec2(srect.width(), ROW_HEIGHT * zoom),
+        );
         if !painter.clip_rect().intersects(row_rect) {
             continue;
         }
@@ -1269,16 +1683,47 @@ fn paint_table(
             Some(px) => {
                 let ix = srect.left() + PAD_X * zoom;
                 if col.pk {
-                    paint::text(painter, pos2(ix, cy), Align2::LEFT_CENTER, icon::KEY, px, pal.pk, false, f32::INFINITY);
+                    paint::text(
+                        painter,
+                        pos2(ix, cy),
+                        Align2::LEFT_CENTER,
+                        icon::KEY,
+                        px,
+                        pal.pk,
+                        false,
+                        f32::INFINITY,
+                    );
                 } else if col.fk {
-                    paint::text(painter, pos2(ix, cy), Align2::LEFT_CENTER, icon::LINK_SIMPLE, px, pal.fk, false, f32::INFINITY);
+                    paint::text(
+                        painter,
+                        pos2(ix, cy),
+                        Align2::LEFT_CENTER,
+                        icon::LINK_SIMPLE,
+                        px,
+                        pal.fk,
+                        false,
+                        f32::INFINITY,
+                    );
                 }
                 let name_x = srect.left() + geom.name_x * zoom;
                 let type_x = srect.left() + geom.type_x * zoom;
                 let has_type = show_types && !col.data_type.is_empty();
-                let name_max = if has_type { type_x - name_x - 6.0 * zoom } else { srect.right() - PAD_X * zoom - name_x };
+                let name_max = if has_type {
+                    type_x - name_x - 6.0 * zoom
+                } else {
+                    srect.right() - PAD_X * zoom - name_x
+                };
                 let name_color = if col.pk { pal.strong } else { pal.text };
-                paint::text(painter, pos2(name_x, cy), Align2::LEFT_CENTER, &col.name, px, name_color, false, name_max.max(8.0));
+                paint::text(
+                    painter,
+                    pos2(name_x, cy),
+                    Align2::LEFT_CENTER,
+                    &col.name,
+                    px,
+                    name_color,
+                    false,
+                    name_max.max(8.0),
+                );
                 if has_type {
                     paint::text(
                         painter,
@@ -1294,12 +1739,17 @@ fn paint_table(
             }
             None if zoom >= 0.18 => {
                 // skeleton: a bar per row hints at the content
-                let w = (text_width(&col.name, ROW_FONT, false) * zoom).min(srect.width() - 2.0 * (PAD_X + 8.0) * zoom);
+                let w = (text_width(&col.name, ROW_FONT, false) * zoom)
+                    .min(srect.width() - 2.0 * (PAD_X + 8.0) * zoom);
                 let bar = Rect::from_min_size(
                     pos2(srect.left() + geom.name_x * zoom, cy - 1.5 * zoom.max(0.5)),
                     vec2(w.max(2.0), (3.0 * zoom).max(1.0)),
                 );
-                let color = if col.pk { pal.pk.gamma_multiply(0.7) } else { pal.weak.gamma_multiply(0.45) };
+                let color = if col.pk {
+                    pal.pk.gamma_multiply(0.7)
+                } else {
+                    pal.weak.gamma_multiply(0.45)
+                };
                 painter.rect_filled(bar, 0.0, color);
             }
             None => {}
@@ -1346,7 +1796,9 @@ fn minimap(
     painter.rect_stroke(frame, 4.0, pal.box_stroke, StrokeKind::Inside);
     let v = ui.visuals();
     for st in &scene.tables {
-        let Some(t) = diagram.model.tables.get(st.table) else { continue };
+        let Some(t) = diagram.model.tables.get(st.table) else {
+            continue;
+        };
         let r = Rect::from_min_max(to_map(st.rect.min), to_map(st.rect.max));
         let mut fill = pal.header(v, t.kind, t.status);
         if state.selection.contains(&t.key) {
@@ -1361,19 +1813,26 @@ fn minimap(
 
     let resp = ui.interact(frame, base_id.with("minimap"), Sense::click_and_drag());
     if (resp.clicked() || resp.dragged())
-        && let Some(p) = resp.interact_pointer_pos() {
-            let world = bounds.min + (p - inner.min) / scale;
-            state.pan = canvas.size() * 0.5 - world.to_vec2() * state.zoom;
-        }
+        && let Some(p) = resp.interact_pointer_pos()
+    {
+        let world = bounds.min + (p - inner.min) / scale;
+        state.pan = canvas.size() * 0.5 - world.to_vec2() * state.zoom;
+    }
     resp.on_hover_text(tr("Overview: click or drag to move the view"));
 }
 
 fn hover_tooltip(ui: &mut Ui, diagram: &ErDiagram, hover: &ErHover) {
     match hover {
         ErHover::Table(k) | ErHover::Column { table: k, .. } => {
-            let Some(t) = diagram.model.table(k) else { return };
+            let Some(t) = diagram.model.table(k) else {
+                return;
+            };
             ui.label(egui::RichText::new(t.key.as_str()).strong());
-            let kind = if t.kind == ErTableKind::View { tr("View") } else { tr("Table") };
+            let kind = if t.kind == ErTableKind::View {
+                tr("View")
+            } else {
+                tr("Table")
+            };
             ui.weak(trf("{} · {} columns", &[&kind, &t.columns.len()]));
             if let Some(s) = t.status {
                 ui.label(tr(s.label()));
@@ -1382,28 +1841,43 @@ fn hover_tooltip(ui: &mut Ui, diagram: &ErDiagram, hover: &ErHover) {
                 ui.label(c.as_str());
             }
             if let ErHover::Column { column, .. } = hover
-                && let Some(c) = t.column(column) {
-                    ui.separator();
-                    let mut flags = Vec::new();
-                    if c.pk {
-                        flags.push(tr("primary key"));
-                    }
-                    if c.fk {
-                        flags.push(tr("foreign key"));
-                    }
-                    if c.unique && !c.pk {
-                        flags.push(tr("unique"));
-                    }
-                    flags.push(if c.nullable { tr("nullable") } else { tr("not null") });
-                    ui.label(egui::RichText::new(format!("{} {}", c.name, c.data_type)).monospace());
-                    ui.weak(flags.join(", "));
-                    for r in diagram.model.relations.iter().filter(|r| r.from_table == t.key && r.from_columns.contains(column)) {
-                        ui.weak(trf("references {}({})", &[&r.to_table, &r.to_columns.join(", ")]));
-                    }
+                && let Some(c) = t.column(column)
+            {
+                ui.separator();
+                let mut flags = Vec::new();
+                if c.pk {
+                    flags.push(tr("primary key"));
                 }
+                if c.fk {
+                    flags.push(tr("foreign key"));
+                }
+                if c.unique && !c.pk {
+                    flags.push(tr("unique"));
+                }
+                flags.push(if c.nullable {
+                    tr("nullable")
+                } else {
+                    tr("not null")
+                });
+                ui.label(egui::RichText::new(format!("{} {}", c.name, c.data_type)).monospace());
+                ui.weak(flags.join(", "));
+                for r in diagram
+                    .model
+                    .relations
+                    .iter()
+                    .filter(|r| r.from_table == t.key && r.from_columns.contains(column))
+                {
+                    ui.weak(trf(
+                        "references {}({})",
+                        &[&r.to_table, &r.to_columns.join(", ")],
+                    ));
+                }
+            }
         }
         ErHover::Relation(i) => {
-            let Some(r) = diagram.model.relations.get(*i) else { return };
+            let Some(r) = diagram.model.relations.get(*i) else {
+                return;
+            };
             ui.label(egui::RichText::new(r.name.as_str()).strong());
             ui.label(format!("{}({})", r.from_table, r.from_columns.join(", ")));
             ui.label(format!("→ {}({})", r.to_table, r.to_columns.join(", ")));
@@ -1411,7 +1885,11 @@ fn hover_tooltip(ui: &mut Ui, diagram: &ErDiagram, hover: &ErHover) {
             if r.identifying {
                 notes.push(tr("identifying"));
             }
-            notes.push(if r.optional { tr("optional") } else { tr("mandatory") });
+            notes.push(if r.optional {
+                tr("optional")
+            } else {
+                tr("mandatory")
+            });
             ui.weak(notes.join(", "));
         }
         ErHover::Note(_) => {
@@ -1428,13 +1906,18 @@ mod tests {
 
     fn diagram() -> ErDiagram {
         let mut m = ErModel::default();
-        m.tables.push(ErTable::new(None, "a", ErTableKind::Table).with_column(ErColumn::new("id", "int").primary_key()));
+        m.tables.push(
+            ErTable::new(None, "a", ErTableKind::Table)
+                .with_column(ErColumn::new("id", "int").primary_key()),
+        );
         m.tables.push(
             ErTable::new(None, "b", ErTableKind::Table)
                 .with_column(ErColumn::new("id", "int").primary_key())
                 .with_column(ErColumn::new("a_id", "int").foreign_key()),
         );
-        m.tables.push(ErTable::new(None, "c", ErTableKind::View).with_column(ErColumn::new("x", "text")));
+        m.tables.push(
+            ErTable::new(None, "c", ErTableKind::View).with_column(ErColumn::new("x", "text")),
+        );
         m.relations.push(ErRelation {
             name: "b_a".into(),
             from_table: "b".into(),
@@ -1470,7 +1953,10 @@ mod tests {
         let mut ui_fn = |ui: &mut Ui| events.extend(show_er(ui, &mut d, &mut s).events);
         h.click(a.center(), &mut ui_fn);
         drop(ui_fn);
-        assert!(events.contains(&ErEvent::SelectionChanged(vec!["a".into()])), "{events:?}");
+        assert!(
+            events.contains(&ErEvent::SelectionChanged(vec!["a".into()])),
+            "{events:?}"
+        );
         assert_eq!(s.selection, BTreeSet::from(["a".to_string()]));
 
         // dragging the header moves the table
@@ -1481,9 +1967,16 @@ mod tests {
         let mut ui_fn = |ui: &mut Ui| events.extend(show_er(ui, &mut d, &mut s).events);
         h.drag(grab, grab + vec2(120.0, 60.0), &mut ui_fn);
         drop(ui_fn);
-        assert!(events.contains(&ErEvent::TableMoved(vec!["b".into()])), "{events:?}");
+        assert!(
+            events.contains(&ErEvent::TableMoved(vec!["b".into()])),
+            "{events:?}"
+        );
         let moved = d.positions["b"] - before;
-        assert!(moved.x * s.zoom > 80.0 && moved.y * s.zoom > 30.0, "moved {moved:?} at zoom {}", s.zoom);
+        assert!(
+            moved.x * s.zoom > 80.0 && moved.y * s.zoom > 30.0,
+            "moved {moved:?} at zoom {}",
+            s.zoom
+        );
 
         // double click opens
         events.clear();
@@ -1491,14 +1984,20 @@ mod tests {
         let mut ui_fn = |ui: &mut Ui| events.extend(show_er(ui, &mut d, &mut s).events);
         h.double_click(c.center(), &mut ui_fn);
         drop(ui_fn);
-        assert!(events.contains(&ErEvent::OpenTable("c".into())), "{events:?}");
+        assert!(
+            events.contains(&ErEvent::OpenTable("c".into())),
+            "{events:?}"
+        );
 
         // edit mode: dragging a column onto another table proposes a foreign key
         s.edit_mode = true;
         events.clear();
         let b = screen_rect(&d, &s, "b");
         let geom = d.geometry("b").expect("geometry");
-        let a_id_row = pos2(b.center().x, b.top() + (geom.row_top(1) + ROW_HEIGHT * 0.5) * s.zoom);
+        let a_id_row = pos2(
+            b.center().x,
+            b.top() + (geom.row_top(1) + ROW_HEIGHT * 0.5) * s.zoom,
+        );
         let a = screen_rect(&d, &s, "a");
         let target = pos2(a.center().x, a.top() + 6.0);
         let mut ui_fn = |ui: &mut Ui| events.extend(show_er(ui, &mut d, &mut s).events);
@@ -1521,7 +2020,10 @@ mod tests {
         h.click(a.center(), &mut ui_fn);
         h.key(Key::Delete, &mut ui_fn);
         drop(ui_fn);
-        assert!(events.contains(&ErEvent::DeleteTables(vec!["a".into()])), "{events:?}");
+        assert!(
+            events.contains(&ErEvent::DeleteTables(vec!["a".into()])),
+            "{events:?}"
+        );
 
         // right click opens the context menu without panicking
         let mut ui_fn = |ui: &mut Ui| events.extend(show_er(ui, &mut d, &mut s).events);
@@ -1549,7 +2051,11 @@ mod tests {
         };
         h.drag(empty, empty - vec2(100.0, 0.0), &mut ui_fn);
         drop(ui_fn);
-        assert!((s.pan.x - pan_before.x) < -60.0, "{pan_before:?} -> {:?}", s.pan);
+        assert!(
+            (s.pan.x - pan_before.x) < -60.0,
+            "{pan_before:?} -> {:?}",
+            s.pan
+        );
         // scrolling pans too
         let pan_before = s.pan;
         let mut ui_fn = |ui: &mut Ui| {
@@ -1595,7 +2101,11 @@ mod tests {
         d.settings.show_comments = true;
         let mut h = Harness::new(1400.0, 900.0);
         for zoom in [0.05, 0.12, 0.3, 0.5, 1.0, 2.5] {
-            let mut s = ErViewState { fit_pending: false, zoom, ..Default::default() };
+            let mut s = ErViewState {
+                fit_pending: false,
+                zoom,
+                ..Default::default()
+            };
             let mut ui_fn = |ui: &mut Ui| {
                 show_er(ui, &mut d, &mut s);
             };

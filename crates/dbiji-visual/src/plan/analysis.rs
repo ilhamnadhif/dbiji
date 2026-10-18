@@ -100,9 +100,16 @@ impl FlatPlanNode<'_> {
 /// Flattens the plan depth-first and computes exclusive measures and shares.
 pub fn flatten_plan(plan: &QueryPlan) -> Vec<FlatPlanNode<'_>> {
     let mut out: Vec<FlatPlanNode<'_>> = Vec::new();
-    fn visit<'a>(node: &'a PlanNode, path: PlanNodePath, parent: Option<usize>, out: &mut Vec<FlatPlanNode<'a>>) {
+    fn visit<'a>(
+        node: &'a PlanNode,
+        path: PlanNodePath,
+        parent: Option<usize>,
+        out: &mut Vec<FlatPlanNode<'a>>,
+    ) {
         let idx = out.len();
-        let inclusive_ms = node.actual_total_ms.map(|t| t * node.loops.unwrap_or(1.0).max(0.0));
+        let inclusive_ms = node
+            .actual_total_ms
+            .map(|t| t * node.loops.unwrap_or(1.0).max(0.0));
         let row_factor = match (node.actual_rows, node.plan_rows) {
             (Some(a), Some(p)) => Some(a.max(0.0).max(0.5) / p.max(0.0).max(0.5)),
             _ => None,
@@ -121,9 +128,10 @@ pub fn flatten_plan(plan: &QueryPlan) -> Vec<FlatPlanNode<'_>> {
             row_factor,
         });
         if let Some(p) = parent
-            && let Some(pn) = out.get_mut(p) {
-                pn.children.push(idx);
-            }
+            && let Some(pn) = out.get_mut(p)
+        {
+            pn.children.push(idx);
+        }
         for (i, c) in node.children.iter().enumerate() {
             let mut child_path = path.clone();
             child_path.push(i);
@@ -133,8 +141,16 @@ pub fn flatten_plan(plan: &QueryPlan) -> Vec<FlatPlanNode<'_>> {
     for (i, r) in plan.roots.iter().enumerate() {
         visit(r, vec![i], None, &mut out);
     }
-    let total_ms: f64 = out.iter().filter(|n| n.parent.is_none()).filter_map(|n| n.inclusive_ms).sum();
-    let total_cost: f64 = out.iter().filter(|n| n.parent.is_none()).filter_map(|n| n.node.total_cost).sum();
+    let total_ms: f64 = out
+        .iter()
+        .filter(|n| n.parent.is_none())
+        .filter_map(|n| n.inclusive_ms)
+        .sum();
+    let total_cost: f64 = out
+        .iter()
+        .filter(|n| n.parent.is_none())
+        .filter_map(|n| n.node.total_cost)
+        .sum();
     for n in &mut out {
         if total_ms > 0.0 {
             n.time_share = n.exclusive_ms.map(|e| (e / total_ms).clamp(0.0, 1.0));
@@ -225,11 +241,16 @@ pub struct PlanSummary {
 pub const LARGE_TABLE_ROWS: f64 = 10_000.0;
 
 fn property<'a>(node: &'a PlanNode, key: &str) -> Option<&'a str> {
-    node.properties.iter().find(|(k, _)| k.eq_ignore_ascii_case(key)).map(|(_, v)| v.as_str())
+    node.properties
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case(key))
+        .map(|(_, v)| v.as_str())
 }
 
 fn property_number(node: &PlanNode, key: &str) -> Option<f64> {
-    property(node, key).and_then(|v| v.split_whitespace().next()).and_then(|v| v.parse().ok())
+    property(node, key)
+        .and_then(|v| v.split_whitespace().next())
+        .and_then(|v| v.parse().ok())
 }
 
 /// True for full table scans of the supported databases.
@@ -239,7 +260,10 @@ pub fn is_full_scan(node: &PlanNode) -> bool {
         || t.contains("table scan")
         || t.contains("full scan")
         || t == "all"
-        || (t.starts_with("scan") && !t.contains("index") && !t.contains("constant") && !t.contains("subquery"))
+        || (t.starts_with("scan")
+            && !t.contains("index")
+            && !t.contains("constant")
+            && !t.contains("subquery"))
 }
 
 fn fmt_rows(v: f64) -> String {
@@ -251,10 +275,26 @@ pub fn plan_summary(plan: &QueryPlan) -> PlanSummary {
     let flat = flatten_plan(plan);
     let analyzed = plan.analyzed || has_actuals(plan);
     let metric = PlanMetric::Auto.resolve(plan);
-    let root_ms: f64 = flat.iter().filter(|n| n.parent.is_none()).filter_map(|n| n.inclusive_ms).sum();
-    let total_cost: f64 = flat.iter().filter(|n| n.parent.is_none()).filter_map(|n| n.node.total_cost).sum();
-    let mut hot: Vec<&FlatPlanNode<'_>> = flat.iter().filter(|n| n.share(metric).unwrap_or(0.0) >= 0.05).collect();
-    hot.sort_by(|a, b| b.share(metric).unwrap_or(0.0).total_cmp(&a.share(metric).unwrap_or(0.0)).then(a.path.cmp(&b.path)));
+    let root_ms: f64 = flat
+        .iter()
+        .filter(|n| n.parent.is_none())
+        .filter_map(|n| n.inclusive_ms)
+        .sum();
+    let total_cost: f64 = flat
+        .iter()
+        .filter(|n| n.parent.is_none())
+        .filter_map(|n| n.node.total_cost)
+        .sum();
+    let mut hot: Vec<&FlatPlanNode<'_>> = flat
+        .iter()
+        .filter(|n| n.share(metric).unwrap_or(0.0) >= 0.05)
+        .collect();
+    hot.sort_by(|a, b| {
+        b.share(metric)
+            .unwrap_or(0.0)
+            .total_cmp(&a.share(metric).unwrap_or(0.0))
+            .then(a.path.cmp(&b.path))
+    });
     let hotspots = hot
         .into_iter()
         .take(5)
@@ -270,52 +310,86 @@ pub fn plan_summary(plan: &QueryPlan) -> PlanSummary {
     let mut warnings = Vec::new();
     for n in &flat {
         let node = n.node;
-        let rel = node.relation.clone().unwrap_or_else(|| node.node_type.clone());
-        let rows = node.plan_rows.unwrap_or(0.0).max(n.output_rows().unwrap_or(0.0));
-        let removed = property_number(node, "Rows Removed by Filter").unwrap_or(0.0) * node.loops.unwrap_or(1.0).max(1.0);
+        let rel = node
+            .relation
+            .clone()
+            .unwrap_or_else(|| node.node_type.clone());
+        let rows = node
+            .plan_rows
+            .unwrap_or(0.0)
+            .max(n.output_rows().unwrap_or(0.0));
+        let removed = property_number(node, "Rows Removed by Filter").unwrap_or(0.0)
+            * node.loops.unwrap_or(1.0).max(1.0);
         if is_full_scan(node) && (rows + removed) >= LARGE_TABLE_ROWS {
             warnings.push(PlanWarning {
                 path: n.path.clone(),
                 kind: PlanWarningKind::SeqScanOnLargeTable,
-                message: trf("Full scan of {} (~{} rows)", &[&rel, &fmt_rows(rows + removed)]),
+                message: trf(
+                    "Full scan of {} (~{} rows)",
+                    &[&rel, &fmt_rows(rows + removed)],
+                ),
             });
         }
         if let (Some(actual), Some(est), Some(f)) = (node.actual_rows, node.plan_rows, n.row_factor)
-            && actual.max(est) >= 100.0 && !(0.1..=10.0).contains(&f) {
-                let factor = if f >= 1.0 { f } else { 1.0 / f };
-                warnings.push(PlanWarning {
-                    path: n.path.clone(),
-                    kind: PlanWarningKind::RowEstimateOff,
-                    message: trf(
-                        "Row estimate off by {}x at {}: estimated {}, actual {}",
-                        &[&format!("{factor:.0}"), &node.node_type, &fmt_rows(est), &fmt_rows(actual)],
-                    ),
-                });
-            }
-        let sort_method = property(node, "Sort Method").unwrap_or("").to_ascii_lowercase();
-        let space_type = property(node, "Sort Space Type").unwrap_or("").to_ascii_lowercase();
+            && actual.max(est) >= 100.0
+            && !(0.1..=10.0).contains(&f)
+        {
+            let factor = if f >= 1.0 { f } else { 1.0 / f };
+            warnings.push(PlanWarning {
+                path: n.path.clone(),
+                kind: PlanWarningKind::RowEstimateOff,
+                message: trf(
+                    "Row estimate off by {}x at {}: estimated {}, actual {}",
+                    &[
+                        &format!("{factor:.0}"),
+                        &node.node_type,
+                        &fmt_rows(est),
+                        &fmt_rows(actual),
+                    ],
+                ),
+            });
+        }
+        let sort_method = property(node, "Sort Method")
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let space_type = property(node, "Sort Space Type")
+            .unwrap_or("")
+            .to_ascii_lowercase();
         if sort_method.contains("external") || space_type == "disk" {
             warnings.push(PlanWarning {
                 path: n.path.clone(),
                 kind: PlanWarningKind::SortSpilledToDisk,
-                message: trf("Sort spilled to disk ({}); consider more work_mem", &[&property(node, "Sort Method").unwrap_or("external")]),
+                message: trf(
+                    "Sort spilled to disk ({}); consider more work_mem",
+                    &[&property(node, "Sort Method").unwrap_or("external")],
+                ),
             });
         }
         let batches = property_number(node, "Hash Batches").or_else(|| {
-            if node.node_type.eq_ignore_ascii_case("hash") { property_number(node, "Batches") } else { None }
+            if node.node_type.eq_ignore_ascii_case("hash") {
+                property_number(node, "Batches")
+            } else {
+                None
+            }
         });
         if batches.is_some_and(|b| b > 1.0) {
             warnings.push(PlanWarning {
                 path: n.path.clone(),
                 kind: PlanWarningKind::HashBatches,
-                message: trf("Hash used {} batches: the hash table did not fit in memory", &[&batches.unwrap_or(0.0)]),
+                message: trf(
+                    "Hash used {} batches: the hash table did not fit in memory",
+                    &[&batches.unwrap_or(0.0)],
+                ),
             });
         }
         if node.loops.is_some_and(|l| l >= 1000.0) && n.parent.is_some() {
             warnings.push(PlanWarning {
                 path: n.path.clone(),
                 kind: PlanWarningKind::ManyLoops,
-                message: trf("{} executed {} times", &[&node.title(), &fmt_rows(node.loops.unwrap_or(0.0))]),
+                message: trf(
+                    "{} executed {} times",
+                    &[&node.title(), &fmt_rows(node.loops.unwrap_or(0.0))],
+                ),
             });
         }
         let kept = n.output_rows().unwrap_or(0.0);
@@ -323,15 +397,24 @@ pub fn plan_summary(plan: &QueryPlan) -> PlanSummary {
             warnings.push(PlanWarning {
                 path: n.path.clone(),
                 kind: PlanWarningKind::RowsRemovedByFilter,
-                message: trf("Filter discarded {} rows at {}; an index may help", &[&fmt_rows(removed), &node.title()]),
+                message: trf(
+                    "Filter discarded {} rows at {}; an index may help",
+                    &[&fmt_rows(removed), &node.title()],
+                ),
             });
         }
     }
 
     PlanSummary {
         planning_ms: plan.planning_ms,
-        execution_ms: plan.execution_ms.or(if root_ms > 0.0 { Some(root_ms) } else { None }),
-        total_cost: if total_cost > 0.0 { Some(total_cost) } else { None },
+        execution_ms: plan
+            .execution_ms
+            .or(if root_ms > 0.0 { Some(root_ms) } else { None }),
+        total_cost: if total_cost > 0.0 {
+            Some(total_cost)
+        } else {
+            None
+        },
         node_count: flat.len(),
         max_depth: flat.iter().map(|n| n.depth).max().unwrap_or(0),
         analyzed,
@@ -344,10 +427,16 @@ pub fn plan_summary(plan: &QueryPlan) -> PlanSummary {
 pub fn summary_line(s: &PlanSummary) -> String {
     let mut parts = Vec::new();
     if let Some(p) = s.planning_ms {
-        parts.push(trf("Planning {}", &[&crate::common::format::duration_ms(p)]));
+        parts.push(trf(
+            "Planning {}",
+            &[&crate::common::format::duration_ms(p)],
+        ));
     }
     if let Some(e) = s.execution_ms {
-        parts.push(trf("Execution {}", &[&crate::common::format::duration_ms(e)]));
+        parts.push(trf(
+            "Execution {}",
+            &[&crate::common::format::duration_ms(e)],
+        ));
     }
     if let Some(c) = s.total_cost {
         parts.push(trf("Cost {}", &[&crate::common::format::compact(c, 2)]));
@@ -356,7 +445,11 @@ pub fn summary_line(s: &PlanSummary) -> String {
     if !s.warnings.is_empty() {
         parts.push(trf("{} warnings", &[&s.warnings.len()]));
     }
-    if parts.is_empty() { tr("Empty plan").to_string() } else { parts.join(" · ") }
+    if parts.is_empty() {
+        tr("Empty plan").to_string()
+    } else {
+        parts.join(" · ")
+    }
 }
 
 #[cfg(test)]
@@ -396,7 +489,13 @@ pub(crate) mod tests {
         sort.loops = Some(1.0);
         sort.properties = vec![("Sort Method".into(), "external merge  Disk: 4096kB".into())];
         sort.children = vec![nl];
-        QueryPlan { roots: vec![sort], planning_ms: Some(0.5), execution_ms: Some(262.0), analyzed: true, ..Default::default() }
+        QueryPlan {
+            roots: vec![sort],
+            planning_ms: Some(0.5),
+            execution_ms: Some(262.0),
+            analyzed: true,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -431,7 +530,12 @@ pub(crate) mod tests {
         assert_eq!(s.max_depth, 2);
         assert!(s.analyzed);
         assert_eq!(s.execution_ms, Some(262.0));
-        assert_eq!(s.hotspots.first().map(|h| h.path.clone()), Some(vec![0, 0, 1]), "{:?}", s.hotspots);
+        assert_eq!(
+            s.hotspots.first().map(|h| h.path.clone()),
+            Some(vec![0, 0, 1]),
+            "{:?}",
+            s.hotspots
+        );
         let kinds: Vec<PlanWarningKind> = s.warnings.iter().map(|w| w.kind).collect();
         assert!(kinds.contains(&PlanWarningKind::SeqScanOnLargeTable));
         assert!(kinds.contains(&PlanWarningKind::RowEstimateOff));

@@ -26,7 +26,12 @@ pub enum JoinKind {
 
 impl JoinKind {
     /// All kinds in menu order.
-    pub const ALL: [JoinKind; 4] = [JoinKind::Inner, JoinKind::Left, JoinKind::Right, JoinKind::Full];
+    pub const ALL: [JoinKind; 4] = [
+        JoinKind::Inner,
+        JoinKind::Left,
+        JoinKind::Right,
+        JoinKind::Full,
+    ];
 
     /// SQL keywords.
     pub fn sql(self) -> &'static str {
@@ -78,8 +83,14 @@ pub enum Aggregate {
 
 impl Aggregate {
     /// All aggregates in menu order.
-    pub const ALL: [Aggregate; 6] =
-        [Aggregate::Count, Aggregate::CountDistinct, Aggregate::Sum, Aggregate::Avg, Aggregate::Min, Aggregate::Max];
+    pub const ALL: [Aggregate; 6] = [
+        Aggregate::Count,
+        Aggregate::CountDistinct,
+        Aggregate::Sum,
+        Aggregate::Avg,
+        Aggregate::Min,
+        Aggregate::Max,
+    ];
 
     /// Display label (SQL function name, not translated).
     pub fn label(self) -> &'static str {
@@ -95,7 +106,11 @@ impl Aggregate {
 
     /// Wraps an already rendered expression.
     pub fn apply(self, expr: &str) -> String {
-        let e = if expr.trim().is_empty() { "*" } else { expr.trim() };
+        let e = if expr.trim().is_empty() {
+            "*"
+        } else {
+            expr.trim()
+        };
         match self {
             Aggregate::Count => format!("COUNT({e})"),
             Aggregate::CountDistinct => format!("COUNT(DISTINCT {e})"),
@@ -129,8 +144,22 @@ impl Connector {
 }
 
 /// Comparison operators offered by the condition editor.
-pub const OPERATORS: [&str; 14] =
-    ["=", "<>", "<", "<=", ">", ">=", "LIKE", "NOT LIKE", "IN", "NOT IN", "BETWEEN", "IS NULL", "IS NOT NULL", ""];
+pub const OPERATORS: [&str; 14] = [
+    "=",
+    "<>",
+    "<",
+    "<=",
+    ">",
+    ">=",
+    "LIKE",
+    "NOT LIKE",
+    "IN",
+    "NOT IN",
+    "BETWEEN",
+    "IS NULL",
+    "IS NOT NULL",
+    "",
+];
 
 /// A column of a builder table.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -194,14 +223,22 @@ pub struct QbSelectItem {
 
 impl Default for QbSelectItem {
     fn default() -> Self {
-        QbSelectItem { expr: String::new(), alias: String::new(), aggregate: None, visible: true }
+        QbSelectItem {
+            expr: String::new(),
+            alias: String::new(),
+            aggregate: None,
+            visible: true,
+        }
     }
 }
 
 impl QbSelectItem {
     /// Visible item for an expression.
     pub fn new(expr: impl Into<String>) -> Self {
-        QbSelectItem { expr: expr.into(), ..Default::default() }
+        QbSelectItem {
+            expr: expr.into(),
+            ..Default::default()
+        }
     }
 }
 
@@ -221,8 +258,17 @@ pub struct QbCondition {
 
 impl QbCondition {
     /// Condition `expr operator value`.
-    pub fn new(expr: impl Into<String>, operator: impl Into<String>, value: impl Into<String>) -> Self {
-        QbCondition { expr: expr.into(), operator: operator.into(), value: value.into(), connector: Connector::And }
+    pub fn new(
+        expr: impl Into<String>,
+        operator: impl Into<String>,
+        value: impl Into<String>,
+    ) -> Self {
+        QbCondition {
+            expr: expr.into(),
+            operator: operator.into(),
+            value: value.into(),
+            connector: Connector::And,
+        }
     }
 }
 
@@ -261,13 +307,22 @@ const QB_MAX_W: f32 = 340.0;
 impl QbTable {
     /// Size of the table box on the canvas.
     pub fn box_size(&self) -> Vec2 {
-        let mut w = 40.0 + text_width(&self.obj.name, QB_FONT + 0.5, true) * 1.08 + text_width(&self.alias, QB_FONT, false) + 40.0;
+        let mut w = 40.0
+            + text_width(&self.obj.name, QB_FONT + 0.5, true) * 1.08
+            + text_width(&self.alias, QB_FONT, false)
+            + 40.0;
         for c in &self.columns {
             w = w.max(
-                34.0 + text_width(&c.name, QB_FONT, false) * 1.08 + 16.0 + text_width(&c.data_type, QB_FONT - 1.0, false) * 1.08 + 10.0,
+                34.0 + text_width(&c.name, QB_FONT, false) * 1.08
+                    + 16.0
+                    + text_width(&c.data_type, QB_FONT - 1.0, false) * 1.08
+                    + 10.0,
             );
         }
-        vec2(w.clamp(QB_MIN_W, QB_MAX_W).round(), QB_HEADER + self.columns.len() as f32 * QB_ROW + 6.0)
+        vec2(
+            w.clamp(QB_MIN_W, QB_MAX_W).round(),
+            QB_HEADER + self.columns.len() as f32 * QB_ROW + 6.0,
+        )
     }
 
     /// Rectangle of the box on the canvas.
@@ -282,19 +337,32 @@ impl QbTable {
     }
 
     fn matches(&self, schema: Option<&str>, name: &str) -> bool {
-        self.obj.name == name && (schema.is_none() || self.obj.schema.is_none() || self.obj.schema.as_deref() == schema)
+        self.obj.name == name
+            && (schema.is_none()
+                || self.obj.schema.is_none()
+                || self.obj.schema.as_deref() == schema)
     }
 }
 
 fn base_alias(name: &str) -> String {
-    let parts: Vec<&str> = name.split(['_', ' ', '.']).filter(|p| !p.is_empty()).collect();
+    let parts: Vec<&str> = name
+        .split(['_', ' ', '.'])
+        .filter(|p| !p.is_empty())
+        .collect();
     let mut alias: String = if parts.len() > 1 {
         parts.iter().filter_map(|p| p.chars().next()).collect()
     } else {
-        name.chars().next().map(|c| c.to_string()).unwrap_or_else(|| "t".into())
+        name.chars()
+            .next()
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| "t".into())
     };
     alias = alias.to_lowercase();
-    if !alias.chars().next().is_some_and(|c| c.is_ascii_alphabetic()) {
+    if !alias
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic())
+    {
         alias.insert(0, 't');
     }
     alias.retain(|c| c.is_ascii_alphanumeric() || c == '_');
@@ -319,7 +387,10 @@ impl QueryModel {
         if !used.contains(base.as_str()) && !dbiji_core::keywords::is_reserved(&base) {
             return base;
         }
-        (2..).map(|i| format!("{base}{i}")).find(|a| !used.contains(a.as_str())).unwrap_or(base)
+        (2..)
+            .map(|i| format!("{base}{i}"))
+            .find(|a| !used.contains(a.as_str()))
+            .unwrap_or(base)
     }
 
     /// Adds a table: assigns an alias, places it right of the existing boxes
@@ -327,7 +398,11 @@ impl QueryModel {
     /// (and from their foreign keys to it). Returns the alias.
     pub fn add_table(&mut self, def: &TableDef) -> String {
         let alias = self.unique_alias(&def.name);
-        let x = self.tables.iter().map(|t| t.rect().right()).fold(20.0f32, |a, b| a.max(b + 60.0));
+        let x = self
+            .tables
+            .iter()
+            .map(|t| t.rect().right())
+            .fold(20.0f32, |a, b| a.max(b + 60.0));
         let mut obj = ObjectRef::table(def.schema.clone(), def.name.clone());
         obj.kind = dbiji_core::meta::ObjectKind::Table;
         let table = QbTable {
@@ -336,7 +411,11 @@ impl QueryModel {
             columns: def
                 .columns
                 .iter()
-                .map(|c| QbColumn { name: c.name.clone(), data_type: c.data_type.clone(), selected: false })
+                .map(|c| QbColumn {
+                    name: c.name.clone(),
+                    data_type: c.data_type.clone(),
+                    selected: false,
+                })
                 .collect(),
             pos: pos2(x, 20.0 + (self.tables.len() % 3) as f32 * 30.0),
             foreign_keys: def.foreign_keys.clone(),
@@ -348,7 +427,11 @@ impl QueryModel {
             if fk.ref_table == def.name && ref_schema == def.schema.as_deref() {
                 continue; // self reference: needs an explicit second instance
             }
-            if let Some(parent) = self.tables.iter().find(|t| t.matches(ref_schema, &fk.ref_table)) {
+            if let Some(parent) = self
+                .tables
+                .iter()
+                .find(|t| t.matches(ref_schema, &fk.ref_table))
+            {
                 for (c, rc) in fk.columns.iter().zip(&fk.ref_columns) {
                     joins.push(QbJoin {
                         left_alias: alias.clone(),
@@ -365,7 +448,11 @@ impl QueryModel {
         for t in &self.tables {
             for fk in &t.foreign_keys {
                 let ref_schema = fk.ref_schema.as_deref().or(t.obj.schema.as_deref());
-                if fk.ref_table == def.name && (ref_schema.is_none() || def.schema.is_none() || ref_schema == def.schema.as_deref()) {
+                if fk.ref_table == def.name
+                    && (ref_schema.is_none()
+                        || def.schema.is_none()
+                        || ref_schema == def.schema.as_deref())
+                {
                     incoming.push((t.alias.clone(), fk.columns.clone(), fk.ref_columns.clone()));
                 }
             }
@@ -373,7 +460,11 @@ impl QueryModel {
         for fk in &def.referenced_by {
             let schema = fk.schema.as_deref().or(def.schema.as_deref());
             if let Some(child) = self.tables.iter().find(|t| t.matches(schema, &fk.table)) {
-                incoming.push((child.alias.clone(), fk.columns.clone(), fk.ref_columns.clone()));
+                incoming.push((
+                    child.alias.clone(),
+                    fk.columns.clone(),
+                    fk.ref_columns.clone(),
+                ));
             }
         }
         for (child_alias, cols, ref_cols) in incoming {
@@ -399,7 +490,8 @@ impl QueryModel {
     /// Removes a table and everything referring to its alias.
     pub fn remove_table(&mut self, alias: &str) {
         self.tables.retain(|t| t.alias != alias);
-        self.joins.retain(|j| j.left_alias != alias && j.right_alias != alias);
+        self.joins
+            .retain(|j| j.left_alias != alias && j.right_alias != alias);
         let prefix = format!("{alias}.");
         let refers = |e: &str| e.trim_start().starts_with(&prefix);
         self.select.retain(|s| !refers(&s.expr));
@@ -444,7 +536,10 @@ impl QueryModel {
     /// Ticks / unticks a column: adds or removes the `alias.column` select item.
     pub fn set_column_selected(&mut self, alias: &str, column: &str, selected: bool) {
         let expr = format!("{alias}.{column}");
-        if let Some(c) = self.table_mut(alias).and_then(|t| t.columns.iter_mut().find(|c| c.name == column)) {
+        if let Some(c) = self
+            .table_mut(alias)
+            .and_then(|t| t.columns.iter_mut().find(|c| c.name == column))
+        {
             c.selected = selected;
         }
         if selected {
@@ -459,7 +554,11 @@ impl QueryModel {
     /// Recomputes the column check marks from the select list (after the
     /// select list was edited directly).
     pub fn sync_selected_flags(&mut self) {
-        let exprs: BTreeSet<String> = self.select.iter().map(|s| s.expr.trim().to_string()).collect();
+        let exprs: BTreeSet<String> = self
+            .select
+            .iter()
+            .map(|s| s.expr.trim().to_string())
+            .collect();
         for t in &mut self.tables {
             let alias = t.alias.clone();
             for c in &mut t.columns {
@@ -482,7 +581,14 @@ impl QueryModel {
 
     /// Every `alias.column` reference of the model (for pickers).
     pub fn column_refs(&self) -> Vec<String> {
-        self.tables.iter().flat_map(|t| t.columns.iter().map(move |c| format!("{}.{}", t.alias, c.name))).collect()
+        self.tables
+            .iter()
+            .flat_map(|t| {
+                t.columns
+                    .iter()
+                    .map(move |c| format!("{}.{}", t.alias, c.name))
+            })
+            .collect()
     }
 }
 
@@ -505,8 +611,15 @@ pub(crate) mod tests {
 
     pub(crate) fn customers() -> TableDef {
         let mut t = TableDef::new(Some("shop".into()), "customers");
-        t.columns = vec![ColumnDef::new("id", "int"), ColumnDef::new("name", "text"), ColumnDef::new("region", "text")];
-        t.primary_key = Some(KeyDef { name: None, columns: vec!["id".into()] });
+        t.columns = vec![
+            ColumnDef::new("id", "int"),
+            ColumnDef::new("name", "text"),
+            ColumnDef::new("region", "text"),
+        ];
+        t.primary_key = Some(KeyDef {
+            name: None,
+            columns: vec!["id".into()],
+        });
         t
     }
 
@@ -530,7 +643,10 @@ pub(crate) mod tests {
 
     pub(crate) fn order_items() -> TableDef {
         let mut t = TableDef::new(Some("shop".into()), "order_items");
-        t.columns = vec![ColumnDef::new("order_id", "int"), ColumnDef::new("qty", "int")];
+        t.columns = vec![
+            ColumnDef::new("order_id", "int"),
+            ColumnDef::new("qty", "int"),
+        ];
         t.foreign_keys.push(ForeignKeyDef {
             name: None,
             columns: vec!["order_id".into()],
@@ -562,7 +678,13 @@ pub(crate) mod tests {
         m.add_table(&orders());
         m.add_table(&customers());
         assert_eq!(m.joins.len(), 1);
-        assert_eq!((m.joins[0].left_alias.as_str(), m.joins[0].right_alias.as_str()), ("o", "c"));
+        assert_eq!(
+            (
+                m.joins[0].left_alias.as_str(),
+                m.joins[0].right_alias.as_str()
+            ),
+            ("o", "c")
+        );
     }
 
     #[test]
@@ -588,7 +710,14 @@ pub(crate) mod tests {
         assert!(m.joins.is_empty());
         assert_eq!(m.select.len(), 1);
         assert!(m.conditions.is_empty() && m.order_by.is_empty());
-        assert_eq!(m.add_join(QbJoin { left_alias: "c".into(), right_alias: "c".into(), ..Default::default() }), None);
+        assert_eq!(
+            m.add_join(QbJoin {
+                left_alias: "c".into(),
+                right_alias: "c".into(),
+                ..Default::default()
+            }),
+            None
+        );
     }
 
     #[test]

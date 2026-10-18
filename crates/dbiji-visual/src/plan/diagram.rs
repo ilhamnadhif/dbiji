@@ -2,7 +2,9 @@
 //! the time (or cost), edges as thick as the number of rows flowing through
 //! them, a details panel for the selected node, pan/zoom and fit.
 
-use super::analysis::{FlatPlanNode, PlanMetric, PlanNodePath, flatten_plan, plan_summary, summary_line};
+use super::analysis::{
+    FlatPlanNode, PlanMetric, PlanNodePath, flatten_plan, plan_summary, summary_line,
+};
 use crate::common::colors;
 use crate::common::format::{compact, duration_ms, grouped};
 use crate::common::paint::{self, font_px};
@@ -11,7 +13,8 @@ use crate::common::view::{ViewTransform, handle_pan_zoom};
 use dbiji_core::plan::QueryPlan;
 use dbiji_core::{tr, trf};
 use egui::{
-    Align2, CornerRadius, CursorIcon, Painter, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2, pos2, vec2,
+    Align2, CornerRadius, CursorIcon, Painter, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui,
+    Vec2, pos2, vec2,
 };
 use egui_phosphor::regular as icon;
 use serde::{Deserialize, Serialize};
@@ -147,7 +150,10 @@ fn detail_lines(n: &FlatPlanNode<'_>) -> Vec<String> {
         _ => {}
     }
     match (node.plan_rows, node.actual_rows) {
-        (Some(p), Some(a)) => lines.push(trf("rows {} est. / {} actual", &[&grouped(p.round()), &grouped(a.round())])),
+        (Some(p), Some(a)) => lines.push(trf(
+            "rows {} est. / {} actual",
+            &[&grouped(p.round()), &grouped(a.round())],
+        )),
         (Some(p), None) => lines.push(trf("rows {} est.", &[&grouped(p.round())])),
         (None, Some(a)) => lines.push(trf("rows {} actual", &[&grouped(a.round())])),
         _ => {}
@@ -155,7 +161,10 @@ fn detail_lines(n: &FlatPlanNode<'_>) -> Vec<String> {
     if let Some(t) = n.inclusive_ms {
         let loops = node.loops.unwrap_or(1.0);
         if loops > 1.0 {
-            lines.push(trf("{} total, {} loops", &[&duration_ms(t), &grouped(loops)]));
+            lines.push(trf(
+                "{} total, {} loops",
+                &[&duration_ms(t), &grouped(loops)],
+            ));
         } else {
             lines.push(trf("{} total", &[&duration_ms(t)]));
         }
@@ -164,11 +173,15 @@ fn detail_lines(n: &FlatPlanNode<'_>) -> Vec<String> {
 }
 
 fn box_size(n: &FlatPlanNode<'_>, lines: &[String]) -> Vec2 {
-    let mut w = text_width(&n.node.node_type, TITLE_FONT, true) * 1.08 + 2.0 * PAD + ACCENT_W + 46.0;
+    let mut w =
+        text_width(&n.node.node_type, TITLE_FONT, true) * 1.08 + 2.0 * PAD + ACCENT_W + 46.0;
     for l in lines {
         w = w.max(text_width(l, LINE_FONT, false) * 1.08 + 2.0 * PAD + ACCENT_W);
     }
-    vec2(w.clamp(MIN_W, MAX_W).round(), TITLE_H + lines.len() as f32 * LINE_H + 6.0)
+    vec2(
+        w.clamp(MIN_W, MAX_W).round(),
+        TITLE_H + lines.len() as f32 * LINE_H + 6.0,
+    )
 }
 
 /// Tidy tree layout: each subtree gets the breadth of its children (or its
@@ -177,7 +190,11 @@ fn box_size(n: &FlatPlanNode<'_>, lines: &[String]) -> Vec2 {
 pub(crate) fn layout_plan(flat: &[FlatPlanNode<'_>], orientation: PlanOrientation) -> Vec<PlanBox> {
     let n = flat.len();
     let lines: Vec<Vec<String>> = flat.iter().map(detail_lines).collect();
-    let sizes: Vec<Vec2> = flat.iter().zip(&lines).map(|(f, l)| box_size(f, l)).collect();
+    let sizes: Vec<Vec2> = flat
+        .iter()
+        .zip(&lines)
+        .map(|(f, l)| box_size(f, l))
+        .collect();
     let horizontal = orientation == PlanOrientation::LeftRight;
     let breadth = |s: Vec2| if horizontal { s.y } else { s.x };
     let depth_size = |s: Vec2| if horizontal { s.x } else { s.y };
@@ -214,8 +231,8 @@ pub(crate) fn layout_plan(flat: &[FlatPlanNode<'_>], orientation: PlanOrientatio
     let mut center = vec![0.0f32; n];
     for i in 0..n {
         let kids = &flat[i].children;
-        let kids_w: f32 =
-            kids.iter().map(|&c| sub[c]).sum::<f32>() + GAP_BREADTH * kids.len().saturating_sub(1) as f32;
+        let kids_w: f32 = kids.iter().map(|&c| sub[c]).sum::<f32>()
+            + GAP_BREADTH * kids.len().saturating_sub(1) as f32;
         let mut x = start[i] + (sub[i] - kids_w) * 0.5;
         for &c in kids {
             start[c] = x;
@@ -229,7 +246,11 @@ pub(crate) fn layout_plan(flat: &[FlatPlanNode<'_>], orientation: PlanOrientatio
             let b = center[i] - breadth(s) * 0.5;
             let d = depth_off.get(flat[i].depth).copied().unwrap_or(0.0);
             let min = if horizontal { pos2(d, b) } else { pos2(b, d) };
-            PlanBox { flat: i, rect: Rect::from_min_size(min, s), lines: lines[i].clone() }
+            PlanBox {
+                flat: i,
+                rect: Rect::from_min_size(min, s),
+                lines: lines[i].clone(),
+            }
         })
         .collect()
 }
@@ -254,11 +275,15 @@ pub fn show_plan_diagram(ui: &mut Ui, plan: &QueryPlan, state: &mut PlanViewStat
 
     if state.show_details
         && let Some(sel) = state.selected.clone()
-            && let Some(f) = flat.iter().find(|f| f.path == sel) {
-                egui::Panel::right(id.with("details")).resizable(true).default_size(300.0).show(ui, |ui| {
-                    details_panel(ui, f, metric, state);
-                });
-            }
+        && let Some(f) = flat.iter().find(|f| f.path == sel)
+    {
+        egui::Panel::right(id.with("details"))
+            .resizable(true)
+            .default_size(300.0)
+            .show(ui, |ui| {
+                details_panel(ui, f, metric, state);
+            });
+    }
 
     let rect = ui.available_rect_before_wrap();
     let rect = Rect::from_min_size(rect.min, rect.size().max(vec2(64.0, 64.0)));
@@ -275,7 +300,12 @@ pub fn show_plan_diagram(ui: &mut Ui, plan: &QueryPlan, state: &mut PlanViewStat
     if state.fit_pending {
         if !stable {
             ui.ctx().request_repaint();
-            return PlanResponse { selection_changed: false, selected: state.selected.clone(), hovered: None, response: Some(response) };
+            return PlanResponse {
+                selection_changed: false,
+                selected: state.selected.clone(),
+                hovered: None,
+                response: Some(response),
+            };
         }
         let mut view = ViewTransform::new(state.zoom, state.pan);
         match bounds {
@@ -293,22 +323,29 @@ pub fn show_plan_diagram(ui: &mut Ui, plan: &QueryPlan, state: &mut PlanViewStat
     }
 
     // hover / select
-    let pointer = ui.input(|i| i.pointer.latest_pos()).filter(|p| rect.contains(*p) && response.contains_pointer());
+    let pointer = ui
+        .input(|i| i.pointer.latest_pos())
+        .filter(|p| rect.contains(*p) && response.contains_pointer());
     let hovered = pointer.and_then(|p| {
         let w = view.to_world(origin, p);
-        boxes.iter().rev().find(|b| b.rect.contains(w)).map(|b| b.flat)
+        boxes
+            .iter()
+            .rev()
+            .find(|b| b.rect.contains(w))
+            .map(|b| b.flat)
     });
     state.hovered = hovered.and_then(|i| flat.get(i)).map(|f| f.path.clone());
     if response.clicked() {
         state.selected = state.hovered.clone();
     }
     if response.double_clicked()
-        && let Some(b) = hovered.and_then(|i| boxes.iter().find(|b| b.flat == i)) {
-            let mut v2 = ViewTransform::new(state.zoom.max(1.0), state.pan);
-            v2.pan = rect.size() * 0.5 - b.rect.center().to_vec2() * v2.zoom;
-            state.zoom = v2.zoom;
-            state.pan = v2.pan;
-        }
+        && let Some(b) = hovered.and_then(|i| boxes.iter().find(|b| b.flat == i))
+    {
+        let mut v2 = ViewTransform::new(state.zoom.max(1.0), state.pan);
+        v2.pan = rect.size() * 0.5 - b.rect.center().to_vec2() * v2.zoom;
+        state.zoom = v2.zoom;
+        state.pan = v2.pan;
+    }
     if hovered.is_some() {
         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
     }
@@ -316,18 +353,29 @@ pub fn show_plan_diagram(ui: &mut Ui, plan: &QueryPlan, state: &mut PlanViewStat
     // paint
     let view = ViewTransform::new(state.zoom, state.pan);
     let visible = view.rect_to_world(origin, rect).expand(40.0);
-    let max_rows = flat.iter().filter_map(|f| f.output_rows()).fold(1.0f64, f64::max);
+    let max_rows = flat
+        .iter()
+        .filter_map(|f| f.output_rows())
+        .fold(1.0f64, f64::max);
     let line_color = v.text_color().gamma_multiply(0.45);
     for b in &boxes {
         let Some(f) = flat.get(b.flat) else { continue };
-        let Some(p) = f.parent.and_then(|p| boxes.iter().find(|pb| pb.flat == p)) else { continue };
+        let Some(p) = f.parent.and_then(|p| boxes.iter().find(|pb| pb.flat == p)) else {
+            continue;
+        };
         let rows = f.output_rows().unwrap_or(1.0).max(0.0);
         let t = ((rows + 1.0).log10() / (max_rows + 1.0).log10().max(1e-6)).clamp(0.0, 1.0) as f32;
         let width = (1.0 + 7.0 * t) * state.zoom.sqrt().clamp(0.5, 1.5);
         let (a, z) = if state.orientation == PlanOrientation::TopDown {
-            (pos2(p.rect.center().x, p.rect.bottom()), pos2(b.rect.center().x, b.rect.top()))
+            (
+                pos2(p.rect.center().x, p.rect.bottom()),
+                pos2(b.rect.center().x, b.rect.top()),
+            )
         } else {
-            (pos2(p.rect.right(), p.rect.center().y), pos2(b.rect.left(), b.rect.center().y))
+            (
+                pos2(p.rect.right(), p.rect.center().y),
+                pos2(b.rect.left(), b.rect.center().y),
+            )
         };
         let edge = Rect::from_two_pos(a, z);
         if !edge.intersects(visible) {
@@ -343,11 +391,30 @@ pub fn show_plan_diagram(ui: &mut Ui, plan: &QueryPlan, state: &mut PlanViewStat
         let screen: Vec<Pos2> = pts.iter().map(|p| view.to_screen(origin, *p)).collect();
         painter.add(egui::Shape::line(screen, Stroke::new(width, line_color)));
         if state.zoom >= 0.5
-            && let Some(px) = font_px(10.5, state.zoom) {
-                let label_pos = view.to_screen(origin, z) + if state.orientation == PlanOrientation::TopDown { vec2(6.0, -10.0) } else { vec2(-6.0, -10.0) };
-                let align = if state.orientation == PlanOrientation::TopDown { Align2::LEFT_CENTER } else { Align2::RIGHT_CENTER };
-                paint::text(&painter, label_pos, align, &compact(rows, 1), px, v.weak_text_color(), false, f32::INFINITY);
-            }
+            && let Some(px) = font_px(10.5, state.zoom)
+        {
+            let label_pos = view.to_screen(origin, z)
+                + if state.orientation == PlanOrientation::TopDown {
+                    vec2(6.0, -10.0)
+                } else {
+                    vec2(-6.0, -10.0)
+                };
+            let align = if state.orientation == PlanOrientation::TopDown {
+                Align2::LEFT_CENTER
+            } else {
+                Align2::RIGHT_CENTER
+            };
+            paint::text(
+                &painter,
+                label_pos,
+                align,
+                &compact(rows, 1),
+                px,
+                v.weak_text_color(),
+                false,
+                f32::INFINITY,
+            );
+        }
     }
     for b in &boxes {
         if !b.rect.intersects(visible) {
@@ -357,10 +424,18 @@ pub fn show_plan_diagram(ui: &mut Ui, plan: &QueryPlan, state: &mut PlanViewStat
         let srect = view.rect_to_screen(origin, b.rect);
         let selected = state.selected.as_ref() == Some(&f.path);
         let hover = state.hovered.as_ref() == Some(&f.path);
-        paint_box(&painter, &v, f, b, srect, state.zoom, metric, selected, hover);
+        paint_box(
+            &painter, &v, f, b, srect, state.zoom, metric, selected, hover,
+        );
     }
     if boxes.is_empty() {
-        painter.text(rect.center(), Align2::CENTER_CENTER, tr("No plan"), egui::FontId::proportional(14.0), v.weak_text_color());
+        painter.text(
+            rect.center(),
+            Align2::CENTER_CENTER,
+            tr("No plan"),
+            egui::FontId::proportional(14.0),
+            v.weak_text_color(),
+        );
     }
 
     if let Some(h) = hovered.and_then(|i| flat.get(i)) {
@@ -377,21 +452,36 @@ pub fn show_plan_diagram(ui: &mut Ui, plan: &QueryPlan, state: &mut PlanViewStat
 
 fn plan_toolbar(ui: &mut Ui, plan: &QueryPlan, state: &mut PlanViewState) {
     ui.horizontal(|ui| {
-        ui.selectable_value(&mut state.orientation, PlanOrientation::TopDown, icon::ARROW_DOWN)
-            .on_hover_text(tr("Top down"));
-        ui.selectable_value(&mut state.orientation, PlanOrientation::LeftRight, icon::ARROW_RIGHT)
-            .on_hover_text(tr("Left to right"));
+        ui.selectable_value(
+            &mut state.orientation,
+            PlanOrientation::TopDown,
+            icon::ARROW_DOWN,
+        )
+        .on_hover_text(tr("Top down"));
+        ui.selectable_value(
+            &mut state.orientation,
+            PlanOrientation::LeftRight,
+            icon::ARROW_RIGHT,
+        )
+        .on_hover_text(tr("Left to right"));
         ui.separator();
         ui.label(tr("Color by"));
-        egui::ComboBox::from_id_salt("dbiji_plan_metric").selected_text(tr(state.metric.label())).show_ui(ui, |ui| {
-            for m in [PlanMetric::Auto, PlanMetric::Time, PlanMetric::Cost] {
-                ui.selectable_value(&mut state.metric, m, tr(m.label()));
-            }
-        });
-        if ui.button(icon::CORNERS_OUT).on_hover_text(tr("Zoom to fit")).clicked() {
+        egui::ComboBox::from_id_salt("dbiji_plan_metric")
+            .selected_text(tr(state.metric.label()))
+            .show_ui(ui, |ui| {
+                for m in [PlanMetric::Auto, PlanMetric::Time, PlanMetric::Cost] {
+                    ui.selectable_value(&mut state.metric, m, tr(m.label()));
+                }
+            });
+        if ui
+            .button(icon::CORNERS_OUT)
+            .on_hover_text(tr("Zoom to fit"))
+            .clicked()
+        {
             state.fit_pending = true;
         }
-        ui.toggle_value(&mut state.show_details, icon::SIDEBAR_SIMPLE).on_hover_text(tr("Show node details"));
+        ui.toggle_value(&mut state.show_details, icon::SIDEBAR_SIMPLE)
+            .on_hover_text(tr("Show node details"));
         ui.separator();
         ui.weak(summary_line(&plan_summary(plan)));
     });
@@ -419,7 +509,20 @@ fn paint_box(
     painter.rect_filled(srect, radius, fill);
     let r8 = radius.round() as u8;
     let accent = Rect::from_min_size(srect.min, vec2((ACCENT_W * zoom).max(2.0), srect.height()));
-    painter.rect_filled(accent, CornerRadius { nw: r8, sw: r8, ne: 0, se: 0 }, if share.is_some() { heat } else { v.weak_text_color() });
+    painter.rect_filled(
+        accent,
+        CornerRadius {
+            nw: r8,
+            sw: r8,
+            ne: 0,
+            se: 0,
+        },
+        if share.is_some() {
+            heat
+        } else {
+            v.weak_text_color()
+        },
+    );
     let stroke = if selected {
         Stroke::new(2.0, v.selection.stroke.color)
     } else if hover {
@@ -435,13 +538,29 @@ fn paint_box(
         let mut right = srect.right() - PAD * zoom;
         if let Some(s) = share {
             let label = format!("{:.0}%", s * 100.0);
-            let galley = paint::single_line(painter, &label, (px - 1.5).max(5.0), false, f32::INFINITY);
-            let pill = Rect::from_min_size(pos2(right - galley.size().x - 10.0, ty - galley.size().y * 0.5 - 1.0), galley.size() + vec2(10.0, 2.0));
+            let galley =
+                paint::single_line(painter, &label, (px - 1.5).max(5.0), false, f32::INFINITY);
+            let pill = Rect::from_min_size(
+                pos2(
+                    right - galley.size().x - 10.0,
+                    ty - galley.size().y * 0.5 - 1.0,
+                ),
+                galley.size() + vec2(10.0, 2.0),
+            );
             painter.rect_filled(pill, pill.height() * 0.5, heat);
             painter.galley(pill.min + vec2(5.0, 1.0), galley, colors::text_on(heat));
             right = pill.left() - 4.0;
         }
-        paint::text(painter, pos2(left, ty), Align2::LEFT_CENTER, &f.node.node_type, px, v.strong_text_color(), false, (right - left).max(10.0));
+        paint::text(
+            painter,
+            pos2(left, ty),
+            Align2::LEFT_CENTER,
+            &f.node.node_type,
+            px,
+            v.strong_text_color(),
+            false,
+            (right - left).max(10.0),
+        );
     }
     if let Some(px) = font_px(LINE_FONT, zoom) {
         for (i, line) in b.lines.iter().enumerate() {
@@ -452,7 +571,11 @@ fn paint_box(
                 Align2::LEFT_CENTER,
                 line,
                 px,
-                if i == 0 && f.node.relation.is_some() { v.text_color() } else { v.weak_text_color() },
+                if i == 0 && f.node.relation.is_some() {
+                    v.text_color()
+                } else {
+                    v.weak_text_color()
+                },
                 false,
                 (srect.right() - PAD * zoom - left).max(10.0),
             );
@@ -471,10 +594,18 @@ fn metric_lines(ui: &mut Ui, f: &FlatPlanNode<'_>, metric: PlanMetric) {
         ui.label(trf("Share of plan: {}%", &[&format!("{:.1}", s * 100.0)]));
     }
     if let Some(rf) = f.row_factor
-        && !(0.1..=10.0).contains(&rf) {
-            let (dir, k) = if rf > 1.0 { (tr("under-estimated"), rf) } else { (tr("over-estimated"), 1.0 / rf) };
-            ui.colored_label(ui.visuals().warn_fg_color, trf("Rows {} by {}x", &[&dir, &format!("{k:.0}")]));
-        }
+        && !(0.1..=10.0).contains(&rf)
+    {
+        let (dir, k) = if rf > 1.0 {
+            (tr("under-estimated"), rf)
+        } else {
+            (tr("over-estimated"), 1.0 / rf)
+        };
+        ui.colored_label(
+            ui.visuals().warn_fg_color,
+            trf("Rows {} by {}x", &[&dir, &format!("{k:.0}")]),
+        );
+    }
 }
 
 fn node_tooltip(ui: &mut Ui, f: &FlatPlanNode<'_>, metric: PlanMetric) {
@@ -489,45 +620,58 @@ fn details_panel(ui: &mut Ui, f: &FlatPlanNode<'_>, metric: PlanMetric, state: &
     ui.horizontal(|ui| {
         ui.strong(f.node.node_type.as_str());
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.small_button(icon::X).on_hover_text(tr("Close")).clicked() {
+            if ui
+                .small_button(icon::X)
+                .on_hover_text(tr("Close"))
+                .clicked()
+            {
                 state.selected = None;
             }
         });
     });
     ui.separator();
-    egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
-        metric_lines(ui, f, metric);
-        ui.add_space(4.0);
-        let node = f.node;
-        let mut rows: Vec<(String, String)> = Vec::new();
-        let mut push = |k: &str, v: Option<String>| {
-            if let Some(v) = v {
-                rows.push((tr(k).to_string(), v));
+    egui::ScrollArea::vertical()
+        .auto_shrink(false)
+        .show(ui, |ui| {
+            metric_lines(ui, f, metric);
+            ui.add_space(4.0);
+            let node = f.node;
+            let mut rows: Vec<(String, String)> = Vec::new();
+            let mut push = |k: &str, v: Option<String>| {
+                if let Some(v) = v {
+                    rows.push((tr(k).to_string(), v));
+                }
+            };
+            push("Relation", node.relation.clone());
+            push("Alias", node.alias.clone());
+            push("Index", node.index.clone());
+            push("Condition", node.condition.clone());
+            push("Startup cost", node.startup_cost.map(|c| format!("{c:.2}")));
+            push("Total cost", node.total_cost.map(|c| format!("{c:.2}")));
+            push("Plan rows", node.plan_rows.map(grouped));
+            push("Plan width", node.plan_width.map(grouped));
+            push("Actual rows", node.actual_rows.map(grouped));
+            push(
+                "Actual startup time",
+                node.actual_startup_ms.map(duration_ms),
+            );
+            push("Actual total time", node.actual_total_ms.map(duration_ms));
+            push("Loops", node.loops.map(grouped));
+            for (k, v) in &node.properties {
+                rows.push((k.clone(), v.clone()));
             }
-        };
-        push("Relation", node.relation.clone());
-        push("Alias", node.alias.clone());
-        push("Index", node.index.clone());
-        push("Condition", node.condition.clone());
-        push("Startup cost", node.startup_cost.map(|c| format!("{c:.2}")));
-        push("Total cost", node.total_cost.map(|c| format!("{c:.2}")));
-        push("Plan rows", node.plan_rows.map(grouped));
-        push("Plan width", node.plan_width.map(grouped));
-        push("Actual rows", node.actual_rows.map(grouped));
-        push("Actual startup time", node.actual_startup_ms.map(duration_ms));
-        push("Actual total time", node.actual_total_ms.map(duration_ms));
-        push("Loops", node.loops.map(grouped));
-        for (k, v) in &node.properties {
-            rows.push((k.clone(), v.clone()));
-        }
-        egui::Grid::new("dbiji_plan_props").num_columns(2).striped(true).spacing(vec2(12.0, 4.0)).show(ui, |ui| {
-            for (k, v) in rows {
-                ui.label(egui::RichText::new(k).color(ui.visuals().weak_text_color()));
-                ui.add(egui::Label::new(v).wrap());
-                ui.end_row();
-            }
+            egui::Grid::new("dbiji_plan_props")
+                .num_columns(2)
+                .striped(true)
+                .spacing(vec2(12.0, 4.0))
+                .show(ui, |ui| {
+                    for (k, v) in rows {
+                        ui.label(egui::RichText::new(k).color(ui.visuals().weak_text_color()));
+                        ui.add(egui::Label::new(v).wrap());
+                        ui.end_row();
+                    }
+                });
         });
-    });
 }
 
 #[cfg(test)]
@@ -544,7 +688,12 @@ mod tests {
             assert_eq!(boxes.len(), flat.len());
             for i in 0..boxes.len() {
                 for j in i + 1..boxes.len() {
-                    assert!(!boxes[i].rect.intersects(boxes[j].rect), "{orientation:?}: {:?} vs {:?}", boxes[i], boxes[j]);
+                    assert!(
+                        !boxes[i].rect.intersects(boxes[j].rect),
+                        "{orientation:?}: {:?} vs {:?}",
+                        boxes[i],
+                        boxes[j]
+                    );
                 }
             }
             for b in &boxes {
@@ -575,7 +724,10 @@ mod tests {
             }
             root.children.push(c);
         }
-        let plan = QueryPlan { roots: vec![root, PlanNode::new("Result")], ..Default::default() };
+        let plan = QueryPlan {
+            roots: vec![root, PlanNode::new("Result")],
+            ..Default::default()
+        };
         let flat = flatten_plan(&plan);
         let boxes = layout_plan(&flat, PlanOrientation::TopDown);
         for i in 0..boxes.len() {
@@ -583,7 +735,13 @@ mod tests {
                 assert!(!boxes[i].rect.intersects(boxes[j].rect));
             }
         }
-        assert!(layout_plan(&flatten_plan(&QueryPlan::default()), PlanOrientation::TopDown).is_empty());
+        assert!(
+            layout_plan(
+                &flatten_plan(&QueryPlan::default()),
+                PlanOrientation::TopDown
+            )
+            .is_empty()
+        );
     }
 
     #[test]
@@ -600,8 +758,12 @@ mod tests {
         // click the box of the index scan
         let flat = flatten_plan(&plan);
         let boxes = layout_plan(&flat, state.orientation);
-        let target = boxes.iter().find(|b| flat[b.flat].path == vec![0, 0, 1]).unwrap();
-        let p = ViewTransform::new(state.zoom, state.pan).to_screen(state.last_canvas.min, target.rect.center());
+        let target = boxes
+            .iter()
+            .find(|b| flat[b.flat].path == vec![0, 0, 1])
+            .unwrap();
+        let p = ViewTransform::new(state.zoom, state.pan)
+            .to_screen(state.last_canvas.min, target.rect.center());
         let mut changed = false;
         let mut ui_fn = |ui: &mut Ui| {
             let r = show_plan_diagram(ui, &plan, &mut state);

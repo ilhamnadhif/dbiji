@@ -69,9 +69,13 @@ impl TableGeometry {
     /// column is not listed.
     pub fn anchor_y(&self, table: &ErTable, column: Option<&str>) -> f32 {
         if let Some(col) = column
-            && let Some(i) = self.rows.iter().position(|&r| table.columns.get(r).map(|c| c.name == col).unwrap_or(false)) {
-                return self.row_top(i) + ROW_HEIGHT * 0.5;
-            }
+            && let Some(i) = self
+                .rows
+                .iter()
+                .position(|&r| table.columns.get(r).map(|c| c.name == col).unwrap_or(false))
+        {
+            return self.row_top(i) + ROW_HEIGHT * 0.5;
+        }
         self.header_height * 0.5
     }
 
@@ -89,7 +93,13 @@ impl TableGeometry {
 pub(crate) fn listed_columns(table: &ErTable, display: ColumnDisplay) -> Vec<usize> {
     match display {
         ColumnDisplay::All => (0..table.columns.len()).collect(),
-        ColumnDisplay::KeysOnly => table.columns.iter().enumerate().filter(|(_, c)| c.is_key()).map(|(i, _)| i).collect(),
+        ColumnDisplay::KeysOnly => table
+            .columns
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.is_key())
+            .map(|(i, _)| i)
+            .collect(),
         ColumnDisplay::None => Vec::new(),
     }
 }
@@ -98,16 +108,23 @@ pub(crate) fn listed_columns(table: &ErTable, display: ColumnDisplay) -> Vec<usi
 pub fn table_geometry(table: &ErTable, settings: &ErSettings) -> TableGeometry {
     let rows = listed_columns(table, settings.columns);
     let comment = if settings.show_comments {
-        table.comment.as_deref().map(|c| truncate_chars(c.lines().next().unwrap_or(""), COMMENT_MAX_CHARS).into_owned())
+        table
+            .comment
+            .as_deref()
+            .map(|c| truncate_chars(c.lines().next().unwrap_or(""), COMMENT_MAX_CHARS).into_owned())
     } else {
         None
     };
 
-    let mut header_w = PAD_X + ICON_WIDTH + text_width(&table.name, HEADER_FONT, true) * UI_SAFETY + PAD_X;
+    let mut header_w =
+        PAD_X + ICON_WIDTH + text_width(&table.name, HEADER_FONT, true) * UI_SAFETY + PAD_X;
     if let Some(schema) = table.schema.as_deref().filter(|s| !s.is_empty()) {
         header_w += 10.0 + text_width(schema, SCHEMA_FONT, false) * UI_SAFETY;
     }
-    let comment_w = comment.as_deref().map(|c| 2.0 * PAD_X + text_width(c, COMMENT_FONT, false) * UI_SAFETY).unwrap_or(0.0);
+    let comment_w = comment
+        .as_deref()
+        .map(|c| 2.0 * PAD_X + text_width(c, COMMENT_FONT, false) * UI_SAFETY)
+        .unwrap_or(0.0);
 
     let mut name_w: f32 = 0.0;
     let mut type_w: f32 = 0.0;
@@ -125,13 +142,35 @@ pub fn table_geometry(table: &ErTable, settings: &ErSettings) -> TableGeometry {
     } else {
         name_x + name_w + if type_w > 0.0 { TYPE_GAP + type_w } else { 0.0 } + PAD_X
     };
-    let width = header_w.max(rows_w).max(comment_w.min(MAX_WIDTH)).clamp(MIN_WIDTH, MAX_WIDTH).round();
+    let width = header_w
+        .max(rows_w)
+        .max(comment_w.min(MAX_WIDTH))
+        .clamp(MIN_WIDTH, MAX_WIDTH)
+        .round();
     // Types are right-aligned at the right padding; names get what is left.
-    let type_x = if type_w > 0.0 { (width - PAD_X - type_w).max(name_x + 20.0) } else { width - PAD_X };
+    let type_x = if type_w > 0.0 {
+        (width - PAD_X - type_w).max(name_x + 20.0)
+    } else {
+        width - PAD_X
+    };
 
-    let body_top = HEADER_HEIGHT + if comment.is_some() { COMMENT_HEIGHT } else { 0.0 };
-    let height = body_top + rows.len() as f32 * ROW_HEIGHT + if rows.is_empty() { 0.0 } else { BOTTOM_PAD };
-    TableGeometry { size: vec2(width, height.round()), header_height: HEADER_HEIGHT, body_top, rows, name_x, type_x, comment }
+    let body_top = HEADER_HEIGHT
+        + if comment.is_some() {
+            COMMENT_HEIGHT
+        } else {
+            0.0
+        };
+    let height =
+        body_top + rows.len() as f32 * ROW_HEIGHT + if rows.is_empty() { 0.0 } else { BOTTOM_PAD };
+    TableGeometry {
+        size: vec2(width, height.round()),
+        header_height: HEADER_HEIGHT,
+        body_top,
+        rows,
+        name_x,
+        type_x,
+        comment,
+    }
 }
 
 #[cfg(test)]
@@ -152,11 +191,29 @@ mod tests {
         let all = table_geometry(&t, &ErSettings::default());
         assert_eq!(all.rows, vec![0, 1, 2]);
         assert_eq!(all.size.y, HEADER_HEIGHT + 3.0 * ROW_HEIGHT + BOTTOM_PAD);
-        let keys = table_geometry(&t, &ErSettings { columns: ColumnDisplay::KeysOnly, ..Default::default() });
+        let keys = table_geometry(
+            &t,
+            &ErSettings {
+                columns: ColumnDisplay::KeysOnly,
+                ..Default::default()
+            },
+        );
         assert_eq!(keys.rows, vec![0, 1]);
-        let none = table_geometry(&t, &ErSettings { columns: ColumnDisplay::None, ..Default::default() });
+        let none = table_geometry(
+            &t,
+            &ErSettings {
+                columns: ColumnDisplay::None,
+                ..Default::default()
+            },
+        );
         assert_eq!(none.size.y, HEADER_HEIGHT);
-        let no_types = table_geometry(&t, &ErSettings { show_types: false, ..Default::default() });
+        let no_types = table_geometry(
+            &t,
+            &ErSettings {
+                show_types: false,
+                ..Default::default()
+            },
+        );
         assert!(no_types.size.x < all.size.x);
         assert!(all.size.x >= MIN_WIDTH && all.size.x <= MAX_WIDTH);
     }
@@ -165,7 +222,10 @@ mod tests {
     fn anchors_and_rows() {
         let t = table();
         let g = table_geometry(&t, &ErSettings::default());
-        assert_eq!(g.anchor_y(&t, Some("customer_id")), HEADER_HEIGHT + ROW_HEIGHT * 1.5);
+        assert_eq!(
+            g.anchor_y(&t, Some("customer_id")),
+            HEADER_HEIGHT + ROW_HEIGHT * 1.5
+        );
         assert_eq!(g.anchor_y(&t, Some("missing")), HEADER_HEIGHT / 2.0);
         assert_eq!(g.row_at(HEADER_HEIGHT + 1.0), Some(0));
         assert_eq!(g.row_at(5.0), None);
@@ -177,7 +237,13 @@ mod tests {
     fn comment_line_adds_height() {
         let mut t = table();
         t.comment = Some("Orders placed by customers\nsecond line".into());
-        let g = table_geometry(&t, &ErSettings { show_comments: true, ..Default::default() });
+        let g = table_geometry(
+            &t,
+            &ErSettings {
+                show_comments: true,
+                ..Default::default()
+            },
+        );
         assert_eq!(g.comment.as_deref(), Some("Orders placed by customers"));
         assert_eq!(g.body_top, HEADER_HEIGHT + COMMENT_HEIGHT);
     }

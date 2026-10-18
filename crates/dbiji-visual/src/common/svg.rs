@@ -38,7 +38,11 @@ pub(crate) fn num(v: f32) -> String {
     }
     let s = format!("{v:.2}");
     let s = s.trim_end_matches('0').trim_end_matches('.');
-    if s == "-0" || s.is_empty() { "0".into() } else { s.to_string() }
+    if s == "-0" || s.is_empty() {
+        "0".into()
+    } else {
+        s.to_string()
+    }
 }
 
 /// `#rrggbb` for a color (alpha handled separately with [`opacity`]).
@@ -96,7 +100,13 @@ pub(crate) struct TextStyle {
 
 impl TextStyle {
     pub fn new(size: f32, color: Color32) -> Self {
-        TextStyle { size, color, bold: false, italic: false, anchor: Anchor::Start }
+        TextStyle {
+            size,
+            color,
+            bold: false,
+            italic: false,
+            anchor: Anchor::Start,
+        }
     }
     pub fn bold(mut self) -> Self {
         self.bold = true;
@@ -130,7 +140,15 @@ impl SvgDoc {
         );
         let mut doc = SvgDoc { buf };
         if let Some(bg) = background {
-            doc.rect(0.0, 0.0, width.max(1.0), height.max(1.0), 0.0, Some(bg), None);
+            doc.rect(
+                0.0,
+                0.0,
+                width.max(1.0),
+                height.max(1.0),
+                0.0,
+                Some(bg),
+                None,
+            );
         }
         doc
     }
@@ -142,7 +160,16 @@ impl SvgDoc {
 
     /// Rectangle with optional corner radius, fill and stroke.
     #[allow(clippy::too_many_arguments)]
-    pub fn rect(&mut self, x: f32, y: f32, w: f32, h: f32, rx: f32, fill: Option<Color32>, stroke: Option<(Color32, f32)>) {
+    pub fn rect(
+        &mut self,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        rx: f32,
+        fill: Option<Color32>,
+        stroke: Option<(Color32, f32)>,
+    ) {
         let _ = write!(
             self.buf,
             "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"",
@@ -163,12 +190,22 @@ impl SvgDoc {
     }
 
     /// Path given as SVG path data.
-    pub fn path(&mut self, d: &str, fill: Option<Color32>, stroke: Option<(Color32, f32)>, dash: Option<&str>) {
+    pub fn path(
+        &mut self,
+        d: &str,
+        fill: Option<Color32>,
+        stroke: Option<(Color32, f32)>,
+        dash: Option<&str>,
+    ) {
         let _ = write!(self.buf, "<path d=\"{}\"", escape(d));
         self.buf.push_str(&paint_attr("fill", fill));
         if let Some((c, width)) = stroke {
             self.buf.push_str(&paint_attr("stroke", Some(c)));
-            let _ = write!(self.buf, " stroke-width=\"{}\" stroke-linejoin=\"round\" stroke-linecap=\"round\"", num(width));
+            let _ = write!(
+                self.buf,
+                " stroke-width=\"{}\" stroke-linejoin=\"round\" stroke-linecap=\"round\"",
+                num(width)
+            );
         }
         if let Some(d) = dash {
             let _ = write!(self.buf, " stroke-dasharray=\"{}\"", escape(d));
@@ -186,7 +223,12 @@ impl SvgDoc {
     }
 
     /// Closed polygon.
-    pub fn polygon(&mut self, points: &[Pos2], fill: Option<Color32>, stroke: Option<(Color32, f32)>) {
+    pub fn polygon(
+        &mut self,
+        points: &[Pos2],
+        fill: Option<Color32>,
+        stroke: Option<(Color32, f32)>,
+    ) {
         if points.len() < 3 {
             return;
         }
@@ -209,8 +251,20 @@ impl SvgDoc {
     }
 
     /// Circle.
-    pub fn circle(&mut self, c: Pos2, r: f32, fill: Option<Color32>, stroke: Option<(Color32, f32)>) {
-        let _ = write!(self.buf, "<circle cx=\"{}\" cy=\"{}\" r=\"{}\"", num(c.x), num(c.y), num(r.max(0.0)));
+    pub fn circle(
+        &mut self,
+        c: Pos2,
+        r: f32,
+        fill: Option<Color32>,
+        stroke: Option<(Color32, f32)>,
+    ) {
+        let _ = write!(
+            self.buf,
+            "<circle cx=\"{}\" cy=\"{}\" r=\"{}\"",
+            num(c.x),
+            num(c.y),
+            num(r.max(0.0))
+        );
         self.buf.push_str(&paint_attr("fill", fill));
         if let Some((c, width)) = stroke {
             self.buf.push_str(&paint_attr("stroke", Some(c)));
@@ -266,7 +320,13 @@ impl SvgDoc {
 pub(crate) fn polyline_path(points: &[Pos2], closed: bool) -> String {
     let mut d = String::with_capacity(points.len() * 14);
     for (i, p) in points.iter().enumerate() {
-        let _ = write!(d, "{}{} {} ", if i == 0 { 'M' } else { 'L' }, num(p.x), num(p.y));
+        let _ = write!(
+            d,
+            "{}{} {} ",
+            if i == 0 { 'M' } else { 'L' },
+            num(p.x),
+            num(p.y)
+        );
     }
     if closed {
         d.push('Z');
@@ -295,10 +355,15 @@ pub(crate) mod tests {
         let mut roots = 0;
         while i < bytes.len() {
             if bytes[i] == b'<' {
-                let end = body[i..].find('>').map(|e| i + e).unwrap_or_else(|| panic!("unterminated tag at {i}"));
+                let end = body[i..]
+                    .find('>')
+                    .map(|e| i + e)
+                    .unwrap_or_else(|| panic!("unterminated tag at {i}"));
                 let tag = &body[i + 1..end];
                 if let Some(name) = tag.strip_prefix('/') {
-                    let open = stack.pop().unwrap_or_else(|| panic!("unbalanced </{name}>"));
+                    let open = stack
+                        .pop()
+                        .unwrap_or_else(|| panic!("unbalanced </{name}>"));
                     assert_eq!(open, name.trim(), "mismatched closing tag");
                 } else if !tag.starts_with('!') && !tag.starts_with('?') {
                     let self_closing = tag.ends_with('/');
@@ -331,12 +396,19 @@ pub(crate) mod tests {
     fn check_attributes(attrs: &str) {
         let mut rest = attrs.trim();
         while !rest.is_empty() {
-            let eq = rest.find('=').unwrap_or_else(|| panic!("attribute without value: {rest}"));
+            let eq = rest
+                .find('=')
+                .unwrap_or_else(|| panic!("attribute without value: {rest}"));
             let name = rest[..eq].trim();
-            assert!(!name.is_empty() && !name.contains(char::is_whitespace), "bad attribute name {name:?}");
+            assert!(
+                !name.is_empty() && !name.contains(char::is_whitespace),
+                "bad attribute name {name:?}"
+            );
             let after = rest[eq + 1..].trim_start();
             assert!(after.starts_with('"'), "unquoted attribute value: {after}");
-            let close = after[1..].find('"').unwrap_or_else(|| panic!("unterminated attribute"));
+            let close = after[1..]
+                .find('"')
+                .unwrap_or_else(|| panic!("unterminated attribute"));
             let value = &after[1..1 + close];
             assert!(!value.contains('<'), "'<' in attribute value");
             check_entities(value);
@@ -348,7 +420,9 @@ pub(crate) mod tests {
         let mut rest = text;
         while let Some(pos) = rest.find('&') {
             let after = &rest[pos + 1..];
-            let semi = after.find(';').unwrap_or_else(|| panic!("bare '&' in {text:?}"));
+            let semi = after
+                .find(';')
+                .unwrap_or_else(|| panic!("bare '&' in {text:?}"));
             let ent = &after[..semi];
             assert!(
                 matches!(ent, "amp" | "lt" | "gt" | "quot" | "apos") || ent.starts_with('#'),
@@ -360,7 +434,10 @@ pub(crate) mod tests {
 
     #[test]
     fn escaping_and_numbers() {
-        assert_eq!(escape("a<b & \"c\" 'd'>"), "a&lt;b &amp; &quot;c&quot; &apos;d&apos;&gt;");
+        assert_eq!(
+            escape("a<b & \"c\" 'd'>"),
+            "a&lt;b &amp; &quot;c&quot; &apos;d&apos;&gt;"
+        );
         assert_eq!(escape("x\u{1}y\nz"), "xy z");
         assert_eq!(num(1.0), "1");
         assert_eq!(num(1.256), "1.26");
@@ -373,9 +450,27 @@ pub(crate) mod tests {
     fn document_is_well_formed() {
         let mut doc = SvgDoc::new(100.0, 50.0, Some(Color32::WHITE));
         doc.title("A & B");
-        doc.rect(1.0, 1.0, 10.0, 10.0, 2.0, Some(Color32::from_rgba_unmultiplied(10, 20, 30, 128)), Some((Color32::BLACK, 1.0)));
-        doc.text(5.0, 20.0, "<script>&", TextStyle::new(12.0, Color32::BLACK).bold());
-        doc.polyline(&[Pos2::new(0.0, 0.0), Pos2::new(5.0, 5.0)], Color32::RED, 2.0, Some("4 2"));
+        doc.rect(
+            1.0,
+            1.0,
+            10.0,
+            10.0,
+            2.0,
+            Some(Color32::from_rgba_unmultiplied(10, 20, 30, 128)),
+            Some((Color32::BLACK, 1.0)),
+        );
+        doc.text(
+            5.0,
+            20.0,
+            "<script>&",
+            TextStyle::new(12.0, Color32::BLACK).bold(),
+        );
+        doc.polyline(
+            &[Pos2::new(0.0, 0.0), Pos2::new(5.0, 5.0)],
+            Color32::RED,
+            2.0,
+            Some("4 2"),
+        );
         doc.open_group(Some("tip \"quoted\""));
         doc.circle(Pos2::new(3.0, 3.0), 2.0, None, Some((Color32::BLUE, 1.0)));
         doc.close_group();

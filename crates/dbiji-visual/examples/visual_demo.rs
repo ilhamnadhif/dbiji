@@ -14,18 +14,23 @@ use dbiji_core::ddl::TableDef;
 use dbiji_core::i18n::{Locale, set_locale};
 use dbiji_core::plan::QueryPlan;
 use dbiji_core::value::{ColumnMeta, DataKind, Row, Value};
-use dbiji_core::{admin::Metric, tr};
+use dbiji_core::{admin::Metric, tr, trf};
 use dbiji_visual::builder::{QbEvent, QbViewState, QueryModel, show_query_builder};
-use dbiji_visual::chart::{ChartConfig, ChartData, ChartKind, ChartState, chart_config_ui, export_chart_svg, show_chart};
+use dbiji_visual::chart::{
+    ChartConfig, ChartData, ChartKind, ChartState, chart_config_ui, export_chart_png,
+    export_chart_svg, show_chart,
+};
 use dbiji_visual::dashboard::{
-    CustomDashboard, CustomDashboardEvent, CustomDashboardState, DashboardItem, DashboardLayout, DashboardState,
-    show_custom_dashboard, show_dashboard,
+    CustomDashboard, CustomDashboardEvent, CustomDashboardState, DashboardItem, DashboardLayout,
+    DashboardState, show_custom_dashboard, show_dashboard,
 };
 use dbiji_visual::er::{
-    ErColumn, ErDiagram, ErEvent, ErModel, ErRelation, ErTable, ErTableKind, ErViewState, export_png, export_svg,
-    show_er,
+    ErColumn, ErDiagram, ErEvent, ErModel, ErRelation, ErTable, ErTableKind, ErViewState,
+    export_png, export_svg, show_er,
 };
-use dbiji_visual::plan::{PlanViewState, plan_summary, show_plan_diagram, show_plan_text, show_plan_tree};
+use dbiji_visual::plan::{
+    PlanViewState, plan_summary, show_plan_diagram, show_plan_text, show_plan_tree,
+};
 use dbiji_visual::spatial::{SpatialLayer, SpatialState, show_spatial};
 use eframe::egui;
 use std::collections::BTreeSet;
@@ -93,7 +98,10 @@ impl DemoApp {
         cc.egui_ctx.set_fonts(fonts);
 
         let snapshot = demo_data::schema(200, 42);
-        let er = ErDiagram::new("Generated schema (200 tables)", ErModel::from_snapshot(&snapshot, None));
+        let er = ErDiagram::new(
+            "Generated schema (200 tables)",
+            ErModel::from_snapshot(&snapshot, None),
+        );
 
         let qb_tables: Vec<TableDef> = snapshot.tables.iter().take(40).cloned().collect();
         let mut qb = QueryModel::default();
@@ -116,25 +124,47 @@ impl DemoApp {
         };
         let chart_data = ChartData::build(&chart_columns, &chart_rows, &chart_config);
 
-        let mut custom = CustomDashboard { name: "Sales overview".into(), columns: 2, ..Default::default() };
+        let mut custom = CustomDashboard {
+            name: "Sales overview".into(),
+            columns: 2,
+            ..Default::default()
+        };
         custom.add_item(DashboardItem {
             title: "Revenue by region".into(),
             sql: "SELECT region, sum(revenue) FROM sales GROUP BY 1".into(),
-            chart: ChartConfig { kind: ChartKind::Bar, x_column: Some(0), y_columns: vec![1], ..Default::default() },
+            chart: ChartConfig {
+                kind: ChartKind::Bar,
+                x_column: Some(0),
+                y_columns: vec![1],
+                ..Default::default()
+            },
             refresh_secs: 10,
             ..Default::default()
         });
         custom.add_item(DashboardItem {
             title: "Orders per channel".into(),
             sql: "SELECT channel, count(*) FROM orders GROUP BY 1".into(),
-            chart: ChartConfig { kind: ChartKind::Pie, x_column: Some(0), y_columns: vec![1], ..Default::default() },
+            chart: ChartConfig {
+                kind: ChartKind::Pie,
+                x_column: Some(0),
+                y_columns: vec![1],
+                ..Default::default()
+            },
             refresh_secs: 0,
             ..Default::default()
         });
 
         let (sp_cols, sp_rows) = demo_data::spatial_rows();
-        let geom_col = sp_cols.iter().position(|c| c.kind == DataKind::Geometry).unwrap_or(2);
-        let layers = vec![SpatialLayer::from_column("Demo geometries", &sp_rows, geom_col, Some(1))];
+        let geom_col = sp_cols
+            .iter()
+            .position(|c| c.kind == DataKind::Geometry)
+            .unwrap_or(2);
+        let layers = vec![SpatialLayer::from_column(
+            "Demo geometries",
+            &sp_rows,
+            geom_col,
+            Some(1),
+        )];
 
         DemoApp {
             tab: Tab::Er,
@@ -156,7 +186,11 @@ impl DemoApp {
             started: Instant::now(),
             last_push: -1.0,
             dash: DashboardState::new(),
-            dash_layout: DashboardLayout { id: "demo".into(), title: Some("PostgreSQL demo server".into()), ..Default::default() },
+            dash_layout: DashboardLayout {
+                id: "demo".into(),
+                title: Some("PostgreSQL demo server".into()),
+                ..Default::default()
+            },
             counters: [0.0; 5],
             rng: demo_data::Rng::new(11),
             custom,
@@ -198,13 +232,55 @@ impl DemoApp {
         let metrics = vec![
             Metric::gauge("Connections", "conn.active", "Active", active, ""),
             Metric::gauge("Connections", "conn.idle", "Idle", 30.0 - active, ""),
-            Metric::gauge("Connections", "conn.waiting", "Waiting for locks", (self.rng.f64() * 2.0).floor(), ""),
-            Metric::counter("Transactions", "xact.commit", "Commits", self.counters[0], ""),
-            Metric::counter("Transactions", "xact.rollback", "Rollbacks", self.counters[1], ""),
-            Metric::counter("I/O", "blks.read", "Read from disk", self.counters[2], "bytes"),
-            Metric::counter("I/O", "blks.hit", "Read from cache", self.counters[3], "bytes"),
-            Metric::gauge("I/O", "cache.ratio", "Cache hit ratio", 92.0 + self.rng.f64() * 7.0, "%"),
-            Metric::counter("Rows", "tup.returned", "Rows returned", self.counters[4], "rows"),
+            Metric::gauge(
+                "Connections",
+                "conn.waiting",
+                "Waiting for locks",
+                (self.rng.f64() * 2.0).floor(),
+                "",
+            ),
+            Metric::counter(
+                "Transactions",
+                "xact.commit",
+                "Commits",
+                self.counters[0],
+                "",
+            ),
+            Metric::counter(
+                "Transactions",
+                "xact.rollback",
+                "Rollbacks",
+                self.counters[1],
+                "",
+            ),
+            Metric::counter(
+                "I/O",
+                "blks.read",
+                "Read from disk",
+                self.counters[2],
+                "bytes",
+            ),
+            Metric::counter(
+                "I/O",
+                "blks.hit",
+                "Read from cache",
+                self.counters[3],
+                "bytes",
+            ),
+            Metric::gauge(
+                "I/O",
+                "cache.ratio",
+                "Cache hit ratio",
+                92.0 + self.rng.f64() * 7.0,
+                "%",
+            ),
+            Metric::counter(
+                "Rows",
+                "tup.returned",
+                "Rows returned",
+                self.counters[4],
+                "rows",
+            ),
         ];
         self.dash.push(t, &metrics);
     }
@@ -240,15 +316,25 @@ impl DemoApp {
             ErEvent::AddColumn(key) => {
                 if let Some(t) = self.er.model.table_mut(&key) {
                     let n = t.columns.len();
-                    t.columns.push(ErColumn::new(format!("new_column_{n}"), "text"));
+                    t.columns
+                        .push(ErColumn::new(format!("new_column_{n}"), "text"));
                 }
             }
             ErEvent::DeleteTables(keys) => {
                 let set: BTreeSet<String> = keys.into_iter().collect();
                 self.er.remove_tables(&set);
             }
-            ErEvent::CreateRelation { from_table, from_columns, to_table, to_columns } => {
-                let name = format!("fk_{}_{}", from_table.replace('.', "_"), from_columns.join("_"));
+            ErEvent::CreateRelation {
+                from_table,
+                from_columns,
+                to_table,
+                to_columns,
+            } => {
+                let name = format!(
+                    "fk_{}_{}",
+                    from_table.replace('.', "_"),
+                    from_columns.join("_")
+                );
                 self.er.model.relations.push(ErRelation {
                     name,
                     from_table,
@@ -261,7 +347,10 @@ impl DemoApp {
                 self.er.model.refresh_fk_flags();
             }
             ErEvent::DeleteRelation(r) => {
-                self.er.model.relations.retain(|x| !(x.name == r.name && x.from_table == r.from_table));
+                self.er
+                    .model
+                    .relations
+                    .retain(|x| !(x.name == r.name && x.from_table == r.from_table));
                 self.er.model.refresh_fk_flags();
             }
             ErEvent::ExportRequested => {
@@ -273,7 +362,13 @@ impl DemoApp {
                     Ok(bytes) => std::fs::write(&png, bytes).map_err(|e| e.to_string()),
                     Err(e) => Err(e.to_string()),
                 };
-                self.log(format!("export: {} {:?} / {} {:?}", svg.display(), r1.err(), png.display(), r2.err()));
+                self.log(format!(
+                    "export: {} {:?} / {} {:?}",
+                    svg.display(),
+                    r1.err(),
+                    png.display(),
+                    r2.err()
+                ));
             }
             _ => {}
         }
@@ -322,15 +417,18 @@ impl DemoApp {
         if self.qb_picker {
             let mut open = true;
             let mut chosen = None;
-            egui::Window::new(tr("Add table")).open(&mut open).default_height(400.0).show(ui.ctx(), |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    for (i, t) in self.qb_tables.iter().enumerate() {
-                        if ui.button(t.name.as_str()).clicked() {
-                            chosen = Some(i);
+            egui::Window::new(tr("Add table"))
+                .open(&mut open)
+                .default_height(400.0)
+                .show(ui.ctx(), |ui| {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        for (i, t) in self.qb_tables.iter().enumerate() {
+                            if ui.button(t.name.as_str()).clicked() {
+                                chosen = Some(i);
+                            }
                         }
-                    }
+                    });
                 });
-            });
             if let Some(i) = chosen {
                 if let Some(t) = self.qb_tables.get(i).cloned() {
                     self.qb.add_table(&t);
@@ -343,20 +441,38 @@ impl DemoApp {
 
     fn charts_tab(&mut self, ui: &mut egui::Ui) {
         if chart_config_ui(ui, &self.chart_columns, &mut self.chart_config) {
-            self.chart_data = ChartData::build(&self.chart_columns, &self.chart_rows, &self.chart_config);
+            self.chart_data =
+                ChartData::build(&self.chart_columns, &self.chart_rows, &self.chart_config);
             self.chart_state.reset_view = true;
         }
         ui.horizontal(|ui| {
+            let size = egui::vec2(900.0, 500.0);
             if ui.button(tr("Export SVG")).clicked() {
-                let svg = export_chart_svg(&self.chart_data, &self.chart_config, egui::vec2(900.0, 500.0));
+                let svg = export_chart_svg(&self.chart_data, &self.chart_config, size);
                 let path = std::env::temp_dir().join("dbiji_chart_demo.svg");
                 let r = std::fs::write(&path, svg);
-                self.log.push(format!("chart export {}: {:?}", path.display(), r.err()));
+                self.log
+                    .push(format!("chart export {}: {:?}", path.display(), r.err()));
             }
-            ui.weak(format!("{} rows", self.chart_rows.len()));
+            if ui.button(tr("Export PNG")).clicked() {
+                let path = std::env::temp_dir().join("dbiji_chart_demo.png");
+                let error = match export_chart_png(&self.chart_data, &self.chart_config, size, 2.0)
+                {
+                    Ok(png) => std::fs::write(&path, png).err().map(|e| e.to_string()),
+                    Err(e) => Some(e.to_string()),
+                };
+                self.log
+                    .push(format!("chart export {}: {:?}", path.display(), error));
+            }
+            ui.weak(trf("{} rows", &[&self.chart_rows.len()]));
         });
         ui.separator();
-        show_chart(ui, &self.chart_data, &self.chart_config, &mut self.chart_state);
+        show_chart(
+            ui,
+            &self.chart_data,
+            &self.chart_config,
+            &mut self.chart_state,
+        );
     }
 
     fn custom_tab(&mut self, ui: &mut egui::Ui) {
@@ -365,12 +481,26 @@ impl DemoApp {
         for e in events {
             if let CustomDashboardEvent::Refresh(id) = e {
                 // "execute" the query: fake two-column result
-                let Some(item) = self.custom.item(id).cloned() else { continue };
-                let columns = vec![ColumnMeta::new("label", "text", DataKind::Text), ColumnMeta::new("value", "numeric", DataKind::Decimal)];
-                let labels = if item.sql.contains("channel") { vec!["web", "store", "partner", "phone"] } else { vec!["North", "South", "East", "West"] };
+                let Some(item) = self.custom.item(id).cloned() else {
+                    continue;
+                };
+                let columns = vec![
+                    ColumnMeta::new("label", "text", DataKind::Text),
+                    ColumnMeta::new("value", "numeric", DataKind::Decimal),
+                ];
+                let labels = if item.sql.contains("channel") {
+                    vec!["web", "store", "partner", "phone"]
+                } else {
+                    vec!["North", "South", "East", "West"]
+                };
                 let rows: Vec<Row> = labels
                     .into_iter()
-                    .map(|l| vec![Value::text(l), Value::decimal(format!("{:.2}", 100.0 + self.rng.f64() * 900.0))])
+                    .map(|l| {
+                        vec![
+                            Value::text(l),
+                            Value::decimal(format!("{:.2}", 100.0 + self.rng.f64() * 900.0)),
+                        ]
+                    })
                     .collect();
                 self.custom_state.set_result(&item, columns, rows, now);
             }
@@ -392,8 +522,15 @@ impl eframe::App for DemoApp {
                 ui.selectable_value(&mut self.tab, Tab::Spatial, tr("Spatial"));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     egui::widgets::global_theme_preference_switch(ui);
-                    if ui.checkbox(&mut self.indonesian, "Bahasa Indonesia").changed() {
-                        set_locale(if self.indonesian { Locale::Id } else { Locale::En });
+                    if ui
+                        .checkbox(&mut self.indonesian, "Bahasa Indonesia")
+                        .changed()
+                    {
+                        set_locale(if self.indonesian {
+                            Locale::Id
+                        } else {
+                            Locale::En
+                        });
                     }
                 });
             });
@@ -406,7 +543,8 @@ impl eframe::App for DemoApp {
             Tab::Dashboard => {
                 let r = show_dashboard(ui, &self.dash, &self.dash_layout);
                 if !r.paused {
-                    ui.ctx().request_repaint_after(std::time::Duration::from_secs(1));
+                    ui.ctx()
+                        .request_repaint_after(std::time::Duration::from_secs(1));
                 }
             }
             Tab::Custom => self.custom_tab(ui),
@@ -419,15 +557,22 @@ impl eframe::App for DemoApp {
         });
         // keep the fake metrics flowing while another tab is shown
         if self.tab != Tab::Dashboard {
-            ui.ctx().request_repaint_after(std::time::Duration::from_secs(1));
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_secs(1));
         }
     }
 }
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([1440.0, 900.0]).with_title("DBiji visual components"),
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([1440.0, 900.0])
+            .with_title("DBiji visual components"),
         ..Default::default()
     };
-    eframe::run_native("dbiji-visual-demo", options, Box::new(|cc| Ok(Box::new(DemoApp::new(cc)))))
+    eframe::run_native(
+        "dbiji-visual-demo",
+        options,
+        Box::new(|cc| Ok(Box::new(DemoApp::new(cc)))),
+    )
 }

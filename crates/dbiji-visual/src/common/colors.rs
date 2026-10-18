@@ -49,7 +49,11 @@ pub(crate) const STATUS_CRITICAL: Color32 = Color32::from_rgb(0xd0, 0x3b, 0x3b);
 /// Categorical color for slot `i` (slots past the palette wrap; callers that
 /// encode identity fold extra series into "Other" before asking).
 pub(crate) fn categorical(i: usize, dark: bool) -> Color32 {
-    let table = if dark { &CATEGORICAL_DARK } else { &CATEGORICAL_LIGHT };
+    let table = if dark {
+        &CATEGORICAL_DARK
+    } else {
+        &CATEGORICAL_LIGHT
+    };
     table[i % CATEGORICAL_SLOTS]
 }
 
@@ -60,7 +64,11 @@ pub(crate) fn other(dark: bool) -> Color32 {
 
 /// Heat scale for shares in `0..=1`: green (cheap) -> yellow -> red (expensive).
 pub(crate) fn heat(t: f32) -> Color32 {
-    let t = if t.is_finite() { t.clamp(0.0, 1.0) } else { 0.0 };
+    let t = if t.is_finite() {
+        t.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
     if t < 0.5 {
         STATUS_GOOD.lerp_to_gamma(STATUS_WARNING, t * 2.0)
     } else {
@@ -71,14 +79,20 @@ pub(crate) fn heat(t: f32) -> Color32 {
 /// Mixes `color` into the panel background, for tinted fills that keep text
 /// readable in both themes.
 pub(crate) fn tint(visuals: &Visuals, color: Color32, amount: f32) -> Color32 {
-    visuals.panel_fill.lerp_to_gamma(color, amount.clamp(0.0, 1.0))
+    visuals
+        .panel_fill
+        .lerp_to_gamma(color, amount.clamp(0.0, 1.0))
 }
 
 /// White or near-black text, whichever reads better on `fill`.
 pub(crate) fn text_on(fill: Color32) -> Color32 {
     let [r, g, b, _] = fill.to_srgba_unmultiplied();
     let lum = 0.2126 * r as f32 + 0.7152 * g as f32 + 0.0722 * b as f32;
-    if lum > 150.0 { Color32::from_rgb(0x0b, 0x0b, 0x0b) } else { Color32::WHITE }
+    if lum > 150.0 {
+        Color32::from_rgb(0x0b, 0x0b, 0x0b)
+    } else {
+        Color32::WHITE
+    }
 }
 
 #[cfg(test)]

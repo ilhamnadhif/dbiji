@@ -33,17 +33,34 @@ impl SpatialLayer {
     /// Layer of the geometries in `rows[..][geometry_column]`; NULL values
     /// are skipped, unparsable values are listed in `errors`. The label
     /// column (if any) is rendered as text for tooltips.
-    pub fn from_column(name: impl Into<String>, rows: &[Row], geometry_column: usize, label_column: Option<usize>) -> Self {
-        let mut layer = SpatialLayer { name: name.into(), ..Default::default() };
+    pub fn from_column(
+        name: impl Into<String>,
+        rows: &[Row],
+        geometry_column: usize,
+        label_column: Option<usize>,
+    ) -> Self {
+        let mut layer = SpatialLayer {
+            name: name.into(),
+            ..Default::default()
+        };
         for (i, row) in rows.iter().enumerate() {
-            let Some(v) = row.get(geometry_column) else { continue };
+            let Some(v) = row.get(geometry_column) else {
+                continue;
+            };
             if v.is_null() {
                 continue;
             }
             match parse_geometry_value(v) {
                 Ok(geometry) => {
-                    let label = label_column.and_then(|c| row.get(c)).filter(|v| !v.is_null()).map(|v| v.to_text().into_owned());
-                    layer.items.push(SpatialItem { row: i, geometry, label });
+                    let label = label_column
+                        .and_then(|c| row.get(c))
+                        .filter(|v| !v.is_null())
+                        .map(|v| v.to_text().into_owned());
+                    layer.items.push(SpatialItem {
+                        row: i,
+                        geometry,
+                        label,
+                    });
                 }
                 Err(e) => layer.errors.push((i, e)),
             }
@@ -53,7 +70,10 @@ impl SpatialLayer {
 
     /// Bounding box of all items.
     pub fn bounds(&self) -> Option<Bounds> {
-        self.items.iter().filter_map(|i| i.geometry.bounds()).reduce(Bounds::union)
+        self.items
+            .iter()
+            .filter_map(|i| i.geometry.bounds())
+            .reduce(Bounds::union)
     }
 
     /// SRID shared by the items (the first one found).
@@ -68,7 +88,8 @@ pub fn geometry_columns(columns: &[ColumnMeta]) -> Vec<usize> {
         .iter()
         .enumerate()
         .filter(|(_, c)| {
-            c.kind == DataKind::Geometry || DataKind::guess_from_type_name(&c.type_name) == DataKind::Geometry
+            c.kind == DataKind::Geometry
+                || DataKind::guess_from_type_name(&c.type_name) == DataKind::Geometry
         })
         .map(|(i, _)| i)
         .collect()
@@ -82,10 +103,18 @@ mod tests {
     #[test]
     fn layer_from_rows() {
         let rows: Vec<Row> = vec![
-            vec![Value::Int(1), Value::text("SRID=4326;POINT(1 2)"), Value::text("a")],
+            vec![
+                Value::Int(1),
+                Value::text("SRID=4326;POINT(1 2)"),
+                Value::text("a"),
+            ],
             vec![Value::Int(2), Value::Null, Value::text("b")],
             vec![Value::Int(3), Value::text("not a geometry"), Value::Null],
-            vec![Value::Int(4), Value::text("LINESTRING(0 0, 5 5)"), Value::Null],
+            vec![
+                Value::Int(4),
+                Value::text("LINESTRING(0 0, 5 5)"),
+                Value::Null,
+            ],
         ];
         let layer = SpatialLayer::from_column("geom", &rows, 1, Some(2));
         assert_eq!(layer.items.len(), 2);

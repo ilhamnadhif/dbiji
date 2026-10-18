@@ -63,7 +63,12 @@ pub struct ErColumn {
 impl ErColumn {
     /// Creates a nullable, non-key column.
     pub fn new(name: impl Into<String>, data_type: impl Into<String>) -> Self {
-        ErColumn { name: name.into(), data_type: data_type.into(), nullable: true, ..Default::default() }
+        ErColumn {
+            name: name.into(),
+            data_type: data_type.into(),
+            nullable: true,
+            ..Default::default()
+        }
     }
 
     /// Marks the column as (part of) the primary key; primary key columns are NOT NULL.
@@ -143,25 +148,40 @@ impl ErTable {
 
     /// Names of the primary key columns in table order.
     pub fn pk_columns(&self) -> Vec<String> {
-        self.columns.iter().filter(|c| c.pk).map(|c| c.name.clone()).collect()
+        self.columns
+            .iter()
+            .filter(|c| c.pk)
+            .map(|c| c.name.clone())
+            .collect()
     }
 
     fn from_table_def(def: &TableDef, default_schema: Option<&str>) -> ErTable {
         let schema = def.schema.as_deref().or(default_schema);
-        let fk_cols: BTreeSet<&str> =
-            def.foreign_keys.iter().flat_map(|fk| fk.columns.iter().map(String::as_str)).collect();
+        let fk_cols: BTreeSet<&str> = def
+            .foreign_keys
+            .iter()
+            .flat_map(|fk| fk.columns.iter().map(String::as_str))
+            .collect();
         let mut unique_cols: BTreeSet<&str> = def
             .unique_keys
             .iter()
             .filter(|k| k.columns.len() == 1)
             .flat_map(|k| k.columns.iter().map(String::as_str))
             .collect();
-        for idx in def.indexes.iter().filter(|i| i.unique && !i.primary && i.columns.len() == 1) {
+        for idx in def
+            .indexes
+            .iter()
+            .filter(|i| i.unique && !i.primary && i.columns.len() == 1)
+        {
             if let Some(c) = idx.columns.first().filter(|c| !c.is_expression) {
                 unique_cols.insert(c.name.as_str());
             }
         }
-        let pk_single = def.primary_key.as_ref().map(|k| k.columns.len() == 1).unwrap_or(false);
+        let pk_single = def
+            .primary_key
+            .as_ref()
+            .map(|k| k.columns.len() == 1)
+            .unwrap_or(false);
         let columns = def
             .columns
             .iter()
@@ -208,7 +228,12 @@ impl ErTable {
 }
 
 fn view_column(c: &ColumnDef) -> ErColumn {
-    ErColumn { name: c.name.clone(), data_type: c.data_type.clone(), nullable: c.nullable, ..Default::default() }
+    ErColumn {
+        name: c.name.clone(),
+        data_type: c.data_type.clone(),
+        nullable: c.nullable,
+        ..Default::default()
+    }
 }
 
 /// A foreign key drawn as a line between two boxes.
@@ -268,7 +293,10 @@ impl KeyResolver {
         let mut by_name: HashMap<String, Vec<String>> = HashMap::new();
         for t in tables {
             keys.insert(t.key.clone());
-            by_name.entry(t.name.clone()).or_default().push(t.key.clone());
+            by_name
+                .entry(t.name.clone())
+                .or_default()
+                .push(t.key.clone());
         }
         KeyResolver { keys, by_name }
     }
@@ -286,15 +314,26 @@ impl KeyResolver {
     }
 }
 
-fn relation_from_fk(fk: &ForeignKeyDef, child: &ErTable, child_def: &TableDef, to_key: String) -> ErRelation {
+fn relation_from_fk(
+    fk: &ForeignKeyDef,
+    child: &ErTable,
+    child_def: &TableDef,
+    to_key: String,
+) -> ErRelation {
     let name = match &fk.name {
         Some(n) if !n.is_empty() => n.clone(),
         _ => format!("{}_{}_fkey", child.name, fk.columns.join("_")),
     };
-    let pk: BTreeSet<&str> =
-        child_def.primary_key.iter().flat_map(|k| k.columns.iter().map(String::as_str)).collect();
+    let pk: BTreeSet<&str> = child_def
+        .primary_key
+        .iter()
+        .flat_map(|k| k.columns.iter().map(String::as_str))
+        .collect();
     let identifying = !fk.columns.is_empty() && fk.columns.iter().all(|c| pk.contains(c.as_str()));
-    let optional = fk.columns.iter().any(|c| child_def.column(c).map(|c| c.nullable).unwrap_or(true));
+    let optional = fk
+        .columns
+        .iter()
+        .any(|c| child_def.column(c).map(|c| c.nullable).unwrap_or(true));
     ErRelation {
         name,
         from_table: child.key.clone(),
@@ -348,7 +387,9 @@ impl ErModel {
         let resolver = KeyResolver::new(model.tables.iter());
         let mut relations = Vec::new();
         for (def, idx) in &defs {
-            let Some(child) = model.tables.get(*idx) else { continue };
+            let Some(child) = model.tables.get(*idx) else {
+                continue;
+            };
             for fk in &def.foreign_keys {
                 let ref_schema = fk.ref_schema.as_deref().or(child.schema.as_deref());
                 if let Some(to_key) = resolver.resolve(ref_schema, &fk.ref_table) {
@@ -385,12 +426,14 @@ impl ErModel {
                     if seen.contains(&key) {
                         continue;
                     }
-                    let entry = placeholders
-                        .entry(key)
-                        .or_insert_with(|| ErTable::new(schema.as_deref(), fk.ref_table.clone(), ErTableKind::Table));
+                    let entry = placeholders.entry(key).or_insert_with(|| {
+                        ErTable::new(schema.as_deref(), fk.ref_table.clone(), ErTableKind::Table)
+                    });
                     for c in &fk.ref_columns {
                         if entry.column(c).is_none() {
-                            entry.columns.push(ErColumn::new(c.clone(), "").primary_key());
+                            entry
+                                .columns
+                                .push(ErColumn::new(c.clone(), "").primary_key());
                         }
                     }
                 }
@@ -403,12 +446,14 @@ impl ErModel {
                     if seen.contains(&key) {
                         continue;
                     }
-                    let entry = placeholders
-                        .entry(key)
-                        .or_insert_with(|| ErTable::new(schema.as_deref(), fk.table.clone(), ErTableKind::Table));
+                    let entry = placeholders.entry(key).or_insert_with(|| {
+                        ErTable::new(schema.as_deref(), fk.table.clone(), ErTableKind::Table)
+                    });
                     for c in &fk.columns {
                         if entry.column(c).is_none() {
-                            entry.columns.push(ErColumn::new(c.clone(), "").foreign_key());
+                            entry
+                                .columns
+                                .push(ErColumn::new(c.clone(), "").foreign_key());
                         }
                     }
                 }
@@ -418,7 +463,9 @@ impl ErModel {
         let resolver = KeyResolver::new(model.tables.iter());
         let mut relations = Vec::new();
         for (def, idx) in &defs {
-            let Some(child) = model.tables.get(*idx) else { continue };
+            let Some(child) = model.tables.get(*idx) else {
+                continue;
+            };
             for fk in &def.foreign_keys {
                 let ref_schema = fk.ref_schema.as_deref().or(child.schema.as_deref());
                 if let Some(to_key) = resolver.resolve(ref_schema, &fk.ref_table) {
@@ -426,19 +473,31 @@ impl ErModel {
                 }
             }
             // Incoming foreign keys of tables that are not part of `tables`.
-            let Some(parent_key) = model.tables.get(*idx).map(|t| t.key.clone()) else { continue };
+            let Some(parent_key) = model.tables.get(*idx).map(|t| t.key.clone()) else {
+                continue;
+            };
             for fk in &def.referenced_by {
                 if fk.table.is_empty() {
                     continue;
                 }
                 let schema = fk.schema.as_deref().or(child.schema.as_deref());
-                let Some(from_key) = resolver.resolve(schema, &fk.table) else { continue };
-                if defs.iter().any(|(_, i)| model.tables.get(*i).map(|t| t.key == from_key).unwrap_or(false)) {
+                let Some(from_key) = resolver.resolve(schema, &fk.table) else {
+                    continue;
+                };
+                if defs.iter().any(|(_, i)| {
+                    model
+                        .tables
+                        .get(*i)
+                        .map(|t| t.key == from_key)
+                        .unwrap_or(false)
+                }) {
                     continue; // the owner's own foreign_keys already produced it
                 }
-                let name = fk.name.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| {
-                    format!("{}_{}_fkey", fk.table, fk.columns.join("_"))
-                });
+                let name = fk
+                    .name
+                    .clone()
+                    .filter(|n| !n.is_empty())
+                    .unwrap_or_else(|| format!("{}_{}_fkey", fk.table, fk.columns.join("_")));
                 relations.push(ErRelation {
                     name,
                     from_table: from_key,
@@ -455,13 +514,18 @@ impl ErModel {
         let fk_cols: Vec<(String, String)> = model
             .relations
             .iter()
-            .flat_map(|r| r.from_columns.iter().map(move |c| (r.from_table.clone(), c.clone())))
+            .flat_map(|r| {
+                r.from_columns
+                    .iter()
+                    .map(move |c| (r.from_table.clone(), c.clone()))
+            })
             .collect();
         for (table, col) in fk_cols {
             if let Some(t) = model.tables.iter_mut().find(|t| t.key == table)
-                && let Some(c) = t.columns.iter_mut().find(|c| c.name == col) {
-                    c.fk = true;
-                }
+                && let Some(c) = t.columns.iter_mut().find(|c| c.name == col)
+            {
+                c.fk = true;
+            }
         }
         model
     }
@@ -479,7 +543,8 @@ impl ErModel {
     /// Removed tables keep their old definition; relations of both versions
     /// are kept.
     pub fn diff(old: &ErModel, new: &ErModel) -> ErModel {
-        let old_by_key: HashMap<&str, &ErTable> = old.tables.iter().map(|t| (t.key.as_str(), t)).collect();
+        let old_by_key: HashMap<&str, &ErTable> =
+            old.tables.iter().map(|t| (t.key.as_str(), t)).collect();
         let new_keys: BTreeSet<&str> = new.tables.iter().map(|t| t.key.as_str()).collect();
         let mut tables = Vec::new();
         for t in &new.tables {
@@ -502,7 +567,10 @@ impl ErModel {
         relations.extend(old.relations.iter().cloned());
         let keys: BTreeSet<String> = tables.iter().map(|t| t.key.clone()).collect();
         relations.retain(|r| keys.contains(&r.from_table) && keys.contains(&r.to_table));
-        ErModel { tables, relations: dedup_relations(relations) }
+        ErModel {
+            tables,
+            relations: dedup_relations(relations),
+        }
     }
 
     /// Table by key.
@@ -533,7 +601,8 @@ impl ErModel {
     /// Removes tables (and their relations) from the model.
     pub fn remove_tables(&mut self, keys: &BTreeSet<String>) {
         self.tables.retain(|t| !keys.contains(&t.key));
-        self.relations.retain(|r| !keys.contains(&r.from_table) && !keys.contains(&r.to_table));
+        self.relations
+            .retain(|r| !keys.contains(&r.from_table) && !keys.contains(&r.to_table));
     }
 
     /// Adds the tables and relations of `other` that are not present yet.
@@ -559,7 +628,11 @@ impl ErModel {
         let fk: BTreeSet<(String, String)> = self
             .relations
             .iter()
-            .flat_map(|r| r.from_columns.iter().map(move |c| (r.from_table.clone(), c.clone())))
+            .flat_map(|r| {
+                r.from_columns
+                    .iter()
+                    .map(move |c| (r.from_table.clone(), c.clone()))
+            })
             .collect();
         for t in &mut self.tables {
             for c in &mut t.columns {
@@ -574,7 +647,14 @@ fn dedup_relations(relations: Vec<ErRelation>) -> Vec<ErRelation> {
     let mut seen = BTreeSet::new();
     relations
         .into_iter()
-        .filter(|r| seen.insert((r.from_table.clone(), r.from_columns.clone(), r.to_table.clone(), r.to_columns.clone())))
+        .filter(|r| {
+            seen.insert((
+                r.from_table.clone(),
+                r.from_columns.clone(),
+                r.to_table.clone(),
+                r.to_columns.clone(),
+            ))
+        })
         .collect()
 }
 
@@ -587,8 +667,14 @@ mod tests {
         let mut t = TableDef::new(Some("app".into()), "users");
         t.columns.push(ColumnDef::new("id", "integer").not_null());
         t.columns.push(ColumnDef::new("email", "text").not_null());
-        t.primary_key = Some(KeyDef { name: None, columns: vec!["id".into()] });
-        t.unique_keys.push(KeyDef { name: Some("users_email_key".into()), columns: vec!["email".into()] });
+        t.primary_key = Some(KeyDef {
+            name: None,
+            columns: vec!["id".into()],
+        });
+        t.unique_keys.push(KeyDef {
+            name: Some("users_email_key".into()),
+            columns: vec!["email".into()],
+        });
         t
     }
 
@@ -596,7 +682,10 @@ mod tests {
         let mut t = TableDef::new(Some("app".into()), "orders");
         t.columns.push(ColumnDef::new("id", "integer").not_null());
         t.columns.push(ColumnDef::new("user_id", "integer"));
-        t.primary_key = Some(KeyDef { name: None, columns: vec!["id".into()] });
+        t.primary_key = Some(KeyDef {
+            name: None,
+            columns: vec!["id".into()],
+        });
         t.foreign_keys.push(ForeignKeyDef {
             name: Some("orders_user_fk".into()),
             columns: vec!["user_id".into()],
@@ -609,9 +698,13 @@ mod tests {
 
     fn order_items() -> TableDef {
         let mut t = TableDef::new(Some("app".into()), "order_items");
-        t.columns.push(ColumnDef::new("order_id", "integer").not_null());
+        t.columns
+            .push(ColumnDef::new("order_id", "integer").not_null());
         t.columns.push(ColumnDef::new("line", "integer").not_null());
-        t.primary_key = Some(KeyDef { name: None, columns: vec!["order_id".into(), "line".into()] });
+        t.primary_key = Some(KeyDef {
+            name: None,
+            columns: vec!["order_id".into(), "line".into()],
+        });
         t.foreign_keys.push(ForeignKeyDef {
             name: None,
             columns: vec!["order_id".into()],
@@ -644,15 +737,24 @@ mod tests {
         let v = m.table("app.active_users").unwrap();
         assert_eq!(v.kind, ErTableKind::View);
         assert_eq!(m.relations.len(), 2);
-        let r = m.relations.iter().find(|r| r.from_table == "app.orders").unwrap();
+        let r = m
+            .relations
+            .iter()
+            .find(|r| r.from_table == "app.orders")
+            .unwrap();
         assert_eq!(r.to_table, "app.users");
         assert!(r.optional && !r.identifying);
-        let r2 = m.relations.iter().find(|r| r.from_table == "app.order_items").unwrap();
+        let r2 = m
+            .relations
+            .iter()
+            .find(|r| r.from_table == "app.order_items")
+            .unwrap();
         assert!(r2.identifying && !r2.optional);
         assert_eq!(r2.name, "order_items_order_id_fkey");
         assert!(m.table("app.orders").unwrap().column("user_id").unwrap().fk);
 
-        let filtered = ErModel::from_snapshot(&snap, Some(&["orders".into(), "app.order_items".into()]));
+        let filtered =
+            ErModel::from_snapshot(&snap, Some(&["orders".into(), "app.order_items".into()]));
         assert_eq!(filtered.tables.len(), 2);
         assert_eq!(filtered.relations.len(), 1, "relation to users dropped");
     }
@@ -675,7 +777,13 @@ mod tests {
         assert!(m.table("app.comments").is_some());
         assert_eq!(m.relations.len(), 1);
         assert_eq!(m.relations[0].from_table, "app.comments");
-        assert!(m.table("app.comments").unwrap().column("author_id").unwrap().fk);
+        assert!(
+            m.table("app.comments")
+                .unwrap()
+                .column("author_id")
+                .unwrap()
+                .fk
+        );
     }
 
     fn users_def_with_incoming() -> TableDef {
@@ -706,8 +814,14 @@ mod tests {
         assert_eq!(d.relations.len(), 2);
 
         let mut m = old.clone();
-        m.set_statuses(BTreeMap::from([("app.users".to_string(), DiffStatus::Added)]));
-        assert_eq!(m.table("app.users").unwrap().status, Some(DiffStatus::Added));
+        m.set_statuses(BTreeMap::from([(
+            "app.users".to_string(),
+            DiffStatus::Added,
+        )]));
+        assert_eq!(
+            m.table("app.users").unwrap().status,
+            Some(DiffStatus::Added)
+        );
         assert_eq!(m.table("app.orders").unwrap().status, None);
     }
 
@@ -717,7 +831,10 @@ mod tests {
         let added = m.merge(ErModel::from_tables(&[users(), orders()], false));
         assert_eq!(added, vec!["app.orders".to_string()]);
         assert_eq!(m.relations.len(), 1);
-        assert_eq!(m.related_keys("app.users"), BTreeSet::from(["app.orders".to_string()]));
+        assert_eq!(
+            m.related_keys("app.users"),
+            BTreeSet::from(["app.orders".to_string()])
+        );
         m.remove_tables(&BTreeSet::from(["app.users".to_string()]));
         assert_eq!(m.tables.len(), 1);
         assert!(m.relations.is_empty());

@@ -9,8 +9,8 @@ mod diagram;
 mod tree;
 
 pub use analysis::{
-    FlatPlanNode, LARGE_TABLE_ROWS, PlanHotspot, PlanMetric, PlanNodePath, PlanSummary, PlanWarning, PlanWarningKind,
-    flatten_plan, is_full_scan, node_at, plan_summary, summary_line,
+    FlatPlanNode, LARGE_TABLE_ROWS, PlanHotspot, PlanMetric, PlanNodePath, PlanSummary,
+    PlanWarning, PlanWarningKind, flatten_plan, is_full_scan, node_at, plan_summary, summary_line,
 };
 pub use diagram::{PlanOrientation, PlanResponse, PlanViewState, show_plan_diagram};
 pub use tree::{show_plan_text, show_plan_tree};

@@ -91,7 +91,13 @@ struct Acc {
 
 impl Acc {
     fn new(x: f64, v: f64) -> Self {
-        Acc { x, sum: v, count: 1, min: v, max: v }
+        Acc {
+            x,
+            sum: v,
+            count: 1,
+            min: v,
+            max: v,
+        }
     }
     fn add(&mut self, v: f64) {
         self.sum += v;
@@ -130,7 +136,8 @@ pub(crate) fn temporal_seconds(v: &Value) -> Option<(f64, bool)> {
         Value::Int(i) => DateTime::from_timestamp(*i, 0)?.naive_utc(),
         _ => return None,
     };
-    let secs = ndt.and_utc().timestamp() as f64 + ndt.and_utc().timestamp_subsec_nanos() as f64 * 1e-9;
+    let secs =
+        ndt.and_utc().timestamp() as f64 + ndt.and_utc().timestamp_subsec_nanos() as f64 * 1e-9;
     let has_time = ndt.time() != NaiveTime::MIN;
     Some((secs, has_time))
 }
@@ -162,11 +169,17 @@ impl ChartData {
     pub fn build(columns: &[ColumnMeta], rows: &[Row], config: &ChartConfig) -> ChartData {
         let mut data = ChartData::default();
         if let Some(x) = config.x_column
-            && x >= columns.len() {
-                data.error = Some(tr("The X column does not exist in this result").to_string());
-                return data;
-            }
-        let ys: Vec<usize> = config.y_columns.iter().copied().filter(|&y| y < columns.len()).collect();
+            && x >= columns.len()
+        {
+            data.error = Some(tr("The X column does not exist in this result").to_string());
+            return data;
+        }
+        let ys: Vec<usize> = config
+            .y_columns
+            .iter()
+            .copied()
+            .filter(|&y| y < columns.len())
+            .collect();
         let count_rows = ys.is_empty() && config.aggregate == ChartAggregate::Count;
         if ys.is_empty() && !count_rows {
             data.error = Some(tr("Choose at least one value (Y) column").to_string());
@@ -183,13 +196,20 @@ impl ChartData {
                 _ => XKind::Categorical,
             },
         };
-        data.x_label = config.x_column.map(|i| columns[i].name.clone()).unwrap_or_else(|| tr("Row").to_string());
+        data.x_label = config
+            .x_column
+            .map(|i| columns[i].name.clone())
+            .unwrap_or_else(|| tr("Row").to_string());
         data.y_label = if count_rows {
             tr("Count").to_string()
         } else {
-            ys.iter().map(|&y| columns[y].name.clone()).collect::<Vec<_>>().join(", ")
+            ys.iter()
+                .map(|&y| columns[y].name.clone())
+                .collect::<Vec<_>>()
+                .join(", ")
         };
-        let raw_mode = config.kind == ChartKind::Scatter && config.aggregate == ChartAggregate::None;
+        let raw_mode =
+            config.kind == ChartKind::Scatter && config.aggregate == ChartAggregate::None;
 
         let mut categories: Vec<String> = Vec::new();
         let mut cat_index: HashMap<String, usize> = HashMap::new();
@@ -197,10 +217,15 @@ impl ChartData {
         let mut series_index: HashMap<String, usize> = HashMap::new();
         let mut add = |name: String, x: f64, v: f64, builders: &mut Vec<SeriesBuilder>| {
             let si = *series_index.entry(name.clone()).or_insert_with(|| {
-                builders.push(SeriesBuilder { name, ..Default::default() });
+                builders.push(SeriesBuilder {
+                    name,
+                    ..Default::default()
+                });
                 builders.len() - 1
             });
-            let Some(b) = builders.get_mut(si) else { return };
+            let Some(b) = builders.get_mut(si) else {
+                return;
+            };
             if raw_mode {
                 b.raw.push([x, v]);
                 return;
@@ -246,7 +271,12 @@ impl ChartData {
             let prefix = series_col.map(|s| category_label(row.get(s)));
             let mut used = false;
             if count_rows {
-                add(prefix.unwrap_or_else(|| tr("Count").to_string()), x, 1.0, &mut builders);
+                add(
+                    prefix.unwrap_or_else(|| tr("Count").to_string()),
+                    x,
+                    1.0,
+                    &mut builders,
+                );
                 used = true;
             } else {
                 for &y in &ys {
@@ -284,8 +314,16 @@ impl ChartData {
         let mut series: Vec<ChartSeries> = builders
             .into_iter()
             .map(|b| {
-                let points = if raw_mode { b.raw } else { b.acc.iter().map(|a| [a.x, a.value(agg)]).collect() };
-                ChartSeries { name: b.name, points, is_other: false }
+                let points = if raw_mode {
+                    b.raw
+                } else {
+                    b.acc.iter().map(|a| [a.x, a.value(agg)]).collect()
+                };
+                ChartSeries {
+                    name: b.name,
+                    points,
+                    is_other: false,
+                }
             })
             .collect();
 
@@ -307,7 +345,13 @@ impl ChartData {
         let sort_points = match data.x_kind {
             XKind::Categorical => config.sort_x || config.kind != ChartKind::Scatter,
             XKind::Index => false,
-            _ => config.sort_x || matches!(config.kind, ChartKind::Line | ChartKind::Area | ChartKind::Bar),
+            _ => {
+                config.sort_x
+                    || matches!(
+                        config.kind,
+                        ChartKind::Line | ChartKind::Area | ChartKind::Bar
+                    )
+            }
         };
         if sort_points {
             for s in &mut series {
@@ -317,12 +361,23 @@ impl ChartData {
 
         // folding: at most eight series (categorical palette slots)
         if series.len() > CATEGORICAL_SLOTS {
-            let mut totals: Vec<(usize, f64)> =
-                series.iter().enumerate().map(|(i, s)| (i, s.points.iter().map(|p| p[1].abs()).sum())).collect();
+            let mut totals: Vec<(usize, f64)> = series
+                .iter()
+                .enumerate()
+                .map(|(i, s)| (i, s.points.iter().map(|p| p[1].abs()).sum()))
+                .collect();
             totals.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
-            let fold_into_other = matches!(config.kind, ChartKind::Bar | ChartKind::Area | ChartKind::Pie);
-            let keep_n = if fold_into_other { CATEGORICAL_SLOTS - 1 } else { CATEGORICAL_SLOTS };
-            let keep: std::collections::BTreeSet<usize> = totals.iter().take(keep_n).map(|(i, _)| *i).collect();
+            let fold_into_other = matches!(
+                config.kind,
+                ChartKind::Bar | ChartKind::Area | ChartKind::Pie
+            );
+            let keep_n = if fold_into_other {
+                CATEGORICAL_SLOTS - 1
+            } else {
+                CATEGORICAL_SLOTS
+            };
+            let keep: std::collections::BTreeSet<usize> =
+                totals.iter().take(keep_n).map(|(i, _)| *i).collect();
             data.folded_series = series.len() - keep.len();
             let mut kept = Vec::new();
             let mut other: Vec<[f64; 2]> = Vec::new();
@@ -344,7 +399,11 @@ impl ChartData {
             }
             if fold_into_other && !other.is_empty() {
                 other.sort_by(|a, b| a[0].total_cmp(&b[0]));
-                kept.push(ChartSeries { name: tr("Other").to_string(), points: other, is_other: true });
+                kept.push(ChartSeries {
+                    name: tr("Other").to_string(),
+                    points: other,
+                    is_other: true,
+                });
             }
             series = kept;
         }
@@ -357,9 +416,12 @@ impl ChartData {
             }
             data.downsampled = true;
             s.points = match (config.kind, data.x_kind) {
-                (ChartKind::Bar, XKind::Categorical) | (ChartKind::Pie, _) => {
-                    s.points.iter().copied().filter(|p| p[0] < max_points as f64).collect()
-                }
+                (ChartKind::Bar, XKind::Categorical) | (ChartKind::Pie, _) => s
+                    .points
+                    .iter()
+                    .copied()
+                    .filter(|p| p[0] < max_points as f64)
+                    .collect(),
                 (ChartKind::Scatter, _) => stride_sample(&s.points, max_points),
                 _ => lttb(&s.points, max_points),
             };
@@ -386,12 +448,20 @@ impl ChartData {
 
     /// Range of x values.
     pub fn x_range(&self) -> Option<(f64, f64)> {
-        range(self.series.iter().flat_map(|s| s.points.iter().map(|p| p[0])))
+        range(
+            self.series
+                .iter()
+                .flat_map(|s| s.points.iter().map(|p| p[0])),
+        )
     }
 
     /// Range of y values.
     pub fn y_range(&self) -> Option<(f64, f64)> {
-        range(self.series.iter().flat_map(|s| s.points.iter().map(|p| p[1])))
+        range(
+            self.series
+                .iter()
+                .flat_map(|s| s.points.iter().map(|p| p[1])),
+        )
     }
 
     /// Full text of an x value (tooltips).
@@ -400,7 +470,11 @@ impl ChartData {
             XKind::Index => format!("{}", x.round() as i64 + 1),
             XKind::Numeric => trim_decimals(x, 4),
             XKind::Temporal => {
-                let fmt = if self.has_time { "%Y-%m-%d %H:%M:%S" } else { "%Y-%m-%d" };
+                let fmt = if self.has_time {
+                    "%Y-%m-%d %H:%M:%S"
+                } else {
+                    "%Y-%m-%d"
+                };
                 format_seconds(x, fmt)
             }
             XKind::TimeOfDay => format_seconds(x, "%H:%M:%S"),
@@ -447,7 +521,11 @@ impl ChartData {
                     s.points
                         .iter()
                         .filter(|p| p[1].is_finite() && p[1] > 0.0)
-                        .map(|p| PieSlice { label: self.format_x(p[0]), value: p[1], is_other: false })
+                        .map(|p| PieSlice {
+                            label: self.format_x(p[0]),
+                            value: p[1],
+                            is_other: false,
+                        })
                         .collect()
                 })
                 .unwrap_or_default()
@@ -456,17 +534,33 @@ impl ChartData {
                 .iter()
                 .map(|s| PieSlice {
                     label: s.name.clone(),
-                    value: s.points.iter().map(|p| p[1]).filter(|v| v.is_finite()).sum(),
+                    value: s
+                        .points
+                        .iter()
+                        .map(|p| p[1])
+                        .filter(|v| v.is_finite())
+                        .sum(),
                     is_other: s.is_other,
                 })
                 .filter(|s| s.value > 0.0)
                 .collect()
         };
-        slices.sort_by(|a, b| a.is_other.cmp(&b.is_other).then(b.value.total_cmp(&a.value)));
+        slices.sort_by(|a, b| {
+            a.is_other
+                .cmp(&b.is_other)
+                .then(b.value.total_cmp(&a.value))
+        });
         if slices.len() > CATEGORICAL_SLOTS {
-            let rest: f64 = slices[CATEGORICAL_SLOTS - 1..].iter().map(|s| s.value).sum();
+            let rest: f64 = slices[CATEGORICAL_SLOTS - 1..]
+                .iter()
+                .map(|s| s.value)
+                .sum();
             slices.truncate(CATEGORICAL_SLOTS - 1);
-            slices.push(PieSlice { label: tr("Other").to_string(), value: rest, is_other: true });
+            slices.push(PieSlice {
+                label: tr("Other").to_string(),
+                value: rest,
+                is_other: true,
+            });
         }
         slices
     }
@@ -475,7 +569,11 @@ impl ChartData {
     /// series) with the lower and upper bound of its band. Missing values
     /// count as zero.
     pub fn stacked(&self) -> Vec<(Vec<f64>, Vec<f64>, Vec<f64>)> {
-        let mut xs: Vec<f64> = self.series.iter().flat_map(|s| s.points.iter().map(|p| p[0])).collect();
+        let mut xs: Vec<f64> = self
+            .series
+            .iter()
+            .flat_map(|s| s.points.iter().map(|p| p[0]))
+            .collect();
         xs.sort_by(f64::total_cmp);
         xs.dedup();
         let mut base = vec![0.0f64; xs.len()];
@@ -483,8 +581,11 @@ impl ChartData {
         for s in &self.series {
             let map: HashMap<u64, f64> = s.points.iter().map(|p| (p[0].to_bits(), p[1])).collect();
             let lower = base.clone();
-            let upper: Vec<f64> =
-                xs.iter().zip(&base).map(|(x, b)| b + map.get(&x.to_bits()).copied().unwrap_or(0.0)).collect();
+            let upper: Vec<f64> = xs
+                .iter()
+                .zip(&base)
+                .map(|(x, b)| b + map.get(&x.to_bits()).copied().unwrap_or(0.0))
+                .collect();
             base = upper.clone();
             out.push((xs.clone(), lower, upper));
         }
@@ -565,7 +666,13 @@ fn stride_sample(points: &[[f64; 2]], max: usize) -> Vec<[f64; 2]> {
         return points.to_vec();
     }
     let step = (points.len() - 1) as f64 / (max - 1) as f64;
-    (0..max).filter_map(|i| points.get(((i as f64 * step).round() as usize).min(points.len() - 1)).copied()).collect()
+    (0..max)
+        .filter_map(|i| {
+            points
+                .get(((i as f64 * step).round() as usize).min(points.len() - 1))
+                .copied()
+        })
+        .collect()
 }
 
 /// Largest-Triangle-Three-Buckets down-sampling of x-sorted points.
@@ -630,23 +737,51 @@ mod tests {
     fn rows() -> Vec<Row> {
         let d = |n: u32| Value::Date(NaiveDate::from_ymd_opt(2026, 1, n).unwrap());
         vec![
-            vec![d(2), Value::text("North"), Value::decimal("10.5"), Value::Int(2)],
-            vec![d(1), Value::text("South"), Value::decimal("20"), Value::Int(4)],
-            vec![d(1), Value::text("North"), Value::decimal("5"), Value::Int(1)],
+            vec![
+                d(2),
+                Value::text("North"),
+                Value::decimal("10.5"),
+                Value::Int(2),
+            ],
+            vec![
+                d(1),
+                Value::text("South"),
+                Value::decimal("20"),
+                Value::Int(4),
+            ],
+            vec![
+                d(1),
+                Value::text("North"),
+                Value::decimal("5"),
+                Value::Int(1),
+            ],
             vec![d(3), Value::Null, Value::text("oops"), Value::Null],
-            vec![Value::Null, Value::text("North"), Value::decimal("1"), Value::Int(1)],
+            vec![
+                Value::Null,
+                Value::text("North"),
+                Value::decimal("1"),
+                Value::Int(1),
+            ],
         ]
     }
 
     #[test]
     fn temporal_line_with_implicit_sum() {
-        let cfg = ChartConfig { kind: ChartKind::Line, x_column: Some(0), y_columns: vec![2], ..Default::default() };
+        let cfg = ChartConfig {
+            kind: ChartKind::Line,
+            x_column: Some(0),
+            y_columns: vec![2],
+            ..Default::default()
+        };
         let d = ChartData::build(&cols(), &rows(), &cfg);
         assert_eq!(d.x_kind, XKind::Temporal);
         assert_eq!(d.series.len(), 1);
         let s = &d.series[0];
         // jan 1: 20 + 5 = 25, jan 2: 10.5; sorted by x
-        assert_eq!(s.points.iter().map(|p| p[1]).collect::<Vec<_>>(), vec![25.0, 10.5]);
+        assert_eq!(
+            s.points.iter().map(|p| p[1]).collect::<Vec<_>>(),
+            vec![25.0, 10.5]
+        );
         assert!(s.points[0][0] < s.points[1][0]);
         assert_eq!(d.implicit_aggregate, Some(ChartAggregate::Sum));
         assert_eq!(d.rows_used, 3);
@@ -657,30 +792,72 @@ mod tests {
 
     #[test]
     fn aggregates_and_series_split() {
-        let base = ChartConfig { kind: ChartKind::Bar, x_column: Some(1), y_columns: vec![3], ..Default::default() };
-        let avg = ChartData::build(&cols(), &rows(), &ChartConfig { aggregate: ChartAggregate::Avg, ..base.clone() });
+        let base = ChartConfig {
+            kind: ChartKind::Bar,
+            x_column: Some(1),
+            y_columns: vec![3],
+            ..Default::default()
+        };
+        let avg = ChartData::build(
+            &cols(),
+            &rows(),
+            &ChartConfig {
+                aggregate: ChartAggregate::Avg,
+                ..base.clone()
+            },
+        );
         assert_eq!(avg.x_kind, XKind::Categorical);
         // categories sorted: (null), North, South
         assert_eq!(avg.categories, vec!["(null)", "North", "South"]);
         let pts = &avg.series[0].points;
         let north = pts.iter().find(|p| p[0] == 1.0).unwrap()[1];
         assert!((north - 4.0 / 3.0).abs() < 1e-9, "{north}");
-        let count = ChartData::build(&cols(), &rows(), &ChartConfig { aggregate: ChartAggregate::Count, ..base.clone() });
-        assert_eq!(count.series[0].points.iter().find(|p| p[0] == 1.0).unwrap()[1], 3.0);
-        let max = ChartData::build(&cols(), &rows(), &ChartConfig { aggregate: ChartAggregate::Max, ..base.clone() });
-        assert_eq!(max.series[0].points.iter().find(|p| p[0] == 1.0).unwrap()[1], 2.0);
+        let count = ChartData::build(
+            &cols(),
+            &rows(),
+            &ChartConfig {
+                aggregate: ChartAggregate::Count,
+                ..base.clone()
+            },
+        );
+        assert_eq!(
+            count.series[0].points.iter().find(|p| p[0] == 1.0).unwrap()[1],
+            3.0
+        );
+        let max = ChartData::build(
+            &cols(),
+            &rows(),
+            &ChartConfig {
+                aggregate: ChartAggregate::Max,
+                ..base.clone()
+            },
+        );
+        assert_eq!(
+            max.series[0].points.iter().find(|p| p[0] == 1.0).unwrap()[1],
+            2.0
+        );
         // row counting without y columns
         let rc = ChartData::build(
             &cols(),
             &rows(),
-            &ChartConfig { y_columns: vec![], aggregate: ChartAggregate::Count, ..base.clone() },
+            &ChartConfig {
+                y_columns: vec![],
+                aggregate: ChartAggregate::Count,
+                ..base.clone()
+            },
         );
         assert_eq!(rc.series[0].points.iter().map(|p| p[1]).sum::<f64>(), 5.0);
         // series split by region, x = day
         let split = ChartData::build(
             &cols(),
             &rows(),
-            &ChartConfig { kind: ChartKind::Line, x_column: Some(0), y_columns: vec![2], series_column: Some(1), ..Default::default() },
+            &ChartConfig {
+                kind: ChartKind::Line,
+                x_column: Some(0),
+                y_columns: vec![2],
+                series_column: Some(1),
+                ..Default::default()
+            },
         );
         let names: Vec<&str> = split.series.iter().map(|s| s.name.as_str()).collect();
         assert_eq!(names, vec!["North", "South"]);
@@ -688,32 +865,75 @@ mod tests {
         let two = ChartData::build(
             &cols(),
             &rows(),
-            &ChartConfig { x_column: Some(0), y_columns: vec![2, 3], series_column: Some(1), ..Default::default() },
+            &ChartConfig {
+                x_column: Some(0),
+                y_columns: vec![2, 3],
+                series_column: Some(1),
+                ..Default::default()
+            },
         );
         assert!(two.series.iter().any(|s| s.name == "revenue · North"));
         // errors
-        let none = ChartData::build(&cols(), &rows(), &ChartConfig { y_columns: vec![], ..Default::default() });
+        let none = ChartData::build(
+            &cols(),
+            &rows(),
+            &ChartConfig {
+                y_columns: vec![],
+                ..Default::default()
+            },
+        );
         assert!(none.error.is_some());
-        let bad = ChartData::build(&cols(), &rows(), &ChartConfig { x_column: Some(9), y_columns: vec![2], ..Default::default() });
+        let bad = ChartData::build(
+            &cols(),
+            &rows(),
+            &ChartConfig {
+                x_column: Some(9),
+                y_columns: vec![2],
+                ..Default::default()
+            },
+        );
         assert!(bad.error.is_some());
-        let empty = ChartData::build(&cols(), &[], &ChartConfig { x_column: Some(0), y_columns: vec![2], ..Default::default() });
+        let empty = ChartData::build(
+            &cols(),
+            &[],
+            &ChartConfig {
+                x_column: Some(0),
+                y_columns: vec![2],
+                ..Default::default()
+            },
+        );
         assert!(empty.is_empty() && empty.error.is_some());
     }
 
     #[test]
     fn scatter_keeps_raw_points_and_numeric_axis() {
-        let cfg = ChartConfig { kind: ChartKind::Scatter, x_column: Some(3), y_columns: vec![2], ..Default::default() };
+        let cfg = ChartConfig {
+            kind: ChartKind::Scatter,
+            x_column: Some(3),
+            y_columns: vec![2],
+            ..Default::default()
+        };
         let d = ChartData::build(&cols(), &rows(), &cfg);
         assert_eq!(d.x_kind, XKind::Numeric);
-        assert_eq!(d.series[0].points.len(), 4, "duplicates kept: {:?}", d.series[0].points);
+        assert_eq!(
+            d.series[0].points.len(),
+            4,
+            "duplicates kept: {:?}",
+            d.series[0].points
+        );
         assert_eq!(d.implicit_aggregate, None);
         assert_eq!(d.x_range(), Some((1.0, 4.0)));
     }
 
     #[test]
     fn many_series_fold_into_other() {
-        let columns = vec![ColumnMeta::new("k", "text", DataKind::Text), ColumnMeta::new("v", "int", DataKind::Int)];
-        let rows: Vec<Row> = (0..12).map(|i| vec![Value::text(format!("s{i}")), Value::Int(i + 1)]).collect();
+        let columns = vec![
+            ColumnMeta::new("k", "text", DataKind::Text),
+            ColumnMeta::new("v", "int", DataKind::Int),
+        ];
+        let rows: Vec<Row> = (0..12)
+            .map(|i| vec![Value::text(format!("s{i}")), Value::Int(i + 1)])
+            .collect();
         let cfg = ChartConfig {
             kind: ChartKind::Bar,
             x_column: None,
@@ -725,9 +945,24 @@ mod tests {
         assert_eq!(d.series.len(), 8);
         assert!(d.series.last().unwrap().is_other);
         assert_eq!(d.folded_series, 5);
-        let total: f64 = d.series.iter().flat_map(|s| s.points.iter().map(|p| p[1])).sum();
-        assert_eq!(total, (1..=12).sum::<i64>() as f64, "nothing lost when folding");
-        let line = ChartData::build(&columns, &rows, &ChartConfig { kind: ChartKind::Line, ..cfg });
+        let total: f64 = d
+            .series
+            .iter()
+            .flat_map(|s| s.points.iter().map(|p| p[1]))
+            .sum();
+        assert_eq!(
+            total,
+            (1..=12).sum::<i64>() as f64,
+            "nothing lost when folding"
+        );
+        let line = ChartData::build(
+            &columns,
+            &rows,
+            &ChartConfig {
+                kind: ChartKind::Line,
+                ..cfg
+            },
+        );
         assert_eq!(line.series.len(), 8);
         assert!(line.series.iter().all(|s| !s.is_other));
         assert_eq!(line.folded_series, 4);
@@ -735,7 +970,12 @@ mod tests {
 
     #[test]
     fn pie_slices_and_stacking() {
-        let cfg = ChartConfig { kind: ChartKind::Pie, x_column: Some(1), y_columns: vec![2], ..Default::default() };
+        let cfg = ChartConfig {
+            kind: ChartKind::Pie,
+            x_column: Some(1),
+            y_columns: vec![2],
+            ..Default::default()
+        };
         let d = ChartData::build(&cols(), &rows(), &cfg);
         let slices = d.pie_slices();
         assert_eq!(slices[0].label, "South");
@@ -745,7 +985,14 @@ mod tests {
         let st = ChartData::build(
             &cols(),
             &rows(),
-            &ChartConfig { kind: ChartKind::Area, x_column: Some(0), y_columns: vec![2], series_column: Some(1), stacked: true, ..Default::default() },
+            &ChartConfig {
+                kind: ChartKind::Area,
+                x_column: Some(0),
+                y_columns: vec![2],
+                series_column: Some(1),
+                stacked: true,
+                ..Default::default()
+            },
         )
         .stacked();
         assert_eq!(st.len(), 2);
@@ -757,7 +1004,9 @@ mod tests {
 
     #[test]
     fn downsampling() {
-        let pts: Vec<[f64; 2]> = (0..10_000).map(|i| [i as f64, (i as f64 / 50.0).sin() * 100.0]).collect();
+        let pts: Vec<[f64; 2]> = (0..10_000)
+            .map(|i| [i as f64, (i as f64 / 50.0).sin() * 100.0])
+            .collect();
         let s = lttb(&pts, 500);
         assert_eq!(s.len(), 500);
         assert_eq!(s.first(), pts.first());
@@ -766,9 +1015,24 @@ mod tests {
         let max = s.iter().map(|p| p[1]).fold(f64::MIN, f64::max);
         assert!(max > 99.0, "peaks are preserved: {max}");
         assert_eq!(stride_sample(&pts, 100).len(), 100);
-        let columns = vec![ColumnMeta::new("x", "int", DataKind::Int), ColumnMeta::new("y", "float", DataKind::Float)];
-        let rows: Vec<Row> = pts.iter().map(|p| vec![Value::Int(p[0] as i64), Value::Float(p[1])]).collect();
-        let d = ChartData::build(&columns, &rows, &ChartConfig { x_column: Some(0), y_columns: vec![1], max_points: 300, ..Default::default() });
+        let columns = vec![
+            ColumnMeta::new("x", "int", DataKind::Int),
+            ColumnMeta::new("y", "float", DataKind::Float),
+        ];
+        let rows: Vec<Row> = pts
+            .iter()
+            .map(|p| vec![Value::Int(p[0] as i64), Value::Float(p[1])])
+            .collect();
+        let d = ChartData::build(
+            &columns,
+            &rows,
+            &ChartConfig {
+                x_column: Some(0),
+                y_columns: vec![1],
+                max_points: 300,
+                ..Default::default()
+            },
+        );
         assert!(d.downsampled);
         assert_eq!(d.series[0].points.len(), 300);
     }
@@ -781,9 +1045,18 @@ mod tests {
         assert_eq!(format_seconds(0.0, "%Y-%m-%d %H:%M"), "1970-01-01 00:00");
         let (secs, has_time) = temporal_seconds(&Value::text("2026-03-04 05:06:07")).unwrap();
         assert!(has_time);
-        assert_eq!(format_seconds(secs, "%Y-%m-%d %H:%M:%S"), "2026-03-04 05:06:07");
+        assert_eq!(
+            format_seconds(secs, "%Y-%m-%d %H:%M:%S"),
+            "2026-03-04 05:06:07"
+        );
         assert_eq!(time_of_day_seconds(&Value::text("01:00:30")), Some(3630.0));
-        let d = ChartData { x_kind: XKind::Temporal, ..Default::default() };
-        assert_eq!(d.axis_label_x(86_400.0 * 400.0, 86_400.0 * 1000.0), "1971-02");
+        let d = ChartData {
+            x_kind: XKind::Temporal,
+            ..Default::default()
+        };
+        assert_eq!(
+            d.axis_label_x(86_400.0 * 400.0, 86_400.0 * 1000.0),
+            "1971-02"
+        );
     }
 }

@@ -50,7 +50,12 @@ fn tokenize(input: &str) -> Result<Vec<(usize, Tok)>, String> {
                 while i < chars.len() {
                     let d = chars[i].1;
                     let prev = chars[i - 1].1;
-                    if d.is_ascii_digit() || d == '.' || d == 'e' || d == 'E' || ((d == '-' || d == '+') && (prev == 'e' || prev == 'E')) {
+                    if d.is_ascii_digit()
+                        || d == '.'
+                        || d == 'e'
+                        || d == 'E'
+                        || ((d == '-' || d == '+') && (prev == 'e' || prev == 'E'))
+                    {
                         i += 1;
                     } else {
                         break;
@@ -58,9 +63,14 @@ fn tokenize(input: &str) -> Result<Vec<(usize, Tok)>, String> {
                 }
                 let end = chars.get(i).map(|(p, _)| *p).unwrap_or(input.len());
                 let text = &input[pos..end];
-                let v: f64 = text.parse().map_err(|_| trf("Invalid number '{}' at position {}", &[&text, &(start + 1)]))?;
+                let v: f64 = text.parse().map_err(|_| {
+                    trf("Invalid number '{}' at position {}", &[&text, &(start + 1)])
+                })?;
                 if !v.is_finite() {
-                    return Err(trf("Invalid number '{}' at position {}", &[&text, &(start + 1)]));
+                    return Err(trf(
+                        "Invalid number '{}' at position {}",
+                        &[&text, &(start + 1)],
+                    ));
                 }
                 out.push((pos, Tok::Num(v)));
             }
@@ -72,7 +82,12 @@ fn tokenize(input: &str) -> Result<Vec<(usize, Tok)>, String> {
                 let end = chars.get(i).map(|(p, _)| *p).unwrap_or(input.len());
                 out.push((start, Tok::Word(input[start..end].to_ascii_uppercase())));
             }
-            other => return Err(trf("Unexpected character '{}' at position {}", &[&other, &(pos + 1)])),
+            other => {
+                return Err(trf(
+                    "Unexpected character '{}' at position {}",
+                    &[&other, &(pos + 1)],
+                ));
+            }
         }
     }
     Ok(out)
@@ -130,12 +145,18 @@ impl Parser {
     }
 
     fn at(&self) -> usize {
-        self.toks.get(self.pos).map(|(p, _)| *p + 1).unwrap_or_else(|| self.toks.last().map(|(p, _)| *p + 2).unwrap_or(1))
+        self.toks
+            .get(self.pos)
+            .map(|(p, _)| *p + 1)
+            .unwrap_or_else(|| self.toks.last().map(|(p, _)| *p + 2).unwrap_or(1))
     }
 
     fn err(&self, expected: &str) -> String {
         match self.peek() {
-            Some(t) => trf("Invalid WKT at position {}: expected {}, found {}", &[&self.at(), &expected, &describe(t)]),
+            Some(t) => trf(
+                "Invalid WKT at position {}: expected {}, found {}",
+                &[&self.at(), &expected, &describe(t)],
+            ),
             None => trf("Invalid WKT: expected {} but the text ended", &[&expected]),
         }
     }
@@ -175,7 +196,10 @@ impl Parser {
             _ => return Err(self.err("a geometry type")),
         };
         let Some((kind, fused)) = split_type(&word) else {
-            return Err(trf("Unsupported geometry type '{}' at position {}", &[&word, &self.at()]));
+            return Err(trf(
+                "Unsupported geometry type '{}' at position {}",
+                &[&word, &self.at()],
+            ));
         };
         self.pos += 1;
         let mut declared = fused;
@@ -194,7 +218,10 @@ impl Parser {
         if let Some(d) = declared {
             match self.dims {
                 Some(existing) if self.explicit && existing != d => {
-                    return Err(trf("Mixed coordinate dimensions at position {}", &[&self.at()]));
+                    return Err(trf(
+                        "Mixed coordinate dimensions at position {}",
+                        &[&self.at()],
+                    ));
                 }
                 _ => {
                     self.dims = Some(d);
@@ -305,7 +332,10 @@ impl Parser {
             return Err(if nums.is_empty() {
                 self.err("a coordinate")
             } else {
-                trf("A coordinate needs 2 to 4 numbers, found {} (position {})", &[&nums.len(), &self.at()])
+                trf(
+                    "A coordinate needs 2 to 4 numbers, found {} (position {})",
+                    &[&nums.len(), &self.at()],
+                )
             });
         }
         let dims = match self.dims {
@@ -389,13 +419,22 @@ fn describe(t: &Tok) -> String {
 /// Parses WKT or PostGIS EWKT (`SRID=4326;POINT(1 2)`).
 pub fn parse_wkt(input: &str) -> Result<Geometry, String> {
     let toks = tokenize(input)?;
-    let mut p = Parser { toks, pos: 0, dims: None, explicit: false };
+    let mut p = Parser {
+        toks,
+        pos: 0,
+        dims: None,
+        explicit: false,
+    };
     let mut srid = None;
     if matches!(p.peek(), Some(Tok::Word(w)) if w == "SRID") {
         p.pos += 1;
         p.expect(Tok::Eq, "'='")?;
         let n = match p.next() {
-            Some(Tok::Num(n)) if n.fract() == 0.0 && n >= i32::MIN as f64 && n <= i32::MAX as f64 => n as i32,
+            Some(Tok::Num(n))
+                if n.fract() == 0.0 && n >= i32::MIN as f64 && n <= i32::MAX as f64 =>
+            {
+                n as i32
+            }
             _ => return Err(trf("Invalid SRID at position {}", &[&p.at()])),
         };
         p.expect(Tok::Semicolon, "';'")?;
@@ -405,7 +444,11 @@ pub fn parse_wkt(input: &str) -> Result<Geometry, String> {
     if p.peek().is_some() {
         return Err(p.err("end of text"));
     }
-    Ok(Geometry { srid, dims: p.dims.unwrap_or_default(), geom })
+    Ok(Geometry {
+        srid,
+        dims: p.dims.unwrap_or_default(),
+        geom,
+    })
 }
 
 #[cfg(test)]
@@ -422,9 +465,14 @@ mod tests {
         assert_eq!(g.srid, Some(4326));
         assert_eq!(g.geom, Geom::Point(Some(pt(106.8, -6.2))));
         let g = parse_wkt("  linestring ( 0 0 , 1 1,2 2 )  ").unwrap();
-        assert_eq!(g.geom, Geom::LineString(vec![pt(0.0, 0.0), pt(1.0, 1.0), pt(2.0, 2.0)]));
+        assert_eq!(
+            g.geom,
+            Geom::LineString(vec![pt(0.0, 0.0), pt(1.0, 1.0), pt(2.0, 2.0)])
+        );
         let g = parse_wkt("POLYGON((0 0,10 0,10 10,0 10,0 0),(2 2,4 2,4 4,2 2))").unwrap();
-        let Geom::Polygon(rings) = &g.geom else { panic!() };
+        let Geom::Polygon(rings) = &g.geom else {
+            panic!()
+        };
         assert_eq!(rings.len(), 2);
         let g = parse_wkt("MULTIPOINT((1 2),(3 4))").unwrap();
         assert_eq!(g.geom, Geom::MultiPoint(vec![pt(1.0, 2.0), pt(3.0, 4.0)]));
@@ -434,26 +482,52 @@ mod tests {
         assert!(matches!(g.geom, Geom::MultiLineString(ref l) if l.len() == 2));
         let g = parse_wkt("MULTIPOLYGON(((0 0,1 0,1 1,0 0)),((5 5,6 5,6 6,5 5),(5.2 5.1,5.8 5.1,5.8 5.5,5.2 5.1)))").unwrap();
         assert!(matches!(g.geom, Geom::MultiPolygon(ref p) if p.len() == 2 && p[1].len() == 2));
-        let g = parse_wkt("GEOMETRYCOLLECTION(POINT(1 1),LINESTRING(0 0,1 1),POLYGON EMPTY)").unwrap();
+        let g =
+            parse_wkt("GEOMETRYCOLLECTION(POINT(1 1),LINESTRING(0 0,1 1),POLYGON EMPTY)").unwrap();
         assert!(matches!(g.geom, Geom::GeometryCollection(ref gs) if gs.len() == 3));
         assert_eq!(parse_wkt("point empty").unwrap().geom, Geom::Point(None));
-        assert_eq!(parse_wkt("GEOMETRYCOLLECTION EMPTY").unwrap().geom, Geom::GeometryCollection(vec![]));
-        assert_eq!(parse_wkt("POINT(1e3 -2.5E-1)").unwrap().geom, Geom::Point(Some(pt(1000.0, -0.25))));
+        assert_eq!(
+            parse_wkt("GEOMETRYCOLLECTION EMPTY").unwrap().geom,
+            Geom::GeometryCollection(vec![])
+        );
+        assert_eq!(
+            parse_wkt("POINT(1e3 -2.5E-1)").unwrap().geom,
+            Geom::Point(Some(pt(1000.0, -0.25)))
+        );
     }
 
     #[test]
     fn dimensions() {
         let g = parse_wkt("POINT Z (1 2 3)").unwrap();
         assert_eq!(g.dims, Dims::Xyz);
-        assert_eq!(g.geom, Geom::Point(Some(Coord { x: 1.0, y: 2.0, z: Some(3.0), m: None })));
+        assert_eq!(
+            g.geom,
+            Geom::Point(Some(Coord {
+                x: 1.0,
+                y: 2.0,
+                z: Some(3.0),
+                m: None
+            }))
+        );
         let g = parse_wkt("POINTM(1 2 3)").unwrap();
         assert_eq!(g.dims, Dims::Xym);
-        assert_eq!(g.geom, Geom::Point(Some(Coord { x: 1.0, y: 2.0, z: None, m: Some(3.0) })));
+        assert_eq!(
+            g.geom,
+            Geom::Point(Some(Coord {
+                x: 1.0,
+                y: 2.0,
+                z: None,
+                m: Some(3.0)
+            }))
+        );
         let g = parse_wkt("LINESTRING ZM (1 2 3 4, 5 6 7 8)").unwrap();
         assert_eq!(g.dims, Dims::Xyzm);
         let g = parse_wkt("POINT(1 2 3)").unwrap();
         assert_eq!(g.dims, Dims::Xyz, "inferred from the ordinate count");
-        assert!(parse_wkt("LINESTRING(1 2 3, 4 5)").is_err(), "mixed dimensions");
+        assert!(
+            parse_wkt("LINESTRING(1 2 3, 4 5)").is_err(),
+            "mixed dimensions"
+        );
         assert!(parse_wkt("POINT Z (1 2)").is_err());
         assert!(parse_wkt("POINT(1 2 3 4 5)").is_err());
         let back = parse_wkt(&g.to_wkt()).unwrap();
@@ -478,7 +552,11 @@ mod tests {
             let e = parse_wkt(bad).unwrap_err();
             assert!(!e.is_empty(), "{bad}");
         }
-        let deep = format!("{}POINT(1 1){}", "GEOMETRYCOLLECTION(".repeat(40), ")".repeat(40));
+        let deep = format!(
+            "{}POINT(1 1){}",
+            "GEOMETRYCOLLECTION(".repeat(40),
+            ")".repeat(40)
+        );
         assert!(parse_wkt(&deep).is_err());
     }
 

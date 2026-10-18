@@ -71,7 +71,11 @@ fn clean_ring(ring: &[Point]) -> Vec<Point> {
 
 fn inside_triangle(p: Point, a: Point, b: Point, c: Point, strict: bool) -> bool {
     let (d1, d2, d3) = (cross(a, b, p), cross(b, c, p), cross(c, a, p));
-    if strict { d1 > 0.0 && d2 > 0.0 && d3 > 0.0 } else { d1 >= 0.0 && d2 >= 0.0 && d3 >= 0.0 }
+    if strict {
+        d1 > 0.0 && d2 > 0.0 && d3 > 0.0
+    } else {
+        d1 >= 0.0 && d2 >= 0.0 && d3 >= 0.0
+    }
 }
 
 /// Triangulates a polygon given by its outer ring and holes (any
@@ -117,11 +121,16 @@ pub fn triangulate(outer: &[Point], holes: &[Vec<Point>]) -> Option<Triangulatio
         let hole = &rings[hi];
         let base = vertices.len();
         vertices.extend_from_slice(hole);
-        let Some(mi) = (0..hole.len()).max_by(|&a, &b| hole[a][0].total_cmp(&hole[b][0]).then(hole[b][1].total_cmp(&hole[a][1])))
-        else {
+        let Some(mi) = (0..hole.len()).max_by(|&a, &b| {
+            hole[a][0]
+                .total_cmp(&hole[b][0])
+                .then(hole[b][1].total_cmp(&hole[a][1]))
+        }) else {
             continue;
         };
-        let Some(j) = find_bridge(&vertices, &poly, hole[mi]) else { continue };
+        let Some(j) = find_bridge(&vertices, &poly, hole[mi]) else {
+            continue;
+        };
         let mut merged = Vec::with_capacity(poly.len() + hole.len() + 2);
         merged.extend_from_slice(&poly[..=j]);
         for k in 0..hole.len() {
@@ -133,7 +142,10 @@ pub fn triangulate(outer: &[Point], holes: &[Vec<Point>]) -> Option<Triangulatio
         poly = merged;
     }
     let triangles = clip_ears(&vertices, &poly)?;
-    Some(Triangulation { vertices, triangles: triangles.into_iter().map(|t| t.map(|i| i as u32)).collect() })
+    Some(Triangulation {
+        vertices,
+        triangles: triangles.into_iter().map(|t| t.map(|i| i as u32)).collect(),
+    })
 }
 
 /// Index into `poly` of a vertex visible from `m` (a hole's rightmost point).
@@ -191,9 +203,17 @@ fn find_bridge(vertices: &[Point], poly: &[usize], m: Point) -> Option<usize> {
         if cross(prev, r, next) >= 0.0 {
             continue; // convex
         }
-        let (a, b, c) = if m[1] < pp[1] { (m, i_pt, pp) } else { (m, pp, i_pt) };
+        let (a, b, c) = if m[1] < pp[1] {
+            (m, i_pt, pp)
+        } else {
+            (m, pp, i_pt)
+        };
         let ccw = cross(a, b, c) > 0.0;
-        let inside = if ccw { inside_triangle(r, a, b, c, false) } else { inside_triangle(r, a, c, b, false) };
+        let inside = if ccw {
+            inside_triangle(r, a, b, c, false)
+        } else {
+            inside_triangle(r, a, c, b, false)
+        };
         if !inside || r[0] <= m[0] {
             continue;
         }
@@ -215,7 +235,11 @@ fn pick_copy(vertices: &[Point], poly: &[usize], k: usize, m: Point) -> usize {
     let n = poly.len();
     let target = vertices[poly[k]];
     let locally_inside = |j: usize| {
-        let (a, p, b) = (vertices[poly[(j + n - 1) % n]], vertices[poly[j]], vertices[poly[(j + 1) % n]]);
+        let (a, p, b) = (
+            vertices[poly[(j + n - 1) % n]],
+            vertices[poly[j]],
+            vertices[poly[(j + 1) % n]],
+        );
         if cross(a, p, b) >= 0.0 {
             cross(a, p, m) >= 0.0 && cross(p, b, m) >= 0.0
         } else {
@@ -225,7 +249,9 @@ fn pick_copy(vertices: &[Point], poly: &[usize], k: usize, m: Point) -> usize {
     if locally_inside(k) {
         return k;
     }
-    (0..n).find(|&j| j != k && vertices[poly[j]] == target && locally_inside(j)).unwrap_or(k)
+    (0..n)
+        .find(|&j| j != k && vertices[poly[j]] == target && locally_inside(j))
+        .unwrap_or(k)
 }
 
 /// Ear clipping of a simple counter-clockwise polygon given as indices.
@@ -235,7 +261,10 @@ fn clip_ears(vertices: &[Point], poly: &[usize]) -> Option<Vec<[usize; 3]>> {
         return None;
     }
     let pt = |k: usize| vertices[poly[k]];
-    let scale = poly.iter().map(|&i| vertices[i][0].abs().max(vertices[i][1].abs())).fold(1e-300, f64::max);
+    let scale = poly
+        .iter()
+        .map(|&i| vertices[i][0].abs().max(vertices[i][1].abs()))
+        .fold(1e-300, f64::max);
     let eps = scale * scale * 1e-14;
     let mut prev: Vec<usize> = (0..n).map(|i| (i + n - 1) % n).collect();
     let mut next: Vec<usize> = (0..n).map(|i| (i + 1) % n).collect();
@@ -270,7 +299,12 @@ fn clip_ears(vertices: &[Point], poly: &[usize]) -> Option<Vec<[usize; 3]>> {
                 while k != a {
                     let r = pt(k);
                     let reflex = cross(pt(prev[k]), r, pt(next[k])) <= 0.0;
-                    if reflex && r != pa && r != pv && r != pb && inside_triangle(r, pa, pv, pb, mode == 1) {
+                    if reflex
+                        && r != pa
+                        && r != pv
+                        && r != pb
+                        && inside_triangle(r, pa, pv, pb, mode == 1)
+                    {
                         blocked = true;
                         break;
                     }
@@ -310,25 +344,51 @@ mod tests {
     use super::*;
 
     fn check(outer: &[Point], holes: &[Vec<Point>]) -> Triangulation {
-        let t = triangulate(outer, holes).unwrap_or_else(|| panic!("triangulation failed for {outer:?} with holes {holes:?}"));
-        let expected = signed_area(outer).abs() - holes.iter().map(|h| signed_area(h).abs()).sum::<f64>();
-        assert!((t.area() - expected).abs() <= expected.abs() * 1e-9 + 1e-9, "area {} vs {}", t.area(), expected);
+        let t = triangulate(outer, holes)
+            .unwrap_or_else(|| panic!("triangulation failed for {outer:?} with holes {holes:?}"));
+        let expected =
+            signed_area(outer).abs() - holes.iter().map(|h| signed_area(h).abs()).sum::<f64>();
+        assert!(
+            (t.area() - expected).abs() <= expected.abs() * 1e-9 + 1e-9,
+            "area {} vs {}",
+            t.area(),
+            expected
+        );
         for tri in &t.triangles {
             let p = |i: u32| t.vertices[i as usize];
-            assert!(cross(p(tri[0]), p(tri[1]), p(tri[2])) > 0.0, "counter-clockwise, non-degenerate");
+            assert!(
+                cross(p(tri[0]), p(tri[1]), p(tri[2])) > 0.0,
+                "counter-clockwise, non-degenerate"
+            );
         }
         t
     }
 
     #[test]
     fn convex_and_concave() {
-        let square = [[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0], [0.0, 0.0]];
+        let square = [
+            [0.0, 0.0],
+            [10.0, 0.0],
+            [10.0, 10.0],
+            [0.0, 10.0],
+            [0.0, 0.0],
+        ];
         assert_eq!(check(&square, &[]).triangles.len(), 2);
         // clockwise input
         let cw: Vec<Point> = square.iter().rev().copied().collect();
         check(&cw, &[]);
         // L shape
-        check(&[[0.0, 0.0], [6.0, 0.0], [6.0, 2.0], [2.0, 2.0], [2.0, 6.0], [0.0, 6.0]], &[]);
+        check(
+            &[
+                [0.0, 0.0],
+                [6.0, 0.0],
+                [6.0, 2.0],
+                [2.0, 2.0],
+                [2.0, 6.0],
+                [0.0, 6.0],
+            ],
+            &[],
+        );
         // star
         let star: Vec<Point> = (0..10)
             .map(|i| {
@@ -359,7 +419,13 @@ mod tests {
         check(&outer, &[hole.clone(), h2.clone()]);
         check(&outer, &[h2, hole]);
         // hole whose rightmost vertex is level with an outer vertex
-        let outer2 = [[0.0, 0.0], [10.0, 0.0], [12.0, 5.0], [10.0, 10.0], [0.0, 10.0]];
+        let outer2 = [
+            [0.0, 0.0],
+            [10.0, 0.0],
+            [12.0, 5.0],
+            [10.0, 10.0],
+            [0.0, 10.0],
+        ];
         check(&outer2, &[vec![[4.0, 4.0], [8.0, 5.0], [4.0, 6.0]]]);
         // many small holes in a grid
         let holes: Vec<Vec<Point>> = (0..4)
@@ -387,26 +453,50 @@ mod tests {
             [4.0, 6.0],
             [0.0, 6.0],
         ];
-        check(&comb, &[vec![[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]]);
-        check(&comb, &[vec![[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]], vec![[1.0, 4.0], [3.0, 4.0], [3.0, 5.0]]]);
+        check(
+            &comb,
+            &[vec![[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]],
+        );
+        check(
+            &comb,
+            &[
+                vec![[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]],
+                vec![[1.0, 4.0], [3.0, 4.0], [3.0, 5.0]],
+            ],
+        );
     }
 
     #[test]
     fn degenerate_input() {
         assert!(triangulate(&[], &[]).is_none());
         assert!(triangulate(&[[0.0, 0.0], [1.0, 1.0]], &[]).is_none());
-        assert!(triangulate(&[[0.0, 0.0], [1.0, 1.0], [2.0, 2.0]], &[]).is_none(), "collinear");
+        assert!(
+            triangulate(&[[0.0, 0.0], [1.0, 1.0], [2.0, 2.0]], &[]).is_none(),
+            "collinear"
+        );
         assert!(triangulate(&[[0.0, 0.0], [f64::NAN, 1.0], [1.0, 0.0]], &[]).is_none());
         // collinear points along edges and duplicates are tolerated
         let t = check(
-            &[[0.0, 0.0], [5.0, 0.0], [5.0, 0.0], [10.0, 0.0], [10.0, 5.0], [10.0, 10.0], [0.0, 10.0], [0.0, 5.0]],
+            &[
+                [0.0, 0.0],
+                [5.0, 0.0],
+                [5.0, 0.0],
+                [10.0, 0.0],
+                [10.0, 5.0],
+                [10.0, 10.0],
+                [0.0, 10.0],
+                [0.0, 5.0],
+            ],
             &[],
         );
         assert!(t.triangles.len() >= 2);
         // self intersecting bow tie never panics
         let _ = triangulate(&[[0.0, 0.0], [10.0, 10.0], [10.0, 0.0], [0.0, 10.0]], &[]);
         // degenerate holes are ignored
-        check(&[[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]], &[vec![[1.0, 1.0], [2.0, 2.0]]]);
+        check(
+            &[[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]],
+            &[vec![[1.0, 1.0], [2.0, 2.0]]],
+        );
     }
 
     #[test]
@@ -435,7 +525,10 @@ mod tests {
             })
             .collect();
         for mask in (0u32..(1 << 16)).step_by(37) {
-            let holes: Vec<Vec<Point>> = (0..16).filter(|i| mask & (1 << i) != 0).map(|i| all[i].clone()).collect();
+            let holes: Vec<Vec<Point>> = (0..16)
+                .filter(|i| mask & (1 << i) != 0)
+                .map(|i| all[i].clone())
+                .collect();
             check(&outer, &holes);
         }
     }

@@ -9,7 +9,10 @@ use crate::common::colors;
 use crate::common::text::truncate_chars;
 use crate::common::ticks::nice_step;
 use dbiji_core::{tr, trf};
-use egui::{Align2, Color32, CursorIcon, FontId, Mesh, Pos2, Rect, Sense, Shape, Stroke, Ui, Vec2, pos2, vec2};
+use egui::{
+    Align2, Color32, CursorIcon, FontId, Mesh, Pos2, Rect, Sense, Shape, Stroke, Ui, Vec2, pos2,
+    vec2,
+};
 use egui_phosphor::regular as icon;
 
 /// One polygon prepared for drawing.
@@ -37,7 +40,10 @@ struct PreparedLayer {
 }
 
 fn xy(cs: &[Coord]) -> Vec<[f64; 2]> {
-    cs.iter().filter(|c| c.x.is_finite() && c.y.is_finite()).map(|c| [c.x, c.y]).collect()
+    cs.iter()
+        .filter(|c| c.x.is_finite() && c.y.is_finite())
+        .map(|c| [c.x, c.y])
+        .collect()
 }
 
 fn collect(g: &Geom, item: &mut PreparedItem) {
@@ -54,7 +60,11 @@ fn collect(g: &Geom, item: &mut PreparedItem) {
 }
 
 fn push_polygon(rings: &[Vec<Coord>], item: &mut PreparedItem) {
-    let rings: Vec<Vec<[f64; 2]>> = rings.iter().map(|r| xy(r)).filter(|r| r.len() >= 2).collect();
+    let rings: Vec<Vec<[f64; 2]>> = rings
+        .iter()
+        .map(|r| xy(r))
+        .filter(|r| r.len() >= 2)
+        .collect();
     let Some(outer) = rings.first() else { return };
     let tri = triangulate(outer, &rings[1..]);
     item.polygons.push(PreparedPolygon { rings, tri });
@@ -67,13 +77,22 @@ fn prepare(layer: &SpatialLayer) -> PreparedLayer {
         .enumerate()
         .filter_map(|(i, it)| {
             let bounds = it.geometry.bounds()?;
-            let mut p =
-                PreparedItem { item: i, row: it.row, bounds, points: Vec::new(), lines: Vec::new(), polygons: Vec::new() };
+            let mut p = PreparedItem {
+                item: i,
+                row: it.row,
+                bounds,
+                points: Vec::new(),
+                lines: Vec::new(),
+                polygons: Vec::new(),
+            };
             collect(&it.geometry.geom, &mut p);
             Some(p)
         })
         .collect();
-    PreparedLayer { key: (layer.items.as_ptr() as usize, layer.items.len()), items }
+    PreparedLayer {
+        key: (layer.items.as_ptr() as usize, layer.items.len()),
+        items,
+    }
 }
 
 /// View state of the spatial viewer.
@@ -150,11 +169,17 @@ impl Xf {
 }
 
 fn layer_color(layer: &SpatialLayer, index: usize, dark: bool) -> Color32 {
-    layer.color.unwrap_or_else(|| colors::categorical(index, dark))
+    layer
+        .color
+        .unwrap_or_else(|| colors::categorical(index, dark))
 }
 
 /// Shows the layers on a pan/zoom canvas.
-pub fn show_spatial(ui: &mut Ui, layers: &[SpatialLayer], state: &mut SpatialState) -> SpatialResponse {
+pub fn show_spatial(
+    ui: &mut Ui,
+    layers: &[SpatialLayer],
+    state: &mut SpatialState,
+) -> SpatialResponse {
     let id = ui.id().with("dbiji_spatial");
     // keep the prepared cache in sync with the layers
     state.cache.truncate(layers.len());
@@ -197,34 +222,59 @@ pub fn show_spatial(ui: &mut Ui, layers: &[SpatialLayer], state: &mut SpatialSta
     }
 
     // navigation
-    if response.dragged_by(egui::PointerButton::Primary) || response.dragged_by(egui::PointerButton::Middle) {
+    if response.dragged_by(egui::PointerButton::Primary)
+        || response.dragged_by(egui::PointerButton::Middle)
+    {
         let d = response.drag_delta();
         state.center[0] -= d.x as f64 / state.scale;
         state.center[1] += d.y as f64 / state.scale;
     }
     if response.contains_pointer() {
-        let (zoom, scroll, pointer) = ui.input(|i| (i.zoom_delta(), i.smooth_scroll_delta, i.pointer.latest_pos()));
+        let (zoom, scroll, pointer) = ui.input(|i| {
+            (
+                i.zoom_delta(),
+                i.smooth_scroll_delta,
+                i.pointer.latest_pos(),
+            )
+        });
         if scroll != Vec2::ZERO {
             state.center[0] -= scroll.x as f64 / state.scale;
             state.center[1] += scroll.y as f64 / state.scale;
             ui.input_mut(|i| i.smooth_scroll_delta = Vec2::ZERO);
         }
         if zoom != 1.0
-            && let Some(p) = pointer {
-                let xf = Xf { center: state.center, scale: state.scale, origin: rect.center() };
-                let anchor = xf.to_world(p);
-                let new_scale = (state.scale * zoom as f64).clamp(1e-12, 1e12);
-                // keep the world point under the pointer fixed
-                state.center[0] = anchor[0] - (p.x - rect.center().x) as f64 / new_scale;
-                state.center[1] = anchor[1] + (p.y - rect.center().y) as f64 / new_scale;
-                state.scale = new_scale;
-            }
+            && let Some(p) = pointer
+        {
+            let xf = Xf {
+                center: state.center,
+                scale: state.scale,
+                origin: rect.center(),
+            };
+            let anchor = xf.to_world(p);
+            let new_scale = (state.scale * zoom as f64).clamp(1e-12, 1e12);
+            // keep the world point under the pointer fixed
+            state.center[0] = anchor[0] - (p.x - rect.center().x) as f64 / new_scale;
+            state.center[1] = anchor[1] + (p.y - rect.center().y) as f64 / new_scale;
+            state.scale = new_scale;
+        }
     }
-    let xf = Xf { center: state.center, scale: state.scale, origin: rect.center() };
-    let pointer = ui.input(|i| i.pointer.latest_pos()).filter(|p| rect.contains(*p) && response.contains_pointer());
+    let xf = Xf {
+        center: state.center,
+        scale: state.scale,
+        origin: rect.center(),
+    };
+    let pointer = ui
+        .input(|i| i.pointer.latest_pos())
+        .filter(|p| rect.contains(*p) && response.contains_pointer());
     state.pointer_world = pointer.map(|p| xf.to_world(p));
     let hovered = pointer.and_then(|p| hit_test(&state.cache, layers, &xf, p));
-    state.hovered_row = hovered.map(|(li, ii)| layers.get(li).and_then(|l| l.items.get(ii)).map(|it| it.row).unwrap_or(0));
+    state.hovered_row = hovered.map(|(li, ii)| {
+        layers
+            .get(li)
+            .and_then(|l| l.items.get(ii))
+            .map(|it| it.row)
+            .unwrap_or(0)
+    });
     let mut clicked_row = None;
     if response.clicked() {
         clicked_row = state.hovered_row;
@@ -233,7 +283,12 @@ pub fn show_spatial(ui: &mut Ui, layers: &[SpatialLayer], state: &mut SpatialSta
 
     let min = xf.to_world(rect.left_bottom());
     let max = xf.to_world(rect.right_top());
-    let visible = Bounds { min_x: min[0], min_y: min[1], max_x: max[0], max_y: max[1] };
+    let visible = Bounds {
+        min_x: min[0],
+        min_y: min[1],
+        max_x: max[0],
+        max_y: max[1],
+    };
     if state.show_grid {
         grid(&painter, rect, &xf, visible, geographic, &v);
     }
@@ -250,7 +305,11 @@ pub fn show_spatial(ui: &mut Ui, layers: &[SpatialLayer], state: &mut SpatialSta
             if !it.bounds.intersects(&visible) {
                 continue;
             }
-            let color = if state.color_by_row { colors::categorical(it.row, dark) } else { base };
+            let color = if state.color_by_row {
+                colors::categorical(it.row, dark)
+            } else {
+                base
+            };
             let fill_color = color.gamma_multiply(0.28);
             let is_sel = state.selected_row == Some(it.row);
             let is_hover = state.hovered_row == Some(it.row);
@@ -269,7 +328,13 @@ pub fn show_spatial(ui: &mut Ui, layers: &[SpatialLayer], state: &mut SpatialSta
                     if pts.len() >= 2 {
                         strokes.push(Shape::closed_line(pts.clone(), Stroke::new(1.2, color)));
                         if is_sel || is_hover {
-                            highlight.push(Shape::closed_line(pts, Stroke::new(if is_sel { 3.0 } else { 2.0 }, v.selection.stroke.color)));
+                            highlight.push(Shape::closed_line(
+                                pts,
+                                Stroke::new(
+                                    if is_sel { 3.0 } else { 2.0 },
+                                    v.selection.stroke.color,
+                                ),
+                            ));
                         }
                     }
                 }
@@ -279,7 +344,10 @@ pub fn show_spatial(ui: &mut Ui, layers: &[SpatialLayer], state: &mut SpatialSta
                 if pts.len() >= 2 {
                     strokes.push(Shape::line(pts.clone(), Stroke::new(2.0, color)));
                     if is_sel || is_hover {
-                        highlight.push(Shape::line(pts, Stroke::new(if is_sel { 4.0 } else { 3.0 }, v.selection.stroke.color)));
+                        highlight.push(Shape::line(
+                            pts,
+                            Stroke::new(if is_sel { 4.0 } else { 3.0 }, v.selection.stroke.color),
+                        ));
                     }
                 }
             }
@@ -288,7 +356,11 @@ pub fn show_spatial(ui: &mut Ui, layers: &[SpatialLayer], state: &mut SpatialSta
                 dots.push(Shape::circle_filled(s, 6.0, surface));
                 dots.push(Shape::circle_filled(s, 4.5, color));
                 if is_sel || is_hover {
-                    highlight.push(Shape::circle_stroke(s, if is_sel { 8.0 } else { 7.0 }, Stroke::new(2.0, v.selection.stroke.color)));
+                    highlight.push(Shape::circle_stroke(
+                        s,
+                        if is_sel { 8.0 } else { 7.0 },
+                        Stroke::new(2.0, v.selection.stroke.color),
+                    ));
                 }
             }
         }
@@ -301,23 +373,49 @@ pub fn show_spatial(ui: &mut Ui, layers: &[SpatialLayer], state: &mut SpatialSta
     painter.extend(highlight);
 
     if layers.iter().all(|l| l.items.is_empty()) {
-        painter.text(rect.center(), Align2::CENTER_CENTER, tr("No geometries to show"), FontId::proportional(14.0), v.weak_text_color());
+        painter.text(
+            rect.center(),
+            Align2::CENTER_CENTER,
+            tr("No geometries to show"),
+            FontId::proportional(14.0),
+            v.weak_text_color(),
+        );
     }
     if let Some((li, ii)) = hovered {
         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
-        if let (Some(layer), Some(item)) = (layers.get(li), layers.get(li).and_then(|l| l.items.get(ii))) {
+        if let (Some(layer), Some(item)) =
+            (layers.get(li), layers.get(li).and_then(|l| l.items.get(ii)))
+        {
             let r = response.clone();
             r.on_hover_ui_at_pointer(|ui| {
-                ui.strong(item.label.clone().unwrap_or_else(|| trf("Row {}", &[&(item.row + 1)])));
-                ui.weak(trf("{} · row {} · {} points", &[&item.geometry.type_name(), &(item.row + 1), &item.geometry.num_points()]));
+                ui.strong(
+                    item.label
+                        .clone()
+                        .unwrap_or_else(|| trf("Row {}", &[&(item.row + 1)])),
+                );
+                ui.weak(trf(
+                    "{} · row {} · {} points",
+                    &[
+                        &item.geometry.type_name(),
+                        &(item.row + 1),
+                        &item.geometry.num_points(),
+                    ],
+                ));
                 if !layer.name.is_empty() {
                     ui.weak(layer.name.as_str());
                 }
-                ui.label(egui::RichText::new(truncate_chars(&item.geometry.to_wkt(), 200)).monospace().small());
+                ui.label(
+                    egui::RichText::new(truncate_chars(&item.geometry.to_wkt(), 200))
+                        .monospace()
+                        .small(),
+                );
             });
         }
     }
-    SpatialResponse { clicked_row, hovered_row: state.hovered_row }
+    SpatialResponse {
+        clicked_row,
+        hovered_row: state.hovered_row,
+    }
 }
 
 /// Screen path with points closer than half a pixel merged (level of detail).
@@ -333,22 +431,35 @@ fn screen_path(points: &[[f64; 2]], xf: &Xf) -> Vec<Pos2> {
 }
 
 fn fit(state: &mut SpatialState, layers: &[SpatialLayer], rect: Rect, geographic: bool) {
-    let Some(b) = layers.iter().filter_map(SpatialLayer::bounds).reduce(Bounds::union) else {
+    let Some(b) = layers
+        .iter()
+        .filter_map(SpatialLayer::bounds)
+        .reduce(Bounds::union)
+    else {
         state.center = [0.0, 0.0];
         state.scale = 1.0;
         return;
     };
-    let min_span = if geographic { 0.02 } else { (b.center().0.abs().max(b.center().1.abs()) * 1e-3).max(10.0) };
+    let min_span = if geographic {
+        0.02
+    } else {
+        (b.center().0.abs().max(b.center().1.abs()) * 1e-3).max(10.0)
+    };
     let w = b.width().max(min_span);
     let h = b.height().max(min_span);
     state.center = [b.center().0, b.center().1];
-    state.scale = ((rect.width() as f64 / w).min(rect.height() as f64 / h) * 0.9).clamp(1e-12, 1e12);
+    state.scale =
+        ((rect.width() as f64 / w).min(rect.height() as f64 / h) * 0.9).clamp(1e-12, 1e12);
 }
 
 fn dist_segment(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
     let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
     let len2 = dx * dx + dy * dy;
-    let t = if len2 > 0.0 { (((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2).clamp(0.0, 1.0) } else { 0.0 };
+    let t = if len2 > 0.0 {
+        (((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
     let (cx, cy) = (a[0] + t * dx, a[1] + t * dy);
     ((p[0] - cx).powi(2) + (p[1] - cy).powi(2)).sqrt()
 }
@@ -364,7 +475,9 @@ pub(crate) fn point_in_rings(p: [f64; 2], rings: &[Vec<[f64; 2]>]) -> bool {
         let mut j = n - 1;
         for i in 0..n {
             let (a, b) = (ring[i], ring[j]);
-            if (a[1] > p[1]) != (b[1] > p[1]) && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0] {
+            if (a[1] > p[1]) != (b[1] > p[1])
+                && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0]
+            {
                 inside = !inside;
             }
             j = i;
@@ -373,7 +486,12 @@ pub(crate) fn point_in_rings(p: [f64; 2], rings: &[Vec<[f64; 2]>]) -> bool {
     inside
 }
 
-fn hit_test(cache: &[PreparedLayer], layers: &[SpatialLayer], xf: &Xf, pointer: Pos2) -> Option<(usize, usize)> {
+fn hit_test(
+    cache: &[PreparedLayer],
+    layers: &[SpatialLayer],
+    xf: &Xf,
+    pointer: Pos2,
+) -> Option<(usize, usize)> {
     let w = xf.to_world(pointer);
     let tol = 6.0 / xf.scale;
     let layer_count = cache.len().min(layers.len());
@@ -386,12 +504,20 @@ fn hit_test(cache: &[PreparedLayer], layers: &[SpatialLayer], xf: &Xf, pointer: 
                     continue;
                 }
                 let hit = if pass == 0 {
-                    it.points.iter().any(|p| ((p[0] - w[0]).powi(2) + (p[1] - w[1]).powi(2)).sqrt() <= tol)
-                        || it.lines.iter().any(|l| l.windows(2).any(|s| dist_segment(w, s[0], s[1]) <= tol * 0.8))
+                    it.points
+                        .iter()
+                        .any(|p| ((p[0] - w[0]).powi(2) + (p[1] - w[1]).powi(2)).sqrt() <= tol)
+                        || it.lines.iter().any(|l| {
+                            l.windows(2)
+                                .any(|s| dist_segment(w, s[0], s[1]) <= tol * 0.8)
+                        })
                 } else {
                     it.polygons.iter().any(|p| {
                         point_in_rings(w, &p.rings)
-                            || p.rings.iter().any(|r| r.windows(2).any(|s| dist_segment(w, s[0], s[1]) <= tol * 0.5))
+                            || p.rings.iter().any(|r| {
+                                r.windows(2)
+                                    .any(|s| dist_segment(w, s[0], s[1]) <= tol * 0.5)
+                            })
                     })
                 };
                 if hit {
@@ -405,11 +531,17 @@ fn hit_test(cache: &[PreparedLayer], layers: &[SpatialLayer], xf: &Xf, pointer: 
 
 fn toolbar(ui: &mut Ui, layers: &[SpatialLayer], state: &mut SpatialState, srid: Option<i32>) {
     ui.horizontal(|ui| {
-        if ui.button(icon::CORNERS_OUT).on_hover_text(tr("Zoom to fit")).clicked() {
+        if ui
+            .button(icon::CORNERS_OUT)
+            .on_hover_text(tr("Zoom to fit"))
+            .clicked()
+        {
             state.fit_pending = true;
         }
-        ui.toggle_value(&mut state.show_grid, icon::GRID_FOUR).on_hover_text(tr("Show grid"));
-        ui.toggle_value(&mut state.color_by_row, icon::PALETTE).on_hover_text(tr("One color per row"));
+        ui.toggle_value(&mut state.show_grid, icon::GRID_FOUR)
+            .on_hover_text(tr("Show grid"));
+        ui.toggle_value(&mut state.color_by_row, icon::PALETTE)
+            .on_hover_text(tr("One color per row"));
         ui.separator();
         let items: usize = layers.iter().map(|l| l.items.len()).sum();
         ui.weak(trf("{} geometries", &[&items]));
@@ -422,8 +554,11 @@ fn toolbar(ui: &mut Ui, layers: &[SpatialLayer], state: &mut SpatialState, srid:
                 .map(|(row, e)| trf("row {}: {}", &[&(row + 1), e]))
                 .collect::<Vec<_>>()
                 .join("\n");
-            ui.colored_label(ui.visuals().warn_fg_color, format!("{} {}", icon::WARNING, trf("{} not readable", &[&errors])))
-                .on_hover_text(detail);
+            ui.colored_label(
+                ui.visuals().warn_fg_color,
+                format!("{} {}", icon::WARNING, trf("{} not readable", &[&errors])),
+            )
+            .on_hover_text(detail);
         }
         if let Some(s) = srid {
             ui.weak(format!("SRID {s}"));
@@ -437,7 +572,14 @@ fn toolbar(ui: &mut Ui, layers: &[SpatialLayer], state: &mut SpatialState, srid:
     });
 }
 
-fn grid(painter: &egui::Painter, rect: Rect, xf: &Xf, visible: Bounds, geographic: bool, v: &egui::Visuals) {
+fn grid(
+    painter: &egui::Painter,
+    rect: Rect,
+    xf: &Xf,
+    visible: Bounds,
+    geographic: bool,
+    v: &egui::Visuals,
+) {
     let span = visible.width().max(visible.height());
     if !span.is_finite() || span <= 0.0 {
         return;
@@ -446,10 +588,17 @@ fn grid(painter: &egui::Painter, rect: Rect, xf: &Xf, visible: Bounds, geographi
     if geographic {
         step = step.min(30.0);
     }
-    let stroke = Stroke::new(1.0, v.widgets.noninteractive.bg_stroke.color.gamma_multiply(0.6));
+    let stroke = Stroke::new(
+        1.0,
+        v.widgets.noninteractive.bg_stroke.color.gamma_multiply(0.6),
+    );
     let label_color = v.weak_text_color();
     let font = FontId::proportional(10.5);
-    let decimals = if step >= 1.0 { 0 } else { (-step.log10()).ceil().clamp(0.0, 10.0) as usize };
+    let decimals = if step >= 1.0 {
+        0
+    } else {
+        (-step.log10()).ceil().clamp(0.0, 10.0) as usize
+    };
     let fmt = |val: f64, axis_x: bool| -> String {
         if geographic {
             let hemi = match (axis_x, val >= 0.0) {
@@ -458,7 +607,11 @@ fn grid(painter: &egui::Painter, rect: Rect, xf: &Xf, visible: Bounds, geographi
                 (false, true) => "N",
                 (false, false) => "S",
             };
-            if val == 0.0 { "0°".to_string() } else { format!("{:.*}°{hemi}", decimals, val.abs()) }
+            if val == 0.0 {
+                "0°".to_string()
+            } else {
+                format!("{:.*}°{hemi}", decimals, val.abs())
+            }
         } else {
             format!("{val:.decimals$}")
         }
@@ -469,7 +622,13 @@ fn grid(painter: &egui::Painter, rect: Rect, xf: &Xf, visible: Bounds, geographi
         if !geographic || (-180.0..=180.0).contains(&x) {
             let sx = xf.to_screen([x, 0.0]).x;
             painter.vline(sx, rect.y_range(), stroke);
-            painter.text(pos2(sx + 3.0, rect.bottom() - 3.0), Align2::LEFT_BOTTOM, fmt(x, true), font.clone(), label_color);
+            painter.text(
+                pos2(sx + 3.0, rect.bottom() - 3.0),
+                Align2::LEFT_BOTTOM,
+                fmt(x, true),
+                font.clone(),
+                label_color,
+            );
         }
         x += step;
         lines += 1;
@@ -479,7 +638,13 @@ fn grid(painter: &egui::Painter, rect: Rect, xf: &Xf, visible: Bounds, geographi
         if !geographic || (-90.0..=90.0).contains(&y) {
             let sy = xf.to_screen([0.0, y]).y;
             painter.hline(rect.x_range(), sy, stroke);
-            painter.text(pos2(rect.left() + 3.0, sy - 2.0), Align2::LEFT_BOTTOM, fmt(y, false), font.clone(), label_color);
+            painter.text(
+                pos2(rect.left() + 3.0, sy - 2.0),
+                Align2::LEFT_BOTTOM,
+                fmt(y, false),
+                font.clone(),
+                label_color,
+            );
         }
         y += step;
         lines += 1;
@@ -497,7 +662,11 @@ mod tests {
             items: wkts
                 .iter()
                 .enumerate()
-                .map(|(i, w)| SpatialItem { row: i, geometry: parse_wkt(w).unwrap(), label: None })
+                .map(|(i, w)| SpatialItem {
+                    row: i,
+                    geometry: parse_wkt(w).unwrap(),
+                    label: None,
+                })
                 .collect(),
             ..Default::default()
         }
@@ -517,7 +686,11 @@ mod tests {
         assert_eq!(p.items[2].points.len(), 2);
         assert_eq!(p.items[3].points.len(), 1);
         assert_eq!(p.items[3].polygons.len(), 1);
-        let xf = Xf { center: [25.0, 25.0], scale: 10.0, origin: pos2(500.0, 500.0) };
+        let xf = Xf {
+            center: [25.0, 25.0],
+            scale: 10.0,
+            origin: pos2(500.0, 500.0),
+        };
         let layers = vec![l];
         let cache = vec![p];
         let at = |x: f64, y: f64| hit_test(&cache, &layers, &xf, xf.to_screen([x, y]));
@@ -543,7 +716,10 @@ mod tests {
     #[test]
     fn viewer_click_selects_a_row() {
         use crate::test_harness::Harness;
-        let mut l = layer(&["SRID=4326;POINT(106.8 -6.2)", "SRID=4326;POLYGON((100 -10,110 -10,110 0,100 0,100 -10))"]);
+        let mut l = layer(&[
+            "SRID=4326;POINT(106.8 -6.2)",
+            "SRID=4326;POLYGON((100 -10,110 -10,110 0,100 0,100 -10))",
+        ]);
         l.name = "demo".into();
         let layers = vec![l];
         let mut state = SpatialState::default();
@@ -554,7 +730,11 @@ mod tests {
         drop(ui_fn);
         assert!(!state.fit_pending);
         // the point is drawn above the polygon: clicking it selects row 0
-        let xf = Xf { center: state.center, scale: state.scale, origin: state.last_canvas.center() };
+        let xf = Xf {
+            center: state.center,
+            scale: state.scale,
+            origin: state.last_canvas.center(),
+        };
         let p = xf.to_screen([106.8, -6.2]);
         let mut clicked = None;
         let mut ui_fn = |ui: &mut Ui| {

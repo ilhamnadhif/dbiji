@@ -6,7 +6,8 @@ mod history;
 mod view;
 
 pub use custom::{
-    CustomDashboard, CustomDashboardEvent, CustomDashboardState, DashboardItem, ItemResult, show_custom_dashboard,
+    CustomDashboard, CustomDashboardEvent, CustomDashboardState, DashboardItem, ItemResult,
+    show_custom_dashboard,
 };
 pub use history::{DEFAULT_CAPACITY, DashboardState, MetricHistory, WindowStats};
 pub use view::{DashboardLayout, DashboardResponse, WindowLength, show_dashboard};

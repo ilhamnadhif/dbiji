@@ -39,13 +39,21 @@ impl Reader<'_> {
     fn u32(&mut self, le: bool) -> Result<u32, String> {
         let b = self.take(4)?;
         let a = [b[0], b[1], b[2], b[3]];
-        Ok(if le { u32::from_le_bytes(a) } else { u32::from_be_bytes(a) })
+        Ok(if le {
+            u32::from_le_bytes(a)
+        } else {
+            u32::from_be_bytes(a)
+        })
     }
 
     fn f64(&mut self, le: bool) -> Result<f64, String> {
         let b = self.take(8)?;
         let a = [b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]];
-        Ok(if le { f64::from_le_bytes(a) } else { f64::from_be_bytes(a) })
+        Ok(if le {
+            f64::from_le_bytes(a)
+        } else {
+            f64::from_be_bytes(a)
+        })
     }
 
     /// A count of items each at least `item_bytes` long; rejects counts the
@@ -102,7 +110,11 @@ impl Reader<'_> {
         let raw = self.u32(le)?;
         let mut z = raw & EWKB_Z != 0;
         let mut m = raw & EWKB_M != 0;
-        let srid = if raw & EWKB_SRID != 0 { Some(self.u32(le)? as i32) } else { None };
+        let srid = if raw & EWKB_SRID != 0 {
+            Some(self.u32(le)? as i32)
+        } else {
+            None
+        };
         let code = raw & 0x0FFF_FFFF;
         match code / 1000 {
             0 => {}
@@ -118,7 +130,11 @@ impl Reader<'_> {
         let geom = match code % 1000 {
             1 => {
                 let c = self.coord(le, dims)?;
-                if c.x.is_nan() && c.y.is_nan() { Geom::Point(None) } else { Geom::Point(Some(c)) }
+                if c.x.is_nan() && c.y.is_nan() {
+                    Geom::Point(None)
+                } else {
+                    Geom::Point(Some(c))
+                }
             }
             2 => Geom::LineString(self.coords(le, dims)?),
             3 => Geom::Polygon(self.rings(le, dims)?),
@@ -136,7 +152,11 @@ impl Reader<'_> {
                             match g {
                                 Geom::Point(Some(c)) => pts.push(c),
                                 Geom::Point(None) => {}
-                                _ => return Err(tr("A WKB multi point may only contain points").to_string()),
+                                _ => {
+                                    return Err(
+                                        tr("A WKB multi point may only contain points").to_string()
+                                    );
+                                }
                             }
                         }
                         Geom::MultiPoint(pts)
@@ -146,7 +166,12 @@ impl Reader<'_> {
                         for g in members {
                             match g {
                                 Geom::LineString(l) => lines.push(l),
-                                _ => return Err(tr("A WKB multi line string may only contain line strings").to_string()),
+                                _ => {
+                                    return Err(tr(
+                                        "A WKB multi line string may only contain line strings",
+                                    )
+                                    .to_string());
+                                }
                             }
                         }
                         Geom::MultiLineString(lines)
@@ -156,7 +181,12 @@ impl Reader<'_> {
                         for g in members {
                             match g {
                                 Geom::Polygon(p) => polys.push(p),
-                                _ => return Err(tr("A WKB multi polygon may only contain polygons").to_string()),
+                                _ => {
+                                    return Err(tr(
+                                        "A WKB multi polygon may only contain polygons",
+                                    )
+                                    .to_string());
+                                }
                             }
                         }
                         Geom::MultiPolygon(polys)
@@ -172,10 +202,16 @@ impl Reader<'_> {
 
 /// Parses WKB or PostGIS EWKB.
 pub fn parse_wkb(bytes: &[u8]) -> Result<Geometry, String> {
-    let mut r = Reader { data: bytes, pos: 0 };
+    let mut r = Reader {
+        data: bytes,
+        pos: 0,
+    };
     let (geom, srid, dims) = r.geometry(0)?;
     if r.remaining() != 0 {
-        return Err(trf("{} unexpected bytes after the WKB geometry", &[&r.remaining()]));
+        return Err(trf(
+            "{} unexpected bytes after the WKB geometry",
+            &[&r.remaining()],
+        ));
     }
     Ok(Geometry { srid, dims, geom })
 }
@@ -183,7 +219,11 @@ pub fn parse_wkb(bytes: &[u8]) -> Result<Geometry, String> {
 /// Parses hex encoded (E)WKB (`0101000020E6100000…`, optional `\x` / `0x` prefix).
 pub fn parse_wkb_hex(text: &str) -> Result<Geometry, String> {
     let t = text.trim();
-    let t = t.strip_prefix("\\x").or_else(|| t.strip_prefix("0x")).or_else(|| t.strip_prefix("0X")).unwrap_or(t);
+    let t = t
+        .strip_prefix("\\x")
+        .or_else(|| t.strip_prefix("0x"))
+        .or_else(|| t.strip_prefix("0X"))
+        .unwrap_or(t);
     if !t.len().is_multiple_of(2) || !t.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(tr("Not a hex encoded WKB value").to_string());
     }
@@ -196,8 +236,14 @@ pub fn parse_wkb_hex(text: &str) -> Result<Geometry, String> {
 
 fn looks_like_hex_wkb(t: &str) -> bool {
     let t = t.trim();
-    let t = t.strip_prefix("\\x").or_else(|| t.strip_prefix("0x")).unwrap_or(t);
-    t.len() >= 10 && t.len().is_multiple_of(2) && (t.starts_with("00") || t.starts_with("01")) && t.bytes().all(|b| b.is_ascii_hexdigit())
+    let t = t
+        .strip_prefix("\\x")
+        .or_else(|| t.strip_prefix("0x"))
+        .unwrap_or(t);
+    t.len() >= 10
+        && t.len().is_multiple_of(2)
+        && (t.starts_with("00") || t.starts_with("01"))
+        && t.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 /// Decodes a geometry cell: WKT/EWKT or hex (E)WKB text, binary (E)WKB,
@@ -227,7 +273,10 @@ pub fn parse_geometry_value(value: &Value) -> Result<Geometry, String> {
                 }
             }
         },
-        other => Err(trf("Cannot read a geometry from a {} value", &[&other.variant_name()])),
+        other => Err(trf(
+            "Cannot read a geometry from a {} value",
+            &[&other.variant_name()],
+        )),
     }
 }
 
@@ -308,15 +357,19 @@ pub(crate) mod tests {
                 }
                 Geom::MultiPoint(cs) => {
                     put_u32(out, cs.len() as u32, le);
-                    cs.iter().for_each(|c| geom(out, &Geom::Point(Some(*c)), dims, le, None, ewkb));
+                    cs.iter()
+                        .for_each(|c| geom(out, &Geom::Point(Some(*c)), dims, le, None, ewkb));
                 }
                 Geom::MultiLineString(ls) => {
                     put_u32(out, ls.len() as u32, le);
-                    ls.iter().for_each(|l| geom(out, &Geom::LineString(l.clone()), dims, le, None, ewkb));
+                    ls.iter().for_each(|l| {
+                        geom(out, &Geom::LineString(l.clone()), dims, le, None, ewkb)
+                    });
                 }
                 Geom::MultiPolygon(ps) => {
                     put_u32(out, ps.len() as u32, le);
-                    ps.iter().for_each(|p| geom(out, &Geom::Polygon(p.clone()), dims, le, None, ewkb));
+                    ps.iter()
+                        .for_each(|p| geom(out, &Geom::Polygon(p.clone()), dims, le, None, ewkb));
                 }
                 Geom::GeometryCollection(gs) => {
                     put_u32(out, gs.len() as u32, le);
@@ -354,7 +407,8 @@ pub(crate) mod tests {
             for le in [true, false] {
                 for ewkb in [false, true] {
                     let bytes = write_wkb(&g, le, ewkb);
-                    let back = parse_wkb(&bytes).unwrap_or_else(|e| panic!("{wkt} le={le} ewkb={ewkb}: {e}"));
+                    let back = parse_wkb(&bytes)
+                        .unwrap_or_else(|e| panic!("{wkt} le={le} ewkb={ewkb}: {e}"));
                     assert_eq!(back, g, "{wkt} le={le} ewkb={ewkb}");
                 }
             }
@@ -371,15 +425,32 @@ pub(crate) mod tests {
         let back = parse_wkb_hex(&text).unwrap();
         assert_eq!(back.srid, Some(4326));
         assert_eq!(back.to_wkt(), "SRID=4326;POINT(106.8 -6.2)");
-        assert_eq!(parse_geometry_value(&Value::text(text.clone())).unwrap(), back);
-        assert_eq!(parse_geometry_value(&Value::text(format!("\\x{}", text.to_lowercase()))).unwrap(), back);
-        assert_eq!(parse_geometry_value(&Value::text("SRID=4326;POINT(106.8 -6.2)")).unwrap(), back);
+        assert_eq!(
+            parse_geometry_value(&Value::text(text.clone())).unwrap(),
+            back
+        );
+        assert_eq!(
+            parse_geometry_value(&Value::text(format!("\\x{}", text.to_lowercase()))).unwrap(),
+            back
+        );
+        assert_eq!(
+            parse_geometry_value(&Value::text("SRID=4326;POINT(106.8 -6.2)")).unwrap(),
+            back
+        );
         // MySQL internal format: SRID (LE) + WKB
         let mut mysql = 4326i32.to_le_bytes().to_vec();
         mysql.extend(write_wkb(&parse_wkt("POINT(1 2)").unwrap(), true, false));
         let m = parse_geometry_value(&Value::bytes(mysql)).unwrap();
-        assert_eq!((m.srid, m.to_wkt()), (Some(4326), "SRID=4326;POINT(1 2)".to_string()));
-        let plain = parse_geometry_value(&Value::bytes(write_wkb(&parse_wkt("LINESTRING(0 0,1 1)").unwrap(), false, false))).unwrap();
+        assert_eq!(
+            (m.srid, m.to_wkt()),
+            (Some(4326), "SRID=4326;POINT(1 2)".to_string())
+        );
+        let plain = parse_geometry_value(&Value::bytes(write_wkb(
+            &parse_wkt("LINESTRING(0 0,1 1)").unwrap(),
+            false,
+            false,
+        )))
+        .unwrap();
         assert_eq!(plain.type_name(), "LINESTRING");
     }
 
@@ -405,7 +476,11 @@ pub(crate) mod tests {
         }
         assert!(parse_wkb(&deep).is_err());
         // fuzz-ish: random prefixes of valid input never panic
-        let valid = write_wkb(&parse_wkt("GEOMETRYCOLLECTION(POLYGON((0 0,1 0,1 1,0 0)),POINT(1 1))").unwrap(), true, true);
+        let valid = write_wkb(
+            &parse_wkt("GEOMETRYCOLLECTION(POLYGON((0 0,1 0,1 1,0 0)),POINT(1 1))").unwrap(),
+            true,
+            true,
+        );
         for n in 0..valid.len() {
             let _ = parse_wkb(&valid[..n]);
         }

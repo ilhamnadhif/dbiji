@@ -16,8 +16,8 @@ pub(crate) mod scene;
 mod view;
 
 pub use diagram::{ColumnDisplay, ErDiagram, ErNote, ErSettings, Notation};
-pub use export::{export_png, export_svg};
-pub use view::{ErDrag, ErEvent, ErHover, ErResponse, ErViewState, ZOOM_RANGE, show_er};
+pub use export::{export_png, export_svg, svg_to_png};
 pub use geometry::{TableGeometry, table_geometry};
 pub use layout::{LayoutDirection, LayoutOptions, auto_layout, layout_incremental};
 pub use model::{DiffStatus, ErColumn, ErModel, ErRelation, ErTable, ErTableKind, table_key};
+pub use view::{ErDrag, ErEvent, ErHover, ErResponse, ErViewState, ZOOM_RANGE, show_er};

@@ -22,7 +22,10 @@ fn stats(samples: &mut [Duration]) -> (f64, f64, f64, f64) {
 }
 
 fn main() {
-    let tables: usize = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(200);
+    let tables: usize = std::env::args()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(200);
     let snapshot = demo_data::schema(tables, 42);
     let model = ErModel::from_snapshot(&snapshot, None);
     let columns: usize = model.tables.iter().map(|t| t.columns.len()).sum();
@@ -56,10 +59,23 @@ fn main() {
     let screen = Rect::from_min_size(Pos2::ZERO, vec2(1600.0, 1000.0));
     let mut time = 0.0;
     // Runs one frame; returns (UI pass + tessellation time, vertex count, canvas rect).
-    let mut frame = |ctx: &egui::Context, d: &mut ErDiagram, s: &mut ErViewState, events: Vec<Event>| -> (Duration, usize, Rect) {
+    let mut frame = |ctx: &egui::Context,
+                     d: &mut ErDiagram,
+                     s: &mut ErViewState,
+                     events: Vec<Event>|
+     -> (Duration, usize, Rect) {
         time += 1.0 / 60.0;
-        let mut input = RawInput { screen_rect: Some(screen), time: Some(time), events, ..Default::default() };
-        input.viewports.entry(egui::ViewportId::ROOT).or_default().native_pixels_per_point = Some(2.0);
+        let mut input = RawInput {
+            screen_rect: Some(screen),
+            time: Some(time),
+            events,
+            ..Default::default()
+        };
+        input
+            .viewports
+            .entry(egui::ViewportId::ROOT)
+            .or_default()
+            .native_pixels_per_point = Some(2.0);
         let mut canvas = Rect::NOTHING;
         let t = Instant::now();
         let mut out = ctx.run_ui(input, |ui| {
@@ -97,8 +113,16 @@ fn main() {
         let mut verts = 0;
         for i in 0..120 {
             state.pan += pan_step;
-            let hover = Pos2::new(300.0 + (i % 40) as f32 * 25.0, 300.0 + (i % 17) as f32 * 30.0);
-            let (d, v, _) = frame(&ctx, &mut diagram, &mut state, vec![Event::PointerMoved(hover)]);
+            let hover = Pos2::new(
+                300.0 + (i % 40) as f32 * 25.0,
+                300.0 + (i % 17) as f32 * 30.0,
+            );
+            let (d, v, _) = frame(
+                &ctx,
+                &mut diagram,
+                &mut state,
+                vec![Event::PointerMoved(hover)],
+            );
             samples.push(d);
             verts = verts.max(v);
         }
@@ -109,7 +133,11 @@ fn main() {
         );
     };
     scenario("fit (overview, panning)", None, vec2(3.0, 1.0));
-    scenario("zoom 0.35 (skeleton rows, panning)", Some(0.35), vec2(-12.0, -6.0));
+    scenario(
+        "zoom 0.35 (skeleton rows, panning)",
+        Some(0.35),
+        vec2(-12.0, -6.0),
+    );
     scenario("zoom 0.6 (all text, panning)", Some(0.6), vec2(-12.0, -6.0));
     scenario("zoom 1.0 (all text, panning)", Some(1.0), vec2(-15.0, -8.0));
 
@@ -120,7 +148,12 @@ fn main() {
     for _ in 0..5 {
         canvas = frame(&ctx, &mut diagram, &mut state, vec![]).2;
     }
-    let key = diagram.model.tables.first().map(|t| t.key.clone()).unwrap_or_default();
+    let key = diagram
+        .model
+        .tables
+        .first()
+        .map(|t| t.key.clone())
+        .unwrap_or_default();
     let table = diagram.table_rect(&key).unwrap_or(Rect::NOTHING);
     let view = dbiji_visual::ViewTransform::new(state.zoom, state.pan);
     let grab = view.to_screen(canvas.min, table.center_top() + vec2(0.0, 8.0));
@@ -130,12 +163,21 @@ fn main() {
         pressed,
         modifiers: egui::Modifiers::NONE,
     };
-    frame(&ctx, &mut diagram, &mut state, vec![Event::PointerMoved(grab)]);
+    frame(
+        &ctx,
+        &mut diagram,
+        &mut state,
+        vec![Event::PointerMoved(grab)],
+    );
     frame(&ctx, &mut diagram, &mut state, vec![press(grab, true)]);
     let mut samples = Vec::new();
     let mut p = grab;
     for i in 0..120 {
-        p += if i % 20 < 10 { vec2(4.0, 2.0) } else { vec2(-4.0, -1.0) };
+        p += if i % 20 < 10 {
+            vec2(4.0, 2.0)
+        } else {
+            vec2(-4.0, -1.0)
+        };
         let (d, _, _) = frame(&ctx, &mut diagram, &mut state, vec![Event::PointerMoved(p)]);
         samples.push(d);
     }
@@ -155,7 +197,12 @@ fn main() {
         if let Some(pos) = diagram.positions.get_mut(&key) {
             pos.x += if i % 2 == 0 { 7.0 } else { -5.0 };
         }
-        let (d, _, _) = frame(&ctx, &mut diagram, &mut state, vec![Event::PointerMoved(Pos2::new(400.0, 300.0))]);
+        let (d, _, _) = frame(
+            &ctx,
+            &mut diagram,
+            &mut state,
+            vec![Event::PointerMoved(Pos2::new(400.0, 300.0))],
+        );
         samples.push(d);
     }
     let (avg, p50, p95, max) = stats(&mut samples);

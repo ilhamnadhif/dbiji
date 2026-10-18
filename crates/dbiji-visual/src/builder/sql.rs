@@ -11,14 +11,22 @@ impl QueryModel {
     pub fn render_expr(&self, expr: &str, dialect: &dyn Dialect) -> String {
         let e = expr.trim();
         if let Some(alias) = e.strip_suffix(".*")
-            && self.table(alias).is_some() {
-                return format!("{}.*", dialect.quote_ident(alias));
-            }
+            && self.table(alias).is_some()
+        {
+            return format!("{}.*", dialect.quote_ident(alias));
+        }
         for t in &self.tables {
-            if let Some(col) = e.strip_prefix(t.alias.as_str()).and_then(|r| r.strip_prefix('.'))
-                && t.columns.iter().any(|c| c.name == col) {
-                    return format!("{}.{}", dialect.quote_ident(&t.alias), dialect.quote_ident(col));
-                }
+            if let Some(col) = e
+                .strip_prefix(t.alias.as_str())
+                .and_then(|r| r.strip_prefix('.'))
+                && t.columns.iter().any(|c| c.name == col)
+            {
+                return format!(
+                    "{}.{}",
+                    dialect.quote_ident(&t.alias),
+                    dialect.quote_ident(col)
+                );
+            }
         }
         e.to_string()
     }
@@ -48,7 +56,9 @@ impl QueryModel {
     fn render_conditions(&self, list: &[QbCondition], dialect: &dyn Dialect) -> Option<String> {
         let mut out = String::new();
         for c in list {
-            let Some(text) = self.render_condition(c, dialect) else { continue };
+            let Some(text) = self.render_condition(c, dialect) else {
+                continue;
+            };
             if out.is_empty() {
                 out.push_str(&text);
             } else {
@@ -59,7 +69,9 @@ impl QueryModel {
     }
 
     fn table_ref(&self, idx: usize, dialect: &dyn Dialect) -> String {
-        let Some(t) = self.tables.get(idx) else { return String::new() };
+        let Some(t) = self.tables.get(idx) else {
+            return String::new();
+        };
         let name = dialect.qualified(t.obj.schema.as_deref(), &t.obj.name);
         format!("{name} {}", dialect.quote_ident(&t.alias))
     }
@@ -80,7 +92,12 @@ impl QueryModel {
     fn render_from(&self, dialect: &dyn Dialect) -> String {
         let n = self.tables.len();
         let mut included: Vec<usize> = vec![0];
-        let mut aliases: BTreeSet<&str> = self.tables.first().map(|t| t.alias.as_str()).into_iter().collect();
+        let mut aliases: BTreeSet<&str> = self
+            .tables
+            .first()
+            .map(|t| t.alias.as_str())
+            .into_iter()
+            .collect();
         let mut used = vec![false; self.joins.len()];
         let mut out = format!("FROM {}", self.table_ref(0, dialect));
         while included.len() < n {
@@ -100,13 +117,19 @@ impl QueryModel {
                         if used[ji] {
                             continue;
                         }
-                        let new_is_right = j.right_alias == a && aliases.contains(j.left_alias.as_str());
-                        let new_is_left = j.left_alias == a && aliases.contains(j.right_alias.as_str());
+                        let new_is_right =
+                            j.right_alias == a && aliases.contains(j.left_alias.as_str());
+                        let new_is_left =
+                            j.left_alias == a && aliases.contains(j.right_alias.as_str());
                         if new_is_right || new_is_left {
                             used[ji] = true;
                             conds.push(self.join_condition(j, dialect));
                             if kind.is_none() {
-                                kind = Some(if new_is_right { j.kind } else { j.kind.flipped() });
+                                kind = Some(if new_is_right {
+                                    j.kind
+                                } else {
+                                    j.kind.flipped()
+                                });
                             }
                         }
                     }
@@ -122,7 +145,9 @@ impl QueryModel {
                     }
                 }
                 None => {
-                    let Some(i) = (0..n).find(|i| !included.contains(i)) else { break };
+                    let Some(i) = (0..n).find(|i| !included.contains(i)) else {
+                        break;
+                    };
                     out.push_str(&format!("\n    CROSS JOIN {}", self.table_ref(i, dialect)));
                     included.push(i);
                     if let Some(t) = self.tables.get(i) {
@@ -146,9 +171,16 @@ impl QueryModel {
         for g in &self.group_by {
             push(self.render_expr(g, dialect));
         }
-        let has_aggregates = self.select.iter().any(|s| s.visible && s.aggregate.is_some());
+        let has_aggregates = self
+            .select
+            .iter()
+            .any(|s| s.visible && s.aggregate.is_some());
         if has_aggregates {
-            for s in self.select.iter().filter(|s| s.visible && s.aggregate.is_none()) {
+            for s in self
+                .select
+                .iter()
+                .filter(|s| s.visible && s.aggregate.is_none())
+            {
                 push(self.render_expr(&s.expr, dialect));
             }
         }
@@ -171,7 +203,11 @@ impl QueryModel {
                     Some(a) => a.apply(&e),
                     None => e,
                 };
-                if s.alias.trim().is_empty() { e } else { format!("{e} AS {}", dialect.quote_ident(s.alias.trim())) }
+                if s.alias.trim().is_empty() {
+                    e
+                } else {
+                    format!("{e} AS {}", dialect.quote_ident(s.alias.trim()))
+                }
             })
             .collect();
         let kind = dialect.kind();
@@ -212,7 +248,13 @@ impl QueryModel {
             .order_by
             .iter()
             .filter(|(e, _)| !e.trim().is_empty())
-            .map(|(e, desc)| format!("{}{}", self.render_expr(e, dialect), if *desc { " DESC" } else { "" }))
+            .map(|(e, desc)| {
+                format!(
+                    "{}{}",
+                    self.render_expr(e, dialect),
+                    if *desc { " DESC" } else { "" }
+                )
+            })
             .collect();
         if !order.is_empty() {
             sql.push_str("\nORDER BY ");
@@ -276,7 +318,10 @@ mod tests {
         let d = dialect(DbKind::Postgres);
         assert_eq!(QueryModel::default().to_sql(&d), "");
         let m = model();
-        assert_eq!(m.to_sql(&d), "SELECT *\nFROM shop.orders o\n    INNER JOIN shop.customers c ON o.customer_id = c.id");
+        assert_eq!(
+            m.to_sql(&d),
+            "SELECT *\nFROM shop.orders o\n    INNER JOIN shop.customers c ON o.customer_id = c.id"
+        );
     }
 
     #[test]
@@ -287,8 +332,12 @@ mod tests {
         m.set_column_selected("c", "name", true);
         m.select[1].alias = "customer name".into();
         m.conditions.push(QbCondition::new("o.total", ">", "100"));
-        m.conditions.push(QbCondition { connector: Connector::Or, ..QbCondition::new("c.region", "IN", "'EU', 'US'") });
-        m.conditions.push(QbCondition::new("c.name", "IS NOT NULL", "ignored"));
+        m.conditions.push(QbCondition {
+            connector: Connector::Or,
+            ..QbCondition::new("c.region", "IN", "'EU', 'US'")
+        });
+        m.conditions
+            .push(QbCondition::new("c.name", "IS NOT NULL", "ignored"));
         m.conditions.push(QbCondition::new("o.total", "=", "")); // incomplete: skipped
         m.order_by.push(("o.total".into(), true));
         m.order_by.push(("c.name".into(), false));
@@ -306,19 +355,35 @@ mod tests {
         let d = dialect(DbKind::Postgres);
         let mut m = model();
         m.set_column_selected("c", "region", true);
-        m.select.push(QbSelectItem { aggregate: Some(Aggregate::Sum), alias: "revenue".into(), ..QbSelectItem::new("o.total") });
-        m.select.push(QbSelectItem { aggregate: Some(Aggregate::Count), ..QbSelectItem::new("") });
-        m.select.push(QbSelectItem { aggregate: Some(Aggregate::CountDistinct), ..QbSelectItem::new("o.customer_id") });
+        m.select.push(QbSelectItem {
+            aggregate: Some(Aggregate::Sum),
+            alias: "revenue".into(),
+            ..QbSelectItem::new("o.total")
+        });
+        m.select.push(QbSelectItem {
+            aggregate: Some(Aggregate::Count),
+            ..QbSelectItem::new("")
+        });
+        m.select.push(QbSelectItem {
+            aggregate: Some(Aggregate::CountDistinct),
+            ..QbSelectItem::new("o.customer_id")
+        });
         m.having.push(QbCondition::new("SUM(o.total)", ">", "1000"));
         let sql = m.to_sql(&d);
         assert!(sql.contains("SUM(o.total) AS revenue"), "{sql}");
         assert!(sql.contains("COUNT(*)"), "{sql}");
         assert!(sql.contains("COUNT(DISTINCT o.customer_id)"), "{sql}");
-        assert!(sql.contains("\nGROUP BY c.region\nHAVING SUM(o.total) > 1000"), "{sql}");
+        assert!(
+            sql.contains("\nGROUP BY c.region\nHAVING SUM(o.total) > 1000"),
+            "{sql}"
+        );
         // explicit group by is kept and merged without duplicates
         m.group_by.push("c.region".into());
         m.group_by.push("c.name".into());
-        assert_eq!(m.effective_group_by(&d), vec!["c.region".to_string(), "c.name".to_string()]);
+        assert_eq!(
+            m.effective_group_by(&d),
+            vec!["c.region".to_string(), "c.name".to_string()]
+        );
         // hidden items are not output and not grouped
         m.select[0].visible = false;
         assert!(!m.to_sql(&d).contains("    c.region,"));
@@ -333,12 +398,20 @@ mod tests {
         m.joins[0].kind = JoinKind::Left; // o LEFT JOIN c
         let sql = m.to_sql(&d);
         // customers come first, so the join is written from the other side
-        assert!(sql.contains("RIGHT JOIN shop.orders o ON o.customer_id = c.id"), "{sql}");
+        assert!(
+            sql.contains("RIGHT JOIN shop.orders o ON o.customer_id = c.id"),
+            "{sql}"
+        );
         m.add_table(&order_items());
         let sql = m.to_sql(&d);
-        assert!(sql.contains("INNER JOIN shop.order_items oi ON oi.order_id = o.id"), "{sql}");
+        assert!(
+            sql.contains("INNER JOIN shop.order_items oi ON oi.order_id = o.id"),
+            "{sql}"
+        );
         let mut unrelated = dbiji_core::ddl::TableDef::new(None, "regions");
-        unrelated.columns.push(dbiji_core::ddl::ColumnDef::new("id", "int"));
+        unrelated
+            .columns
+            .push(dbiji_core::ddl::ColumnDef::new("id", "int"));
         m.add_table(&unrelated);
         assert!(m.to_sql(&d).contains("CROSS JOIN regions r"));
         // multi column join conditions are combined
@@ -349,7 +422,10 @@ mod tests {
             right_column: "total".into(),
             kind: JoinKind::Inner,
         });
-        assert!(m.to_sql(&d).contains("ON oi.order_id = o.id AND oi.qty = o.total"));
+        assert!(
+            m.to_sql(&d)
+                .contains("ON oi.order_id = o.id AND oi.qty = o.total")
+        );
     }
 
     #[test]
@@ -357,7 +433,10 @@ mod tests {
         let mut m = model();
         m.limit = Some(10);
         assert!(m.to_sql(&dialect(DbKind::MySql)).ends_with("\nLIMIT 10"));
-        assert!(m.to_sql(&dialect(DbKind::MySql)).contains("FROM shop.orders o"));
+        assert!(
+            m.to_sql(&dialect(DbKind::MySql))
+                .contains("FROM shop.orders o")
+        );
         let ss = m.to_sql(&dialect(DbKind::SqlServer));
         assert!(ss.starts_with("SELECT TOP 10 *"), "{ss}");
         assert!(!ss.contains("LIMIT"));

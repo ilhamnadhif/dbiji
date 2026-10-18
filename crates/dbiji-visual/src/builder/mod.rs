@@ -12,6 +12,7 @@ mod sql;
 mod view;
 
 pub use model::{
-    Aggregate, Connector, JoinKind, OPERATORS, QbColumn, QbCondition, QbJoin, QbSelectItem, QbTable, QueryModel,
+    Aggregate, Connector, JoinKind, OPERATORS, QbColumn, QbCondition, QbJoin, QbSelectItem,
+    QbTable, QueryModel,
 };
 pub use view::{QbEvent, QbResponse, QbTab, QbViewState, show_query_builder};

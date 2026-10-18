@@ -22,7 +22,13 @@ pub enum ChartKind {
 
 impl ChartKind {
     /// All kinds in menu order.
-    pub const ALL: [ChartKind; 5] = [ChartKind::Line, ChartKind::Bar, ChartKind::Area, ChartKind::Scatter, ChartKind::Pie];
+    pub const ALL: [ChartKind; 5] = [
+        ChartKind::Line,
+        ChartKind::Bar,
+        ChartKind::Area,
+        ChartKind::Scatter,
+        ChartKind::Pie,
+    ];
 
     /// English label (route through `tr`).
     pub fn label(self) -> &'static str {
@@ -145,20 +151,44 @@ impl ChartConfig {
     /// column (line chart) or first text column (bar chart) or first
     /// numeric column (scatter); y = up to three other numeric columns.
     pub fn suggest(columns: &[ColumnMeta]) -> ChartConfig {
-        let numeric: Vec<usize> = columns.iter().enumerate().filter(|(_, c)| c.kind.is_numeric()).map(|(i, _)| i).collect();
+        let numeric: Vec<usize> = columns
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.kind.is_numeric())
+            .map(|(i, _)| i)
+            .collect();
         let temporal = columns.iter().position(|c| {
-            matches!(c.kind, DataKind::Date | DataKind::DateTime | DataKind::DateTimeTz | DataKind::Time)
+            matches!(
+                c.kind,
+                DataKind::Date | DataKind::DateTime | DataKind::DateTimeTz | DataKind::Time
+            )
         });
-        let text = columns.iter().position(|c| c.kind.is_textual() || c.kind == DataKind::Bool);
+        let text = columns
+            .iter()
+            .position(|c| c.kind.is_textual() || c.kind == DataKind::Bool);
         let (kind, x) = match (temporal, text) {
             (Some(t), _) => (ChartKind::Line, Some(t)),
             (None, Some(t)) => (ChartKind::Bar, Some(t)),
             (None, None) if numeric.len() >= 2 => (ChartKind::Scatter, numeric.first().copied()),
             _ => (ChartKind::Line, None),
         };
-        let y: Vec<usize> = numeric.into_iter().filter(|i| Some(*i) != x).take(3).collect();
-        let aggregate = if y.is_empty() { ChartAggregate::Count } else { ChartAggregate::None };
-        ChartConfig { kind, x_column: x, y_columns: y, aggregate, ..Default::default() }
+        let y: Vec<usize> = numeric
+            .into_iter()
+            .filter(|i| Some(*i) != x)
+            .take(3)
+            .collect();
+        let aggregate = if y.is_empty() {
+            ChartAggregate::Count
+        } else {
+            ChartAggregate::None
+        };
+        ChartConfig {
+            kind,
+            x_column: x,
+            y_columns: y,
+            aggregate,
+            ..Default::default()
+        }
     }
 }
 
@@ -174,14 +204,29 @@ mod tests {
             ColumnMeta::new("revenue", "numeric", DataKind::Decimal),
         ];
         let c = ChartConfig::suggest(&cols);
-        assert_eq!((c.kind, c.x_column, c.y_columns.clone()), (ChartKind::Line, Some(0), vec![2]));
+        assert_eq!(
+            (c.kind, c.x_column, c.y_columns.clone()),
+            (ChartKind::Line, Some(0), vec![2])
+        );
         let c = ChartConfig::suggest(&cols[1..]);
-        assert_eq!((c.kind, c.x_column, c.y_columns.clone()), (ChartKind::Bar, Some(0), vec![1]));
-        let nums = vec![ColumnMeta::new("a", "int", DataKind::Int), ColumnMeta::new("b", "float", DataKind::Float)];
+        assert_eq!(
+            (c.kind, c.x_column, c.y_columns.clone()),
+            (ChartKind::Bar, Some(0), vec![1])
+        );
+        let nums = vec![
+            ColumnMeta::new("a", "int", DataKind::Int),
+            ColumnMeta::new("b", "float", DataKind::Float),
+        ];
         let c = ChartConfig::suggest(&nums);
-        assert_eq!((c.kind, c.x_column, c.y_columns.clone()), (ChartKind::Scatter, Some(0), vec![1]));
+        assert_eq!(
+            (c.kind, c.x_column, c.y_columns.clone()),
+            (ChartKind::Scatter, Some(0), vec![1])
+        );
         let only_text = vec![ColumnMeta::new("t", "text", DataKind::Text)];
-        assert_eq!(ChartConfig::suggest(&only_text).aggregate, ChartAggregate::Count);
+        assert_eq!(
+            ChartConfig::suggest(&only_text).aggregate,
+            ChartAggregate::Count
+        );
         let json = serde_json::to_string(&c).unwrap();
         assert_eq!(serde_json::from_str::<ChartConfig>(&json).unwrap(), c);
     }

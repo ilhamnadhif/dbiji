@@ -5,13 +5,18 @@ with DBeaver for SQL databases — without the JVM. One native process, a
 GPU-rendered immediate-mode UI (egui), a tokio runtime for all I/O, and
 result sets that never have to fit in memory.
 
-| | DBiji target (PRD §2) | Measured (macOS, Apple M1 Pro) |
+| | DBiji target (PRD §2) | Measured (release build, macOS, Apple M1 Pro) |
 | --- | --- | --- |
-| Idle memory | < 120 MB | see `dbiji --bench memory` (≈ 75 MB debug build) |
-| 3 connections + 5 result tabs | < 250 MB | ≈ 94 MB (debug build, 20 000 rows per tab) |
+| Binary size | < 40 MB | 30.6 MB (DMG 18 MB) |
 | Cold start to first frame | < 1 s | ≈ 0.1 s |
-| 1 M rows × 100 columns scroll | < 16 ms / frame | avg < 3 ms, worst 11.7 ms |
+| Idle memory | < 120 MB | ≈ 67 MB |
+| 3 connections + 5 result tabs | < 250 MB | ≈ 82 MB (20 000 rows fetched per tab) |
+| 1 M rows scroll / jumps | < 16 ms / frame | p95 0.5 ms (1 M × 100 columns: avg < 3 ms, worst 11.7 ms) |
+| Typing in a 50 000-line script | < 16 ms / frame | p95 0.4 ms |
 | Idle CPU | ≈ 0 % | repaints only on input or finished background work |
+
+Reproduce with `dbiji --bench all` (startup, memory, grid, editor); the
+memory workload uses the servers in `DBIJI_BENCH_URLS` or `DBIJI_TEST_*`.
 
 ## Databases
 

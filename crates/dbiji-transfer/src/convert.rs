@@ -32,6 +32,10 @@ pub struct ConvertOptions {
     pub trim_text: bool,
     /// Convert empty texts to NULL for text columns too.
     pub empty_text_as_null: bool,
+    /// UTC offset in minutes (east positive) given to timestamps without an
+    /// offset when they go into time zone aware columns; `None` uses the
+    /// local time zone of the machine.
+    pub default_offset_minutes: Option<i32>,
 }
 
 impl Default for ConvertOptions {
@@ -46,6 +50,20 @@ impl Default for ConvertOptions {
             binary: None,
             trim_text: false,
             empty_text_as_null: false,
+            default_offset_minutes: None,
+        }
+    }
+}
+
+impl ConvertOptions {
+    /// A naive timestamp in the configured default offset (or the local time zone).
+    fn zoned(&self, dt: NaiveDateTime) -> Option<Value> {
+        match self.default_offset_minutes {
+            Some(m) => {
+                let offset = FixedOffset::east_opt(m.checked_mul(60)?)?;
+                dt.and_local_timezone(offset).single().map(Value::DateTimeTz)
+            }
+            None => local_tz(dt),
         }
     }
 }
@@ -142,21 +160,27 @@ fn convert_text(s: &str, kind: DataKind, opts: &ConvertOptions) -> Result<Value,
             }
         }
         DataKind::DateTimeTz => {
+            let invalid = || format!("'{t}' is not a valid time in the target time zone");
             for f in &opts.datetime_formats {
                 if let Ok(dt) = DateTime::parse_from_str(t, f) {
                     return Ok(Value::DateTimeTz(dt));
                 }
                 if let Ok(dt) = NaiveDateTime::parse_from_str(t, f) {
-                    return local_tz(dt).ok_or_else(|| format!("'{t}' does not exist in the local time zone"));
+                    return opts.zoned(dt).ok_or_else(invalid);
                 }
             }
             for f in &opts.date_formats {
                 if let Ok(d) = NaiveDate::parse_from_str(t, f) {
-                    return local_tz(d.and_time(NaiveTime::MIN))
-                        .ok_or_else(|| format!("'{t}' is not a valid local time"));
+                    return opts.zoned(d.and_time(NaiveTime::MIN)).ok_or_else(invalid);
                 }
             }
-            Value::parse_as(t, DataKind::DateTimeTz)
+            if let Some(dt) = parse_tz_strict(t) {
+                return Ok(Value::DateTimeTz(dt));
+            }
+            match (opts.default_offset_minutes, parse_datetime(t)) {
+                (Some(_), Some(dt)) => opts.zoned(dt).ok_or_else(invalid),
+                _ => Value::parse_as(t, DataKind::DateTimeTz),
+            }
         }
         DataKind::Time => {
             for f in &opts.time_formats {
@@ -314,10 +338,10 @@ fn convert_typed(v: &Value, kind: DataKind, opts: &ConvertOptions) -> Result<Val
         },
         DataKind::DateTimeTz => match v {
             V::DateTimeTz(_) => Ok(v.clone()),
-            V::DateTime(dt) => local_tz(*dt).ok_or_else(|| format!("'{dt}' does not exist in the local time zone")),
-            V::Date(d) => {
-                local_tz(d.and_time(NaiveTime::MIN)).ok_or_else(|| format!("'{d}' is not a valid local time"))
-            }
+            V::DateTime(dt) => opts.zoned(*dt).ok_or_else(|| format!("'{dt}' does not exist in the target time zone")),
+            V::Date(d) => opts
+                .zoned(d.and_time(NaiveTime::MIN))
+                .ok_or_else(|| format!("'{d}' is not a valid time in the target time zone")),
             _ => text_fallback(),
         },
         DataKind::Time => match v {
@@ -562,6 +586,21 @@ mod tests {
         );
         let dt = NaiveDate::from_ymd_opt(2024, 5, 6).unwrap().and_time(NaiveTime::MIN);
         assert_eq!(c(Value::DateTime(dt), DataKind::Date).unwrap(), Value::Date(dt.date()));
+    }
+
+    #[test]
+    fn default_offset_for_naive_timestamps() {
+        let o = ConvertOptions { default_offset_minutes: Some(7 * 60), ..Default::default() };
+        let v = convert_value(&Value::text("2024-01-02 03:04:05"), DataKind::DateTimeTz, &o).unwrap();
+        assert_eq!(v.to_text(), "2024-01-02 03:04:05+07");
+        // An explicit offset in the text wins.
+        let v = convert_value(&Value::text("2024-01-02 03:04:05-03:30"), DataKind::DateTimeTz, &o).unwrap();
+        assert_eq!(v.to_text(), "2024-01-02 03:04:05-03:30");
+        let dt = NaiveDate::from_ymd_opt(2024, 5, 6).unwrap().and_hms_opt(1, 0, 0).unwrap();
+        let v = convert_value(&Value::DateTime(dt), DataKind::DateTimeTz, &o).unwrap();
+        assert_eq!(v.to_text(), "2024-05-06 01:00:00+07");
+        let bad = ConvertOptions { default_offset_minutes: Some(100_000), ..Default::default() };
+        assert!(convert_value(&Value::DateTime(dt), DataKind::DateTimeTz, &bad).is_err());
     }
 
     #[test]

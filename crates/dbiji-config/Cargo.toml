@@ -15,19 +15,19 @@ chrono.workspace = true
 uuid.workspace = true
 directories.workspace = true
 keyring.workspace = true
-argon2.workspace = true
-chacha20poly1305.workspace = true
+argon2 = { workspace = true, features = ["zeroize"] }
+chacha20poly1305 = { workspace = true, features = ["zeroize"] }
 aes.workspace = true
 cbc.workspace = true
 zeroize.workspace = true
 rand.workspace = true
-base64.workspace = true
-hex.workspace = true
 rusqlite.workspace = true
-thiserror.workspace = true
 tracing.workspace = true
 regex.workspace = true
 parking_lot.workspace = true
+tempfile.workspace = true
+quick-xml.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+hex.workspace = true

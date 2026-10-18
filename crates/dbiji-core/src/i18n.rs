@@ -11,6 +11,7 @@ use std::sync::LazyLock;
 use std::sync::atomic::{AtomicU8, Ordering};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
 pub enum Locale {
     #[default]
     En,

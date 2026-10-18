@@ -341,6 +341,25 @@ async fn row_store_selection_export() {
 }
 
 #[tokio::test]
+async fn row_store_with_spilled_pages() {
+    // A small budget forces most pages of the grid's store to disk.
+    let store = std::sync::Arc::new(parking_lot::Mutex::new(RowStore::new(64 * 1024).with_page_rows(100)));
+    store.lock().extend((0..20_000).map(|i| vec![Value::Int(i), Value::text(format!("row {i} with some padding"))]));
+    assert!(store.lock().spilled_pages() > 0);
+    let columns = vec![ColumnMeta::new("id", "int", DataKind::Int), ColumnMeta::new("label", "text", DataKind::Text)];
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("all.csv");
+    let mut src = RowStoreSource::new(store, columns);
+    let mut sink = create_sink(ExportFormat::Csv, &ExportOptions::default(), ExportTarget::path(&path), None).unwrap();
+    let s = run_export_batched(&mut src, sink.as_mut(), 333, &Progress::new(), &CancellationToken::new()).await.unwrap();
+    assert_eq!(s.rows, 20_000);
+    let text = std::fs::read_to_string(&path).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), 20_001);
+    assert_eq!(lines[12_346], "12345,row 12345 with some padding");
+}
+
+#[tokio::test]
 async fn cursor_source_from_session() {
     let mut session = SqliteSession::memory(sqlite_dialect());
     session.exec_batch("CREATE TABLE t (x INTEGER); INSERT INTO t VALUES (1), (2), (3);");

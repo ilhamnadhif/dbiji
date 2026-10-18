@@ -86,3 +86,58 @@ pub fn shortcuts_table(ui: &mut egui::Ui, cx: &mut AppContext) {
         }
     });
 }
+
+/// Toolbar / palette icon of an action.
+pub fn action_icon(action: Action) -> &'static str {
+    use egui_phosphor::regular as i;
+    match action {
+        Action::ExecuteStatement => i::PLAY,
+        Action::ExecuteScript => i::FAST_FORWARD,
+        Action::ExecuteSelection => i::TEXT_AA,
+        Action::ExecuteInNewTab => i::PLUS_SQUARE,
+        Action::ExplainPlan | Action::ExplainAnalyze | Action::ShowPlanDiagram => i::TREE_VIEW,
+        Action::CancelQuery => i::STOP,
+        Action::NewSqlEditor => i::FILE_SQL,
+        Action::OpenSqlConsole => i::TERMINAL_WINDOW,
+        Action::SelectConnection => i::PLUGS,
+        Action::SelectSchema => i::DATABASE,
+        Action::ToggleResultsPanel | Action::MaximizeResults => i::ROWS,
+        Action::FormatSql => i::TEXT_INDENT,
+        Action::Save | Action::SaveData => i::FLOPPY_DISK,
+        Action::Find | Action::FindNext | Action::FindPrevious => i::MAGNIFYING_GLASS,
+        Action::Replace => i::SWAP,
+        Action::GoToLine => i::ARROW_LINE_DOWN,
+        Action::ToggleComment | Action::ToggleBlockComment => i::CHAT_TEXT,
+        Action::Autocomplete => i::LIST_MAGNIFYING_GLASS,
+        Action::UpperCase | Action::LowerCase => i::TEXT_AA,
+        Action::CancelDataChanges => i::ARROW_COUNTER_CLOCKWISE,
+        Action::Export => i::EXPORT,
+        Action::Import => i::DOWNLOAD_SIMPLE,
+        Action::Commit => i::CHECK_CIRCLE,
+        Action::Rollback => i::ARROW_U_UP_LEFT,
+        Action::ToggleAutoCommit => i::TOGGLE_RIGHT,
+        Action::NewConnection => i::PLUS_CIRCLE,
+        Action::EditConnection => i::PENCIL_SIMPLE,
+        Action::Connect => i::PLUGS_CONNECTED,
+        Action::Disconnect => i::PLUGS,
+        Action::Reconnect => i::ARROWS_CLOCKWISE,
+        Action::Refresh => i::ARROW_CLOCKWISE,
+        Action::ToggleNavigator => i::SIDEBAR,
+        Action::ZoomIn => i::MAGNIFYING_GLASS_PLUS,
+        Action::ZoomOut => i::MAGNIFYING_GLASS_MINUS,
+        Action::ResetZoom => i::MAGNIFYING_GLASS,
+        Action::CloseTab => i::X,
+        Action::NextTab => i::ARROW_RIGHT,
+        Action::PrevTab => i::ARROW_LEFT,
+        Action::CommandPalette => i::COMMAND,
+        Action::OpenHistory => i::CLOCK_COUNTER_CLOCKWISE,
+        Action::OpenErDiagram => i::GRAPH,
+        Action::OpenTasks => i::LIST_CHECKS,
+        Action::OpenSessionManager => i::USERS,
+        Action::AiAssistant => i::SPARKLE,
+        Action::OpenSettings => i::GEAR,
+        Action::Quit => i::SIGN_OUT,
+        Action::Help => i::QUESTION,
+        Action::ShowShortcuts => i::KEYBOARD,
+    }
+}

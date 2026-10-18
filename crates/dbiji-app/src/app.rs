@@ -431,6 +431,30 @@ impl DbijiApp {
         });
     }
 
+    /// Main toolbar (customisable in the settings).
+    fn toolbar(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 2.0;
+            let hidden = &self.settings.toolbar.hidden;
+            for id in &self.settings.toolbar.items {
+                if hidden.contains(id) {
+                    continue;
+                }
+                if id == "|" {
+                    ui.separator();
+                    continue;
+                }
+                let Some(action) = crate::keys::Action::from_id(id) else { continue };
+                let keys = crate::keys::label(&self.keymap, action);
+                let tip = if keys.is_empty() { crate::keys::action_label(action).to_string() } else { format!("{}  ({keys})", crate::keys::action_label(action)) };
+                let b = egui::Button::new(RichText::new(crate::keys::action_icon(action)).size(16.0)).frame(false).min_size(egui::vec2(26.0, 22.0));
+                if ui.add(b).on_hover_text(tip).clicked() {
+                    self.commands.push(AppCommand::Action(action));
+                }
+            }
+        });
+    }
+
     fn status_bar(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             let active = self.dock.find_active_focused().map(|(_, t)| (t.view.connection_id().map(str::to_string), t.view.title()));
@@ -508,6 +532,7 @@ impl eframe::App for DbijiApp {
         self.shortcuts(&ctx);
 
         egui::Panel::top("dbiji_menu").show(ui, |ui| self.menu_bar(ui));
+        egui::Panel::top("dbiji_toolbar").show(ui, |ui| self.toolbar(ui));
         egui::Panel::bottom("dbiji_status").exact_size(24.0).show(ui, |ui| self.status_bar(ui));
 
         let mut cx = AppContext {

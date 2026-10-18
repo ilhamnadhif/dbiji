@@ -87,6 +87,13 @@ pub(crate) fn handle_keyboard(
                 handle_ime(st, lang, options, ime, &mut out);
                 true
             }
+            Event::AccessKitActionRequest(req)
+                if req.action == egui::accesskit::Action::SetTextSelection
+                    && req.target_node == st.id.accesskit_id() =>
+            {
+                accesskit_selection(st, ctx, &event);
+                true
+            }
             Event::Key {
                 key,
                 pressed: true,
@@ -109,6 +116,26 @@ pub(crate) fn handle_keyboard(
 
 fn completion_close(st: &mut EditorState) {
     st.completion.close();
+}
+
+/// Apply a screen reader's `SetTextSelection` request (positions refer to
+/// the text runs exposed for the visible lines last frame).
+fn accesskit_selection(st: &mut EditorState, ctx: &Context, event: &Event) {
+    let Some((galley, base)) = st.a11y_view.clone() else {
+        return;
+    };
+    let mut range = egui::text::CCursorRange::default();
+    if range.on_event(ctx.os(), event, &galley, st.id) {
+        let anchor = st
+            .index
+            .char_to_byte(&st.text, base + range.secondary.index.0);
+        let cursor = st
+            .index
+            .char_to_byte(&st.text, base + range.primary.index.0);
+        st.set_selection(Selection::new(anchor, cursor));
+        st.undo.close_group();
+        st.pending_scroll = Some(ScrollRequest::Cursor);
+    }
 }
 
 /// Insert typed text (with auto-close handling for single characters).
@@ -464,6 +491,18 @@ fn handle_key(
         {
             apply_command(st, plan);
         }
+        return true;
+    }
+
+    // Tab is used for indentation, so Ctrl+Tab / Ctrl+Shift+Tab move the
+    // keyboard focus out of the editor.
+    if key == Key::Tab && m.ctrl && !m.alt {
+        let direction = if m.shift {
+            egui::FocusDirection::Previous
+        } else {
+            egui::FocusDirection::Next
+        };
+        ctx.memory_mut(|mem| mem.move_focus(direction));
         return true;
     }
 

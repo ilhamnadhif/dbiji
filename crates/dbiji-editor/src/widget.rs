@@ -443,6 +443,7 @@ impl<'a> SqlEditor<'a> {
             }
             let focused = response.has_focus();
             caret_screen = paint(ui, st, options, theme, &frame, lines.clone(), focused);
+            accessibility(ui, st, &frame, lines.clone(), focused);
             st.layout.evict(lines);
             hover_tooltips(ui, st, lang, &frame, &response, &gutter_resp);
             if focused
@@ -452,11 +453,20 @@ impl<'a> SqlEditor<'a> {
                 let to_global = ctx
                     .layer_transform_to_global(ui.layer_id())
                     .unwrap_or_default();
+                // egui-winit places the candidate window at `rect` (not at
+                // `cursor_rect`), so report the caret for both: in a large
+                // editor the text area's corner can be far from the caret.
+                let caret = if clip.intersects(caret) {
+                    caret
+                } else {
+                    Rect::from_min_size(clip.left_top(), caret.size())
+                };
+                let caret_global = to_global * caret;
                 ctx.output_mut(|o| {
                     o.ime = Some(egui::output::IMEOutput {
                         purpose: egui::IMEPurpose::Normal,
-                        rect: to_global * clip,
-                        cursor_rect: to_global * caret,
+                        rect: caret_global,
+                        cursor_rect: caret_global,
                         should_interrupt_composition: false,
                     });
                 });
@@ -659,6 +669,16 @@ fn pointer(
         }
         return;
     };
+    if (primary_pressed || secondary_pressed)
+        && (response.hovered() || gutter.hovered())
+        && st.preedit.is_some()
+    {
+        // Clicking interrupts the composition (egui asks the platform to
+        // end it); keep the pre-edit text as typed text.
+        st.preedit = None;
+        st.ime_cleared_at = None;
+        st.undo.close_group();
+    }
 
     // Gutter: line selection.
     if gutter.hovered() && primary_pressed {
@@ -764,6 +784,59 @@ fn pointer(
                 (s.clone(), word, suggestions)
             });
     }
+}
+
+/// Expose the visible lines as AccessKit text runs (with the caret /
+/// selection) when a screen reader is active. The whole document is the
+/// value of the text node; runs cover what is on screen, matching what a
+/// virtualized view can describe without laying out every line.
+fn accessibility(ui: &Ui, st: &mut EditorState, frame: &Frame, lines: Range<usize>, focused: bool) {
+    let ctx = ui.ctx().clone();
+    if lines.is_empty() || ctx.accesskit_node_builder(st.id, |_| ()).is_none() {
+        st.a11y_view = None;
+        return;
+    }
+    let start = st.index.line_start(lines.start);
+    let end = st.index.line_end(lines.end - 1);
+    let galleys: Vec<Arc<Galley>> = lines
+        .clone()
+        .map(|l| st.layout.galley(&ctx, &st.text, &st.index, l))
+        .collect();
+    let job = egui::text::LayoutJob::single_section(
+        st.text[start..end].to_owned(),
+        egui::text::TextFormat::simple(frame.font_id.clone(), Color32::PLACEHOLDER),
+    );
+    let galley = Arc::new(Galley::concat(
+        Arc::new(job),
+        &galleys,
+        ctx.pixels_per_point(),
+    ));
+    let base = st.index.byte_to_char(&st.text, start);
+    let visible_chars = st.index.byte_to_char(&st.text, end) - base;
+    let to_local = |o: usize| {
+        egui::text::CCursor::new(
+            st.index
+                .byte_to_char(&st.text, o)
+                .saturating_sub(base)
+                .min(visible_chars),
+        )
+    };
+    let range = focused
+        .then(|| egui::text::CCursorRange::two(to_local(st.sel.anchor), to_local(st.sel.cursor)));
+    let top = st.layout.line_top(lines.start);
+    let origin = egui::emath::TSTransform::from_translation(vec2(
+        frame.origin.x,
+        frame.origin.y + top + frame.text_dy,
+    ));
+    egui::text_selection::accesskit_text::update_accesskit_for_text_widget(
+        &ctx,
+        st.id,
+        range,
+        egui::accesskit::Role::MultilineTextInput,
+        origin,
+        &galley,
+    );
+    st.a11y_view = Some((galley, base));
 }
 
 fn select_lines(st: &mut EditorState, a: usize, b: usize) {

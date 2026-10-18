@@ -27,6 +27,7 @@ struct Harness {
     repaint_delay: std::time::Duration,
     modifiers: Modifiers,
     sent_modifiers: Modifiers,
+    accesskit: Option<egui::accesskit::TreeUpdate>,
 }
 
 impl Harness {
@@ -56,6 +57,7 @@ impl Harness {
             repaint_delay: std::time::Duration::ZERO,
             modifiers: Modifiers::NONE,
             sent_modifiers: Modifiers::NONE,
+            accesskit: None,
         };
         h.frame(vec![]);
         h
@@ -89,6 +91,9 @@ impl Harness {
             if let egui::OutputCommand::CopyText(t) = c {
                 self.copied.push(t.clone());
             }
+        }
+        if let Some(update) = out.platform_output.accesskit_update.clone() {
+            self.accesskit = Some(update);
         }
         self.repaint_delay = out
             .viewport_output
@@ -501,6 +506,29 @@ fn ime_macos_sequence_clear_then_commit() {
 }
 
 #[test]
+fn click_during_composition_keeps_preedit_text() {
+    let mut h = Harness::new("first\nsecond");
+    h.focus();
+    let ctx = h.ctx.clone();
+    h.state.set_cursor(&ctx, 5);
+    h.frame(vec![]);
+    h.frame(vec![Event::Ime(ImeEvent::Preedit {
+        text: "ab".into(),
+        active_range_chars: None,
+    })]);
+    assert_eq!(h.text(), "firstab\nsecond");
+    // Click on the second line: the composition is interrupted.
+    let rh = h.row_height();
+    h.click(Pos2::new(400.0, 2.0 + rh * 1.5), Modifiers::NONE);
+    h.frame(vec![Event::Ime(ImeEvent::Preedit {
+        text: "c".into(),
+        active_range_chars: None,
+    })]);
+    h.frame(vec![Event::Ime(ImeEvent::Commit("c".into()))]);
+    assert_eq!(h.text(), "firstab\nsecondc");
+}
+
+#[test]
 fn tab_on_whole_line_selection_indents() {
     let mut h = Harness::new("select 1\nselect 2");
     h.focus();
@@ -605,6 +633,51 @@ fn diagnostics_statement_spell_paint_without_panics() {
     }
     h.type_str("y");
     assert_eq!(h.state.diagnostics().len(), 3);
+}
+
+#[test]
+fn accesskit_exposes_text_runs_and_accepts_selection_requests() {
+    use egui::accesskit::{
+        Action, ActionData, ActionRequest, Role, TextPosition, TextSelection, TreeId,
+    };
+    let mut h = Harness::new("select 1;\nselect 2;");
+    h.ctx.enable_accesskit();
+    h.focus();
+    h.frame(vec![]);
+    let update = h.accesskit.take().expect("accesskit update");
+    let editor = h.state.id().accesskit_id();
+    let node = update
+        .nodes
+        .iter()
+        .find(|(id, _)| *id == editor)
+        .map(|(_, n)| n)
+        .expect("editor node");
+    assert_eq!(node.role(), Role::MultilineTextInput);
+    assert_eq!(node.value(), Some("select 1;\nselect 2;"));
+    let run = h.state.id().with(0usize).with(0usize).accesskit_id();
+    assert!(
+        update
+            .nodes
+            .iter()
+            .any(|(id, n)| *id == run && n.role() == Role::TextRun)
+    );
+    let req = ActionRequest {
+        action: Action::SetTextSelection,
+        target_tree: TreeId::ROOT,
+        target_node: editor,
+        data: Some(ActionData::SetTextSelection(TextSelection {
+            anchor: TextPosition {
+                node: run,
+                character_index: 7,
+            },
+            focus: TextPosition {
+                node: run,
+                character_index: 9,
+            },
+        })),
+    };
+    h.frame(vec![Event::AccessKitActionRequest(req)]);
+    assert_eq!(h.state.selected_text(), Some("1;"));
 }
 
 #[test]
@@ -788,6 +861,58 @@ fn option_letter_shortcut_helper_drops_typed_char() {
     .drop_without_applying_deltas();
     assert!(found);
     assert_eq!(remaining, 0);
+}
+
+#[test]
+fn ctrl_tab_moves_focus_out_of_the_editor() {
+    let ctx = egui::Context::default();
+    let lang = BasicSqlLanguage::new();
+    let options = EditorOptions::default();
+    let theme = EditorTheme::dark();
+    let mut state = EditorState::new("focus", "select 1".to_owned());
+    let mut other = String::new();
+    let mut other_id = None;
+    let mut run = |events: Vec<Event>, state: &mut EditorState, other: &mut String| {
+        let input = RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(600.0, 400.0))),
+            events,
+            ..Default::default()
+        };
+        let out = ctx.run_ui(input, |ui| {
+            other_id = Some(ui.text_edit_singleline(other).id);
+            let _ = SqlEditor::new(state, &lang, &options, &theme).show(ui);
+        });
+        out.drop_without_applying_deltas();
+    };
+    run(vec![], &mut state, &mut other);
+    state.request_focus(&ctx);
+    run(vec![], &mut state, &mut other);
+    run(vec![], &mut state, &mut other);
+    assert!(state.has_focus(&ctx));
+    // Plain Tab indents and keeps the focus.
+    let tab = |m: Modifiers| Event::Key {
+        key: Key::Tab,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: m,
+    };
+    run(vec![tab(Modifiers::NONE)], &mut state, &mut other);
+    assert!(state.has_focus(&ctx));
+    assert_eq!(state.text(), "    select 1");
+    // Ctrl+Shift+Tab moves to the previous widget.
+    run(
+        vec![
+            Event::ModifiersChanged(Modifiers::CTRL.plus(Modifiers::SHIFT)),
+            tab(Modifiers::CTRL.plus(Modifiers::SHIFT)),
+        ],
+        &mut state,
+        &mut other,
+    );
+    run(vec![], &mut state, &mut other);
+    assert!(!state.has_focus(&ctx));
+    assert_eq!(ctx.memory(|m| m.focused()), other_id);
+    assert_eq!(state.text(), "    select 1");
 }
 
 #[test]

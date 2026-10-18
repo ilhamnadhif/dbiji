@@ -126,6 +126,9 @@ pub struct EditorState {
     pub(crate) link_cache: Option<(u64, usize, Option<Range<usize>>)>,
     pub(crate) hover_link: Option<Range<usize>>,
     pub(crate) drag_select: Option<DragMode>,
+    /// Galley of the lines exposed to AccessKit last frame and the char
+    /// index of its first character (maps screen-reader selections back).
+    pub(crate) a11y_view: Option<(std::sync::Arc<egui::Galley>, usize)>,
 }
 
 /// What a primary-button drag extends.
@@ -258,6 +261,7 @@ impl EditorState {
             link_cache: None,
             hover_link: None,
             drag_select: None,
+            a11y_view: None,
         }
     }
 
@@ -1022,6 +1026,16 @@ mod tests {
             assert!(s.undo(&c));
             assert_eq!(s.text(), base);
         }
+    }
+
+    #[test]
+    fn public_types_are_send_sync_clone() {
+        fn check<T: Send + Sync + Clone>() {}
+        check::<EditorState>();
+        check::<crate::EditorOptions>();
+        check::<crate::EditorTheme>();
+        check::<Diagnostic>();
+        check::<crate::BasicSqlLanguage>();
     }
 
     #[test]

@@ -28,6 +28,7 @@ struct Harness {
     modifiers: Modifiers,
     sent_modifiers: Modifiers,
     accesskit: Option<egui::accesskit::TreeUpdate>,
+    screen: egui::Vec2,
 }
 
 impl Harness {
@@ -58,6 +59,7 @@ impl Harness {
             modifiers: Modifiers::NONE,
             sent_modifiers: Modifiers::NONE,
             accesskit: None,
+            screen: vec2(900.0, 600.0),
         };
         h.frame(vec![]);
         h
@@ -72,7 +74,7 @@ impl Harness {
         }
         all.extend(events);
         let input = RawInput {
-            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(900.0, 600.0))),
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, self.screen)),
             time: Some(self.time),
             focused: true,
             events: all,
@@ -782,6 +784,63 @@ fn word_wrap_navigation() {
     assert_eq!(h.state.line_col().0, 1);
     h.type_str("!");
     assert!(h.text().contains('!'));
+}
+
+/// Number `N` of the first visible line (lines read "LN ..."), from the
+/// first AccessKit text run.
+fn first_visible_line(h: &mut Harness) -> usize {
+    h.frame(vec![]);
+    let update = h.accesskit.take().expect("accesskit update");
+    let run = h.state.id().with(0usize).with(0usize).accesskit_id();
+    let value = update
+        .nodes
+        .iter()
+        .find(|(id, _)| *id == run)
+        .and_then(|(_, n)| n.value())
+        .expect("first text run")
+        .to_owned();
+    value
+        .strip_prefix('L')
+        .and_then(|v| v.split(' ').next())
+        .and_then(|n| n.parse().ok())
+        .unwrap_or_else(|| panic!("unexpected first row {value:?}"))
+}
+
+#[test]
+fn first_visible_line_survives_rewrap_refinement_and_zoom() {
+    // Line lengths vary so re-wrapping changes the row count above the view.
+    let text: String = (0..4_000)
+        .map(|i| format!("L{i} SELECT {}x FROM t;\n", "col, ".repeat(i % 37)))
+        .collect();
+    let mut h = Harness::new(&text);
+    h.options.word_wrap = true;
+    h.ctx.enable_accesskit();
+    h.focus();
+    let ctx = h.ctx.clone();
+    h.state.goto_line(&ctx, 3_000);
+    for _ in 0..3 {
+        h.frame(vec![]);
+    }
+    let first = first_visible_line(&mut h);
+    assert!(first > 2_000, "scrolled down: {first}");
+    // Narrower window: everything re-wraps, rows above are estimated and
+    // then measured in the background over the next frames.
+    h.screen = vec2(420.0, 600.0);
+    for _ in 0..60 {
+        h.frame(vec![]);
+        assert_eq!(first_visible_line(&mut h), first, "during refinement");
+    }
+    h.screen = vec2(1400.0, 600.0);
+    for _ in 0..60 {
+        h.frame(vec![]);
+    }
+    assert_eq!(first_visible_line(&mut h), first, "after widening");
+    // Zoom.
+    h.options.font_size = 20.0;
+    for _ in 0..10 {
+        h.frame(vec![]);
+    }
+    assert_eq!(first_visible_line(&mut h), first, "after zooming");
 }
 
 #[test]

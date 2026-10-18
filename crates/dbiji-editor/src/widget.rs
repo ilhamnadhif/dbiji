@@ -324,8 +324,33 @@ impl<'a> SqlEditor<'a> {
             wrap_width: wrap,
             pixels_per_point: ppp,
         };
+        // Keep the first visible line in place when row geometry changes
+        // (re-wrapping after a resize, font change, background refinement of
+        // estimated rows).
+        let anchor_y = st.scroll_offset.y - PAD_TOP;
+        let anchor_line = st.layout.line_at_y(anchor_y);
+        let rows_into_anchor =
+            (anchor_y - st.layout.line_top(anchor_line)) / st.layout.row_height();
         st.layout
             .set_params(&ctx, &st.text, &st.index, params, theme);
+        if st.layout.has_estimates() {
+            let rows = (st.viewport_size.y / row_h).ceil() as usize + 2;
+            if st
+                .layout
+                .refine(&ctx, &st.text, &st.index, anchor_line..anchor_line + rows)
+            {
+                ctx.request_repaint();
+            }
+        }
+        if anchor_y > 0.0 && anchor_line < st.line_count() && st.restore_scroll.is_none() {
+            let line_h = st.layout.line_rows(anchor_line) as f32 * row_h;
+            let within = (rows_into_anchor * row_h).clamp(0.0, (line_h - 1.0).max(0.0));
+            let target = PAD_TOP + st.layout.line_top(anchor_line) + within;
+            if (target - st.scroll_offset.y).abs() > 0.5 {
+                st.scroll_offset.y = target;
+                st.restore_scroll = Some(st.scroll_offset);
+            }
+        }
 
         // Keyboard.
         let had_focus = ctx.memory(|m| m.has_focus(st.id));
@@ -436,11 +461,6 @@ impl<'a> SqlEditor<'a> {
             let lines = st.layout.lines_in(vis);
             st.layout
                 .ensure_galleys(&ctx, &st.text, &st.index, lines.clone());
-            if st.layout.has_estimates()
-                && st.layout.refine(&ctx, &st.text, &st.index, lines.clone())
-            {
-                ctx.request_repaint();
-            }
             let focused = response.has_focus();
             caret_screen = paint(ui, st, options, theme, &frame, lines.clone(), focused);
             accessibility(ui, st, &frame, lines.clone(), focused);

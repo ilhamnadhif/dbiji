@@ -76,7 +76,7 @@ fn collect(cx: &AppContext) -> Vec<Item> {
         Item { icon: icon::KEYBOARD, label: tr("Keyboard shortcuts").into(), detail: String::new(), target: Target::Command(|| AppCommand::ShowShortcuts) },
         Item { icon: icon::PLUGS, label: tr("Disconnect all").into(), detail: String::new(), target: Target::Command(|| AppCommand::DisconnectAll) },
     ];
-    for c in &cx.conns.configs {
+    for c in cx.conns.configs() {
         let connected = cx.conns.is_connected(&c.id);
         if !connected {
             items.push(Item { icon: icon::PLUGS_CONNECTED, label: format!("{} {}", tr("Connect:"), c.name), detail: c.summary(), target: Target::Connect(c.id.clone()) });

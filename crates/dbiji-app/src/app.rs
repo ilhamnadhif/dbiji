@@ -2,7 +2,7 @@
 
 use crate::backend::Backend;
 use crate::command::AppCommand;
-use crate::conn::{ConnectionManager, Credentials, PromptField};
+use crate::conn::{ConnectionManager, Credentials};
 use crate::cx::AppContext;
 use crate::dialogs::Dialogs;
 use crate::nav::Navigator;
@@ -149,22 +149,20 @@ impl DbijiApp {
             AppCommand::DisconnectAll => self.conns.disconnect_all(&self.backend),
             AppCommand::NewConnection { kind, folder } => self.dialogs.new_connection(kind, folder, &self.conns),
             AppCommand::EditConnection(id) => self.dialogs.edit_connection(&id, &self.conns),
-            AppCommand::DuplicateConnection(id) => {
-                if let Some(c) = self.conns.config(&id).cloned() {
-                    let dup = c.duplicate();
-                    // copy saved secrets
-                    for slot in [
-                        dbiji_core::config::SecretSlot::Password,
-                        dbiji_core::config::SecretSlot::SshPassword,
-                        dbiji_core::config::SecretSlot::SshPassphrase,
-                        dbiji_core::config::SecretSlot::ProxyPassword,
-                    ] {
-                        if let Ok(Some(s)) = self.conns.secrets.get(&dbiji_core::config::secret_key(&id, slot)) {
-                            let _ = self.conns.secrets.set(&dbiji_core::config::secret_key(&dup.id, slot), &s);
-                        }
+            AppCommand::DuplicateConnection(id) => match self.conns.store.duplicate(&id) {
+                Ok(dup) => {
+                    if let Err(e) = self.services.secrets.read().copy_connection_secrets(&id, &dup.id) {
+                        self.toasts.error(tr("Cannot copy the saved passwords"), Some(e.to_string()));
                     }
-                    self.conns.upsert(dup);
-                    self.commands.push(AppCommand::SaveConnections);
+                    self.conns.dirty = true;
+                    self.nav.select(crate::nav::NavNode::Connection(dup.id.clone()));
+                }
+                Err(e) => self.toasts.error(tr("Cannot duplicate the connection"), Some(e.to_string())),
+            },
+            AppCommand::SaveConnections => self.conns.dirty = true,
+            AppCommand::ImportConnections => {
+                if self.dialogs.import.is_none() {
+                    self.dialogs.import = Some(crate::dialogs::import::ImportDialog::default());
                 }
             }
             AppCommand::DeleteConnection(id) => self.dialogs.confirm_delete_connection(&id, &self.conns),
@@ -347,6 +345,12 @@ impl eframe::App for DbijiApp {
         if self.first_frame {
             self.first_frame = false;
             crate::bench::report_first_frame(self.started);
+            for w in std::mem::take(&mut self.services.warnings) {
+                self.toasts.warning(tr("Configuration problem"), Some(w));
+            }
+            if self.services.secrets.read().is_locked() {
+                self.dialogs.vault_open = true;
+            }
             if self.exit_after_first_frame {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
@@ -419,10 +423,15 @@ impl eframe::App for DbijiApp {
             self.open_tab(Box::new(crate::tabs::welcome::WelcomeTab));
         }
         self.process_commands(&ctx);
+        if self.conns.dirty {
+            self.conns.dirty = false;
+            if let Err(e) = self.conns.store.save(&self.services.paths) {
+                self.toasts.error(tr("Cannot save the connections"), Some(e.to_string()));
+            }
+        }
         if self.conns.is_connecting() || self.ops.running() > 0 {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
-        let _ = PromptField::Password;
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {

@@ -153,8 +153,8 @@ impl Navigator {
     fn build(&mut self, cx: &mut AppContext) {
         let mut rows = Vec::new();
         // Folders: explicit folders plus folders used by connections.
-        let mut folders: Vec<String> = cx.conns.folders.clone();
-        for c in &cx.conns.configs {
+        let mut folders: Vec<String> = cx.conns.folders().to_vec();
+        for c in cx.conns.configs() {
             if let Some(f) = &c.folder {
                 let mut acc = String::new();
                 for part in f.split('/').filter(|p| !p.is_empty()) {
@@ -169,7 +169,7 @@ impl Navigator {
             }
         }
         folders.sort_by_key(|f| f.to_lowercase());
-        let mut configs: Vec<ConnectionConfig> = cx.conns.configs.clone();
+        let mut configs: Vec<ConnectionConfig> = cx.conns.configs().to_vec();
         configs.sort_by_key(|c| c.name.to_lowercase());
 
         // Top level folders, then connections without folder.
@@ -620,7 +620,7 @@ impl Navigator {
         self.request_child_loads(cx);
         self.build(cx);
 
-        if cx.conns.configs.is_empty() {
+        if cx.conns.configs().is_empty() {
             ui.vertical_centered(|ui| {
                 ui.add_space(20.0);
                 ui.label(RichText::new(icon::DATABASE).size(32.0).weak());

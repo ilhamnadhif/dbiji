@@ -9,7 +9,9 @@ pub mod command;
 pub mod conn;
 pub mod cx;
 pub mod dialogs;
+pub mod drivers;
 pub mod exec;
+pub mod headless;
 pub mod keys;
 pub mod nav;
 pub mod ops;
@@ -88,6 +90,25 @@ fn window_icon() -> Option<egui::IconData> {
     Some(egui::IconData { rgba: img.into_raw(), width: w, height: h })
 }
 
+/// All drivers built into this binary.
+pub fn driver_registry() -> dbiji_core::registry::DriverRegistry {
+    let reg = dbiji_core::registry::DriverRegistry::new();
+    drivers::register_all(&reg);
+    reg
+}
+
+/// Connection manager over the saved connections, the configured secret
+/// store, SSH tunnels / proxies and `~/.pgpass`.
+pub fn connection_manager(services: &services::Services) -> (conn::ConnectionManager, Vec<String>) {
+    let (store, warnings) = dbiji_config::ConnectionStore::load_or_recover(&services.paths);
+    let secrets = Arc::new(conn::ManagedSecrets(services.secrets.clone()));
+    let net = Arc::new(conn::TunnelNet { known_hosts: services.paths.known_hosts_file() });
+    let mut conns = conn::ConnectionManager::new(driver_registry(), secrets, net);
+    conns.store = store;
+    conns.pgpass = Some(Arc::new(|host: &str, port: u16, db: &str, user: &str| dbiji_config::import::pgpass::lookup(host, port, db, user)));
+    (conns, warnings)
+}
+
 /// Entry point of the `dbiji` binary.
 pub fn run() -> ExitCode {
     bench::mark_process_start();
@@ -108,7 +129,16 @@ pub fn run() -> ExitCode {
         // SAFETY: called before any other thread is spawned.
         unsafe { std::env::set_var("DBIJI_HOME", dir) };
     }
-    dbiji_core::i18n::set_locale(dbiji_core::i18n::system_locale());
+    let paths = match dbiji_config::AppPaths::new() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("cannot determine the configuration directory: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let (settings, mut warnings) = dbiji_config::settings::load_with_warnings(&paths);
+    dbiji_core::i18n::set_locale(settings.general.effective_locale());
+    settings.results.apply_memory_limits();
 
     let backend = match backend::Backend::new() {
         Ok(b) => Arc::new(b),
@@ -117,9 +147,13 @@ pub fn run() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let registry = dbiji_core::registry::DriverRegistry::new();
-    let conns = conn::ConnectionManager::new(registry, Arc::new(conn::MemorySecrets::default()), Arc::new(conn::DirectNet));
-    let settings = services::Settings::default();
+    if let Some(task) = &args.run_task {
+        return headless::run_task(&backend, &paths, &settings, task);
+    }
+    let mut services = services::Services::load(paths, &settings);
+    services.warnings.append(&mut warnings);
+    let (conns, mut conn_warnings) = connection_manager(&services);
+    services.warnings.append(&mut conn_warnings);
 
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("DBiji")
@@ -136,9 +170,9 @@ pub fn run() -> ExitCode {
         options,
         Box::new(move |cc| {
             theme::setup_fonts(&cc.egui_ctx);
-            theme::apply_theme(&cc.egui_ctx, settings.theme, settings.high_contrast);
+            theme::apply_settings(&cc.egui_ctx, &settings);
             backend.set_context(cc.egui_ctx.clone());
-            let mut app = app::DbijiApp::new(backend, conns, services::Services::default(), settings);
+            let mut app = app::DbijiApp::new(backend, conns, services, settings);
             app.exit_after_first_frame = exit_after_first;
             Ok(Box::new(app))
         }),

@@ -1541,7 +1541,9 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "dbiji-config",
  "dbiji-core",
+ "dbiji-net",
  "eframe",
  "egui",
  "egui-phosphor",

@@ -17,6 +17,8 @@ path = "src/lib.rs"
 
 [dependencies]
 dbiji-core.workspace = true
+dbiji-config.workspace = true
+dbiji-net.workspace = true
 eframe.workspace = true
 egui.workspace = true
 egui_dock.workspace = true

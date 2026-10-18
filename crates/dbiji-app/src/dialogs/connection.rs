@@ -388,7 +388,7 @@ impl ConnectionDialog {
             }
             ui.label(tr("Connection type"));
             ui.horizontal(|ui| {
-                let types = cx.conns.connection_types.clone();
+                let types = cx.conns.connection_types();
                 let current = types.iter().find(|t| t.id == self.cfg.connection_type).map(|t| t.name.clone()).unwrap_or_default();
                 egui::ComboBox::from_id_salt("conn_type").selected_text(tr(&current)).show_ui(ui, |ui| {
                     for t in &types {
@@ -708,7 +708,7 @@ impl ConnectionDialog {
                     self.cfg.folder = if folder.trim().is_empty() { None } else { Some(folder.trim().trim_matches('/').to_string()) };
                 }
                 egui::ComboBox::from_id_salt("folders").selected_text("").width(24.0).show_ui(ui, |ui| {
-                    for f in &cx.conns.folders {
+                    for f in cx.conns.folders() {
                         if ui.selectable_label(self.cfg.folder.as_deref() == Some(f), f).clicked() {
                             self.cfg.folder = Some(f.clone());
                         }

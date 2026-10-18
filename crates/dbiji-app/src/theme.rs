@@ -2,14 +2,8 @@
 
 use egui::{Color32, Context, FontDefinitions, Stroke, Theme, ThemePreference};
 
-/// User theme choice (mirrors the setting stored in `settings.json`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ThemeChoice {
-    #[default]
-    System,
-    Light,
-    Dark,
-}
+/// User theme choice (stored in `settings.json`).
+pub use dbiji_config::settings::Theme as ThemeChoice;
 
 /// Install the default fonts plus the Phosphor icon font as a fallback, so icons
 /// can be mixed into any label.
@@ -17,6 +11,29 @@ pub fn setup_fonts(ctx: &Context) {
     let mut fonts = FontDefinitions::default();
     egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
     ctx.set_fonts(fonts);
+}
+
+/// Apply the appearance preferences: theme, contrast, zoom and UI font size.
+pub fn apply_settings(ctx: &Context, settings: &dbiji_config::AppSettings) {
+    apply_theme(ctx, settings.general.theme, settings.accessibility.high_contrast);
+    let scale = settings.general.ui_scale.clamp(0.5, 3.0);
+    if (ctx.zoom_factor() - scale).abs() > f32::EPSILON {
+        ctx.set_zoom_factor(scale);
+    }
+    let size = settings.general.ui_font_size.clamp(8.0, 32.0);
+    for theme in [Theme::Light, Theme::Dark] {
+        ctx.style_mut_of(theme, |style| {
+            use egui::{FontFamily, FontId, TextStyle};
+            style.text_styles.insert(TextStyle::Body, FontId::new(size, FontFamily::Proportional));
+            style.text_styles.insert(TextStyle::Button, FontId::new(size, FontFamily::Proportional));
+            style.text_styles.insert(TextStyle::Small, FontId::new((size - 3.0).max(7.0), FontFamily::Proportional));
+            style.text_styles.insert(TextStyle::Heading, FontId::new(size + 5.0, FontFamily::Proportional));
+            style.text_styles.insert(TextStyle::Monospace, FontId::new(size, FontFamily::Monospace));
+            if settings.accessibility.reduce_motion {
+                style.animation_time = 0.0;
+            }
+        });
+    }
 }
 
 /// Apply theme preference and DBiji's style adjustments to both themes.

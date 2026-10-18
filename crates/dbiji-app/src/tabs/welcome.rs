@@ -45,7 +45,7 @@ impl TabView for WelcomeTab {
                 }
                 ui.add_space(20.0);
                 ui.label(RichText::new(tr("Recent connections")).strong());
-                let mut recent: Vec<_> = cx.conns.configs.iter().filter(|c| c.last_connected.is_some()).cloned().collect();
+                let mut recent: Vec<_> = cx.conns.configs().iter().filter(|c| c.last_connected.is_some()).cloned().collect();
                 recent.sort_by_key(|c| std::cmp::Reverse(c.last_connected));
                 if recent.is_empty() {
                     ui.weak(tr("None yet"));

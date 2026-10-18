@@ -59,12 +59,22 @@ fn median(mut v: Vec<f64>) -> f64 {
     if v.is_empty() { 0.0 } else { v[v.len() / 2] }
 }
 
+/// Benchmarks run the app against a throw-away configuration directory so
+/// they never read or modify the user's settings, connections or history.
+fn bench_home() -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("dbiji-bench-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
 fn bench_startup() -> BenchResult {
     let exe = std::env::current_exe().unwrap_or_default();
+    let home = bench_home();
     let mut samples = Vec::new();
     for _ in 0..5 {
         let t0 = Instant::now();
         let out = Command::new(&exe)
+            .env("DBIJI_HOME", &home)
             .arg("--exit-after-first-frame")
             .env("DBIJI_PRINT_STARTUP", "1")
             .stdout(Stdio::piped())
@@ -89,6 +99,7 @@ fn bench_startup() -> BenchResult {
 fn bench_memory(scenario: &str, settle: Duration, target_mb: f64) -> BenchResult {
     let exe = std::env::current_exe().unwrap_or_default();
     let child = Command::new(&exe)
+        .env("DBIJI_HOME", bench_home())
         .env("DBIJI_BENCH_SCENARIO", scenario)
         .env("DBIJI_BENCH_EXIT_AFTER_SECS", (settle.as_secs() + 3).to_string())
         .stdout(Stdio::null())
@@ -128,6 +139,7 @@ pub fn run(name: &str, report: Option<&str>) -> std::process::ExitCode {
             if r.passed { "PASS" } else { "FAIL" }
         );
     }
+    let _ = std::fs::remove_dir_all(bench_home());
     if let Some(path) = report {
         if let Ok(json) = serde_json::to_string_pretty(&results) {
             let _ = std::fs::write(path, json);

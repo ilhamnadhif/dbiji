@@ -1,6 +1,8 @@
 //! Modal and floating dialogs owned by the application.
 
 pub mod connection;
+pub mod import;
+pub mod vault;
 
 use crate::command::AppCommand;
 use crate::conn::{ConnectionManager, Credentials, PromptField};
@@ -36,6 +38,9 @@ pub struct Dialogs {
     pub palette_open: bool,
     pub about_open: bool,
     pub shortcuts_open: bool,
+    pub vault_open: bool,
+    vault: vault::VaultDialog,
+    pub import: Option<import::ImportDialog>,
 }
 
 impl Dialogs {
@@ -87,6 +92,16 @@ impl Dialogs {
         self.connection.retain(|d| d.open);
         self.show_prompts(ctx, cx);
         self.show_delete(ctx, cx);
+        if self.vault_open {
+            let mut open = true;
+            self.vault.show(ctx, cx, &mut open);
+            self.vault_open = open;
+        }
+        if let Some(d) = self.import.as_mut() {
+            if !d.show(ctx, cx) {
+                self.import = None;
+            }
+        }
         if self.about_open {
             let mut open = true;
             egui::Window::new(tr("About DBiji")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
@@ -174,7 +189,11 @@ impl Dialogs {
                     ];
                     for (slot, v) in pairs {
                         if let Some(v) = v {
-                            if let Err(e) = cx.conns.secrets.set(&secret_key(&p.conn_id, slot), v) {
+                            let key = match cx.conns.config(&p.conn_id) {
+                                Some(cfg) => cx.conns.store.network_secret_key(cfg, slot),
+                                None => secret_key(&p.conn_id, slot),
+                            };
+                            if let Err(e) = cx.conns.secrets.set(&key, v) {
                                 cx.toasts.error(tr("Cannot store the password securely"), Some(e.to_string()));
                             }
                         }

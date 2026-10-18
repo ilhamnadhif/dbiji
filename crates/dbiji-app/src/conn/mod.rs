@@ -5,13 +5,15 @@ pub mod meta;
 pub mod session;
 
 use crate::backend::{Backend, Job, Loadable};
-use dbiji_core::config::{AuthMethod, ConnectionConfig, ConnectionType, SecretSlot, secret_key};
+use dbiji_config::ConnectionStore;
+use dbiji_core::config::{AuthMethod, ConnectionConfig, ConnectionType, SecretSlot};
 use dbiji_core::driver::{ConnectParams, Driver, ServerInfo, TransactionMode};
 use dbiji_core::registry::DriverRegistry;
 use dbiji_core::{DbError, DbKind, DbResult, Dialect, Secret};
 use meta::MetadataCache;
 use session::SessionHandle;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -20,6 +22,10 @@ pub trait SecretSource: Send + Sync {
     fn get(&self, key: &str) -> DbResult<Option<Secret>>;
     fn set(&self, key: &str, value: &Secret) -> DbResult<()>;
     fn delete(&self, key: &str) -> DbResult<()>;
+    /// True while the store must be unlocked (encrypted vault).
+    fn is_locked(&self) -> bool {
+        false
+    }
 }
 
 /// Opens SSH tunnels / proxy forwarders for a connection.
@@ -218,31 +224,7 @@ struct Connected {
 
 /// Runs a shell command (pre-connect hook, password command).
 pub async fn run_shell(command: &str, timeout: Duration) -> DbResult<String> {
-    #[cfg(unix)]
-    let mut cmd = {
-        let mut c = tokio::process::Command::new("/bin/sh");
-        c.arg("-c").arg(command);
-        c
-    };
-    #[cfg(windows)]
-    let mut cmd = {
-        let mut c = tokio::process::Command::new("cmd");
-        c.arg("/C").arg(command);
-        c
-    };
-    cmd.kill_on_drop(true);
-    let out = tokio::time::timeout(timeout, cmd.output())
-        .await
-        .map_err(|_| DbError::timeout(format!("Command timed out: {command}")))?
-        .map_err(DbError::from)?;
-    if !out.status.success() {
-        return Err(DbError::config(format!(
-            "Command failed ({}): {}",
-            out.status,
-            String::from_utf8_lossy(&out.stderr).trim()
-        )));
-    }
-    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    dbiji_net::run_shell_command(command, timeout).await
 }
 
 async fn connect_task(
@@ -263,15 +245,11 @@ async fn connect_task(
             let db = cfg.database.clone().unwrap_or_default();
             pgpass.as_ref().and_then(|f| f(&cfg.host, cfg.effective_port(), &db, &user))
         }
-        AuthMethod::Command { command } => Some(Secret::new(
-            run_shell(command, Duration::from_secs(30))
+        AuthMethod::Command { command } => Some(
+            dbiji_net::password_from_command(command, Duration::from_secs(30))
                 .await
-                .map_err(|e| e.with_context("Password command"))?
-                .lines()
-                .next()
-                .unwrap_or("")
-                .to_string(),
-        )),
+                .map_err(|e| e.with_context("Password command"))?,
+        ),
         AuthMethod::None => None,
     };
     let mut params = ConnectParams::from_config(&cfg, password);
@@ -299,9 +277,8 @@ async fn connect_task(
 /// Configured + live connections.
 pub struct ConnectionManager {
     pub registry: DriverRegistry,
-    pub configs: Vec<ConnectionConfig>,
-    pub folders: Vec<String>,
-    pub connection_types: Vec<ConnectionType>,
+    /// Configured connections, folders, connection types and network profiles.
+    pub store: ConnectionStore,
     live: HashMap<String, LiveConnection>,
     connecting: HashMap<String, Job<DbResult<Connected>>>,
     failed: HashMap<String, String>,
@@ -310,6 +287,8 @@ pub struct ConnectionManager {
     pub pgpass: Option<Arc<dyn Fn(&str, u16, &str, &str) -> Option<Secret> + Send + Sync>>,
     /// Ids whose connect finished this frame (for UI reactions like expanding the tree).
     pub just_connected: Vec<String>,
+    /// The store changed and should be written to disk.
+    pub dirty: bool,
     last_keepalive: Instant,
 }
 
@@ -317,9 +296,7 @@ impl ConnectionManager {
     pub fn new(registry: DriverRegistry, secrets: Arc<dyn SecretSource>, net: Arc<dyn NetConnector>) -> Self {
         ConnectionManager {
             registry,
-            configs: Vec::new(),
-            folders: Vec::new(),
-            connection_types: ConnectionType::builtins(),
+            store: ConnectionStore::new(),
             live: HashMap::new(),
             connecting: HashMap::new(),
             failed: HashMap::new(),
@@ -327,20 +304,35 @@ impl ConnectionManager {
             net,
             pgpass: None,
             just_connected: Vec::new(),
+            dirty: false,
             last_keepalive: Instant::now(),
         }
     }
 
+    pub fn configs(&self) -> &[ConnectionConfig] {
+        &self.store.connections
+    }
+
+    pub fn folders(&self) -> &[String] {
+        &self.store.folders
+    }
+
+    /// Built-in and user defined connection types.
+    pub fn connection_types(&self) -> Vec<ConnectionType> {
+        self.store.all_connection_types()
+    }
+
     pub fn config(&self, id: &str) -> Option<&ConnectionConfig> {
-        self.configs.iter().find(|c| c.id == id)
+        self.store.get(id)
     }
 
     pub fn config_mut(&mut self, id: &str) -> Option<&mut ConnectionConfig> {
-        self.configs.iter_mut().find(|c| c.id == id)
+        self.dirty = true;
+        self.store.get_mut(id)
     }
 
     pub fn connection_type(&self, id: &str) -> ConnectionType {
-        self.connection_types.iter().find(|t| t.id == id).cloned().unwrap_or_default()
+        self.store.connection_type(id)
     }
 
     pub fn type_of(&self, conn_id: &str) -> ConnectionType {
@@ -349,23 +341,37 @@ impl ConnectionManager {
 
     /// Marker colour of a connection (explicit colour or connection type colour).
     pub fn color_of(&self, conn_id: &str) -> Option<[u8; 3]> {
-        let cfg = self.config(conn_id)?;
-        Some(cfg.color.unwrap_or_else(|| self.connection_type(&cfg.connection_type).color))
+        self.config(conn_id).map(|c| self.store.color(c))
     }
 
     pub fn upsert(&mut self, cfg: ConnectionConfig) {
-        match self.configs.iter_mut().find(|c| c.id == cfg.id) {
-            Some(c) => *c = cfg,
-            None => self.configs.push(cfg),
+        let r = if self.store.get(&cfg.id).is_some() { self.store.update(cfg) } else { self.store.add(cfg).map(|_| ()) };
+        if let Err(e) = r {
+            tracing::warn!("cannot store connection: {e}");
         }
+        self.dirty = true;
     }
 
     pub fn remove(&mut self, id: &str) {
         self.disconnect_now(id);
-        self.configs.retain(|c| c.id != id);
-        for slot in [SecretSlot::Password, SecretSlot::SshPassword, SecretSlot::SshPassphrase, SecretSlot::ProxyPassword] {
-            let _ = self.secrets.delete(&secret_key(id, slot));
+        self.store.remove(id);
+        for key in ConnectionStore::secret_keys_for(id) {
+            let _ = self.secrets.delete(&key);
         }
+        self.dirty = true;
+    }
+
+    /// Configuration with the effective SSH / proxy settings (network profile) applied.
+    pub fn effective_config(&self, cfg: &ConnectionConfig) -> ConnectionConfig {
+        let net = self.store.effective_network(cfg);
+        let mut c = cfg.clone();
+        c.ssh = net.ssh;
+        c.proxy = net.proxy;
+        c
+    }
+
+    fn secret_for(&self, cfg: &ConnectionConfig, slot: SecretSlot) -> Option<Secret> {
+        self.secrets.get(&self.store.network_secret_key(cfg, slot)).ok().flatten()
     }
 
     pub fn status(&self, id: &str) -> ConnStatus {
@@ -397,7 +403,8 @@ impl ConnectionManager {
     pub fn test_connection(&self, backend: &Backend, cfg: ConnectionConfig, prompted: Credentials) -> Job<DbResult<String>> {
         let driver = self.registry.get(cfg.kind);
         let conn_type = self.connection_type(&cfg.connection_type);
-        let creds = self.credentials(&cfg.id, &prompted);
+        let creds = self.credentials_for(&cfg, &prompted);
+        let cfg = self.effective_config(&cfg);
         let net = self.net.clone();
         let pgpass = self.pgpass.clone();
         backend.spawn(async move {
@@ -432,7 +439,7 @@ impl ConnectionManager {
     pub fn missing_credentials(&self, id: &str) -> Vec<PromptField> {
         let Some(cfg) = self.config(id) else { return Vec::new() };
         let mut out = Vec::new();
-        let saved = |slot| self.secrets.get(&secret_key(id, slot)).ok().flatten().is_some();
+        let saved = |slot| self.secret_for(cfg, slot).is_some();
         match cfg.auth {
             AuthMethod::Prompt => out.push(PromptField::Password),
             AuthMethod::Password if !cfg.kind.is_file_based() && !(cfg.save_password && saved(SecretSlot::Password)) => {
@@ -440,7 +447,8 @@ impl ConnectionManager {
             }
             _ => {}
         }
-        if let Some(ssh) = cfg.ssh.as_ref().filter(|s| s.enabled) {
+        let net = self.store.effective_network(cfg);
+        if let Some(ssh) = net.ssh.as_ref() {
             match &ssh.auth {
                 dbiji_core::config::SshAuth::Password if !(ssh.save_credentials && saved(SecretSlot::SshPassword)) => {
                     out.push(PromptField::SshPassword)
@@ -448,7 +456,7 @@ impl ConnectionManager {
                 _ => {}
             }
         }
-        if let Some(p) = cfg.proxy.as_ref().filter(|p| p.enabled && p.user.is_some()) {
+        if let Some(p) = net.proxy.as_ref().filter(|p| p.user.is_some()) {
             if !(p.save_credentials && saved(SecretSlot::ProxyPassword)) {
                 out.push(PromptField::ProxyPassword);
             }
@@ -458,7 +466,15 @@ impl ConnectionManager {
 
     /// Collect saved credentials, overlaid with the prompted ones.
     pub fn credentials(&self, id: &str, prompted: &Credentials) -> Credentials {
-        let get = |slot| self.secrets.get(&secret_key(id, slot)).ok().flatten();
+        match self.config(id) {
+            Some(cfg) => self.credentials_for(cfg, prompted),
+            None => prompted.clone(),
+        }
+    }
+
+    /// Saved credentials of `cfg` (also an unsaved draft), overlaid with the prompted ones.
+    pub fn credentials_for(&self, cfg: &ConnectionConfig, prompted: &Credentials) -> Credentials {
+        let get = |slot| self.secret_for(cfg, slot);
         Credentials {
             password: prompted.password.clone().or_else(|| get(SecretSlot::Password)),
             ssh_password: prompted.ssh_password.clone().or_else(|| get(SecretSlot::SshPassword)),
@@ -472,7 +488,7 @@ impl ConnectionManager {
         if self.live.contains_key(id) || self.connecting.contains_key(id) {
             return Ok(());
         }
-        let cfg = self.config(id).cloned().ok_or_else(|| DbError::config("Unknown connection"))?;
+        let cfg = self.config(id).map(|c| self.effective_config(c)).ok_or_else(|| DbError::config("Unknown connection"))?;
         let driver = self
             .registry
             .get(cfg.kind)
@@ -614,7 +630,57 @@ impl SecretSource for MemorySecrets {
     }
 }
 
-/// Connector for direct connections only.
+/// Secret source backed by the configured Keychain / encrypted vault.
+pub struct ManagedSecrets(pub Arc<parking_lot::RwLock<dbiji_config::SecretsManager>>);
+
+impl SecretSource for ManagedSecrets {
+    fn get(&self, key: &str) -> DbResult<Option<Secret>> {
+        self.0.read().get(key)
+    }
+    fn set(&self, key: &str, value: &Secret) -> DbResult<()> {
+        self.0.read().set(key, value)
+    }
+    fn delete(&self, key: &str) -> DbResult<()> {
+        self.0.read().delete(key)
+    }
+    fn is_locked(&self) -> bool {
+        self.0.read().is_locked()
+    }
+}
+
+/// Opens SSH tunnels and SOCKS5 / HTTP proxies through `dbiji-net`
+/// (the connection's settings are already the effective ones).
+pub struct TunnelNet {
+    pub known_hosts: PathBuf,
+}
+
+#[async_trait::async_trait]
+impl NetConnector for TunnelNet {
+    async fn open(&self, cfg: &ConnectionConfig, creds: &Credentials, host: &str, port: u16) -> DbResult<Option<TunnelGuard>> {
+        let ssh = cfg.ssh.clone().filter(|s| s.enabled);
+        let proxy = cfg.proxy.clone().filter(|p| p.enabled);
+        if ssh.is_none() && proxy.is_none() {
+            return Ok(None);
+        }
+        let mut spec = dbiji_net::TunnelSpec::new(host, port, self.known_hosts.clone());
+        if let Some(p) = proxy {
+            spec = spec.with_proxy(p, creds.proxy_password.clone());
+        }
+        if let Some(s) = ssh {
+            spec = spec.with_ssh(s, creds.ssh_password.clone(), creds.ssh_passphrase.clone());
+        }
+        let tunnel = Arc::new(dbiji_net::open_tunnel(spec).await?);
+        let alive = tunnel.clone();
+        Ok(Some(TunnelGuard {
+            local_host: tunnel.local_host(),
+            local_port: tunnel.local_port(),
+            alive: Box::new(move || alive.is_alive()),
+            guard: Box::new(tunnel),
+        }))
+    }
+}
+
+/// Connector for direct connections only (tests).
 pub struct DirectNet;
 
 #[async_trait::async_trait]

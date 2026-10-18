@@ -49,7 +49,7 @@ Legend: ✅ implemented and tested · 🟡 implemented, partially tested ·
 | Bookmarks | ✅ | `Project::add_bookmark`, Project panel | `dbiji-config::project` unit tests |
 | Projects and project explorer (scripts, diagrams) | ✅ | `dbiji-config::project`, `project_view.rs` | `dbiji-config::project` unit tests |
 | Metadata search | ✅ | `Session::search_metadata`, `tabs/search.rs` | driver suites *(env)* |
-| Full-text / data search | ✅ | `tabs/search.rs` (data search over text columns) | `dbiji-app::tools_e2e` *(env)* |
+| Full-text / data search | ✅ | `tabs/search.rs` (data search over text columns) | `dbiji-app::tabs_smoke` |
 | Properties editor | ✅ | object editor → Properties (+ virtual model) | `dbiji-app::tabs_smoke` |
 
 ## SQL editor
@@ -131,13 +131,13 @@ Legend: ✅ implemented and tested · 🟡 implemented, partially tested ·
 | --- | --- | --- | --- |
 | Schema compare → DDL script | ✅ | `dbiji-compare`, `tabs/compare.rs` | `dbiji-app::app_e2e::schema_compare_gate` (DDL makes schemas identical; PostgreSQL, MySQL, MariaDB) *(env)* |
 | HTML report, diagram diff, Liquibase changelog | ✅ | `html_report`, *Diff diagram*, `liquibase_changelog` | `dbiji-compare` tests |
-| Data compare with sync script | ✅ | `run_data_compare`, `tabs/data_compare.rs` | `dbiji-compare` data tests, `dbiji-app::tools_e2e` *(env)* |
+| Data compare with sync script | ✅ | `run_data_compare`, `tabs/data_compare.rs` | `dbiji-compare` data tests, `dbiji-app::tabs_smoke` |
 
 ## Tasks
 
 | Feature | Status | Where | Tests |
 | --- | --- | --- | --- |
-| Task management, SQL script tasks, composite tasks | ✅ | `dbiji-tasks`, `tabs/tasks.rs`, `taskexec.rs` | `dbiji-tasks` tests, `dbiji-app::tasks_e2e` *(env)* |
+| Task management, SQL script tasks, composite tasks | ✅ | `dbiji-tasks`, `tabs/tasks.rs`, `taskexec.rs` | `dbiji-tasks` tests, `dbiji-app::headless_task`, `dbiji-tasks` tests |
 | Scheduler (in app, and launchd / cron / schtasks when closed) | ✅ | `Scheduler`, `dbiji_tasks::os`, `dbiji --run-task` | `dbiji-tasks` scheduler tests (DST, catch-up, cancellation) |
 
 ## Administration
@@ -146,7 +146,7 @@ Legend: ✅ implemented and tested · 🟡 implemented, partially tested ·
 | --- | --- | --- | --- |
 | Backup and restore with the vendor tools | ✅ | `Driver::backup_command`/`restore_command`, `tools.rs`, `tabs/dbtools.rs` | `dbiji-app::backup_e2e` (PostgreSQL custom + plain; MySQL / MariaDB when the client tools are installed) *(env)* |
 | Session manager, lock manager | ✅ | `tabs/admin.rs` | driver admin tests *(env)* |
-| Maintenance tools | ✅ | `Dialect::maintenance_ops`, `tabs/dbtools.rs` | `dbiji-app::tasks_e2e` (SQL preview) |
+| Maintenance tools | ✅ | `Dialect::maintenance_ops`, `tabs/dbtools.rs` | `dbiji-app::tabs_smoke` |
 | PostgreSQL debugger | ✅ | `PgSession::debug_routine` (pldebugger), `DebuggerTab` | `dbiji-driver-postgres` debugger test *(env, pldebugger)* |
 | Server health dashboard | ✅ | `DashboardTab` | `dbiji-app::tabs_smoke` |
 
@@ -154,7 +154,7 @@ Legend: ✅ implemented and tested · 🟡 implemented, partially tested ·
 
 | Feature | Status | Where | Tests |
 | --- | --- | --- | --- |
-| Create tables, columns, indexes, constraints, foreign keys, triggers | ✅ | `tabs/table_designer.rs`, `DdlGenerator` | `dbiji-app::tools_e2e` *(env)*, driver DDL round trips |
+| Create tables, columns, indexes, constraints, foreign keys, triggers | ✅ | `tabs/table_designer.rs`, `DdlGenerator` | `dbiji-app::tabs_smoke`, driver DDL round trips |
 | Partitions | 🟡 | shown in the object editor; created via SQL (the designer does not edit partition schemes) | driver metadata tests |
 | DDL generation | ✅ | `Session::object_ddl`, `DdlGenerator` | driver DDL round-trip tests |
 | Sample database | ✅ | *Help → Create sample database* (`sample.rs`) | `dbiji-app::sample::tests` |
@@ -173,7 +173,7 @@ Legend: ✅ implemented and tested · 🟡 implemented, partially tested ·
 
 | Feature | Status | Where | Tests |
 | --- | --- | --- | --- |
-| Chat, query suggestions, explanations, error fixes, object descriptions | ✅ | `dbiji-ai`, `tabs/ai.rs` | `dbiji-ai` tests (mock HTTP server), `dbiji-app::tools_e2e` (prompt assembly) |
+| Chat, query suggestions, explanations, error fixes, object descriptions | ✅ | `dbiji-ai`, `tabs/ai.rs` | `dbiji-ai` tests (mock HTTP server), `dbiji-app::tabs_smoke` (prompt assembly) |
 | Several model providers | ✅ | Anthropic, OpenAI-compatible servers | `dbiji-ai` tests |
 
 ## Databases (PRD §7)

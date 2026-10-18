@@ -215,3 +215,94 @@ fn errors_stop_the_script_and_cancel_works() {
         assert!(errors(&events).is_empty(), "{name}: after cancel {:?}", errors(&events));
     }
 }
+
+fn set_schema(backend: &Backend, session: &dbiji_app::conn::session::SessionHandle, schema: &str) {
+    let s = session.clone();
+    let schema = schema.to_string();
+    let mut job = backend.spawn(async move { s.lock().await.set_current_schema(&schema).await });
+    let mut out = None;
+    wait_until(
+        || {
+            out = job.poll();
+            out.is_some()
+        },
+        "set schema",
+    );
+    out.unwrap().expect("set current schema");
+}
+
+/// PRD gate: schema compare produces DDL that, executed on the target, makes
+/// both schemas identical.
+#[test]
+fn schema_compare_gate() {
+    use dbiji_compare::{CompareOptions, ScriptOptions, migration_script, schema_diff};
+    use dbiji_core::ddl::SnapshotOptions;
+    use dbiji_core::meta::SchemaRef;
+    for (name, url) in servers() {
+        let backend = Backend::new().unwrap();
+        let (cm, id) = connect(&backend, &url);
+        let session = cm.live(&id).unwrap().main.clone();
+        let sfx = &uuid::Uuid::new_v4().simple().to_string()[..8];
+        let is_pg = name == "postgres";
+        let (a, b) = (format!("dbiji_cmp_a_{sfx}"), format!("dbiji_cmp_b_{sfx}"));
+        let create = if is_pg { "CREATE SCHEMA" } else { "CREATE DATABASE" };
+        let drop = if is_pg { "DROP SCHEMA" } else { "DROP DATABASE" };
+        let cascade = if is_pg { " CASCADE" } else { "" };
+        let dt = if is_pg { "TIMESTAMP" } else { "DATETIME" };
+        let source = [
+            format!("{create} {a}"),
+            format!("{create} {b}"),
+            format!("CREATE TABLE {a}.customer (id INT PRIMARY KEY, name VARCHAR(80) NOT NULL, email VARCHAR(120), created {dt})"),
+            format!("CREATE INDEX ix_customer_name ON {a}.customer (name)"),
+            format!("CREATE TABLE {a}.orders (id INT PRIMARY KEY, customer_id INT NOT NULL, total DECIMAL(12,2) DEFAULT 0, CONSTRAINT fk_orders_customer FOREIGN KEY (customer_id) REFERENCES {a}.customer (id))"),
+            format!("CREATE VIEW {a}.big_orders AS SELECT id, total FROM {a}.orders WHERE total > 100"),
+            format!("CREATE TABLE {b}.customer (id INT PRIMARY KEY, name VARCHAR(20), legacy_code CHAR(3))"),
+            format!("CREATE TABLE {b}.obsolete (x INT)"),
+        ];
+        let refs: Vec<&str> = source.iter().map(String::as_str).collect();
+        let events = run_script(&backend, &cm, &id, &refs);
+        assert!(errors(&events).is_empty(), "{name}: setup {:?}", errors(&events));
+        let snap = |schema: &str| {
+            let s = session.clone();
+            let schema = SchemaRef::new(None, Some(schema.to_string()));
+            let job = backend.spawn(async move { s.lock().await.schema_snapshot(&schema, &SnapshotOptions::full()).await });
+            let mut job = job;
+            let mut out = None;
+            wait_until(
+                || {
+                    out = job.poll();
+                    out.is_some()
+                },
+                "snapshot",
+            );
+            out.unwrap().expect("snapshot")
+        };
+        let sa = snap(&a);
+        let sb = snap(&b);
+        let diff = schema_diff(&sa, &sb, &CompareOptions::default());
+        assert!(diff.has_differences(), "{name}: schemas differ before the migration");
+        let script = migration_script(&diff, &sa, &sb, session.dialect().as_ref(), &ScriptOptions::full_sync());
+        // Like the compare tab: run the migration with the target schema active,
+        // so unqualified names in view bodies and foreign keys resolve there.
+        let previous = cm.live(&id).unwrap().current_schema.clone().or(cm.live(&id).unwrap().current_database.clone());
+        set_schema(&backend, &session, &b);
+        let refs: Vec<&str> = script.iter().map(String::as_str).collect();
+        let events = run_script(&backend, &cm, &id, &refs);
+        if let Some(p) = &previous {
+            set_schema(&backend, &session, p);
+        }
+        let errs = errors(&events);
+        let sb2 = snap(&b);
+        let after = schema_diff(&sa, &sb2, &CompareOptions::default());
+        let remaining: Vec<String> = after
+            .changed_items()
+            .map(|i| format!("{:?} {} {:?} {:?}", i.kind, i.qualified_name(), i.status, i.changes.iter().map(|c| (&c.property, &c.source, &c.target)).collect::<Vec<_>>()))
+            .collect();
+        // Clean up before asserting.
+        let cleanup = [format!("{drop} {a}{cascade}"), format!("{drop} {b}{cascade}")];
+        let refs: Vec<&str> = cleanup.iter().map(String::as_str).collect();
+        run_script(&backend, &cm, &id, &refs);
+        assert!(errs.is_empty(), "{name}: migration failed {errs:?}\nscript:\n{}", script.join(";\n"));
+        assert!(remaining.is_empty(), "{name}: still different after the migration: {remaining:#?}\nscript:\n{}", script.join(";\n"));
+    }
+}

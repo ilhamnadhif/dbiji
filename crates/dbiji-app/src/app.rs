@@ -190,6 +190,12 @@ impl DbijiApp {
             AppCommand::OpenDashboard { connection } => {
                 self.open_tab(Box::new(crate::tabs::admin::DashboardTab::new(connection)));
             }
+            AppCommand::OpenQueryBuilder { connection, schema } => {
+                self.open_tab(Box::new(crate::tabs::query_builder::QueryBuilderTab::new(connection, schema)));
+            }
+            AppCommand::OpenSchemaCompare { connection, schema } => {
+                self.open_tab(Box::new(crate::tabs::compare::SchemaCompareTab::new(connection, schema)));
+            }
             AppCommand::OpenHistory => {
                 self.open_tab(Box::new(crate::tabs::history::HistoryTab::default()));
             }

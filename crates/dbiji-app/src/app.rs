@@ -181,6 +181,15 @@ impl DbijiApp {
             AppCommand::OpenErDiagram { connection, schema, tables } => {
                 self.open_tab(Box::new(crate::tabs::er::ErTab::new(connection, schema, tables)));
             }
+            AppCommand::OpenSessionManager { connection } => {
+                self.open_tab(Box::new(crate::tabs::admin::SessionManagerTab::new(connection)));
+            }
+            AppCommand::OpenLockManager { connection } => {
+                self.open_tab(Box::new(crate::tabs::admin::LockManagerTab::new(connection)));
+            }
+            AppCommand::OpenDashboard { connection } => {
+                self.open_tab(Box::new(crate::tabs::admin::DashboardTab::new(connection)));
+            }
             AppCommand::OpenHistory => {
                 self.open_tab(Box::new(crate::tabs::history::HistoryTab::default()));
             }

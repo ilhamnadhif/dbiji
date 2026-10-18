@@ -16,13 +16,35 @@ use std::path::Path;
 pub const PASSWORD_ENV: &str = "MYSQL_PWD";
 
 fn tool(flavor: Flavor, custom: Option<&str>, mysql: &str, mariadb: &str) -> String {
+    tool_with(flavor, custom, mysql, mariadb, on_path)
+}
+
+/// MariaDB prefers its own `mariadb-*` tools and falls back to the MySQL
+/// names when only those are installed (they work with MariaDB servers).
+fn tool_with(
+    flavor: Flavor,
+    custom: Option<&str>,
+    mysql: &str,
+    mariadb: &str,
+    installed: impl Fn(&str) -> bool,
+) -> String {
     match custom.map(str::trim).filter(|s| !s.is_empty()) {
         Some(p) => p.to_string(),
         None => match flavor {
             Flavor::MySql => mysql.to_string(),
+            Flavor::MariaDb if !installed(mariadb) && installed(mysql) => mysql.to_string(),
             Flavor::MariaDb => mariadb.to_string(),
         },
     }
+}
+
+fn on_path(program: &str) -> bool {
+    std::env::var_os("PATH").is_some_and(|paths| {
+        std::env::split_paths(&paths).any(|dir| {
+            let p = dir.join(program);
+            p.is_file() || (cfg!(windows) && p.with_extension("exe").is_file())
+        })
+    })
 }
 
 /// Connection options shared by all tools.
@@ -314,7 +336,11 @@ mod tests {
             ..Default::default()
         };
         let c = backup_command(Flavor::MariaDb, &params(), &opts).unwrap();
-        assert_eq!(c.program, "mariadb-dump");
+        assert!(
+            c.program == "mariadb-dump" || c.program == "mysqldump",
+            "{}",
+            c.program
+        );
         assert!(c.args.contains(&"--no-data".to_string()));
         assert!(
             c.args.contains(&"--ssl".to_string())
@@ -402,5 +428,44 @@ mod tests {
         let c = client_command(Flavor::MariaDb, &p, Path::new("/s.sql")).unwrap();
         assert!(c.args.contains(&"--skip-ssl".to_string()));
         assert!(c.env.is_empty());
+    }
+
+    #[test]
+    fn mariadb_falls_back_to_mysql_tools() {
+        let only_mysql = |p: &str| p == "mysqldump";
+        assert_eq!(
+            tool_with(
+                Flavor::MariaDb,
+                None,
+                "mysqldump",
+                "mariadb-dump",
+                only_mysql
+            ),
+            "mysqldump"
+        );
+        assert_eq!(
+            tool_with(Flavor::MariaDb, None, "mysqldump", "mariadb-dump", |_| true),
+            "mariadb-dump"
+        );
+        assert_eq!(
+            tool_with(Flavor::MariaDb, None, "mysqldump", "mariadb-dump", |_| {
+                false
+            }),
+            "mariadb-dump"
+        );
+        assert_eq!(
+            tool_with(
+                Flavor::MariaDb,
+                Some("/x/dump"),
+                "mysqldump",
+                "mariadb-dump",
+                only_mysql
+            ),
+            "/x/dump"
+        );
+        assert_eq!(
+            tool_with(Flavor::MySql, None, "mysqldump", "mariadb-dump", |_| false),
+            "mysqldump"
+        );
     }
 }

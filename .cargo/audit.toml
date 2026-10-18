@@ -1,0 +1,13 @@
+# Advisories reviewed and accepted; revisit when a fixed release exists.
+[advisories]
+ignore = [
+    # rsa (via russh, SSH tunnels): Marvin timing side channel, no fixed
+    # release. DBiji only signs the SSH user-auth challenge once per tunnel.
+    "RUSTSEC-2023-0071",
+    # zip 8 (via calamine 0.36, the newest release): all three are about
+    # ZipArchive::extract() writing to disk. Neither calamine nor DBiji calls
+    # extract(); spreadsheets are read entry by entry in memory.
+    "RUSTSEC-2026-0367",
+    "RUSTSEC-2026-0368",
+    "RUSTSEC-2026-0369",
+]

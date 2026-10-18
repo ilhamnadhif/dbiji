@@ -2,6 +2,13 @@
 //! Tabs live in an `egui_dock` tree so they can be moved, split and detached.
 
 pub mod admin;
+pub mod ai;
+pub mod data_compare;
+pub mod dbtools;
+pub mod search;
+pub mod table_designer;
+pub mod tasks;
+pub mod transfer;
 pub mod compare;
 pub mod er;
 pub mod history;

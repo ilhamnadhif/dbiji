@@ -324,6 +324,48 @@ impl DbijiApp {
                 }
             }
             AppCommand::OpenSavedDiagram(path) => self.open_saved_diagram(&path),
+            AppCommand::OpenExport { connection, objects, sql } => {
+                self.open_tab(Box::new(crate::tabs::transfer::ExportTab::new(connection, objects, sql)));
+            }
+            AppCommand::OpenImport { connection, table, schema } => {
+                self.open_tab(Box::new(crate::tabs::transfer::ImportTab::new(connection, table, schema)));
+            }
+            AppCommand::OpenMigration { connection, objects } => {
+                self.open_tab(Box::new(crate::tabs::transfer::MigrationTab::new(connection, objects)));
+            }
+            AppCommand::OpenMockData { connection, table } => {
+                self.open_tab(Box::new(crate::tabs::transfer::MockDataTab::new(connection, table)));
+            }
+            AppCommand::OpenTasks => {
+                self.open_tab(Box::new(crate::tabs::tasks::TasksTab::new()));
+            }
+            AppCommand::OpenBackup { connection, schema, restore } => {
+                self.open_tab(Box::new(crate::tabs::dbtools::BackupTab::new(connection, schema, restore)));
+            }
+            AppCommand::OpenMaintenance { connection, objects } => {
+                self.open_tab(Box::new(crate::tabs::dbtools::MaintenanceTab::new(connection, objects)));
+            }
+            AppCommand::ChangePassword { connection } => {
+                self.open_tab(Box::new(crate::tabs::dbtools::ChangePasswordTab::new(connection)));
+            }
+            AppCommand::OpenDebugger { connection, routine } => {
+                self.open_tab(Box::new(crate::tabs::dbtools::DebuggerTab::new(connection, routine)));
+            }
+            AppCommand::OpenAiAssistant { connection } => {
+                self.open_tab(Box::new(crate::tabs::ai::AiAssistantTab::new(connection)));
+            }
+            AppCommand::OpenDataCompare { connection, table } => {
+                self.open_tab(Box::new(crate::tabs::data_compare::DataCompareTab::new(connection, table)));
+            }
+            AppCommand::CreateTable { connection, schema } => {
+                self.open_tab(Box::new(crate::tabs::table_designer::TableDesignerTab::create(connection, schema)));
+            }
+            AppCommand::EditTable { connection, table } => {
+                self.open_tab(Box::new(crate::tabs::table_designer::TableDesignerTab::edit(connection, table)));
+            }
+            AppCommand::OpenSearch { connection, data } => {
+                self.open_tab(Box::new(crate::tabs::search::SearchTab::new(connection, data)));
+            }
             AppCommand::OpenHistory => {
                 self.open_tab(Box::new(crate::tabs::history::HistoryTab::default()));
             }

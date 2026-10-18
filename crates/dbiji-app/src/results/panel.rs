@@ -503,7 +503,20 @@ impl ResultPanel {
                 }
                 None => self.status = Some((tr("Use ⌘V to paste into the grid.").to_string(), false)),
             },
-            GridAction::Export { .. } => cx.push(AppCommand::OpenExport { connection: self.conn.clone(), objects: self.table.clone().into_iter().collect(), sql: Some(self.src.sql.clone()) }),
+            GridAction::Export { rows, columns } => {
+                let rows = rows.map(|r| crate::tabs::transfer::grid_store_rows(&self.model, &r));
+                let cols: Vec<usize> = columns.into_iter().filter(|c| *c < self.model.columns().len()).collect();
+                let tab = crate::tabs::transfer::ExportTab::from_result(
+                    self.conn.clone(),
+                    self.title.clone(),
+                    self.src.store.clone(),
+                    self.model.columns().to_vec(),
+                    rows,
+                    cols,
+                    Some(self.src.sql.clone()),
+                );
+                cx.push(AppCommand::OpenTab(Box::new(tab)));
+            }
             GridAction::GeneratedSql { sql, .. } => self.status = Some((trf("{} characters of SQL generated", &[&sql.len()]), false)),
             GridAction::DefineVirtualKey { table } => {
                 let t = table.or(self.table.clone());

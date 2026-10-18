@@ -1433,3 +1433,906 @@ The result may have more than {} rows; fetching them may take a while.	Hasil mun
 These tabs have unsaved changes:	Tab berikut memiliki perubahan yang belum disimpan:
 Bookmark	Bookmark
 Script	Skrip
+"{}" is registered with {}	"{}" terdaftar di {}
+"{}" was removed from {}	"{}" dihapus dari {}
+# digit, ? upper case letter, * letter or digit, \\ escapes the next character	# digit, ? huruf besar, * huruf atau digit, \\ meloloskan karakter berikutnya
+(choose columns)	(pilih kolom)
+(connection database)	(database koneksi)
+(current database)	(database saat ini)
+(current user)	(pengguna saat ini)
+(local time)	(waktu lokal)
+(missing connection)	(koneksi tidak ada)
+(missing task)	(task tidak ada)
+(not imported)	(tidak diimpor)
+(paste a definition)	(tempel definisi)
+({} older messages not shown)	({} pesan lama tidak ditampilkan)
+({} source rows, {} target rows, {})	({} baris sumber, {} baris target, {})
++ {} expression(s)	+ {} ekspresi
+-- nothing to run	-- tidak ada yang dijalankan
+A query to export is empty.	Query untuk diekspor kosong.
+AI settings	Pengaturan AI
+Abort	Batalkan
+Add all shown	Tambah semua yang tampil
+Add at least one column.	Tambahkan minimal satu kolom.
+Add check	Tambah check
+Add column	Tambah kolom
+Add foreign key	Tambah foreign key
+Add index	Tambah index
+Add option	Tambah opsi
+Add query	Tambah query
+Add step	Tambah langkah
+Add tables	Tambah tabel
+Add tables and views	Tambah tabel dan view
+Add the tasks to run.	Tambahkan task yang dijalankan.
+Add trigger	Tambah trigger
+Add unique key	Tambah unique key
+After a failure	Setelah kegagalan
+Align right	Rata kanan
+All connected connections	Semua koneksi yang terhubung
+All files	Semua file
+All rows of the existing target tables on "{}" are deleted first.	Semua baris tabel target yang ada di "{}" dihapus terlebih dahulu.
+All rows of {} are deleted before the new rows are generated.	Semua baris {} dihapus sebelum baris baru dibuat.
+All tasks	Semua task
+Also registered with {}	Juga terdaftar di {}
+Also run when DBiji is closed (system scheduler)	Jalankan juga saat DBiji tertutup (penjadwal sistem)
+Answered by {} because {} declined.	Dijawab oleh {} karena {} menolak.
+Append the row number to make every value unique	Tambahkan nomor baris agar setiap nilai unik
+Apply changes…	Terapkan perubahan…
+Apply the changes	Terapkan perubahan
+Apply the migration script to the target	Terapkan skrip migrasi ke target
+Apply the sync script	Terapkan skrip sinkronisasi
+Applying…	Menerapkan…
+Arguments	Argumen
+Array	Array
+Array of objects	Array objek
+Arrays	Array
+As text (UTF-8)	Sebagai teks (UTF-8)
+Ask a question or choose a quick action below. SQL in answers can be copied or opened in a SQL editor.	Ajukan pertanyaan atau pilih aksi cepat di bawah. SQL dalam jawaban bisa disalin atau dibuka di editor SQL.
+Ask anything about SQL or this database…	Tanyakan apa saja tentang SQL atau database ini…
+Assistant	Asisten
+At	Pada
+Attributes	Atribut
+Attributes of the row element are columns	Atribut elemen baris menjadi kolom
+Auto increment / identity	Auto increment / identity
+Auto-commit every statement	Auto-commit setiap statement
+Auto-commit switched on for this session.	Auto-commit diaktifkan untuk sesi ini.
+Auto-commit switched on: this operation cannot run inside a transaction.	Auto-commit diaktifkan: operasi ini tidak bisa berjalan di dalam transaksi.
+Automatic	Otomatis
+Backslash (\")	Backslash (\")
+Backup completed	Backup selesai
+Backup file	File backup
+Backup is not supported for this database.	Backup tidak didukung untuk database ini.
+Backup of {}	Backup {}
+Backup written to {}	Backup ditulis ke {}
+Base64	Base64
+Binary	Biner
+Bit string	Bit string
+Bold	Tebal
+Boolean	Boolean
+Borders	Garis tepi
+Breakpoint at line {}: {}	Breakpoint pada baris {}: {}
+Breakpoints can be set once the debugging session has started.	Breakpoint bisa dipasang setelah sesi debug dimulai.
+Byte order mark (BOM)	Byte order mark (BOM)
+CR	CR
+CREATE TABLE	CREATE TABLE
+CRLF (Windows)	CRLF (Windows)
+Call stack	Call stack
+Cancel run	Batalkan eksekusi
+Cancel the other steps when a step fails	Batalkan langkah lain jika satu langkah gagal
+Cancelled by the user.	Dibatalkan oleh pengguna.
+Cancelling…	Membatalkan…
+Cannot create the folder {}: {}	Tidak dapat membuat folder {}: {}
+Cannot find the DBiji program: {}	Tidak dapat menemukan program DBiji: {}
+Cannot find the LaunchAgents folder	Tidak dapat menemukan folder LaunchAgents
+Cannot read the run history: {}	Tidak dapat membaca riwayat eksekusi: {}
+Cannot read the table definition: {}	Tidak dapat membaca definisi tabel: {}
+Cannot save the task	Tidak dapat menyimpan task
+Cannot start {}: {}	Tidak dapat memulai {}: {}
+Case sensitive	Peka huruf besar/kecil
+Change settings	Ubah pengaturan
+Changing the password is not supported for this database.	Mengubah kata sandi tidak didukung untuk database ini.
+Chat	Chat
+Check {} has no expression.	Check {} tidak memiliki ekspresi.
+Checks ({})	Check ({})
+Choose a connection	Pilih koneksi
+Choose a connection.	Pilih koneksi.
+Choose a connection…	Pilih koneksi…
+Choose a file to see its first rows.	Pilih file untuk melihat baris pertamanya.
+Choose a schema	Pilih skema
+Choose a schema to pick an object, or paste its definition below.	Pilih skema untuk memilih objek, atau tempel definisinya di bawah.
+Choose a task…	Pilih task…
+Choose an object or paste its definition first.	Pilih objek atau tempel definisinya terlebih dahulu.
+Choose at least one key column.	Pilih minimal satu kolom kunci.
+Choose at least one object kind.	Pilih minimal satu jenis objek.
+Choose at least one table to migrate.	Pilih minimal satu tabel untuk dimigrasikan.
+Choose at least one table with text columns.	Pilih minimal satu tabel dengan kolom teks.
+Choose at least one table, view or query to export.	Pilih minimal satu tabel, view, atau query untuk diekspor.
+Choose automatically again	Pilih otomatis lagi
+Choose how many rows to generate.	Pilih jumlah baris yang dibuat.
+Choose the backup file to restore	Pilih file backup yang akan dipulihkan
+Choose the file to import.	Pilih file yang akan diimpor.
+Choose the output file of the backup	Pilih file output backup
+Choose the output folder.	Pilih folder output.
+Choose the script file	Pilih file skrip
+Choose the source and target connections	Pilih koneksi sumber dan target
+Choose the source and the target table.	Pilih tabel sumber dan target.
+Choose the target connection.	Pilih koneksi target.
+Choose the target table.	Pilih tabel target.
+City	Kota
+Client commands such as @set or @include are not run by tasks.	Perintah klien seperti @set atau @include tidak dijalankan oleh task.
+Code	Kode
+Column types	Tipe kolom
+Column width	Lebar kolom
+Column {} has no data type.	Kolom {} tidak memiliki tipe data.
+Column {} has no name.	Kolom {} tidak memiliki nama.
+Columns ({})	Kolom ({})
+Columns and rows	Kolom dan baris
+Columns left out get their default value (auto-increment, defaults).	Kolom yang dilewati mendapat nilai bawaan (auto-increment, default).
+Command	Perintah
+Command line	Baris perintah
+Comment lines	Baris komentar
+Commit after every batch	Commit setelah setiap batch
+Commit at the end (connections in manual commit mode)	Commit di akhir (koneksi mode commit manual)
+Company	Perusahaan
+Compare all	Bandingkan semua
+Compare none	Jangan bandingkan
+Completed with warnings: the server does not know some settings written by a newer tool version; they were skipped.	Selesai dengan peringatan: server tidak mengenal beberapa pengaturan dari versi alat yang lebih baru; pengaturan itu dilewati.
+Completed with {} warning(s)	Selesai dengan {} peringatan
+Completed, but the tool reported {} error(s).	Selesai, tetapi alat melaporkan {} error.
+Composite step	Langkah komposit
+Composite task	Task komposit
+Compression	Kompresi
+Compression level	Tingkat kompresi
+Confirm password	Konfirmasi kata sandi
+Connect both connections first.	Hubungkan kedua koneksi terlebih dahulu.
+Connect first: the password is changed by the server.	Hubungkan dulu: kata sandi diubah oleh server.
+Connect first: the tools use the connection's settings	Hubungkan dulu: alat memakai pengaturan koneksi
+Connect to build the command: the tools use the connection's host, user and password.	Hubungkan untuk menyusun perintah: alat memakai host, pengguna, dan kata sandi koneksi.
+Connect to choose the target table.	Hubungkan untuk memilih tabel target.
+Connect to list the tables.	Hubungkan untuk menampilkan daftar tabel.
+Connection timed out after {}s	Koneksi habis waktu setelah {} dtk
+Connections: {}	Koneksi: {}
+Content	Isi
+Continue with the next table	Lanjutkan ke tabel berikutnya
+Continue with the other objects when one fails	Lanjutkan objek lain jika satu gagal
+Count the rows first (exact progress, one extra query per object)	Hitung baris dulu (progres tepat, satu query tambahan per objek)
+Country	Negara
+Create table…	Buat tabel…
+Create the database first	Buat database terlebih dahulu
+Create the table	Buat tabel
+Create the tables that do not exist	Buat tabel yang belum ada
+Created with "Save as task" in the transfer wizards	Dibuat dengan "Simpan sebagai task" di wizard transfer
+Cron expression	Ekspresi cron
+Current	Saat ini
+Custom archive	Arsip custom
+DDL preview	Pratinjau DDL
+Daily	Harian
+Data compare	Data compare
+Data export	Ekspor data
+Data files	File data
+Data import	Impor data
+Data migration	Migrasi data
+Data only	Hanya data
+Data type	Tipe data
+Date	Tanggal
+Date formats	Format tanggal
+Date patterns use chrono syntax: %Y year, %m month, %d day, %H hour, %M minute, %S second.	Pola tanggal memakai sintaks chrono: %Y tahun, %m bulan, %d hari, %H jam, %M menit, %S detik.
+Dates	Tanggal
+Debug {}	Debug {}
+Debugging aborted.	Debug dibatalkan.
+Decimal	Desimal
+Decimal numbers	Bilangan desimal
+Decimal separator	Pemisah desimal
+Default value as an SQL expression, e.g. 0, 'text' or now()	Nilai bawaan sebagai ekspresi SQL, mis. 0, 'teks' atau now()
+Delete and generate	Hapus lalu buat
+Delete folder	Hapus folder
+Delete tasks	Hapus task
+Delete the existing rows?	Hapus baris yang ada?
+Delete them first	Hapus terlebih dahulu
+Delete {} task(s)?	Hapus {} task?
+Deleted tasks are also removed from composite tasks. The run history is kept.	Task yang dihapus juga dikeluarkan dari task komposit. Riwayat eksekusi tetap disimpan.
+Delete…	Hapus…
+Describe object	Deskripsikan objek
+Describe the data you need, e.g. "customers with more than 3 orders last month"	Jelaskan data yang Anda butuhkan, mis. "pelanggan dengan lebih dari 3 pesanan bulan lalu"
+Describe the query you need first.	Jelaskan query yang Anda butuhkan terlebih dahulu.
+Design {}	Desain {}
+Details	Detail
+Detect	Deteksi
+Difference	Perbedaan
+Different	Berbeda
+Differing rows to show	Baris berbeda yang ditampilkan
+Directory	Direktori
+Disable	Nonaktifkan
+Discard the changes to "{}"?	Buang perubahan pada "{}"?
+Do not dump privileges (GRANT / REVOKE)	Jangan dump hak akses (GRANT / REVOKE)
+Do not restore object owners	Jangan pulihkan pemilik objek
+Document type	Tipe dokumen
+Done in {}	Selesai dalam {}
+Double-click a result to open it.	Klik dua kali hasil untuk membukanya.
+Double-click to change the value	Klik dua kali untuk mengubah nilai
+Doubled ("")	Digandakan ("")
+Draw borders	Gambar garis tepi
+Drop and create the tables again	Hapus dan buat ulang tabel
+Drop objects before creating them	Hapus objek sebelum membuatnya
+Drop objects before recreating them	Hapus objek sebelum membuat ulang
+E-mail address	Alamat e-mail
+Edit	Ubah
+Edit SQL	Ubah SQL
+Edit task	Ubah task
+Edit…	Ubah…
+Elapsed	Berlalu
+Element with null="true"	Elemen dengan null="true"
+Embed a style sheet	Sisipkan style sheet
+Empty element	Elemen kosong
+Empty elements	Elemen kosong
+Empty rows	Baris kosong
+Empty text is NULL	Teks kosong adalah NULL
+Enable	Aktifkan
+Enabled (disabled tasks are not run by the scheduler)	Aktif (task nonaktif tidak dijalankan penjadwal)
+Enabled: the scheduler runs the task on its schedule	Aktif: penjadwal menjalankan task sesuai jadwal
+Encoding	Encoding
+Enter a name or a pattern (* and ? are wildcards).	Masukkan nama atau pola (* dan ? adalah wildcard).
+Enter the SQL statement first.	Masukkan statement SQL terlebih dahulu.
+Enter the SQL to run	Masukkan SQL yang dijalankan
+Enter the command to run	Masukkan perintah yang dijalankan
+Enter the error message first.	Masukkan pesan error terlebih dahulu.
+Enter the key in the AI section of the settings. It is kept in the system keychain or the encrypted vault.	Masukkan kunci di bagian AI pada pengaturan. Kunci disimpan di keychain sistem atau brankas terenkripsi.
+Enter the name of the new table.	Masukkan nama tabel baru.
+Enter the new password.	Masukkan kata sandi baru.
+Enter the table name.	Masukkan nama tabel.
+Enter the text to find.	Masukkan teks yang dicari.
+Enumeration	Enumerasi
+Error message from the database	Pesan error dari database
+Errors	Error
+Escape | inside values	Loloskan | di dalam nilai
+Every	Setiap
+Every 15 minutes	Setiap 15 menit
+Every Monday at 06:00	Setiap Senin pukul 06.00
+Every column is left out; choose a generator for at least one column.	Semua kolom dilewati; pilih generator untuk minimal satu kolom.
+Every day at 02:00	Setiap hari pukul 02.00
+Every run changes the target schema without asking.	Setiap eksekusi mengubah skema target tanpa bertanya.
+Examples	Contoh
+Excel (XLSX)	Excel (XLSX)
+Executing…	Mengeksekusi…
+Existing objects can be dropped or overwritten.	Objek yang ada bisa dihapus atau ditimpa.
+Existing rows	Baris yang ada
+Existing table	Tabel yang ada
+Existing target tables on "{}" are dropped and created again.	Tabel target yang ada di "{}" dihapus dan dibuat ulang.
+Expected; the scheduler has not planned it yet	Diharapkan; penjadwal belum merencanakannya
+Explain query	Jelaskan query
+Export all…	Ekspor semua…
+Export finished, {} object(s) failed	Ekspor selesai, {} objek gagal
+Export selected…	Ekspor yang dipilih…
+Export {}	Ekspor {}
+Exporting {} object(s) to {}	Mengekspor {} objek ke {}
+Exporting…	Mengekspor…
+Exports of fetched rows cannot be saved as tasks.	Ekspor baris yang sudah diambil tidak bisa disimpan sebagai task.
+Extra arguments	Argumen tambahan
+Failed rows	Baris gagal
+Failed tables	Tabel gagal
+Fetched rows ({})	Baris yang diambil ({})
+File and reading	File dan pembacaan
+File name	Nama file
+File to import	File untuk diimpor
+File to restore	File untuk dipulihkan
+File to write	File untuk ditulis
+Files	File
+Filter buttons	Tombol filter
+Finished	Selesai
+First day of the month at 00:00	Hari pertama bulan pukul 00.00
+First name	Nama depan
+Fit to the content, at most	Sesuaikan isi, paling lebar
+Fix error	Perbaiki error
+Fixed value	Nilai tetap
+Floating point	Floating point
+Floating point numbers	Bilangan floating point
+Folder name	Nama folder
+Folders	Folder
+Foreign keys ({})	Foreign key ({})
+Fraction digits	Digit pecahan
+Freeze	Bekukan
+Fri	Jum
+Full name	Nama lengkap
+Function to execute, e.g. audit_changes()	Fungsi yang dieksekusi, mis. audit_changes()
+Generate	Buat
+Generate the sync script	Buat skrip sinkronisasi
+Generating mock data failed	Pembuatan data uji gagal
+Generating the sync script is turned off in the options.	Pembuatan skrip sinkronisasi dimatikan di opsi.
+Generating…	Membuat…
+Generator	Generator
+Geometry	Geometri
+Guess types again	Tebak tipe lagi
+HTML report	Laporan HTML
+Hash join (in memory)	Hash join (di memori)
+Header	Header
+Header row	Baris header
+Hide SQL	Sembunyikan SQL
+INSERT	INSERT
+INSERT or UPDATE (upsert)	INSERT atau UPDATE (upsert)
+INSERT statements instead of COPY	Statement INSERT alih-alih COPY
+IPv4 address	Alamat IPv4
+ISO, e.g. %H:%M	ISO, mis. %H:%M
+ISO, e.g. %Y-%m-%d %H:%M %z	ISO, mis. %Y-%m-%d %H:%M %z
+ISO, e.g. %d.%m.%Y	ISO, mis. %d.%m.%Y
+ISO, e.g. %d.%m.%Y %H:%M:%S	ISO, mis. %d.%m.%Y %H:%M:%S
+Ignore	Abaikan
+Ignore case	Abaikan huruf besar/kecil
+Ignore trailing spaces	Abaikan spasi di akhir
+Import	Impor
+Import failed	Impor gagal
+Import into {}	Impor ke {}
+Import {}	Impor {}
+Importing into {}	Mengimpor ke {}
+Importing…	Mengimpor…
+Import…	Impor…
+In target	Di target
+Include CREATE DATABASE	Sertakan CREATE DATABASE
+Include a DTD	Sertakan DTD
+Include routines and events	Sertakan routine dan event
+Include the execution plan (EXPLAIN runs on the connection, the query is not executed)	Sertakan execution plan (EXPLAIN dijalankan di koneksi, query tidak dieksekusi)
+Include the table name	Sertakan nama tabel
+Indent	Indentasi
+Index {} has no columns.	Index {} tidak memiliki kolom.
+Index {} has no name.	Index {} tidak memiliki nama.
+Indexes ({})	Index ({})
+Insert or replace needs key columns.	Insert atau replace membutuhkan kolom kunci.
+Insert or replace rows by key	Insert atau ganti baris menurut kunci
+Insert or replace rows by primary key	Insert atau ganti baris menurut primary key
+Inside {}	Di dalam {}
+Integer	Bilangan bulat
+Integer format	Format bilangan bulat
+Invalid date and time '{}', expected YYYY-MM-DD HH:MM	Tanggal dan waktu tidak valid '{}', diharapkan YYYY-MM-DD HH:MM
+Invalid export task configuration: {}	Konfigurasi task ekspor tidak valid: {}
+Invalid import task configuration: {}	Konfigurasi task impor tidak valid: {}
+Invalid migration task configuration: {}	Konfigurasi task migrasi tidak valid: {}
+Its tasks move to the parent folder	Task di dalamnya pindah ke folder induk
+JSON / JSON Lines	JSON / JSON Lines
+JSON object	Objek JSON
+JSON uses the date formats only with "Use the date formats of the value formatting".	JSON memakai format tanggal hanya dengan "Gunakan format tanggal dari format nilai".
+Keep the partially written file	Pertahankan file yang sebagian tertulis
+Keep them and add the new rows	Pertahankan dan tambahkan baris baru
+Keep them as they are	Biarkan apa adanya
+Key	Kunci
+Key columns	Kolom kunci
+Key columns become the primary key of the new table.	Kolom kunci menjadi primary key tabel baru.
+Key: {}	Kunci: {}
+Keys ({})	Kunci ({})
+Keys and columns ({} key, {} compared)	Kunci dan kolom ({} kunci, {} dibandingkan)
+Kinds:	Jenis:
+LF (macOS, Linux)	LF (macOS, Linux)
+Last name	Nama belakang
+Last run	Eksekusi terakhir
+Leave a field empty to keep the default shown in grey.	Kosongkan field untuk memakai nilai bawaan berwarna abu-abu.
+Leave out (default value)	Lewati (nilai bawaan)
+Leave the element out	Lewati elemen
+Length	Panjang
+Length or precision, e.g. 255 or 10,2	Panjang atau presisi, mis. 255 atau 10,2
+Line breaks become	Baris baru menjadi
+Line ending	Akhir baris
+Load every table in one transaction	Muat setiap tabel dalam satu transaksi
+Loading the routine…	Memuat routine…
+Lorem ipsum text	Teks lorem ipsum
+Maintenance: {}	Pemeliharaan: {}
+Manual	Manual
+Manual only	Hanya manual
+Mapping	Pemetaan
+Match by name again	Cocokkan menurut nama lagi
+Matching rows	Baris yang cocok
+Merge join (sorted keys)	Merge join (kunci terurut)
+Messages	Pesan
+Migrate tables	Migrasikan tabel
+Migrate to {}	Migrasikan ke {}
+Migrate {}	Migrasikan {}
+Migrate {} table(s) to {}	Migrasikan {} tabel ke {}
+Migrate {} tables	Migrasikan {} tabel
+Migrating {} table(s)	Memigrasikan {} tabel
+Migrating…	Memigrasikan…
+Migration failed	Migrasi gagal
+Migration finished, {} table(s) failed	Migrasi selesai, {} tabel gagal
+Migration script	Skrip migrasi
+Mock data: {}	Data uji: {}
+Mon	Sen
+Move to	Pindahkan ke
+NULL markers	Penanda NULL
+NULL text of the value formatting	Teks NULL dari format nilai
+NULL values	Nilai NULL
+NULL written as	NULL ditulis sebagai
+Name or pattern, e.g. cust* or *_id	Nama atau pola, mis. cust* atau *_id
+Names	Nama
+Names and types	Nama dan tipe
+Needs a schedule	Membutuhkan jadwal
+Network address	Alamat jaringan
+New conversation	Percakapan baru
+New folder	Folder baru
+New password	Kata sandi baru
+New sub-folder…	Sub-folder baru…
+New table	Tabel baru
+New task	Task baru
+Next	Berikutnya
+Next run	Eksekusi berikutnya
+Next runs:	Eksekusi berikutnya:
+No API key is saved for {}.	Tidak ada kunci API yang tersimpan untuk {}.
+No changes.	Tidak ada perubahan.
+No check constraints.	Tidak ada check constraint.
+No column is imported.	Tidak ada kolom yang diimpor.
+No connection is open.	Tidak ada koneksi yang terbuka.
+No differing rows.	Tidak ada baris yang berbeda.
+No foreign keys.	Tidak ada foreign key.
+No header row	Tanpa baris header
+No indexes besides the primary and unique keys.	Tidak ada index selain primary dan unique key.
+No maintenance operations are available for the selected objects.	Tidak ada operasi pemeliharaan untuk objek yang dipilih.
+No object selected.	Tidak ada objek yang dipilih.
+No objects found.	Tidak ada objek ditemukan.
+No primary key. Tick PK on the columns page.	Tidak ada primary key. Centang PK di halaman kolom.
+No schema context	Tanpa konteks skema
+No table options.	Tidak ada opsi tabel.
+No table selected yet: add tables below.	Belum ada tabel yang dipilih: tambahkan tabel di bawah.
+No tables	Tidak ada tabel
+No task matches.	Tidak ada task yang cocok.
+No tasks yet.	Belum ada task.
+No triggers.	Tidak ada trigger.
+No upcoming runs.	Tidak ada eksekusi mendatang.
+No variables in this frame.	Tidak ada variabel di frame ini.
+None	Tidak ada
+None: mark key columns on the Target page.	Tidak ada: tandai kolom kunci di halaman Target.
+Not compared (missing in the target): {}	Tidak dibandingkan (tidak ada di target): {}
+Not connected	Tidak terhubung
+Not null	Not null
+Nothing selected yet: add tables or views below, or a query.	Belum ada yang dipilih: tambahkan tabel, view, atau query di bawah.
+Nothing to create yet.	Belum ada yang dibuat.
+Nothing to run for the selected objects.	Tidak ada yang dijalankan untuk objek yang dipilih.
+Nothing to synchronize.	Tidak ada yang disinkronkan.
+Notify	Beri tahu
+Number format	Format angka
+Numeric tolerance	Toleransi numerik
+OK, {} index(es)	OK, {} index
+Object:	Objek:
+Objects	Objek
+Objects to export	Objek yang diekspor
+Objects:	Objek:
+On error	Saat error
+Once	Sekali
+One INSERT statement per row	Satu statement INSERT per baris
+One object per line	Satu objek per baris
+One of a list	Salah satu dari daftar
+One transaction for everything	Satu transaksi untuk semuanya
+Only in source	Hanya di sumber
+Only in target	Hanya di target
+Only the first {} failed rows are listed.	Hanya {} baris gagal pertama yang ditampilkan.
+Open a separate connection for every worker	Buka koneksi terpisah untuk setiap worker
+Open folder	Buka folder
+Open settings	Buka pengaturan
+Open tasks	Buka task
+Open the table	Buka tabel
+OpenAI compatible	Kompatibel OpenAI
+Opening tag	Tag pembuka
+Opening the sessions…	Membuka sesi…
+Operation	Operasi
+Optimize query	Optimalkan query
+Output file	File output
+Output files	File output
+Output folder	Folder output
+PK	PK
+Paragraph	Paragraf
+Partial (WHERE)	Parsial (WHERE)
+Paste a CREATE statement, or choose an object above	Tempel statement CREATE, atau pilih objek di atas
+Paste the SQL statement that failed	Tempel statement SQL yang gagal
+Paste the SQL statement to explain	Tempel statement SQL yang akan dijelaskan
+Paste the query to optimize	Tempel query yang akan dioptimalkan
+Pattern	Pola
+Phone number	Nomor telepon
+Pipes	Pipe
+Plain SQL script	Skrip SQL biasa
+Prefix the table with its schema	Awali tabel dengan skemanya
+Preparing the column mapping…	Menyiapkan pemetaan kolom…
+Pretty print	Format rapi
+Primary key	Primary key
+Qualify names	Kualifikasikan nama
+Quote character	Karakter kutip
+Quote identifiers	Kutip identifier
+Quote values	Kutip nilai
+Quotes inside values	Kutip di dalam nilai
+Random bytes	Byte acak
+Range	Rentang
+Read as NULL	Baca sebagai NULL
+Reading from the database…	Membaca dari database…
+Reading the definition of {}	Membaca definisi {}
+Reading the file…	Membaca file…
+Reading the table definition…	Membaca definisi tabel…
+Reading values	Membaca nilai
+Reconnect so that new sessions use the new password.	Hubungkan ulang agar sesi baru memakai kata sandi baru.
+Rejected rows	Baris yang ditolak
+Reload the table	Muat ulang tabel
+Remove from the primary key	Hapus dari primary key
+Rename folder	Ganti nama folder
+Rename…	Ganti nama…
+Replace the target data?	Ganti data target?
+Report written to {}	Laporan ditulis ke {}
+Restart	Mulai ulang
+Restore completed	Pemulihan selesai
+Restore in a single transaction	Pulihkan dalam satu transaksi
+Restore into {}	Pulihkan ke {}
+Restore is not supported for this database.	Pemulihan tidak didukung untuk database ini.
+Restore the backup	Pulihkan backup
+Restore {} into "{}" / {}?	Pulihkan {} ke "{}" / {}?
+Result	Hasil
+Root element	Elemen akar
+Row element	Elemen baris
+Row group size (MB)	Ukuran row group (MB)
+Row matching	Pencocokan baris
+Row {}, column {}	Baris {}, kolom {}
+Rows failed	Baris gagal
+Rows fetched per batch	Baris diambil per batch
+Rows measured for widths	Baris yang diukur untuk lebar
+Rows of the target are inserted, updated and deleted to match the source.	Baris target disisipkan, diubah, dan dihapus agar sama dengan sumber.
+Rows per INSERT	Baris per INSERT
+Rows per batch	Baris per batch
+Rows per row group	Baris per row group
+Rows per sheet	Baris per sheet
+Rows per table	Baris per tabel
+Rows read	Baris dibaca
+Rows read for the preview and the type guess	Baris yang dibaca untuk pratinjau dan tebakan tipe
+Rows to export	Baris yang diekspor
+Rows written	Baris ditulis
+Run export	Jalankan ekspor
+Run history — {}	Riwayat eksekusi — {}
+Run import	Jalankan impor
+Run migration	Jalankan migrasi
+Run now	Jalankan sekarang
+Run the query again (all rows)	Jalankan query lagi (semua baris)
+Run the steps in parallel	Jalankan langkah secara paralel
+Run {} statement(s) on {} ("{}") in one transaction?	Jalankan {} statement di {} ("{}") dalam satu transaksi?
+Running…	Berjalan…
+Running… {}	Berjalan… {}
+Runs outside of a transaction (auto-commit).	Berjalan di luar transaksi (auto-commit).
+Runs with the system shell (sh -c, cmd /C on Windows); the output goes to the run log.	Berjalan dengan shell sistem (sh -c, cmd /C di Windows); output masuk ke log eksekusi.
+SELECT … (one statement returning rows)	SELECT … (satu statement yang mengembalikan baris)
+SQL script	Skrip SQL
+SQL text	Teks SQL
+Same as the source	Sama dengan sumber
+Same as the source ({})	Sama dengan sumber ({})
+Sample values	Contoh nilai
+Sat	Sab
+Save as task	Simpan sebagai task
+Save as task…	Simpan sebagai task…
+Save report…	Simpan laporan…
+Saved as task "{}"	Disimpan sebagai task "{}"
+Schedule	Jadwal
+Scheduled	Terjadwal
+Scheduled runs are turned off	Eksekusi terjadwal dimatikan
+Scheduled runs are turned off: tasks run only when you start them (or through the system scheduler). Turn on "Run scheduled tasks while DBiji is open" in the settings.	Eksekusi terjadwal dimatikan: task hanya berjalan saat Anda menjalankannya (atau lewat penjadwal sistem). Aktifkan "Jalankan task terjadwal selama DBiji terbuka" di pengaturan.
+Schema and data	Skema dan data
+Schema context: none	Konteks skema: tidak ada
+Schema context: off	Konteks skema: mati
+Schema context: {} tables, {} views	Konteks skema: {} tabel, {} view
+Schema only	Hanya skema
+Schema only and data only cannot be combined	Hanya skema dan hanya data tidak bisa digabung
+Schemas:	Skema:
+Script file	File skrip
+Script file to run	File skrip yang dijalankan
+Search	Cari
+Search comments	Cari komentar
+Searched columns: {}	Kolom yang dicari: {}
+Seed	Seed
+Select a task to see its runs.	Pilih task untuk melihat eksekusinya.
+Selected rows ({})	Baris dipilih ({})
+Send	Kirim
+Sentence	Kalimat
+Sheet	Sheet
+Sheet name	Nama sheet
+Sheet {}	Sheet {}
+Short syntax [ ]	Sintaks pendek [ ]
+Show as	Tampilkan sebagai
+Show rows	Tampilkan baris
+Show the password	Tampilkan kata sandi
+Show:	Tampilkan:
+Showing the first {} of {} differing rows.	Menampilkan {} pertama dari {} baris berbeda.
+Single transaction (consistent snapshot)	Satu transaksi (snapshot konsisten)
+Skip and log every failing row	Lewati dan catat setiap baris gagal
+Skip failing rows	Lewati baris gagal
+Skip rows	Lewati baris
+Snappy	Snappy
+Source column	Kolom sumber
+Source type	Tipe sumber
+Spaces	Spasi
+Speed	Kecepatan
+Standard SQL	SQL standar
+Start	Mulai
+Start backup	Mulai backup
+Start restore	Mulai pemulihan
+Start with <?php	Awali dengan <?php
+Started	Dimulai
+Starting {} with ({})	Memulai {} dengan ({})
+Statement terminator	Penutup statement
+Statement, e.g. SET NEW.updated_at = NOW() or BEGIN … END	Statement, mis. SET NEW.updated_at = NOW() atau BEGIN … END
+Statements	Statement
+Statements before the failing one were applied; reload the table before continuing.	Statement sebelum yang gagal sudah diterapkan; muat ulang tabel sebelum melanjutkan.
+Step into	Step into
+Step over	Step over
+Steps	Langkah
+Stop	Hentikan
+Stop after	Berhenti setelah
+Stop at the first error	Berhenti pada error pertama
+Stop at the first failing statement	Berhenti pada statement gagal pertama
+Stop at the first failing step	Berhenti pada langkah gagal pertama
+Stopped after {} tables; {} tables with matches	Berhenti setelah {} tabel; {} tabel cocok
+Stopped at line {}	Berhenti pada baris {}
+Stopped.	Dihentikan.
+Street address	Alamat jalan
+Structure	Struktur
+Style	Gaya
+Suggestions	Saran
+Sync script	Skrip sinkronisasi
+System scheduler entry	Entri penjadwal sistem
+TSV	TSV
+Table and column names of this schema are sent with each question. No data rows are sent.	Nama tabel dan kolom skema ini dikirim bersama setiap pertanyaan. Tidak ada baris data yang dikirim.
+Table columns without a source (default value or NULL): {}	Kolom tabel tanpa sumber (nilai bawaan atau NULL): {}
+Table designer: new table in {}	Desainer tabel: tabel baru di {}
+Table designer: {}	Desainer tabel: {}
+Table element	Elemen tabel
+Table name	Nama tabel
+Table options	Opsi tabel
+Table {} altered	Tabel {} diubah
+Table {} created	Tabel {} dibuat
+Table {} of {}	Tabel {} dari {}
+Tables ({} of {} with text columns)	Tabel ({} dari {} dengan kolom teks)
+Tables and columns	Tabel dan kolom
+Tables to migrate	Tabel yang dimigrasikan
+Table…	Tabel…
+Tar archive	Arsip tar
+Target column	Kolom target
+Target database	Database target
+Target schema	Skema target
+Target table	Tabel target
+Target tables	Tabel target
+Target type	Tipe target
+Task "{}" could not start	Task "{}" tidak bisa dimulai
+Task "{}" failed	Task "{}" gagal
+Task "{}" saved	Task "{}" disimpan
+Task "{}" succeeded	Task "{}" berhasil
+Task "{}" was cancelled	Task "{}" dibatalkan
+Task "{}" was skipped	Task "{}" dilewati
+Tasks cannot be run: the task scheduler is not available.	Task tidak bisa dijalankan: penjadwal task tidak tersedia.
+Tasks save SQL scripts, backups, schema compares and shell commands so that they can run on demand or on a schedule.	Task menyimpan skrip SQL, backup, schema compare, dan perintah shell agar bisa dijalankan kapan saja atau terjadwal.
+Text to find in text columns	Teks yang dicari di kolom teks
+Text values	Nilai teks
+The AI assistant is turned off.	Asisten AI dimatikan.
+The AI settings are incomplete.	Pengaturan AI belum lengkap.
+The CSV delimiter must not be empty.	Pemisah CSV tidak boleh kosong.
+The DBiji program could not be located.	Program DBiji tidak dapat ditemukan.
+The answer was cut off at the token limit.	Jawaban terpotong pada batas token.
+The column name {} is used twice.	Nama kolom {} dipakai dua kali.
+The columns appear once the file has been read.	Kolom muncul setelah file dibaca.
+The comparison was cancelled.	Perbandingan dibatalkan.
+The connection "{}" is read-only	Koneksi "{}" bersifat read-only
+The connection "{}" is read-only.	Koneksi "{}" bersifat read-only.
+The connection does not exist.	Koneksi tidak ada.
+The connection does not save its password: enter the new password when you connect next time.	Koneksi tidak menyimpan kata sandinya: masukkan kata sandi baru saat menghubungkan berikutnya.
+The connection is closed; connecting… try again when it is connected.	Koneksi ditutup; menghubungkan… coba lagi setelah terhubung.
+The data is identical.	Data identik.
+The debugger is not available for this database.	Debugger tidak tersedia untuk database ini.
+The export failed	Ekspor gagal
+The export task has no objects to export	Task ekspor tidak memiliki objek untuk diekspor
+The first row holds the column names	Baris pertama berisi nama kolom
+The first {} rows are sent as a sample.	{} baris pertama dikirim sebagai contoh.
+The import failed	Impor gagal
+The import task has no target table	Task impor tidak memiliki tabel target
+The migration failed	Migrasi gagal
+The migration task has no tables	Task migrasi tidak memiliki tabel
+The model declined to answer this request.	Model menolak menjawab permintaan ini.
+The password could not be changed.	Kata sandi tidak dapat diubah.
+The password is passed through the environment and is not part of the command line.	Kata sandi dilewatkan melalui environment dan tidak menjadi bagian baris perintah.
+The password was changed.	Kata sandi diubah.
+The query runs on a new connection and every row is exported, with all its columns.	Query dijalankan di koneksi baru dan semua baris diekspor dengan semua kolomnya.
+The result appears when the routine finishes.	Hasil muncul setelah routine selesai.
+The routine cannot be debugged	Routine tidak bisa di-debug
+The routine finished.	Routine selesai.
+The routine has no arguments.	Routine tidak memiliki argumen.
+The saved password could not be updated.	Kata sandi tersimpan tidak dapat diperbarui.
+The saved password was updated.	Kata sandi tersimpan diperbarui.
+The script creates the database (no target database)	Skrip membuat database (tanpa database target)
+The script was cut off after {} statements; compare again after applying it.	Skrip terpotong setelah {} statement; bandingkan lagi setelah menerapkannya.
+The source and the target are the same table.	Sumber dan target adalah tabel yang sama.
+The source column {} has no target column.	Kolom sumber {} tidak memiliki kolom target.
+The source table has no primary key: choose the key columns.	Tabel sumber tidak memiliki primary key: pilih kolom kunci.
+The sync script failed; nothing was changed	Skrip sinkronisasi gagal; tidak ada yang diubah
+The system scheduler is not supported on this platform	Penjadwal sistem tidak didukung di platform ini
+The system scheduler repeats a one-time schedule every year on that date; remove the option after the run.	Penjadwal sistem mengulang jadwal sekali setiap tahun pada tanggal itu; hapus opsi setelah eksekusi.
+The table definition is not loaded yet.	Definisi tabel belum dimuat.
+The target column {} is used twice.	Kolom target {} dipakai dua kali.
+The target of {} is the table itself; choose another schema or name.	Target {} adalah tabel itu sendiri; pilih skema atau nama lain.
+The target session is closed; compare again first.	Sesi target ditutup; bandingkan lagi terlebih dahulu.
+The target table has no key column {}.	Tabel target tidak memiliki kolom kunci {}.
+The task change failed	Perubahan task gagal
+The task editor is not open	Editor task tidak terbuka
+The task has not run yet.	Task belum pernah dijalankan.
+The task runs only when started manually.	Task hanya berjalan saat dimulai manual.
+The task runs the same transfer from the Tasks view, on a schedule or with dbiji --run-task.	Task menjalankan transfer yang sama dari tampilan Task, terjadwal, atau dengan dbiji --run-task.
+The task store is not available	Penyimpanan task tidak tersedia
+The task store is not available (see the warnings shown at start-up).	Penyimpanan task tidak tersedia (lihat peringatan saat mulai).
+The task store is not available.	Penyimpanan task tidak tersedia.
+The tool failed	Alat gagal
+The {} entry could not be changed	Entri {} tidak dapat diubah
+Their {} entries are removed too.	Entri {} miliknya juga dihapus.
+Thinking…	Berpikir…
+This connection asks for its password at every connect; tasks can only use saved passwords.	Koneksi ini meminta kata sandi setiap terhubung; task hanya bisa memakai kata sandi tersimpan.
+This connection does not save its password; the task cannot connect without it.	Koneksi ini tidak menyimpan kata sandinya; task tidak bisa terhubung tanpanya.
+This database commits each DDL statement on its own; a failure leaves the statements before it applied.	Database ini melakukan commit setiap statement DDL sendiri; kegagalan membiarkan statement sebelumnya tetap diterapkan.
+This local time does not exist (daylight saving time change)	Waktu lokal ini tidak ada (perubahan daylight saving time)
+This task was created by a transfer wizard; its settings are shown read-only. Create it again from the wizard to change them.	Task ini dibuat oleh wizard transfer; pengaturannya hanya bisa dibaca. Buat ulang dari wizard untuk mengubahnya.
+Thu	Kam
+Time formats	Format waktu
+Time limit	Batas waktu
+Time with time zone	Waktu dengan zona waktu
+Time zone of timestamps	Zona waktu timestamp
+Timestamp	Timestamp
+Timestamp formats	Format timestamp
+Timestamp with time zone	Timestamp dengan zona waktu
+Timestamps	Timestamp
+Tool path	Lokasi alat
+Tool:	Alat:
+Trigger {} has no body.	Trigger {} tidak memiliki isi.
+Trigger {} has no event.	Trigger {} tidak memiliki event.
+Trigger {} has no name.	Trigger {} tidak memiliki nama.
+Triggers ({})	Trigger ({})
+Trim spaces	Pangkas spasi
+Trim spaces around values	Pangkas spasi di sekitar nilai
+True / false	True / false
+Tue	Sel
+Turn it on in the settings and enter the API key of your provider. Only the schema structure and what you type are sent, and only to the provider you choose.	Aktifkan di pengaturan dan masukkan kunci API penyedia Anda. Hanya struktur skema dan yang Anda ketik yang dikirim, dan hanya ke penyedia pilihan Anda.
+Type a question first.	Ketik pertanyaan terlebih dahulu.
+Type guessing (new tables)	Tebakan tipe (tabel baru)
+UPPER CASE	HURUF BESAR
+UUID	UUID
+UUIDs	UUID
+Unique	Unik
+Unique key {} has no columns.	Unique key {} tidak memiliki kolom.
+Unique keys	Unique key
+Update the saved password of the connection	Perbarui kata sandi tersimpan koneksi
+Use the date formats of the value formatting	Gunakan format tanggal dari format nilai
+Use the value as an SQL expression instead of a literal	Gunakan nilai sebagai ekspresi SQL, bukan literal
+User name	Nama pengguna
+Value formatting	Format nilai
+Value of the referenced table	Nilai dari tabel yang dirujuk
+Variable name	Nama variabel
+Variables appear when the routine stops.	Variabel muncul saat routine berhenti.
+Variables: ${table} ${schema} ${database} ${timestamp} ${date} ${index} ${extension}	Variabel: ${table} ${schema} ${database} ${timestamp} ${date} ${index} ${extension}
+WHERE filter (optional)	Filter WHERE (opsional)
+Waiting for the routine…	Menunggu routine…
+Warning:	Peringatan:
+Wed	Rab
+Weekdays at 09:00	Hari kerja pukul 09.00
+Whole numbers	Bilangan bulat
+Windows Task Scheduler	Windows Task Scheduler
+Word	Kata
+Words	Kata-kata
+Workers	Worker
+Write	Tulis
+Write the table definition before the data	Tulis definisi tabel sebelum data
+Writing	Menulis
+Written	Tertulis
+You	Anda
+after the largest value	setelah nilai terbesar
+all	semua
+all (or a, b, c)	semua (atau a, b, c)
+any length	panjang berapa pun
+at most	paling banyak
+attribute left out	atribut dilewati
+before the header	sebelum header
+bytes	byte
+characters	karakter
+column…	kolom…
+comma separated values	nilai dipisah koma
+comma separated; empty = all	dipisah koma; kosong = semua
+condition, e.g. price >= 0	kondisi, mis. price >= 0
+copying	menyalin
+created	dibuat
+days	hari
+decimals	desimal
+done	selesai
+empty	kosong
+empty = search PATH	kosong = cari di PATH
+error	error
+every child of the root element	setiap anak elemen akar
+every day	setiap hari
+failed	gagal
+failed rows	baris gagal
+for each row	untuk setiap baris
+for each statement	untuk setiap statement
+from	dari
+hours	jam
+in	di
+in {} ({})	di {} ({})
+line {}	baris {}
+local	lokal
+lower case	huruf kecil
+minute hour day-of-month month day-of-week, e.g. 30 9 * * 1-5 (also @hourly, @daily, @weekly, @monthly)	menit jam tanggal bulan hari, mis. 30 9 * * 1-5 (juga @hourly, @daily, @weekly, @monthly)
+minutes	menit
+minutes east of UTC, for timestamps without an offset	menit di timur UTC, untuk timestamp tanpa offset
+missing	tidak ada
+name (optional)	nama (opsional)
+name of the source table	nama tabel sumber
+name of the table	nama tabel
+name used for ${table}	nama yang dipakai untuk ${table}
+never	tidak pernah
+new_table	tabel_baru
+no limit	tanpa batas
+nothing	tidak ada
+objects exported in parallel	objek diekspor secara paralel
+one per line, e.g. %H.%M	satu per baris, mis. %H.%M
+one per line, e.g. %d/%m/%Y	satu per baris, mis. %d/%m/%Y
+one per line, e.g. %d/%m/%Y %H:%M	satu per baris, mis. %d/%m/%Y %H:%M
+one per line, e.g. NULL or \N	satu per baris, mis. NULL atau \N
+option	opsi
+optional filter, e.g. id > 100	filter opsional, mis. id > 100
+optional, e.g. exports/nightly	opsional, mis. exports/nightly
+optional: write a report to this file	opsional: tulis laporan ke file ini
+optional: write the script to this file	opsional: tulis skrip ke file ini
+passed to the tool as they are	diteruskan ke alat apa adanya
+path of the file	lokasi file
+random	acak
+schema of the source table	skema tabel sumber
+seconds	detik
+step	langkah
+table name	nama tabel
+the same seed generates the same data	seed yang sama menghasilkan data yang sama
+to	ke
+true	true
+waiting	menunggu
+when a run fails	saat eksekusi gagal
+when a run succeeds	saat eksekusi berhasil
+words	kata
+{} (created)	{} (dibuat)
+{} (new)	{} (baru)
+{} column(s); the rows are written from memory, without running the query again.	{} kolom; baris ditulis dari memori tanpa menjalankan query lagi.
+{} columns, {}{} rows read	{} kolom, {}{} baris dibaca
+{} did not finish	{} tidak selesai
+{} different	{} berbeda
+{} equal	{} sama
+{} failed: {}	{} gagal: {}
+{} foreign key(s) created	{} foreign key dibuat
+{} input / {} output tokens	{} token input / {} output
+{} message(s) were dropped from the middle of the log	{} pesan dibuang dari tengah log
+{} objects	{} objek
+{} objects (limit reached)	{} objek (batas tercapai)
+{} of {} object(s) failed: {}	{} dari {} objek gagal: {}
+{} of {} rows	{} dari {} baris
+{} of {} table(s) failed: {}	{} dari {} tabel gagal: {}
+{} on {}	{} pada {}
+{} only in source	{} hanya di sumber
+{} only in target	{} hanya di target
+{} or more	{} atau lebih
+{} row(s)	{} baris
+{} rows copied into {} table(s)	{} baris disalin ke {} tabel
+{} rows copied into {} table(s), {} rows failed	{} baris disalin ke {} tabel, {} baris gagal
+{} rows copied, {} of {} table(s) failed	{} baris disalin, {} dari {} tabel gagal
+{} rows exported to {}	{} baris diekspor ke {}
+{} rows exported to {} file(s)	{} baris diekspor ke {} file
+{} rows exported to {} file(s), {} failed	{} baris diekspor ke {} file, {} gagal
+{} rows generated	{} baris dibuat
+{} rows generated, {} rejected	{} baris dibuat, {} ditolak
+{} rows imported	{} baris diimpor
+{} rows imported, {} failed	{} baris diimpor, {} gagal
+{} rows of {}	{} baris dari {}
+{} rows with a NULL key were skipped	{} baris dengan kunci NULL dilewati
+{} rows · {}	{} baris · {}
+{} rows/s	{} baris/dtk
+{} source rows, {} target rows read; {} differences so far	{} baris sumber, {} baris target dibaca; {} perbedaan sejauh ini
+{} statement(s)	{} statement
+{} statement(s) applied to the target	{} statement diterapkan ke target
+{} statement(s) executed	{} statement dieksekusi
+{} statement(s) failed	{} statement gagal
+{} tables	{} tabel
+{} tables searched in {}; {} tables with matches	{} tabel dicari dalam {}; {} tabel cocok
+{} task(s) added	{} task ditambahkan
+{} task(s) deleted	{} task dihapus
+{} task(s) exported to {}	{} task diekspor ke {}
+{} task(s) moved	{} task dipindahkan
+{} to send	{} untuk dikirim
+{} warning(s)	{} peringatan
+{} was not found. Install the client tools or set the tool path.	{} tidak ditemukan. Pasang alat klien atau atur lokasi alat.
+{}, row {}: {}	{}, baris {}: {}
+· sample rows on	· contoh baris aktif
+… and {} more	… dan {} lagi
+… further output is not shown	… output selanjutnya tidak ditampilkan
+… {} more	… {} lagi

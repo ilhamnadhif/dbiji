@@ -81,7 +81,7 @@ fn unescape(s: &str) -> std::borrow::Cow<'static, str> {
 fn parse_table(tsv: &'static str) -> HashMap<&'static str, &'static str> {
     let mut map = HashMap::new();
     for line in tsv.lines() {
-        if line.is_empty() || line.starts_with('#') {
+        if line.is_empty() || (line.starts_with('#') && !line.contains('\t')) {
             continue;
         }
         let Some((k, v)) = line.split_once('\t') else { continue };

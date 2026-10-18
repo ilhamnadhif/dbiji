@@ -131,6 +131,20 @@ fn every_tab_draws_without_panicking() {
         ("sessions", Box::new(dbiji_app::tabs::admin::SessionManagerTab::new(conn.clone()))),
         ("locks", Box::new(dbiji_app::tabs::admin::LockManagerTab::new(conn.clone()))),
         ("dashboard", Box::new(dbiji_app::tabs::admin::DashboardTab::new(conn.clone()))),
+        ("export", Box::new(dbiji_app::tabs::transfer::ExportTab::new(conn.clone(), vec![customer.clone()], None))),
+        ("import", Box::new(dbiji_app::tabs::transfer::ImportTab::new(conn.clone(), Some(customer.clone()), Some(schema.clone())))),
+        ("migration", Box::new(dbiji_app::tabs::transfer::MigrationTab::new(conn.clone(), vec![customer.clone()]))),
+        ("mock", Box::new(dbiji_app::tabs::transfer::MockDataTab::new(conn.clone(), customer.clone()))),
+        ("tasks", Box::new(dbiji_app::tabs::tasks::TasksTab::new())),
+        ("backup", Box::new(dbiji_app::tabs::dbtools::BackupTab::new(conn.clone(), Some(schema.clone()), false))),
+        ("maintenance", Box::new(dbiji_app::tabs::dbtools::MaintenanceTab::new(conn.clone(), vec![customer.clone()]))),
+        ("password", Box::new(dbiji_app::tabs::dbtools::ChangePasswordTab::new(conn.clone()))),
+        ("ai", Box::new(dbiji_app::tabs::ai::AiAssistantTab::new(Some(conn.clone())))),
+        ("data-compare", Box::new(dbiji_app::tabs::data_compare::DataCompareTab::new(Some(conn.clone()), Some(customer.clone())))),
+        ("designer-new", Box::new(dbiji_app::tabs::table_designer::TableDesignerTab::create(conn.clone(), schema.clone()))),
+        ("designer-edit", Box::new(dbiji_app::tabs::table_designer::TableDesignerTab::edit(conn.clone(), customer.clone()))),
+        ("search", Box::new(dbiji_app::tabs::search::SearchTab::new(Some(conn.clone()), false))),
+        ("search-data", Box::new(dbiji_app::tabs::search::SearchTab::new(Some(conn.clone()), true))),
     ];
     for (name, tab) in tabs.iter_mut() {
         let t0 = Instant::now();

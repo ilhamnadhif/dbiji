@@ -71,6 +71,8 @@ enum Msg {
     Rows(Vec<Row>),
     Warning(String),
     Error(DbError),
+    /// The whole sheet was read.
+    Done,
 }
 
 const BATCH: usize = 256;
@@ -232,9 +234,10 @@ fn read_workbook(path: PathBuf, sheet: SheetSelector, tx: Sender<Msg>, skip_empt
         let _ =
             tx.blocking_send(Msg::Warning(format!("{errors} cell(s) contained Excel errors and were read as NULL")));
     }
-    if let Err(e) = result {
-        let _ = tx.blocking_send(Msg::Error(e));
-    }
+    let _ = tx.blocking_send(match result {
+        Ok(()) => Msg::Done,
+        Err(e) => Msg::Error(e),
+    });
 }
 
 fn resolve_sheet(names: &[String], sheet: &SheetSelector) -> DbResult<String> {
@@ -352,9 +355,14 @@ impl XlsxSource {
                     self.done = true;
                     return Err(e);
                 }
-                None => {
+                Some(Msg::Done) => {
                     self.done = true;
                     return Ok(None);
+                }
+                None => {
+                    // The reader thread ended without finishing (it panicked).
+                    self.done = true;
+                    return Err(DbError::internal("The spreadsheet reader stopped unexpectedly"));
                 }
             }
         }

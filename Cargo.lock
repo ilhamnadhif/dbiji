@@ -1707,10 +1707,12 @@ dependencies = [
  "dbiji-core",
  "hex",
  "rusqlite",
+ "serde",
  "serde_json",
  "tempfile",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

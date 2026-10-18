@@ -1543,6 +1543,7 @@ dependencies = [
  "chrono",
  "dbiji-config",
  "dbiji-core",
+ "dbiji-driver-mysql",
  "dbiji-net",
  "dbiji-visual",
  "eframe",

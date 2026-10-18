@@ -92,8 +92,8 @@ fn window_icon() -> Option<egui::IconData> {
 
 /// All drivers built into this binary.
 pub fn driver_registry() -> dbiji_core::registry::DriverRegistry {
-    let reg = dbiji_core::registry::DriverRegistry::new();
-    drivers::register_all(&reg);
+    let mut reg = dbiji_core::registry::DriverRegistry::new();
+    drivers::register_all(&mut reg);
     reg
 }
 

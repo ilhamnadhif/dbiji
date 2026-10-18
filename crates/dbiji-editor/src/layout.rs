@@ -437,6 +437,10 @@ impl DocLayout {
     ) -> Option<f64> {
         if !policy.enabled {
             if self.hl_enabled || !self.hl_ever {
+                tracing::debug!(
+                    bytes = text.len(),
+                    "document exceeds max_highlight_bytes: syntax highlighting disabled"
+                );
                 for l in &mut self.lines {
                     if !l.spans.is_empty() && l.galley.take().is_some() {
                         self.cached = self.cached.saturating_sub(1);

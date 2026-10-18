@@ -471,14 +471,24 @@ impl EditorState {
     /// Replace all diagnostics. Ranges move with subsequent edits until the
     /// application sets new ones.
     pub fn set_diagnostics(&mut self, diagnostics: Vec<Diagnostic>) {
+        let mut clamped = 0usize;
         self.diagnostics = diagnostics
             .into_iter()
             .map(|mut d| {
-                d.range = clamp_range(&self.text, d.range);
+                let range = clamp_range(&self.text, d.range.clone());
+                clamped += usize::from(range != d.range);
+                d.range = range;
                 d
             })
             .collect();
         self.diagnostics.sort_by_key(|d| d.range.start);
+        if clamped > 0 {
+            tracing::debug!(
+                clamped,
+                text_len = self.text.len(),
+                "diagnostic ranges outside the text or off char boundaries were clamped"
+            );
+        }
     }
 
     /// Current diagnostics (adjusted for edits since they were set).
@@ -500,13 +510,25 @@ impl EditorState {
     /// Mark misspelled words (dotted underline; right click offers
     /// [`EditorLanguage::spell_suggestions`] and "add to dictionary").
     pub fn set_spell_issues(&mut self, ranges: Vec<Range<usize>>) {
+        let mut clamped = 0usize;
         let mut v: Vec<Range<usize>> = ranges
             .into_iter()
-            .map(|r| clamp_range(&self.text, r))
+            .map(|r| {
+                let c = clamp_range(&self.text, r.clone());
+                clamped += usize::from(c != r);
+                c
+            })
             .filter(|r| !r.is_empty())
             .collect();
         v.sort_by_key(|r| r.start);
         self.spell = v;
+        if clamped > 0 {
+            tracing::debug!(
+                clamped,
+                text_len = self.text.len(),
+                "spell-check ranges outside the text or off char boundaries were clamped"
+            );
+        }
     }
 
     /// Current spell-check ranges.

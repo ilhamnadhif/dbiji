@@ -17,6 +17,20 @@ use egui_phosphor::regular as icon;
 use std::sync::Arc;
 use std::time::Instant;
 
+/// SQLite / DuckDB database file (by extension).
+pub fn database_file_kind(path: &std::path::Path) -> Option<dbiji_core::DbKind> {
+    let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    match ext.as_str() {
+        "db" | "sqlite" | "sqlite3" | "db3" => Some(dbiji_core::DbKind::Sqlite),
+        "duckdb" | "ddb" => Some(dbiji_core::DbKind::DuckDb),
+        _ => None,
+    }
+}
+
+pub fn is_database_file(path: &std::path::Path) -> bool {
+    database_file_kind(path).is_some()
+}
+
 pub struct DbijiApp {
     pub backend: Arc<Backend>,
     pub conns: ConnectionManager,
@@ -90,14 +104,36 @@ impl DbijiApp {
         if let Some(key) = view.dedupe_key() {
             if let Some(path) = self.dock.find_tab_from(|t| t.view.dedupe_key().as_deref() == Some(key.as_str())) {
                 let id = self.dock.iter_all_tabs().find(|(p, _)| *p == path).map(|(_, t)| t.id).unwrap_or(0);
-                let _ = self.dock.set_active_tab(path);
+                self.focus_tab_path(path);
                 return id;
             }
         }
         let id = self.next_tab_id;
         self.next_tab_id += 1;
         self.dock.push_to_focused_leaf(Tab::new(id, view));
+        if let Some(path) = self.dock.find_tab_from(|t| t.id == id) {
+            self.focus_tab_path(path);
+        }
         id
+    }
+
+    /// Make a tab the active tab of its leaf and that leaf the focused one, so
+    /// shortcuts and the status bar refer to it.
+    fn focus_tab_path(&mut self, path: egui_dock::TabPath) {
+        let _ = self.dock.set_active_tab(path);
+        self.dock.set_focused_node_and_surface(path.node_path());
+    }
+
+    /// Keep a focused leaf whenever tabs exist (no focus right after start or
+    /// after the focused leaf was closed).
+    fn ensure_focus(&mut self) {
+        if self.dock.focused_leaf().is_some() && self.dock.find_active_focused().is_some() {
+            return;
+        }
+        let first = self.dock.iter_all_tabs().map(|(p, _)| p).next();
+        if let Some(path) = first {
+            self.dock.set_focused_node_and_surface(path.node_path());
+        }
     }
 
     fn close_tab(&mut self, id: u64) {
@@ -207,7 +243,9 @@ impl DbijiApp {
                 }
                 self.open_tab(Box::new(crate::tabs::sql_editor::SqlEditorTab::new(Some(connection), None, String::new(), None, true, title)));
             }
-            AppCommand::OpenScript(path) => self.open_script(path),
+            AppCommand::OpenScript(path) => {
+                self.open_script(path);
+            }
             AppCommand::GenerateSql { connection, object, kind } => {
                 if object.kind.is_table_like() {
                     if let Some(live) = self.conns.live_mut(&connection) {
@@ -456,15 +494,17 @@ impl DbijiApp {
 
     /// Open a file given on the command line: SQL scripts open in an editor,
     /// SQLite / DuckDB database files become (or reuse) a connection.
-    pub fn open_path(&mut self, path: &std::path::Path) {
-        let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-        let kind = match ext.as_str() {
-            "db" | "sqlite" | "sqlite3" | "db3" => Some(dbiji_core::DbKind::Sqlite),
-            "duckdb" | "ddb" => Some(dbiji_core::DbKind::DuckDb),
-            _ => None,
-        };
+    pub fn open_path(&mut self, path: &std::path::Path, execute: bool) {
+        let kind = database_file_kind(path);
         let Some(kind) = kind.filter(|k| self.conns.registry.get(*k).is_some()) else {
-            self.open_script(path.to_path_buf());
+            let id = self.open_script(path.to_path_buf());
+            if let (true, Some(id)) = (execute, id) {
+                if let Some((_, tab)) = self.dock.iter_all_tabs_mut().find(|(_, t)| t.id == id) {
+                    if let Some(ed) = tab.view.as_any_mut().downcast_mut::<crate::tabs::sql_editor::SqlEditorTab>() {
+                        ed.auto_run = true;
+                    }
+                }
+            }
             return;
         };
         let full = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
@@ -495,7 +535,7 @@ impl DbijiApp {
             match t.kind {
                 dbiji_config::project::TabKind::SqlScript if t.path.as_ref().is_some_and(|p| p.exists()) => {
                     if let Some(p) = t.path.clone() {
-                        self.open_script(p);
+                        let _ = self.open_script(p);
                         opened += 1;
                     }
                 }
@@ -539,16 +579,21 @@ impl DbijiApp {
     }
 
     /// Open a script file in an editor (its saved connection and schema are restored).
-    pub fn open_script(&mut self, path: std::path::PathBuf) {
+    pub fn open_script(&mut self, path: std::path::PathBuf) -> Option<u64> {
         let text = match std::fs::read_to_string(&path) {
             Ok(t) => t,
             Err(e) => {
                 self.toasts.error(tr("Cannot open the script"), Some(format!("{}: {e}", path.display())));
-                return;
+                return None;
             }
         };
         let meta = self.services.projects.as_ref().and_then(|p| p.default_project().ok()).and_then(|p| p.script_meta(&path).ok().flatten());
-        let conn = meta.as_ref().and_then(|m| m.connection_id.clone()).filter(|c| self.conns.config(c).is_some());
+        // Scripts without a saved connection use the selected one.
+        let conn = meta
+            .as_ref()
+            .and_then(|m| m.connection_id.clone())
+            .filter(|c| self.conns.config(c).is_some())
+            .or_else(|| self.nav.selected.as_ref().and_then(|n| n.connection()).map(str::to_string));
         let schema = meta.as_ref().and_then(|m| (m.schema.is_some() || m.database.is_some()).then(|| dbiji_core::meta::SchemaRef::new(m.database.clone(), m.schema.clone())));
         let title = path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
         if let Some(c) = &conn {
@@ -556,7 +601,7 @@ impl DbijiApp {
                 self.request_connect(c);
             }
         }
-        self.open_tab(Box::new(crate::tabs::sql_editor::SqlEditorTab::new(conn, schema, text, Some(path), false, title)));
+        Some(self.open_tab(Box::new(crate::tabs::sql_editor::SqlEditorTab::new(conn, schema, text, Some(path), false, title))))
     }
 
     /// Open a diagram saved in the project (JSON with connection, schema and diagram).
@@ -904,6 +949,7 @@ impl eframe::App for DbijiApp {
         if self.dock.iter_all_tabs().next().is_none() {
             self.open_tab(Box::new(crate::tabs::welcome::WelcomeTab));
         }
+        self.ensure_focus();
         self.process_commands(&ctx);
         if self.conns.dirty {
             self.conns.dirty = false;

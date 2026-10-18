@@ -39,6 +39,7 @@ const HELP: &str = "DBiji - lightweight SQL database client
 Usage: dbiji [OPTIONS] [FILE.sql | DATABASE.db ...]
 
 Options:
+  --execute                Execute the given SQL scripts once connected
   --run-task <ID|NAME>     Run a saved task headless and exit
   --bench <NAME>           Run a headless benchmark (startup, memory, grid, editor, all)
   --bench-report <FILE>    Write benchmark results as JSON
@@ -55,6 +56,7 @@ pub struct CliArgs {
     pub exit_after_first_frame: bool,
     pub portable: Option<String>,
     pub files: Vec<String>,
+    pub execute: bool,
 }
 
 pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Option<CliArgs>, String> {
@@ -74,6 +76,7 @@ pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Option<CliAr
             "--bench" => out.bench = Some(it.next().ok_or("--bench needs a name")?),
             "--bench-report" => out.bench_report = Some(it.next().ok_or("--bench-report needs a file")?),
             "--exit-after-first-frame" => out.exit_after_first_frame = true,
+            "--execute" => out.execute = true,
             "--portable" => out.portable = Some(it.next().ok_or("--portable needs a directory")?),
             s if s.starts_with("-psn_") => {} // macOS process serial number
             s if s.starts_with('-') => return Err(format!("unknown option {s}\n\n{HELP}")),
@@ -172,6 +175,7 @@ pub fn run() -> ExitCode {
     let options = eframe::NativeOptions { viewport, ..Default::default() };
     let exit_after_first = args.exit_after_first_frame;
     let files = args.files.clone();
+    let execute = args.execute;
     let result = eframe::run_native(
         "DBiji",
         options,
@@ -187,8 +191,10 @@ pub fn run() -> ExitCode {
                 Err(_) if app.settings.general.restore_session => app.restore_session(),
                 Err(_) => {}
             }
-            for f in &files {
-                app.open_path(std::path::Path::new(f));
+            // Database files first, so scripts can use their connection.
+            let (dbs, scripts): (Vec<&String>, Vec<&String>) = files.iter().partition(|f| app::is_database_file(std::path::Path::new(f)));
+            for f in dbs.into_iter().chain(scripts) {
+                app.open_path(std::path::Path::new(f), execute);
             }
             Ok(Box::new(app))
         }),

@@ -141,3 +141,33 @@ pub fn action_icon(action: Action) -> &'static str {
         Action::ShowShortcuts => i::KEYBOARD,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn press(ctx: &egui::Context, key: egui::Key, modifiers: egui::Modifiers, keymap: &Keymap, context: ActionContext) -> Vec<Action> {
+        let input = egui::RawInput {
+            events: vec![egui::Event::ModifiersChanged(modifiers), egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers }],
+            ..Default::default()
+        };
+        let mut actions = Vec::new();
+        let mut out = ctx.run_ui(input, |ui| {
+            actions = take_actions(ui.ctx(), keymap, context);
+        });
+        out.textures_delta.clear();
+        actions
+    }
+
+    #[test]
+    fn default_shortcuts_dispatch_to_actions() {
+        let (keymap, _) = Keymap::from_config(&Default::default(), IS_MAC);
+        let ctx = egui::Context::default();
+        let cmd = if IS_MAC { egui::Modifiers::MAC_CMD | egui::Modifiers::COMMAND } else { egui::Modifiers::CTRL | egui::Modifiers::COMMAND };
+        assert_eq!(press(&ctx, egui::Key::Enter, cmd, &keymap, ActionContext::SqlEditor), vec![Action::ExecuteStatement]);
+        // Editor shortcuts do not fire outside the editor.
+        assert!(press(&ctx, egui::Key::Enter, cmd, &keymap, ActionContext::Global).is_empty());
+        assert_eq!(press(&ctx, egui::Key::P, cmd | egui::Modifiers::SHIFT, &keymap, ActionContext::Global), vec![Action::CommandPalette]);
+        assert_eq!(press(&ctx, egui::Key::F, cmd | egui::Modifiers::SHIFT, &keymap, ActionContext::SqlEditor), vec![Action::FormatSql]);
+    }
+}

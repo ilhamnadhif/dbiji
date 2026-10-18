@@ -1632,8 +1632,11 @@ dependencies = [
  "chrono",
  "dbiji-core",
  "duckdb",
+ "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

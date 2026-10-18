@@ -21,6 +21,9 @@ fn connect(backend: &Backend, url: &str) -> (ConnectionManager, String) {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let (mut cfg, password) = dbiji_config::parse_connection_url(url).unwrap();
     cfg.save_password = true;
+    if password.is_none() {
+        cfg.auth = dbiji_core::config::AuthMethod::None;
+    }
     let secrets = Arc::new(MemorySecrets::default());
     if let Some(pw) = &password {
         secrets.set(&secret_key(&cfg.id, SecretSlot::Password), pw).unwrap();

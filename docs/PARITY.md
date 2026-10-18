@@ -186,7 +186,7 @@ Legend: ✅ implemented and tested · 🟡 implemented, partially tested ·
 | SQL Server | ✅ | `dbiji-driver-mssql` (39 unit, 6 integration) *(env)* |
 | ClickHouse | ✅ | `dbiji-driver-clickhouse` (54 unit, 5 integration) *(env)* |
 | DuckDB | ✅ | `dbiji-driver-duckdb` (43), optional `duckdb` feature |
-| CockroachDB | 🟡 | PostgreSQL driver with CockroachDB catalog adjustments; not yet run against a live CockroachDB server |
+| CockroachDB | ✅ | PostgreSQL driver with CockroachDB catalog adjustments; `dbiji-app` end-to-end suites (execution, cancel, schema compare gate, data editing, editor) run against CockroachDB *(env `DBIJI_TEST_COCKROACH`)* |
 | Oracle | ⛔ | Only driver needs Oracle's native client library (OCI), excluded by the full-Rust rule (PRD §7) |
 | Db2, Firebird, H2, Trino | ⛔ | No usable pure-Rust network driver yet (PRD §7: "only if a viable Rust driver exists") |
 

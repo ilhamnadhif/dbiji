@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 
 fn servers() -> Vec<(&'static str, String)> {
     let mut out = Vec::new();
-    for (name, var) in [("mysql", "DBIJI_TEST_MYSQL"), ("mariadb", "DBIJI_TEST_MARIADB"), ("postgres", "DBIJI_TEST_PG")] {
+    for (name, var) in [("mysql", "DBIJI_TEST_MYSQL"), ("mariadb", "DBIJI_TEST_MARIADB"), ("postgres", "DBIJI_TEST_PG"), ("cockroach", "DBIJI_TEST_COCKROACH")] {
         if let Ok(url) = std::env::var(var)
             && !url.trim().is_empty() {
                 out.push((name, url));
@@ -41,6 +41,9 @@ fn connect(backend: &Backend, url: &str) -> (ConnectionManager, String) {
     let (mut cfg, password) = dbiji_config::parse_connection_url(url).expect("valid test URL");
     cfg.name = "e2e".into();
     cfg.save_password = true;
+    if password.is_none() {
+        cfg.auth = dbiji_core::config::AuthMethod::None;
+    }
     let secrets = Arc::new(MemorySecrets::default());
     if let Some(pw) = &password {
         secrets.set(&secret_key(&cfg.id, SecretSlot::Password), pw).unwrap();
@@ -97,7 +100,7 @@ fn execute_fetch_count_and_metadata() {
         let backend = Backend::new().unwrap();
         let (mut cm, id) = connect(&backend, &url);
         let table = format!("dbiji_e2e_{}", &uuid::Uuid::new_v4().simple().to_string()[..8]);
-        let is_pg = name == "postgres";
+        let is_pg = name == "postgres" || name == "cockroach";
         let create = format!("CREATE TABLE {table} (id INT PRIMARY KEY, name VARCHAR(40), amount DECIMAL(10,2))");
         let insert = if is_pg {
             format!("INSERT INTO {table} SELECT g, 'row ' || g, g * 1.5 FROM generate_series(1, 1000) g")
@@ -194,7 +197,7 @@ fn errors_stop_the_script_and_cancel_works() {
         assert_eq!(done, Some((2, 1)), "{name}: stops on the first error");
 
         // A long query is cancelled through the session.
-        let sleep = if name == "postgres" { "SELECT pg_sleep(20)" } else { "SELECT SLEEP(20)" };
+        let sleep = if name == "postgres" || name == "cockroach" { "SELECT pg_sleep(20)" } else { "SELECT SLEEP(20)" };
         let session = cm.live(&id).unwrap().main.clone();
         let plan = StmtPlan { index: 0, sql: sleep.into(), original: sleep.into(), range: 0..sleep.len(), is_write: false, client: None };
         let mut exec = Execution::start(&backend, session, vec![plan], ExecOpts::default(), None);
@@ -242,7 +245,7 @@ fn schema_compare_gate() {
         let (cm, id) = connect(&backend, &url);
         let session = cm.live(&id).unwrap().main.clone();
         let sfx = &uuid::Uuid::new_v4().simple().to_string()[..8];
-        let is_pg = name == "postgres";
+        let is_pg = name == "postgres" || name == "cockroach";
         let (a, b) = (format!("dbiji_cmp_a_{sfx}"), format!("dbiji_cmp_b_{sfx}"));
         let create = if is_pg { "CREATE SCHEMA" } else { "CREATE DATABASE" };
         let drop = if is_pg { "DROP SCHEMA" } else { "DROP DATABASE" };

@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 fn servers() -> Vec<(&'static str, String)> {
     let file = std::env::temp_dir().join(format!("dbiji-edit-e2e-{}.db", uuid::Uuid::new_v4().simple()));
     let mut out = vec![("sqlite", format!("sqlite://{}", file.display()))];
-    for (name, var) in [("postgres", "DBIJI_TEST_PG"), ("mysql", "DBIJI_TEST_MYSQL"), ("mariadb", "DBIJI_TEST_MARIADB")] {
+    for (name, var) in [("postgres", "DBIJI_TEST_PG"), ("cockroach", "DBIJI_TEST_COCKROACH"), ("mysql", "DBIJI_TEST_MYSQL"), ("mariadb", "DBIJI_TEST_MARIADB")] {
         if let Ok(url) = std::env::var(var)
             && !url.trim().is_empty() {
                 out.push((name, url));
@@ -59,6 +59,12 @@ impl H {
         backend.set_context(ctx.clone());
         let (mut cfg, password) = dbiji_config::parse_connection_url(url).unwrap();
         cfg.save_password = true;
+        if password.is_none() {
+            cfg.auth = dbiji_core::config::AuthMethod::None;
+        }
+    if password.is_none() {
+        cfg.auth = dbiji_core::config::AuthMethod::None;
+    }
         let secrets = Arc::new(MemorySecrets::default());
         if let Some(pw) = &password {
             secrets.set(&secret_key(&cfg.id, SecretSlot::Password), pw).unwrap();

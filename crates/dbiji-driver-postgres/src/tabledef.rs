@@ -223,7 +223,7 @@ impl PgSession {
         let am_join = if self.is_cockroach() { "" } else { "LEFT JOIN pg_catalog.pg_am am ON am.oid = c.relam" };
         let partkey = if self.is_cockroach() { "NULL::text" } else { "CASE WHEN c.relkind = 'p' THEN pg_catalog.pg_get_partkeydef(c.oid) END" };
         let where_ = match filter {
-            TableFilter::AllInSchema => "c.relkind IN ('r','p','f') AND NOT c.relispartition".to_string(),
+            TableFilter::AllInSchema => "c.relkind IN ('r','p','f') AND NOT coalesce(c.relispartition, false)".to_string(),
             TableFilter::Oids(_) => "c.oid = ANY($2::oid[])".to_string(),
         };
         let sql = format!(

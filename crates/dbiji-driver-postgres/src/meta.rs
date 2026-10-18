@@ -160,7 +160,7 @@ impl PgSession {
         match kind {
             ObjectKind::Table | ObjectKind::View | ObjectKind::MaterializedView | ObjectKind::ForeignTable | ObjectKind::Sequence => {
                 let partition_filter = match kind {
-                    ObjectKind::Table => " AND c.relkind IN ('r','p') AND NOT c.relispartition",
+                    ObjectKind::Table => " AND c.relkind IN ('r','p') AND NOT coalesce(c.relispartition, false)",
                     ObjectKind::View => " AND c.relkind = 'v'",
                     ObjectKind::MaterializedView => " AND c.relkind = 'm'",
                     ObjectKind::ForeignTable => " AND c.relkind = 'f'",
@@ -457,7 +457,7 @@ impl PgSession {
                          JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
                          JOIN pg_catalog.pg_class p ON p.oid = i.inhparent JOIN pg_catalog.pg_namespace pn ON pn.oid = p.relnamespace \
                          LEFT JOIN pg_catalog.pg_description d ON d.objoid = c.oid AND d.classoid = 'pg_catalog.pg_class'::regclass AND d.objsubid = 0 \
-                         WHERE pn.nspname = $1 AND p.relname = $2 AND c.relispartition ORDER BY c.relname",
+                         WHERE pn.nspname = $1 AND p.relname = $2 AND coalesce(c.relispartition, false) ORDER BY c.relname",
                         &[P::Name(schema), P::Name(table)],
                     )
                     .await?;
@@ -1251,7 +1251,7 @@ impl PgSession {
         ];
         for (rk, kind) in rel_kinds {
             if wants(kind) {
-                let partition = if kind == ObjectKind::Table { " AND NOT c.relispartition" } else { "" };
+                let partition = if kind == ObjectKind::Table { " AND NOT coalesce(c.relispartition, false)" } else { "" };
                 parts.push(format!(
                     "SELECT '{}'::text AS k, n.nspname::text AS sch, NULL::text AS parent, c.relname::text AS name, NULL::text AS sig, \
                      d.description AS descr, NULL::text AS detail \
@@ -1270,7 +1270,7 @@ impl PgSession {
                  FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid = a.attrelid \
                  JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
                  LEFT JOIN pg_catalog.pg_description d ON d.objoid = c.oid AND d.classoid = {DESC_CLASS} AND d.objsubid = a.attnum \
-                 WHERE c.relkind IN ('r','p','v','m','f') AND NOT c.relispartition AND a.attnum > 0 AND NOT a.attisdropped \
+                 WHERE c.relkind IN ('r','p','v','m','f') AND NOT coalesce(c.relispartition, false) AND a.attnum > 0 AND NOT a.attisdropped \
                  AND {schema_filter} AND (a.attname {op} $1{})",
                 comment_or("")
             ));

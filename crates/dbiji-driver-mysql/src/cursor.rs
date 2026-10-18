@@ -213,6 +213,9 @@ impl Watch {
     /// which would desynchronise the protocol), sending `KILL QUERY` when the
     /// timeout elapses or the cursor goes away.
     async fn guard<F: Future>(&mut self, fut: F) -> F::Output {
+        // Checked before every operation: while rows stream, `fut` is always
+        // ready and the select below would never get to the timers.
+        self.check_now();
         tokio::pin!(fut);
         let mut abort_open = true;
         loop {
@@ -244,6 +247,18 @@ impl Watch {
         }
     }
 
+    /// Deadline, dropped cursor and abort, without waiting.
+    fn check_now(&mut self) {
+        if !self.killed && self.deadline.is_some_and(|d| Instant::now() >= d) {
+            self.timed_out = true;
+            self.kill();
+        }
+        if !self.abandoned && (self.alive.has_changed().is_err() || self.abort_requested()) {
+            self.abandoned = true;
+            self.kill();
+        }
+    }
+
     /// Like [`guard`](Self::guard) for draining an abandoned result: kill after
     /// `soft`, give up (returning `None`) after `hard`.
     async fn drain<F: Future>(
@@ -252,6 +267,15 @@ impl Watch {
         soft: Instant,
         hard: Instant,
     ) -> Option<F::Output> {
+        // As in `guard`: rows that are always ready must not starve the timers.
+        let now = Instant::now();
+        if now >= hard {
+            return None;
+        }
+        if self.next_kill(soft).is_some_and(|k| now >= k) {
+            self.killed = true;
+            self.send_kill();
+        }
         tokio::pin!(fut);
         loop {
             let next_kill = self.next_kill(soft);

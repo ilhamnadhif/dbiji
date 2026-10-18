@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#23907f"/>
+      <stop offset="1" stop-color="#0d3b38"/>
+    </linearGradient>
+    <linearGradient id="leaf" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c6f27a"/>
+      <stop offset="1" stop-color="#46a84a"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#e9e4d4"/>
+      <stop offset="0.5" stop-color="#fbf8ef"/>
+      <stop offset="1" stop-color="#ddd6c2"/>
+    </linearGradient>
+  </defs>
+  <rect x="72" y="72" width="880" height="880" rx="196" fill="url(#bg)"/>
+  <path d="M272 470 v270 a240 82 0 0 0 480 0 v-270 z" fill="url(#body)"/>
+  <ellipse cx="512" cy="470" rx="240" ry="82" fill="#fbf8ef"/>
+  <path d="M282 560 a230 80 0 0 0 460 0" fill="none" stroke="#23907f" stroke-width="20"/>
+  <path d="M282 650 a230 80 0 0 0 460 0" fill="none" stroke="#23907f" stroke-width="20"/>
+  <ellipse cx="512" cy="470" rx="240" ry="82" fill="none" stroke="#23907f" stroke-width="20"/>
+  <path d="M512 468 C 506 400 520 330 566 282" fill="none" stroke="#5cb84a" stroke-width="26" stroke-linecap="round"/>
+  <path d="M566 282 C 640 214 742 222 770 252 C 722 330 626 344 566 282 Z" fill="url(#leaf)"/>
+  <path d="M524 360 C 470 296 372 284 336 316 C 374 386 470 400 524 360 Z" fill="url(#leaf)"/>
+</svg>

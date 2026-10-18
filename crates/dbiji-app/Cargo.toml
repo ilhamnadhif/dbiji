@@ -1,17 +1,43 @@
 [package]
 name = "dbiji-app"
+description = "DBiji desktop application"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
+authors.workspace = true
 
 [[bin]]
 name = "dbiji"
 path = "src/main.rs"
 
+[lib]
+name = "dbiji_app"
+path = "src/lib.rs"
+
 [dependencies]
+dbiji-core.workspace = true
 eframe.workspace = true
 egui.workspace = true
 egui_dock.workspace = true
 egui-phosphor.workspace = true
 egui_plot.workspace = true
 egui_extras.workspace = true
+rfd.workspace = true
+image.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+parking_lot.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+rustls.workspace = true
+open.workspace = true
+
+[dev-dependencies]
+regex.workspace = true

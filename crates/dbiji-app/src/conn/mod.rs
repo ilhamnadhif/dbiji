@@ -1,0 +1,639 @@
+//! Connection management: configured connections, live sessions, tunnels,
+//! credentials and per-connection metadata caches.
+
+pub mod meta;
+pub mod session;
+
+use crate::backend::{Backend, Job, Loadable};
+use dbiji_core::config::{AuthMethod, ConnectionConfig, ConnectionType, SecretSlot, secret_key};
+use dbiji_core::driver::{ConnectParams, Driver, ServerInfo, TransactionMode};
+use dbiji_core::registry::DriverRegistry;
+use dbiji_core::{DbError, DbKind, DbResult, Dialect, Secret};
+use meta::MetadataCache;
+use session::SessionHandle;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+/// Where secrets come from (Keychain or encrypted vault).
+pub trait SecretSource: Send + Sync {
+    fn get(&self, key: &str) -> DbResult<Option<Secret>>;
+    fn set(&self, key: &str, value: &Secret) -> DbResult<()>;
+    fn delete(&self, key: &str) -> DbResult<()>;
+}
+
+/// Opens SSH tunnels / proxy forwarders for a connection.
+#[async_trait::async_trait]
+pub trait NetConnector: Send + Sync {
+    /// Returns `None` when the connection needs no tunnel.
+    async fn open(&self, cfg: &ConnectionConfig, creds: &Credentials, host: &str, port: u16) -> DbResult<Option<TunnelGuard>>;
+}
+
+/// A running tunnel; dropping it stops forwarding.
+pub struct TunnelGuard {
+    pub local_host: String,
+    pub local_port: u16,
+    pub alive: Box<dyn Fn() -> bool + Send + Sync>,
+    pub guard: Box<dyn std::any::Any + Send + Sync>,
+}
+
+/// Credentials collected before connecting (from the secret store or prompts).
+#[derive(Clone, Default)]
+pub struct Credentials {
+    pub password: Option<Secret>,
+    pub ssh_password: Option<Secret>,
+    pub ssh_passphrase: Option<Secret>,
+    pub proxy_password: Option<Secret>,
+}
+
+/// Something the user must enter before a connection can be opened.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PromptField {
+    Password,
+    SshPassword,
+    SshPassphrase,
+    ProxyPassword,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConnStatus {
+    Disconnected,
+    Connecting,
+    Connected,
+    Failed(String),
+    /// The connection broke after being established.
+    Lost,
+}
+
+/// A connected connection.
+pub struct LiveConnection {
+    pub config: ConnectionConfig,
+    pub conn_type: ConnectionType,
+    pub driver: Arc<dyn Driver>,
+    pub dialect: Arc<dyn Dialect>,
+    /// Effective parameters (local tunnel endpoint, password) used to open more sessions.
+    params: ConnectParams,
+    tunnel: Option<TunnelGuard>,
+    /// Session used by the navigator and metadata loading.
+    pub main: SessionHandle,
+    /// Sessions for other databases of the server (PostgreSQL / SQL Server).
+    pub db_sessions: HashMap<String, Loadable<SessionHandle>>,
+    pub server: ServerInfo,
+    pub meta: MetadataCache,
+    pub connected_at: Instant,
+    pub current_database: Option<String>,
+    pub current_schema: Option<String>,
+}
+
+impl LiveConnection {
+    pub fn kind(&self) -> DbKind {
+        self.config.kind
+    }
+
+    pub fn tunnel_alive(&self) -> bool {
+        self.tunnel.as_ref().is_none_or(|t| (t.alive)())
+    }
+
+    pub fn params(&self) -> &ConnectParams {
+        &self.params
+    }
+
+    /// Session for `database` (`None` or the current database → main session).
+    pub fn session_for(&self, database: Option<&str>) -> Option<SessionHandle> {
+        match database {
+            None => Some(self.main.clone()),
+            Some(db) if Some(db) == self.current_database.as_deref() => Some(self.main.clone()),
+            Some(db) => {
+                if !self.driver.info().capabilities.multiple_databases {
+                    return Some(self.main.clone());
+                }
+                self.db_sessions.get(db).and_then(|l| l.get()).cloned()
+            }
+        }
+    }
+
+    /// Make sure a session for `database` is being opened; returns it once ready.
+    pub fn ensure_session(&mut self, backend: &Backend, database: Option<&str>) -> Option<SessionHandle> {
+        if let Some(s) = self.session_for(database) {
+            return Some(s);
+        }
+        let db = database?.to_string();
+        let entry = self.db_sessions.entry(db.clone()).or_default();
+        entry.poll();
+        if entry.is_not_loaded() {
+            let driver = self.driver.clone();
+            let mut params = self.params.clone();
+            params.database = Some(db.clone());
+            let cfg = self.config.clone();
+            let label = format!("{} / {db}", cfg.name);
+            *entry = Loadable::Loading(backend.spawn(async move {
+                let mut s = driver.connect(&params).await?;
+                init_session(s.as_mut(), &cfg, &params).await?;
+                Ok(SessionHandle::new(s, label, Some(db)))
+            }));
+        }
+        None
+    }
+
+    /// Open an additional session (separate connection per editor, FR-C7).
+    pub fn open_session_job(&self, backend: &Backend, label: String, database: Option<String>) -> Job<DbResult<SessionHandle>> {
+        let driver = self.driver.clone();
+        let mut params = self.params.clone();
+        if database.is_some() {
+            params.database = database.clone();
+        }
+        let cfg = self.config.clone();
+        backend.spawn(async move {
+            let mut s = driver.connect(&params).await?;
+            init_session(s.as_mut(), &cfg, &params).await?;
+            Ok(SessionHandle::new(s, label, database))
+        })
+    }
+}
+
+/// Apply transaction mode, default schema and init SQL after connecting.
+pub async fn init_session(
+    s: &mut dyn dbiji_core::Session,
+    cfg: &ConnectionConfig,
+    params: &ConnectParams,
+) -> DbResult<()> {
+    if !params.auto_commit {
+        s.set_transaction_mode(TransactionMode::Manual).await?;
+    }
+    if let Some(schema) = cfg.init.default_schema.as_deref().filter(|s| !s.is_empty()) {
+        if let Err(e) = s.set_current_schema(schema).await {
+            tracing::warn!("cannot set default schema: {e}");
+        }
+    }
+    for stmt in split_simple(&cfg.init.init_sql) {
+        dbiji_core::driver::execute_update(s, &stmt, &[])
+            .await
+            .map_err(|e| e.with_context("Initialization SQL"))?;
+    }
+    Ok(())
+}
+
+/// Minimal `;` splitter for initialization scripts (quotes aware).
+pub fn split_simple(sql: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut quote: Option<char> = None;
+    for c in sql.chars() {
+        match quote {
+            Some(q) => {
+                cur.push(c);
+                if c == q {
+                    quote = None;
+                }
+            }
+            None => match c {
+                '\'' | '"' | '`' => {
+                    quote = Some(c);
+                    cur.push(c);
+                }
+                ';' => {
+                    if !cur.trim().is_empty() {
+                        out.push(cur.trim().to_string());
+                    }
+                    cur.clear();
+                }
+                _ => cur.push(c),
+            },
+        }
+    }
+    if !cur.trim().is_empty() {
+        out.push(cur.trim().to_string());
+    }
+    out
+}
+
+struct Connected {
+    session: Box<dyn dbiji_core::Session>,
+    params: ConnectParams,
+    tunnel: Option<TunnelGuard>,
+    server: ServerInfo,
+    database: Option<String>,
+    schema: Option<String>,
+}
+
+/// Runs a shell command (pre-connect hook, password command).
+pub async fn run_shell(command: &str, timeout: Duration) -> DbResult<String> {
+    #[cfg(unix)]
+    let mut cmd = {
+        let mut c = tokio::process::Command::new("/bin/sh");
+        c.arg("-c").arg(command);
+        c
+    };
+    #[cfg(windows)]
+    let mut cmd = {
+        let mut c = tokio::process::Command::new("cmd");
+        c.arg("/C").arg(command);
+        c
+    };
+    cmd.kill_on_drop(true);
+    let out = tokio::time::timeout(timeout, cmd.output())
+        .await
+        .map_err(|_| DbError::timeout(format!("Command timed out: {command}")))?
+        .map_err(DbError::from)?;
+    if !out.status.success() {
+        return Err(DbError::config(format!(
+            "Command failed ({}): {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr).trim()
+        )));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+async fn connect_task(
+    driver: Arc<dyn Driver>,
+    cfg: ConnectionConfig,
+    conn_type: ConnectionType,
+    creds: Credentials,
+    net: Arc<dyn NetConnector>,
+    pgpass: Option<Arc<dyn Fn(&str, u16, &str, &str) -> Option<Secret> + Send + Sync>>,
+) -> DbResult<Connected> {
+    if let Some(cmd) = cfg.init.shell_before_connect.as_deref().filter(|c| !c.trim().is_empty()) {
+        run_shell(cmd, Duration::from_secs(60)).await.map_err(|e| e.with_context("Shell command before connect"))?;
+    }
+    let password = match &cfg.auth {
+        AuthMethod::Password | AuthMethod::Prompt => creds.password.clone(),
+        AuthMethod::Pgpass => {
+            let user = cfg.user.clone().unwrap_or_default();
+            let db = cfg.database.clone().unwrap_or_default();
+            pgpass.as_ref().and_then(|f| f(&cfg.host, cfg.effective_port(), &db, &user))
+        }
+        AuthMethod::Command { command } => Some(Secret::new(
+            run_shell(command, Duration::from_secs(30))
+                .await
+                .map_err(|e| e.with_context("Password command"))?
+                .lines()
+                .next()
+                .unwrap_or("")
+                .to_string(),
+        )),
+        AuthMethod::None => None,
+    };
+    let mut params = ConnectParams::from_config(&cfg, password);
+    params.auto_commit = cfg.auto_commit.unwrap_or(conn_type.auto_commit);
+    let mut tunnel = None;
+    if !cfg.kind.is_file_based() {
+        if let Some(t) = net.open(&cfg, &creds, &cfg.host, cfg.effective_port()).await? {
+            params.tls_server_name = Some(cfg.host.clone());
+            params.host = t.local_host.clone();
+            params.port = t.local_port;
+            tunnel = Some(t);
+        }
+    }
+    let timeout = params.connect_timeout + Duration::from_secs(5);
+    let mut session = tokio::time::timeout(timeout, driver.connect(&params))
+        .await
+        .map_err(|_| DbError::timeout(format!("Connection timed out after {}s", timeout.as_secs())))??;
+    init_session(session.as_mut(), &cfg, &params).await?;
+    let database = session.current_database().await.ok().flatten();
+    let schema = session.current_schema().await.ok().flatten();
+    let server = session.server_info().clone();
+    Ok(Connected { session, params, tunnel, server, database, schema })
+}
+
+/// Configured + live connections.
+pub struct ConnectionManager {
+    pub registry: DriverRegistry,
+    pub configs: Vec<ConnectionConfig>,
+    pub folders: Vec<String>,
+    pub connection_types: Vec<ConnectionType>,
+    live: HashMap<String, LiveConnection>,
+    connecting: HashMap<String, Job<DbResult<Connected>>>,
+    failed: HashMap<String, String>,
+    pub secrets: Arc<dyn SecretSource>,
+    pub net: Arc<dyn NetConnector>,
+    pub pgpass: Option<Arc<dyn Fn(&str, u16, &str, &str) -> Option<Secret> + Send + Sync>>,
+    /// Ids whose connect finished this frame (for UI reactions like expanding the tree).
+    pub just_connected: Vec<String>,
+    last_keepalive: Instant,
+}
+
+impl ConnectionManager {
+    pub fn new(registry: DriverRegistry, secrets: Arc<dyn SecretSource>, net: Arc<dyn NetConnector>) -> Self {
+        ConnectionManager {
+            registry,
+            configs: Vec::new(),
+            folders: Vec::new(),
+            connection_types: ConnectionType::builtins(),
+            live: HashMap::new(),
+            connecting: HashMap::new(),
+            failed: HashMap::new(),
+            secrets,
+            net,
+            pgpass: None,
+            just_connected: Vec::new(),
+            last_keepalive: Instant::now(),
+        }
+    }
+
+    pub fn config(&self, id: &str) -> Option<&ConnectionConfig> {
+        self.configs.iter().find(|c| c.id == id)
+    }
+
+    pub fn config_mut(&mut self, id: &str) -> Option<&mut ConnectionConfig> {
+        self.configs.iter_mut().find(|c| c.id == id)
+    }
+
+    pub fn connection_type(&self, id: &str) -> ConnectionType {
+        self.connection_types.iter().find(|t| t.id == id).cloned().unwrap_or_default()
+    }
+
+    pub fn type_of(&self, conn_id: &str) -> ConnectionType {
+        self.config(conn_id).map(|c| self.connection_type(&c.connection_type)).unwrap_or_default()
+    }
+
+    /// Marker colour of a connection (explicit colour or connection type colour).
+    pub fn color_of(&self, conn_id: &str) -> Option<[u8; 3]> {
+        let cfg = self.config(conn_id)?;
+        Some(cfg.color.unwrap_or_else(|| self.connection_type(&cfg.connection_type).color))
+    }
+
+    pub fn upsert(&mut self, cfg: ConnectionConfig) {
+        match self.configs.iter_mut().find(|c| c.id == cfg.id) {
+            Some(c) => *c = cfg,
+            None => self.configs.push(cfg),
+        }
+    }
+
+    pub fn remove(&mut self, id: &str) {
+        self.disconnect_now(id);
+        self.configs.retain(|c| c.id != id);
+        for slot in [SecretSlot::Password, SecretSlot::SshPassword, SecretSlot::SshPassphrase, SecretSlot::ProxyPassword] {
+            let _ = self.secrets.delete(&secret_key(id, slot));
+        }
+    }
+
+    pub fn status(&self, id: &str) -> ConnStatus {
+        if self.connecting.contains_key(id) {
+            return ConnStatus::Connecting;
+        }
+        if let Some(l) = self.live.get(id) {
+            if l.main.is_closed() || !l.tunnel_alive() {
+                return ConnStatus::Lost;
+            }
+            return ConnStatus::Connected;
+        }
+        if let Some(e) = self.failed.get(id) {
+            return ConnStatus::Failed(e.clone());
+        }
+        ConnStatus::Disconnected
+    }
+
+    pub fn is_connected(&self, id: &str) -> bool {
+        self.live.contains_key(id)
+    }
+
+    pub fn is_connecting(&self) -> bool {
+        !self.connecting.is_empty()
+    }
+
+    /// Connect with a draft configuration and disconnect again ("Test connection").
+    /// Returns a short server description on success.
+    pub fn test_connection(&self, backend: &Backend, cfg: ConnectionConfig, prompted: Credentials) -> Job<DbResult<String>> {
+        let driver = self.registry.get(cfg.kind);
+        let conn_type = self.connection_type(&cfg.connection_type);
+        let creds = self.credentials(&cfg.id, &prompted);
+        let net = self.net.clone();
+        let pgpass = self.pgpass.clone();
+        backend.spawn(async move {
+            let driver = driver.ok_or_else(|| DbError::unsupported(format!("No driver for {}", cfg.kind)))?;
+            let started = Instant::now();
+            let mut c = connect_task(driver, cfg, conn_type, creds, net, pgpass).await?;
+            let info = format!(
+                "{} {} ({} ms)",
+                c.server.product,
+                c.server.version.split_whitespace().next().unwrap_or(""),
+                started.elapsed().as_millis()
+            );
+            let _ = c.session.close().await;
+            drop(c.tunnel.take());
+            Ok(info)
+        })
+    }
+
+    pub fn live(&self, id: &str) -> Option<&LiveConnection> {
+        self.live.get(id)
+    }
+
+    pub fn live_mut(&mut self, id: &str) -> Option<&mut LiveConnection> {
+        self.live.get_mut(id)
+    }
+
+    pub fn live_ids(&self) -> Vec<String> {
+        self.live.keys().cloned().collect()
+    }
+
+    /// Which secrets must be prompted for because they are not saved.
+    pub fn missing_credentials(&self, id: &str) -> Vec<PromptField> {
+        let Some(cfg) = self.config(id) else { return Vec::new() };
+        let mut out = Vec::new();
+        let saved = |slot| self.secrets.get(&secret_key(id, slot)).ok().flatten().is_some();
+        match cfg.auth {
+            AuthMethod::Prompt => out.push(PromptField::Password),
+            AuthMethod::Password if !cfg.kind.is_file_based() && !(cfg.save_password && saved(SecretSlot::Password)) => {
+                out.push(PromptField::Password)
+            }
+            _ => {}
+        }
+        if let Some(ssh) = cfg.ssh.as_ref().filter(|s| s.enabled) {
+            match &ssh.auth {
+                dbiji_core::config::SshAuth::Password if !(ssh.save_credentials && saved(SecretSlot::SshPassword)) => {
+                    out.push(PromptField::SshPassword)
+                }
+                _ => {}
+            }
+        }
+        if let Some(p) = cfg.proxy.as_ref().filter(|p| p.enabled && p.user.is_some()) {
+            if !(p.save_credentials && saved(SecretSlot::ProxyPassword)) {
+                out.push(PromptField::ProxyPassword);
+            }
+        }
+        out
+    }
+
+    /// Collect saved credentials, overlaid with the prompted ones.
+    pub fn credentials(&self, id: &str, prompted: &Credentials) -> Credentials {
+        let get = |slot| self.secrets.get(&secret_key(id, slot)).ok().flatten();
+        Credentials {
+            password: prompted.password.clone().or_else(|| get(SecretSlot::Password)),
+            ssh_password: prompted.ssh_password.clone().or_else(|| get(SecretSlot::SshPassword)),
+            ssh_passphrase: prompted.ssh_passphrase.clone().or_else(|| get(SecretSlot::SshPassphrase)),
+            proxy_password: prompted.proxy_password.clone().or_else(|| get(SecretSlot::ProxyPassword)),
+        }
+    }
+
+    /// Start connecting with the given (prompted) credentials.
+    pub fn connect(&mut self, backend: &Backend, id: &str, prompted: Credentials) -> DbResult<()> {
+        if self.live.contains_key(id) || self.connecting.contains_key(id) {
+            return Ok(());
+        }
+        let cfg = self.config(id).cloned().ok_or_else(|| DbError::config("Unknown connection"))?;
+        let driver = self
+            .registry
+            .get(cfg.kind)
+            .ok_or_else(|| DbError::unsupported(format!("No driver for {}", cfg.kind)))?;
+        let conn_type = self.connection_type(&cfg.connection_type);
+        let creds = self.credentials(id, &prompted);
+        let net = self.net.clone();
+        let pgpass = self.pgpass.clone();
+        self.failed.remove(id);
+        self.connecting.insert(id.to_string(), backend.spawn(connect_task(driver, cfg, conn_type, creds, net, pgpass)));
+        Ok(())
+    }
+
+    /// Poll connect jobs and keep-alive. Call once per frame.
+    pub fn poll(&mut self, backend: &Backend) {
+        self.just_connected.clear();
+        let ids: Vec<String> = self.connecting.keys().cloned().collect();
+        for id in ids {
+            let done = self.connecting.get_mut(&id).and_then(|j| j.poll());
+            if let Some(res) = done {
+                self.connecting.remove(&id);
+                match res {
+                    Ok(c) => {
+                        let Some(cfg) = self.config(&id).cloned() else { continue };
+                        let Some(driver) = self.registry.get(cfg.kind) else { continue };
+                        let dialect = driver.dialect();
+                        let conn_type = self.connection_type(&cfg.connection_type);
+                        let main = SessionHandle::new(c.session, format!("{} (main)", cfg.name), c.database.clone());
+                        if let Some(cfg) = self.config_mut(&id) {
+                            cfg.last_connected = Some(chrono::Utc::now().timestamp());
+                        }
+                        self.live.insert(
+                            id.clone(),
+                            LiveConnection {
+                                config: cfg,
+                                conn_type,
+                                driver,
+                                dialect,
+                                params: c.params,
+                                tunnel: c.tunnel,
+                                main,
+                                db_sessions: HashMap::new(),
+                                server: c.server,
+                                meta: MetadataCache::default(),
+                                connected_at: Instant::now(),
+                                current_database: c.database,
+                                current_schema: c.schema,
+                            },
+                        );
+                        self.just_connected.push(id);
+                    }
+                    Err(e) => {
+                        self.failed.insert(id, e.full_text());
+                    }
+                }
+            }
+        }
+        for live in self.live.values_mut() {
+            live.meta.poll();
+            for s in live.db_sessions.values_mut() {
+                s.poll();
+            }
+        }
+        // Keep-alive pings.
+        if self.last_keepalive.elapsed() > Duration::from_secs(5) {
+            self.last_keepalive = Instant::now();
+            for live in self.live.values() {
+                let secs = live.config.init.keep_alive_secs;
+                if secs > 0 && live.connected_at.elapsed().as_secs() % (secs as u64).max(5) < 5 {
+                    let s = live.main.clone();
+                    backend.spawn_detached(async move {
+                        let _ = s.ping().await;
+                    });
+                }
+            }
+        }
+    }
+
+    /// Take the connect error of `id` (shown once by the UI).
+    pub fn take_error(&mut self, id: &str) -> Option<String> {
+        self.failed.remove(id)
+    }
+
+    pub fn errors(&self) -> Vec<(String, String)> {
+        self.failed.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+    }
+
+    /// Disconnect, closing all sessions in the background.
+    pub fn disconnect(&mut self, backend: &Backend, id: &str) {
+        if let Some(live) = self.live.remove(id) {
+            let after = live.config.init.shell_after_disconnect.clone();
+            backend.spawn_detached(async move {
+                live.main.close().await;
+                for s in live.db_sessions.values() {
+                    if let Some(s) = s.get() {
+                        s.close().await;
+                    }
+                }
+                drop(live.tunnel);
+                if let Some(cmd) = after.filter(|c| !c.trim().is_empty()) {
+                    if let Err(e) = run_shell(&cmd, Duration::from_secs(60)).await {
+                        tracing::warn!("shell command after disconnect failed: {e}");
+                    }
+                }
+            });
+        }
+        self.connecting.remove(id);
+    }
+
+    fn disconnect_now(&mut self, id: &str) {
+        self.live.remove(id);
+        self.connecting.remove(id);
+    }
+
+    pub fn disconnect_all(&mut self, backend: &Backend) {
+        for id in self.live_ids() {
+            self.disconnect(backend, &id);
+        }
+    }
+}
+
+/// Secret store that keeps everything in memory (tests, or when the real store is locked).
+#[derive(Default)]
+pub struct MemorySecrets {
+    map: parking_lot::Mutex<HashMap<String, Secret>>,
+}
+
+impl SecretSource for MemorySecrets {
+    fn get(&self, key: &str) -> DbResult<Option<Secret>> {
+        Ok(self.map.lock().get(key).cloned())
+    }
+    fn set(&self, key: &str, value: &Secret) -> DbResult<()> {
+        self.map.lock().insert(key.to_string(), value.clone());
+        Ok(())
+    }
+    fn delete(&self, key: &str) -> DbResult<()> {
+        self.map.lock().remove(key);
+        Ok(())
+    }
+}
+
+/// Connector for direct connections only.
+pub struct DirectNet;
+
+#[async_trait::async_trait]
+impl NetConnector for DirectNet {
+    async fn open(&self, cfg: &ConnectionConfig, _creds: &Credentials, _host: &str, _port: u16) -> DbResult<Option<TunnelGuard>> {
+        if cfg.ssh.as_ref().is_some_and(|s| s.enabled) || cfg.proxy.as_ref().is_some_and(|p| p.enabled) {
+            return Err(DbError::unsupported("SSH tunnels and proxies are not available in this build"));
+        }
+        Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn simple_split() {
+        assert_eq!(split_simple("set a=1; select ';'; \n"), vec!["set a=1".to_string(), "select ';'".to_string()]);
+        assert!(split_simple("  ").is_empty());
+    }
+}

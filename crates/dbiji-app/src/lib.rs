@@ -4,14 +4,17 @@
 pub mod app;
 pub mod backend;
 pub mod bench;
+pub mod bench_ui;
 pub mod command;
 pub mod conn;
 pub mod cx;
 pub mod dialogs;
+pub mod exec;
 pub mod keys;
 pub mod nav;
 pub mod ops;
 pub mod palette;
+pub mod results;
 pub mod router;
 pub mod services;
 pub mod tabs;
@@ -97,6 +100,9 @@ pub fn run() -> ExitCode {
         }
     };
     init_logging();
+    if let Some(name) = &args.bench {
+        return bench::run(name, args.bench_report.as_deref());
+    }
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     if let Some(dir) = &args.portable {
         // SAFETY: called before any other thread is spawned.

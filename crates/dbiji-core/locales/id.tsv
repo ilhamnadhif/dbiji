@@ -1,2 +1,210 @@
 # Indonesian translations for DBiji.
 # Format: English source text<TAB>Indonesian text. Escapes: \n \t
+(empty)	(kosong)
+AI assistant	Asisten AI
+About DBiji	Tentang DBiji
+Accept any key (insecure)	Terima kunci apa pun (tidak aman)
+Add bookmark	Tambah bookmark
+Advanced	Lanjutan
+Always encrypt and verify the certificate chain and host name.	Selalu enkripsi dan verifikasi rantai sertifikat serta nama host.
+Always encrypt and verify the certificate chain.	Selalu enkripsi dan verifikasi rantai sertifikat.
+Always encrypt; the certificate is not verified.	Selalu enkripsi; sertifikat tidak diverifikasi.
+Apply	Terapkan
+Ask every time	Tanya setiap kali
+Authentication	Autentikasi
+Auto-commit	Auto-commit
+Background operations	Operasi latar belakang
+Backup	Backup
+CA certificate	Sertifikat CA
+Cancel	Batal
+Cancelled	Dibatalkan
+Cannot connect	Tidak dapat terhubung
+Cannot connect to {}	Tidak dapat terhubung ke {}
+Cannot store the password securely	Tidak dapat menyimpan password dengan aman
+Cannot store the password securely: {}	Tidak dapat menyimpan password dengan aman: {}
+Change password	Ganti password
+Choose a database file.	Pilih file database.
+Clear finished	Hapus yang selesai
+Client certificate	Sertifikat klien
+Client key	Kunci klien
+Close	Tutup
+Close all	Tutup semua
+Close others	Tutup yang lain
+Collapse all	Ciutkan semua
+Colour	Warna
+Command palette	Palet perintah
+Compare data	Bandingkan data
+Compare data…	Bandingkan data…
+Compare schema	Bandingkan skema
+Compare schemas	Bandingkan skema
+Compare schemas…	Bandingkan skema…
+Connect	Hubungkan
+Connect timeout (s)	Batas waktu koneksi (dtk)
+Connect to {}	Hubungkan ke {}
+Connect with a URL	Hubungkan dengan URL
+Connect:	Hubungkan:
+Connected:	Terhubung:
+Connection name	Nama koneksi
+Connection type	Tipe koneksi
+Connection type default	Bawaan tipe koneksi
+Copy name	Salin nama
+Create a connection	Buat koneksi
+Create new database file	Buat file database baru
+Create table	Buat tabel
+Custom colour	Warna khusus
+Database	Database
+Database file	File database
+Databases	Database
+Debug	Debug
+Default schema	Skema bawaan
+Delete	Hapus
+Delete connection	Hapus koneksi
+Delete the connection "{}" and its saved passwords?	Hapus koneksi "{}" beserta password yang tersimpan?
+Description	Deskripsi
+Disconnect	Putuskan
+Disconnect all	Putuskan semua
+Dismiss	Tutup
+Driver properties	Properti driver
+Driver specific properties, e.g. application_name, options, charset.	Properti khusus driver, mis. application_name, options, charset.
+Drop…	Hapus (DROP)…
+Duplicate	Duplikat
+ER diagram	Diagram ER
+Edit connection	Ubah koneksi
+Edit table	Ubah tabel
+Enable filter	Aktifkan filter
+Encrypt when the server supports it; the certificate is not verified.	Enkripsi jika server mendukung; sertifikat tidak diverifikasi.
+Enter a connection name.	Masukkan nama koneksi.
+Enter a host name.	Masukkan nama host.
+Exclude	Kecualikan
+Export data	Ekspor data
+Fetch size	Ukuran fetch
+File	File
+Filter objects	Filter objek
+Filters	Filter
+Folder	Folder
+General	Umum
+Generate SQL	Buat SQL
+Generate mock data	Buat data uji
+Help	Bantuan
+Host	Host
+Host key check	Pemeriksaan kunci host
+Import connections	Impor koneksi
+Import connections from DBeaver	Impor koneksi dari DBeaver
+Import connections…	Impor koneksi…
+Import data	Impor data
+Import from DBeaver	Impor dari DBeaver
+Include	Sertakan
+Initialization	Inisialisasi
+Initialization SQL (run after every connect)	SQL inisialisasi (dijalankan setiap kali terhubung)
+Keep-alive (s)	Keep-alive (dtk)
+Key passphrase	Frasa sandi kunci
+Keyboard shortcuts	Pintasan keyboard
+License: MIT OR Apache-2.0	Lisensi: MIT OR Apache-2.0
+Lightweight SQL client written in Rust	Klien SQL ringan yang ditulis dengan Rust
+Lightweight SQL database client written 100% in Rust.	Klien database SQL ringan yang ditulis 100% dengan Rust.
+Loading…	Memuat…
+Local port	Port lokal
+Lock manager	Manajer lock
+Main	Utama
+Maintenance	Pemeliharaan
+Memory used by result sets	Memori yang dipakai hasil query
+Migrate to another database	Migrasi ke database lain
+Navigator view	Tampilan navigator
+New SQL editor	Editor SQL baru
+New connection	Koneksi baru
+New connection here	Koneksi baru di sini
+New connection…	Koneksi baru…
+No active connection	Tidak ada koneksi aktif
+No authentication	Tanpa autentikasi
+No background operations.	Tidak ada operasi latar belakang.
+No connections yet.	Belum ada koneksi.
+No encryption.	Tanpa enkripsi.
+No matches	Tidak ada yang cocok
+No telemetry. Only connects to the servers you configure.	Tanpa telemetri. Hanya terhubung ke server yang Anda atur.
+None yet	Belum ada
+Off (manual commit)	Mati (commit manual)
+On	Nyala
+Only known hosts	Hanya host yang dikenal
+Open	Buka
+Open SQL console	Buka konsol SQL
+Open existing file	Buka file yang ada
+Open script…	Buka skrip…
+Other objects	Objek lain
+Passphrase	Frasa sandi
+Password	Password
+Password command	Perintah password
+Patterns use * and ? wildcards, separated by commas.	Pola memakai wildcard * dan ?, dipisahkan koma.
+Port	Port
+Private key	Kunci privat
+Private key file	File kunci privat
+Procedures and functions	Prosedur dan fungsi
+Proxy	Proxy
+Proxy host	Host proxy
+Proxy password	Password proxy
+Query builder	Pembuat query
+Query history	Riwayat query
+Query timeout (s)	Batas waktu query (dtk)
+Quit	Keluar
+Read-only	Hanya-baca
+Recent connections	Koneksi terakhir
+Reconnect	Sambung ulang
+Reconnect to apply the changed settings.	Sambung ulang untuk menerapkan pengaturan yang diubah.
+Refresh	Muat ulang
+Restore	Pulihkan
+SQL editor:	Editor SQL:
+SSH	SSH
+SSH agent	SSH agent
+SSH host	Host SSH
+SSH password	Password SSH
+SSH tunnel needs a host and a user.	Tunnel SSH memerlukan host dan user.
+SSL	SSL
+SSL mode	Mode SSL
+Save	Simpan
+Save and connect	Simpan dan hubungkan
+Save credentials	Simpan kredensial
+Save password	Simpan password
+Schemas	Skema
+Search data	Cari data
+Search metadata	Cari metadata
+Search…	Cari…
+Separate connection for each SQL editor	Koneksi terpisah untuk tiap editor SQL
+Server dashboard	Dasbor server
+Session manager	Manajer sesi
+Settings	Pengaturan
+Settings…	Pengaturan…
+Shell command	Perintah shell
+Shell command after disconnect	Perintah shell setelah memutus
+Shell command before connect	Perintah shell sebelum terhubung
+Show all databases	Tampilkan semua database
+Show system objects	Tampilkan objek sistem
+Simple	Sederhana
+Tables	Tabel
+Tasks	Task
+Test connection	Uji koneksi
+The password is read from ~/.pgpass (or PGPASSFILE).	Password dibaca dari ~/.pgpass (atau PGPASSFILE).
+This feature is not available in this build yet.	Fitur ini belum tersedia di build ini.
+Toggle navigator	Tampilkan/sembunyikan navigator
+Tools	Alat
+Trust on first use	Percayai saat pertama dipakai
+Trust only this CA (ignore system certificates)	Hanya percayai CA ini (abaikan sertifikat sistem)
+Type	Tipe
+Type a command, connection or object…	Ketik perintah, koneksi, atau objek…
+Use SSH tunnel	Gunakan tunnel SSH
+Use proxy	Gunakan proxy
+User	User
+Version	Versi
+View	Tampilan
+View DDL	Lihat DDL
+View data	Lihat data
+Views	View
+Welcome	Selamat datang
+automatic	otomatis
+current	aktif
+default	bawaan
+global setting	pengaturan global
+name	nama
+none	tidak ada
+not connected	tidak terhubung
+pgpass file	file pgpass
+value	nilai
+{} running	{} berjalan

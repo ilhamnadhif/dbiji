@@ -1424,3 +1424,10 @@ expression, e.g. price * quantity	ekspresi, mis. price * quantity
 {} connection(s) now use their own network settings	{} koneksi kini memakai pengaturan jaringannya sendiri
 Recent scripts	Skrip terbaru
 Unlock the saved passwords, then connect again.	Buka kunci kata sandi tersimpan, lalu hubungkan lagi.
+Fetch all	Ambil semua
+Fetch all rows?	Ambil semua baris?
+Quit without saving	Keluar tanpa menyimpan
+Rows beyond the memory limit are kept in a temporary file.	Baris di atas batas memori disimpan di file sementara.
+The result has {} rows; fetching them may take a while.	Hasil berisi {} baris; mengambil semuanya bisa memakan waktu.
+The result may have more than {} rows; fetching them may take a while.	Hasil mungkin berisi lebih dari {} baris; mengambil semuanya bisa memakan waktu.
+These tabs have unsaved changes:	Tab berikut memiliki perubahan yang belum disimpan:

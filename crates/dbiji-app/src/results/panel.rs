@@ -76,6 +76,8 @@ pub struct ResultPanel {
     executed: Instant,
     /// Dictionary lookups being loaded: (result column, job).
     dict_jobs: Vec<(usize, Job<DbResult<HashMap<String, String>>>)>,
+    settings_applied: bool,
+    confirm_fetch_all: bool,
 }
 
 /// Collect the rows of a store (bounded) for charts / maps.
@@ -146,6 +148,8 @@ impl ResultPanel {
             fetch_op: None,
             executed: Instant::now(),
             dict_jobs: Vec::new(),
+            settings_applied: false,
+            confirm_fetch_all: false,
         }
     }
 
@@ -437,9 +441,13 @@ impl ResultPanel {
         match action {
             GridAction::FetchMore => self.src.fetch_more(backend, Self::fetch_size(cx), None),
             GridAction::FetchAll => {
-                let op = cx.ops.start(trf("Fetching all rows: {}", &[&self.title]));
-                self.fetch_op = Some(op.id);
-                self.src.fetch_more(backend, usize::MAX, Some(op));
+                let limit = cx.settings.results.confirm_fetch_all_above;
+                let known_small = self.model.fetch.total_count.is_some_and(|t| t <= limit);
+                if limit > 0 && !known_small && !self.confirm_fetch_all {
+                    self.confirm_fetch_all = true;
+                } else {
+                    self.fetch_all(cx);
+                }
             }
             GridAction::CountTotal => {
                 if let Some(d) = self.dialect(cx) {
@@ -529,6 +537,12 @@ impl ResultPanel {
                 }
             }
         }
+    }
+
+    fn fetch_all(&mut self, cx: &mut AppContext) {
+        let op = cx.ops.start(trf("Fetching all rows: {}", &[&self.title]));
+        self.fetch_op = Some(op.id);
+        self.src.fetch_more(cx.backend, usize::MAX, Some(op));
     }
 
     fn start_save(&mut self, cx: &mut AppContext) {
@@ -631,6 +645,34 @@ impl ResultPanel {
     }
 
     fn dialogs(&mut self, ui: &mut Ui, cx: &mut AppContext) {
+        if self.confirm_fetch_all {
+            let mut decided: Option<bool> = None;
+            let limit = cx.settings.results.confirm_fetch_all_above;
+            let modal = egui::Modal::new(egui::Id::new(("fetch_all", &self.conn, &self.title))).show(ui.ctx(), |ui| {
+                ui.heading(tr("Fetch all rows?"));
+                match self.model.fetch.total_count {
+                    Some(t) => ui.label(trf("The result has {} rows; fetching them may take a while.", &[&t])),
+                    None => ui.label(trf("The result may have more than {} rows; fetching them may take a while.", &[&limit])),
+                };
+                ui.weak(tr("Rows beyond the memory limit are kept in a temporary file."));
+                ui.horizontal(|ui| {
+                    if ui.button(RichText::new(tr("Fetch all")).strong()).clicked() {
+                        decided = Some(true);
+                    }
+                    if ui.button(tr("Cancel")).clicked() {
+                        decided = Some(false);
+                    }
+                });
+            });
+            if let Some(go) = decided {
+                self.confirm_fetch_all = false;
+                if go {
+                    self.fetch_all(cx);
+                }
+            } else if modal.should_close() {
+                self.confirm_fetch_all = false;
+            }
+        }
         if let Some(sql) = self.save_preview.clone() {
             let mut close = false;
             let mut save = false;
@@ -710,6 +752,17 @@ impl ResultPanel {
     }
 
     pub fn ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
+        if !self.settings_applied {
+            self.settings_applied = true;
+            let r = &cx.settings.results;
+            self.view.grid.mode = match r.sort_filter_mode {
+                dbiji_config::settings::SortFilterMode::Server => dbiji_grid::DataMode::Server,
+                dbiji_config::settings::SortFilterMode::Client => dbiji_grid::DataMode::Client,
+            };
+            if r.auto_refresh_secs > 0 && self.view.toolbar.auto_refresh_secs.is_none() {
+                self.view.toolbar.auto_refresh_secs = Some(r.auto_refresh_secs as u64);
+            }
+        }
         self.poll(cx);
         self.resolve_editability(cx);
         if self.table.is_some() && (!self.back.is_empty() || !self.forward.is_empty()) {

@@ -55,6 +55,9 @@ pub struct DbijiApp {
     active_tab: Option<u64>,
     /// Benchmark mode: quit after this instant.
     exit_at: Option<Instant>,
+    /// The window was asked to close while tabs had unsaved changes.
+    confirm_quit: bool,
+    quit_confirmed: bool,
     /// "Generate SQL" requests waiting for the table definition.
     pending_generate: Vec<(String, dbiji_core::ObjectRef, String)>,
     script_counter: u32,
@@ -93,6 +96,8 @@ impl DbijiApp {
                 .map(|s| Instant::now() + std::time::Duration::from_secs(s)),
             pending_generate: Vec::new(),
             script_counter: 0,
+            confirm_quit: false,
+            quit_confirmed: false,
             bench_workload: None,
         };
         app.open_tab(Box::new(crate::tabs::welcome::WelcomeTab));
@@ -943,6 +948,43 @@ impl eframe::App for DbijiApp {
             self.conns.take_error(&id);
         }
         self.shortcuts(&ctx);
+        // Unsaved changes: ask before quitting.
+        if ctx.input(|i| i.viewport().close_requested()) && !self.quit_confirmed && self.exit_at.is_none() && !self.exit_after_first_frame {
+            let dirty = self.dock.iter_all_tabs().any(|(_, t)| t.view.is_dirty());
+            if dirty && self.settings.general.confirm_exit_with_unsaved {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                self.confirm_quit = true;
+            }
+        }
+        if self.confirm_quit {
+            let dirty: Vec<String> = self.dock.iter_all_tabs().filter(|(_, t)| t.view.is_dirty()).map(|(_, t)| t.view.title()).collect();
+            let mut decided: Option<bool> = None;
+            let modal = egui::Modal::new(egui::Id::new("confirm_quit")).show(&ctx, |ui| {
+                ui.heading(tr("Unsaved changes"));
+                ui.label(tr("These tabs have unsaved changes:"));
+                for t in dirty.iter().take(10) {
+                    ui.label(format!("• {t}"));
+                }
+                ui.horizontal(|ui| {
+                    if ui.button(RichText::new(tr("Quit without saving")).color(crate::theme::error_color(ui.visuals().dark_mode))).clicked() {
+                        decided = Some(true);
+                    }
+                    if ui.button(tr("Cancel")).clicked() {
+                        decided = Some(false);
+                    }
+                });
+            });
+            match decided {
+                Some(true) => {
+                    self.confirm_quit = false;
+                    self.quit_confirmed = true;
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+                Some(false) => self.confirm_quit = false,
+                None if modal.should_close() => self.confirm_quit = false,
+                None => {}
+            }
+        }
         // Files dropped on the window: scripts open in editors, database files as connections.
         let dropped: Vec<std::path::PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).filter(|p| !p.as_os_str().is_empty()).collect());
         for path in dropped {

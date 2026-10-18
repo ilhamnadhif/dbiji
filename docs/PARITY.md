@@ -196,9 +196,9 @@ Measured with `dbiji --bench all` on the release build (macOS, Apple M1 Pro):
 
 | Target | Result |
 | --- | --- |
-| Binary < 40 MB | 30.6 MB (without DuckDB) |
+| Binary < 40 MB | 37.0 MB (without DuckDB) |
 | Cold start < 1 s | 105 ms to the first frame |
-| Idle memory < 120 MB | 67 MB |
-| 3 connections + 5 result tabs < 250 MB | 82 MB (20 000 rows fetched per tab) |
+| Idle memory < 120 MB | 69 MB |
+| 3 connections + 5 result tabs < 250 MB | 83 MB (20 000 rows fetched per tab) |
 | 1 M rows scroll, < 16 ms/frame | p95 0.5 ms (grid benchmark), 1 M × 100 columns: avg < 3 ms, worst 11.7 ms |
 | Editor typing at 50 000 lines | p95 0.4 ms |

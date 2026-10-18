@@ -7,10 +7,10 @@ result sets that never have to fit in memory.
 
 | | DBiji target (PRD §2) | Measured (release build, macOS, Apple M1 Pro) |
 | --- | --- | --- |
-| Binary size | < 40 MB | 30.6 MB (DMG 18 MB) |
+| Binary size | < 40 MB | 37.0 MB |
 | Cold start to first frame | < 1 s | ≈ 0.1 s |
-| Idle memory | < 120 MB | ≈ 67 MB |
-| 3 connections + 5 result tabs | < 250 MB | ≈ 82 MB (20 000 rows fetched per tab) |
+| Idle memory | < 120 MB | ≈ 69 MB |
+| 3 connections + 5 result tabs | < 250 MB | ≈ 83 MB (20 000 rows fetched per tab) |
 | 1 M rows scroll / jumps | < 16 ms / frame | p95 0.5 ms (1 M × 100 columns: avg < 3 ms, worst 11.7 ms) |
 | Typing in a 50 000-line script | < 16 ms / frame | p95 0.4 ms |
 | Idle CPU | ≈ 0 % | repaints only on input or finished background work |

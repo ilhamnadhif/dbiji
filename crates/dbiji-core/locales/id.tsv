@@ -1423,3 +1423,4 @@ When other tables reference this one, show these columns next to the key.	Saat t
 expression, e.g. price * quantity	ekspresi, mis. price * quantity
 {} connection(s) now use their own network settings	{} koneksi kini memakai pengaturan jaringannya sendiri
 Recent scripts	Skrip terbaru
+Unlock the saved passwords, then connect again.	Buka kunci kata sandi tersimpan, lalu hubungkan lagi.

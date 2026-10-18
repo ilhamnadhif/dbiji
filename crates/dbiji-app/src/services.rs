@@ -60,8 +60,31 @@ impl Services {
         };
         let (templates, template_warnings) = TemplateLibrary::load(&paths);
         warnings.extend(template_warnings);
+        Self::start_auto_lock(&secrets, settings.security.auto_lock_minutes, &runtime);
         let (tasks, runlog, scheduler) = Self::task_services(&paths, &secrets, settings.tasks.scheduler_enabled, runtime, &mut warnings);
         Services { paths, secrets, history, projects, templates, tasks, runlog, scheduler, warnings }
+    }
+
+    /// Lock the encrypted vault after the configured idle time (checked on the
+    /// I/O runtime, so it also works while the UI is idle).
+    fn start_auto_lock(secrets: &Arc<RwLock<SecretsManager>>, minutes: u32, runtime: &tokio::runtime::Handle) {
+        if minutes == 0 {
+            return;
+        }
+        let secrets = Arc::downgrade(secrets);
+        runtime.spawn(async move {
+            let idle = std::time::Duration::from_secs(minutes as u64 * 60);
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                let Some(s) = secrets.upgrade() else { break };
+                let vault = s.read().vault().cloned();
+                if let Some(v) = vault {
+                    if v.lock_if_idle(idle) {
+                        tracing::info!("vault locked after {minutes} idle minutes");
+                    }
+                }
+            }
+        });
     }
 
     #[allow(clippy::type_complexity)]

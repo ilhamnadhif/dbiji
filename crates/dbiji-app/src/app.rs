@@ -159,6 +159,12 @@ impl DbijiApp {
 
     /// Request connecting, prompting for credentials when needed.
     fn request_connect(&mut self, id: &str) {
+        if self.conns.secrets.is_locked() {
+            // Encrypted vault locked (auto-lock): ask for the master password first.
+            self.dialogs.vault_open = true;
+            self.toasts.info(tr("Unlock the saved passwords, then connect again."));
+            return;
+        }
         let missing = self.conns.missing_credentials(id);
         if missing.is_empty() {
             if let Err(e) = self.conns.connect(&self.backend, id, Credentials::default()) {

@@ -31,6 +31,35 @@
 //!
 //! All configuration types implement `Serialize`/`Deserialize` and `Default`
 //! so that transfers can be saved as tasks (FR-T5).
+//!
+//! # Example
+//!
+//! Export a query to CSV, then import the file into a new table typed from
+//! a sample of its rows:
+//!
+//! ```no_run
+//! use dbiji_core::{ObjectRef, Session};
+//! use dbiji_transfer::*;
+//!
+//! # async fn example(session: &mut dyn Session) -> dbiji_core::DbResult<()> {
+//! let progress = Progress::new();
+//! let cancel = CancellationToken::new();
+//!
+//! let mut source = CursorSource::execute(session, "SELECT * FROM users", &[]).await?;
+//! let mut sink = create_sink(ExportFormat::Csv, &ExportOptions::default(), ExportTarget::path("users.csv"), None)?;
+//! let exported = run_export(&mut source, sink.as_mut(), &progress, &cancel).await?;
+//! drop(source); // one open cursor per session
+//!
+//! let mut csv = PeekableSource::new(CsvSource::open("users.csv", CsvReadOptions::default())?);
+//! let columns = csv.columns().to_vec();
+//! let sample = csv.peek(100).await?.to_vec();
+//! let inferred = infer_columns(&columns, &sample, &InferOptions::default());
+//! let mapping = ImportMapping::from_inferred(ObjectRef::table(None, "users_copy"), &inferred, session.dialect().as_ref());
+//! let imported = run_import(&mut csv, session, &mapping, &progress, &cancel).await?;
+//! assert_eq!(exported.rows, imported.rows_written + imported.rows_failed);
+//! # Ok(())
+//! # }
+//! ```
 
 #![warn(missing_docs)]
 // `DbError` (the error type mandated by dbiji-core) is 144 bytes, so every

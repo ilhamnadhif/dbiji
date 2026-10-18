@@ -47,6 +47,12 @@ fn extract(src: &str, out: &mut BTreeSet<String>) {
                     Some('"') => s.push('"'),
                     Some('\\') => s.push('\\'),
                     Some('\'') => s.push('\''),
+                    // Line continuation: skip the newline and the next line's indentation.
+                    Some('\n') => {
+                        let rest = chars.as_str();
+                        let trimmed = rest.trim_start_matches([' ', '\t', '\n', '\r']);
+                        chars = trimmed.chars();
+                    }
                     Some(o) => {
                         s.push('\\');
                         s.push(o);

@@ -579,3 +579,810 @@ yes	ya
 {}() expects an integer argument	{}() memerlukan argumen bilangan bulat
 {}() takes {} argument(s), got {}	{}() menerima {} argumen, didapat {}
 … {} more bytes	… {} byte lagi
+ (more rows available)	 (masih ada baris lain)
+ days	 hari
+ entries	 entri
+ min idle (0 = never)	 menit tidak aktif (0 = tidak pernah)
+ rows	 baris
+ s (0 = none)	 dtk (0 = tanpa batas)
+ tokens	 token
+${name} variables	Variabel ${name}
+'text', 42, a.column	'teks', 42, a.kolom
+(default)	(bawaan)
+(expression)	(ekspresi)
+(not set)	(belum diatur)
+(provider default)	(bawaan penyedia)
+(row number)	(nomor baris)
+(saved — enter a new key to replace it)	(tersimpan — masukkan kunci baru untuk menggantinya)
+({} rows{})	({} baris{})
+0 = refresh manually	0 = refresh manual
+24 hours	24 jam
+30 days	30 hari
+7 days	7 hari
+:name parameters	Parameter :nama
+? positional parameters	Parameter posisi ?
+@export options must be a JSON object	Opsi @export harus berupa objek JSON
+@export: the export dialog was opened with this query.	@export: dialog ekspor dibuka dengan query ini.
+A WKB multi point may only contain points	Multi point WKB hanya boleh berisi titik
+A composite task cannot contain itself	Task komposit tidak boleh berisi dirinya sendiri
+A composite task needs at least one step	Task komposit membutuhkan minimal satu langkah
+A cron expression needs 5, 6 or 7 fields, found {}	Ekspresi cron membutuhkan 5, 6, atau 7 field, ditemukan {}
+A query is already running in this editor.	Sebuah query sedang berjalan di editor ini.
+A task with id {} already exists	Task dengan id {} sudah ada
+AI request failed: {}	Permintaan AI gagal: {}
+AI service	Layanan AI
+API key	Kunci API
+API key saved securely	Kunci API disimpan dengan aman
+Accessibility	Aksesibilitas
+Action	Aksi
+Active connection	Koneksi aktif
+Active schema	Skema aktif
+Add "{}" to dictionary	Tambahkan "{}" ke kamus
+Add a chart and give it a query to build a dashboard.	Tambahkan grafik dan beri query untuk membangun dashboard.
+Add chart	Tambah grafik
+Add check {} on {}	Tambah check {} pada {}
+Add condition	Tambah kondisi
+Add expression	Tambah ekspresi
+Add foreign key {} on {}	Tambah foreign key {} pada {}
+Add group by expression	Tambah ekspresi group by
+Add note	Tambah catatan
+Add primary key on {}	Tambah primary key pada {}
+Add related tables	Tambah tabel terkait
+Add sort expression	Tambah ekspresi urutan
+Add table	Tambah tabel
+Add tables to build a query	Tambahkan tabel untuk membangun query
+Add tables with the + button, then tick columns and drag columns onto each other to join	Tambahkan tabel dengan tombol +, lalu centang kolom dan seret kolom ke kolom lain untuk join
+Add table…	Tambah tabel…
+Add unique key {} on {}	Tambah unique key {} pada {}
+Added	Ditambahkan
+Add…	Tambah…
+Aggregate	Agregat
+Alias	Alias
+All	Semua
+All connections	Semua koneksi
+Allow sending sample rows	Izinkan mengirim contoh baris
+Alphabetical	Alfabetis
+Alter sequence {}	Ubah sequence {}
+Alter table {}	Ubah tabel {}
+Always show the keyboard focus	Selalu tampilkan fokus keyboard
+An API key is required for the Anthropic API	Kunci API diperlukan untuk Anthropic API
+An interval of {} s cannot be expressed in crontab	Interval {} dtk tidak bisa dinyatakan di crontab
+An interval of {} s cannot be expressed in the Windows Task Scheduler	Interval {} dtk tidak bisa dinyatakan di Windows Task Scheduler
+Any status	Status apa pun
+Apply the migration	Terapkan migrasi
+Apply to target…	Terapkan ke target…
+Arrange all tables automatically	Atur semua tabel secara otomatis
+As reported by the database	Sesuai urutan dari database
+As typed	Seperti diketik
+Ask before quitting with unsaved changes	Tanya sebelum keluar jika ada perubahan yang belum disimpan
+Ask for values before executing	Tanyakan nilai sebelum eksekusi
+Authentication failed; check the API key	Autentikasi gagal; periksa kunci API
+Auto layout	Tata letak otomatis
+Auto-commit by default	Auto-commit secara bawaan
+Auto-refresh interval	Interval refresh otomatis
+Auto-refresh off	Refresh otomatis mati
+Auto-save interval	Interval simpan otomatis
+Autocomplete	Autocomplete
+Back	Kembali
+Back to grid	Kembali ke grid
+Base URL	URL dasar
+Below the editor	Di bawah editor
+Billing problem with the AI account	Masalah tagihan pada akun AI
+Binary values	Nilai biner
+Blank line ends a statement	Baris kosong mengakhiri statement
+Bookmark added	Bookmark ditambahkan
+Bookmarks	Bookmark
+Booleans	Boolean
+CTE	CTE
+Cancel query	Batalkan query
+Cancel requested	Pembatalan diminta
+Cancelled after {}	Dibatalkan setelah {}
+Cannot add the bookmark	Tidak dapat menambah bookmark
+Cannot allocate a {}x{} image	Tidak dapat mengalokasikan gambar {}x{}
+Cannot clear the history	Tidak dapat menghapus riwayat
+Cannot connect to the AI service	Tidak dapat terhubung ke layanan AI
+Cannot end the session	Tidak dapat mengakhiri sesi
+Cannot open the diagram	Tidak dapat membuka diagram
+Cannot open the script	Tidak dapat membuka skrip
+Cannot read the table	Tidak dapat membaca tabel
+Cannot read {}: {}	Tidak dapat membaca {}: {}
+Cannot save the changes	Tidak dapat menyimpan perubahan
+Cannot save the diagram	Tidak dapat menyimpan diagram
+Cannot save the script	Tidak dapat menyimpan skrip
+Cannot save the settings	Tidak dapat menyimpan pengaturan
+Cannot save the virtual key	Tidak dapat menyimpan virtual key
+Cannot store the API key	Tidak dapat menyimpan kunci API
+Cannot write the file	Tidak dapat menulis file
+Cascade	Cascade
+Cascade (also drop dependent objects)	Cascade (ikut hapus objek yang bergantung)
+Category	Kategori
+Change master password	Ubah kata sandi master
+Changes applied inside the open transaction — commit to keep them.	Perubahan diterapkan di dalam transaksi terbuka — commit untuk menyimpannya.
+Chat messages must not be empty	Pesan chat tidak boleh kosong
+Check spelling in comments and strings	Periksa ejaan di komentar dan string
+Choose a connection for this editor first.	Pilih koneksi untuk editor ini terlebih dahulu.
+Choose a model for the AI assistant	Pilih model untuk asisten AI
+Choose and order the actions shown in the main toolbar.	Pilih dan urutkan aksi yang tampil di toolbar utama.
+Choose at least one value (Y) column	Pilih minimal satu kolom nilai (Y)
+Choose the source and target schemas.	Pilih skema sumber dan target.
+Choose…	Pilih…
+Circular foreign keys between new tables: {}	Foreign key melingkar antar tabel baru: {}
+Circular view dependencies: {}	Dependensi view melingkar: {}
+Clear	Bersihkan
+Clear selection	Hapus pilihan
+Clear the whole history	Hapus seluruh riwayat
+Close brackets automatically	Tutup kurung secara otomatis
+Close quotes automatically	Tutup tanda kutip secara otomatis
+Color by	Warnai menurut
+Column {} not found in the source result	Kolom {} tidak ditemukan di hasil sumber
+Column {} not found in the target result	Kolom {} tidak ditemukan di hasil target
+Columns present on one side only are not compared: {}	Kolom yang hanya ada di satu sisi tidak dibandingkan: {}
+Columns shown in the boxes	Kolom yang ditampilkan di kotak
+Columns that identify a row of {}:	Kolom yang mengidentifikasi baris {}:
+Columns without an aggregate are grouped automatically when the select list contains aggregates.	Kolom tanpa agregat dikelompokkan otomatis jika daftar select berisi agregat.
+Commas at the start of lines	Koma di awal baris
+Comments	Komentar
+Commit	Commit
+Compare	Bandingkan
+Confirm "fetch all" above	Konfirmasi "ambil semua" di atas
+Confirm DELETE / UPDATE without WHERE, DROP and TRUNCATE	Konfirmasi DELETE / UPDATE tanpa WHERE, DROP, dan TRUNCATE
+Confirm dangerous statements	Konfirmasi statement berbahaya
+Confirm every statement execution	Konfirmasi setiap eksekusi statement
+Confirm execution	Konfirmasi eksekusi
+Confirm saving data changes	Konfirmasi penyimpanan perubahan data
+Connecting… run the statement again when connected.	Menghubungkan… jalankan statement lagi setelah terhubung.
+Connection	Koneksi
+Connection to the AI service failed: {}	Koneksi ke layanan AI gagal: {}
+Connection type "{}" asks before every execution.	Tipe koneksi "{}" meminta konfirmasi sebelum setiap eksekusi.
+Connection types	Tipe koneksi
+Console	Konsol
+Copy SQL	Salin SQL
+Cost {}	Biaya {}
+Create index {} on {}	Buat index {} pada {}
+Create routine {}({})	Buat routine {}({})
+Create sequence {}	Buat sequence {}
+Create table here…	Buat tabel di sini…
+Create table {}	Buat tabel {}
+Create trigger {} on {}	Buat trigger {} pada {}
+Create type {}	Buat tipe {}
+Create view {}	Buat view {}
+Cron schedule: {}	Jadwal cron: {}
+Current password	Kata sandi saat ini
+Custom	Kustom
+Cut	Potong
+Dark	Gelap
+Dashboard	Dashboard
+Dashboard name	Nama dashboard
+Data compare needs at least one key column	Data compare membutuhkan minimal satu kolom kunci
+Date format	Format tanggal
+Default view of new connections	Tampilan bawaan koneksi baru
+Define a virtual key	Tentukan virtual key
+Delay	Jeda
+Delete chart	Hapus grafik
+Delete foreign key…	Hapus foreign key…
+Delete note	Hapus catatan
+Delete table…	Hapus tabel…
+Delete type	Hapus tipe
+Deleted {} history entries	{} entri riwayat dihapus
+Diagram saved	Diagram disimpan
+Diagrams	Diagram
+Differences	Perbedaan
+Don't save	Jangan simpan
+Done	Selesai
+Donut	Donat
+Double-click a table to add it.	Klik dua kali tabel untuk menambahkannya.
+Draw relations and create tables; changes open as SQL for review	Gambar relasi dan buat tabel; perubahan dibuka sebagai SQL untuk ditinjau
+Drop	Hapus
+Drop check {} on {}	Hapus check {} pada {}
+Drop foreign key {} on {}	Hapus foreign key {} pada {}
+Drop index {} on {}	Hapus index {} pada {}
+Drop objects	Hapus objek
+Drop objects missing in the source	Hapus objek yang tidak ada di sumber
+Drop primary key on {}	Hapus primary key pada {}
+Drop routine {}({})	Hapus routine {}({})
+Drop sequence {}	Hapus sequence {}
+Drop table {}	Hapus tabel {}
+Drop trigger {} on {}	Hapus trigger {} pada {}
+Drop type {}	Hapus tipe {}
+Drop type {} (recreated)	Hapus tipe {} (dibuat ulang)
+Drop unique key {} on {}	Hapus unique key {} pada {}
+Drop view {}	Hapus view {}
+Drop {} object(s)? This cannot be undone.	Hapus {} objek? Tindakan ini tidak bisa dibatalkan.
+Duplicate key in the {} table: {}	Kunci duplikat di tabel {}: {}
+Duration	Durasi
+Edit chart	Ubah grafik
+Edit foreign key…	Ubah foreign key…
+Edit mode	Mode edit
+Edit note	Ubah catatan
+Edit table…	Ubah tabel…
+Effective GROUP BY: {}	GROUP BY efektif: {}
+Effort	Upaya
+Empty plan	Plan kosong
+Enable autocomplete	Aktifkan autocomplete
+Enable parameters	Aktifkan parameter
+Enable the AI assistant	Aktifkan asisten AI
+Encrypted file with master password	File terenkripsi dengan kata sandi master
+Error	Error
+Every day at {}	Setiap hari pukul {}
+Every hour	Setiap jam
+Every hour at minute {}	Setiap jam pada menit {}
+Every minute	Setiap menit
+Every year on January 1 at 00:00	Setiap tahun pada 1 Januari pukul 00.00
+Every {} at {}	Setiap {} pukul {}
+Every {} s	Setiap {} dtk
+Exclusive cost {}	Biaya eksklusif {}
+Exclusive cost: {}	Biaya eksklusif: {}
+Exclusive time {}	Waktu eksklusif {}
+Exclusive time: {}	Waktu eksklusif: {}
+Execute	Eksekusi
+Execute in new tab	Eksekusi di tab baru
+Execute script	Eksekusi skrip
+Execute statement	Eksekusi statement
+Executing {} statement(s)…	Mengeksekusi {} statement…
+Execution	Eksekusi
+Execution {} ms	Eksekusi {} md
+Expand a connection after connecting	Bentangkan koneksi setelah terhubung
+Expand all	Bentangkan semua
+Expected key=value in @export, found '{0}'	Diharapkan key=value di @export, ditemukan '{0}'
+Explain analyze…	Explain analyze…
+Explain execution plan	Explain execution plan
+Explain…	Explain…
+Export chart…	Ekspor grafik…
+Export failed	Ekspor gagal
+Export image	Ekspor gambar
+Export image…	Ekspor gambar…
+Exported to {}	Diekspor ke {}
+Fetching all rows: {}	Mengambil semua baris: {}
+Filter	Filter
+Filter…	Filter…
+Find	Cari
+Float decimals	Desimal float
+Font size	Ukuran font
+Format SQL	Format SQL
+Formatter	Pemformat
+Forward	Maju
+Generate DDL	Buat DDL
+Generated by DBiji	Dibuat oleh DBiji
+Geometry nesting deeper than {} levels	Geometri bersarang lebih dari {} tingkat
+Go to line	Ke baris
+Go to line (1 - {}):	Ke baris (1 - {}):
+HTML report…	Laporan HTML…
+Having	Having
+Hexadecimal	Heksadesimal
+Hide idle	Sembunyikan yang idle
+High	Tinggi
+High contrast	Kontras tinggi
+Highlight the current line	Sorot baris saat ini
+Indent width	Lebar indentasi
+Indent with tabs	Indentasi dengan tab
+Info	Info
+Insert a single proposal directly	Sisipkan langsung jika hanya satu saran
+Insert spaces instead of tabs	Sisipkan spasi alih-alih tab
+Interrupted: DBiji exited while the task was running	Terputus: DBiji keluar saat task sedang berjalan
+Invalid @export options: {0}	Opsi @export tidak valid: {0}
+Invalid AI service URL: {}	URL layanan AI tidak valid: {}
+Invalid SRID at position {}	SRID tidak valid pada posisi {}
+Invalid WKB byte order {}	Urutan byte WKB tidak valid {}
+Invalid WKT: expected {} but the text ended	WKT tidak valid: diharapkan {} tetapi teks berakhir
+Invalid cron expression '{}': {}	Ekspresi cron tidak valid '{}': {}
+Invalid day of week range: {}	Rentang hari tidak valid: {}
+Invalid day of week: {}	Hari tidak valid: {}
+Invalid diagram file: {}	File diagram tidak valid: {}
+Invalid effort '{}' (use low, medium, high, xhigh or max)	Upaya tidak valid '{}' (gunakan low, medium, high, xhigh, atau max)
+Invalid number '{}' at position {}	Angka tidak valid '{}' pada posisi {}
+Invalid regular expression: {}	Ekspresi reguler tidak valid: {}
+Invalid step in day of week: {}	Langkah tidak valid pada hari: {}
+Invalid task file: {}	File task tidak valid: {}
+Invalid time '{}', expected HH:MM	Waktu tidak valid '{}', diharapkan HH:MM
+Invalid variable name: '{0}'	Nama variabel tidak valid: '{0}'
+Invalid weekday {} (use 1 = Monday ... 7 = Sunday)	Hari tidak valid {} (gunakan 1 = Senin ... 7 = Minggu)
+Keep at most	Simpan paling banyak
+Keep for	Simpan selama
+Key column {} not found in the {} result	Kolom kunci {} tidak ditemukan di hasil {}
+Keyword case	Huruf kata kunci
+Language	Bahasa
+Layout	Tata letak
+Left to right	Kiri ke kanan
+Light	Terang
+Limit	Batas
+Lines between statements	Baris antar statement
+Liquibase changelog…	Changelog Liquibase…
+Lock now	Kunci sekarang
+Lock the vault after	Kunci brankas setelah
+Locks	Lock
+Long series are down-sampled	Seri panjang dikurangi sampelnya
+Low	Rendah
+Lower case	Huruf kecil
+Manual commit	Commit manual
+Mask passwords in recorded statements	Samarkan kata sandi di statement yang direkam
+Master password changed	Kata sandi master diubah
+Match case	Cocokkan huruf besar/kecil
+Max points	Titik maksimum
+Maximum	Maksimum
+Maximum answer length	Panjang jawaban maksimum
+Maximum line length	Panjang baris maksimum
+Maximum proposals	Saran maksimum
+Maximum result tabs	Tab hasil maksimum
+Maximum text length	Panjang teks maksimum
+Medium	Sedang
+Memory for all result sets	Memori untuk semua result set
+Memory per result set	Memori per result set
+Message	Pesan
+Minimum characters	Karakter minimum
+Missing @export options	Opsi @export tidak ada
+Missing file name after @include	Nama file setelah @include tidak ada
+Missing variable name after @set	Nama variabel setelah @set tidak ada
+Model	Model
+Model or endpoint not found; check the model id	Model atau endpoint tidak ditemukan; periksa id model
+Modified	Diubah
+Monthly on day 1 at 00:00	Bulanan pada tanggal 1 pukul 00.00
+Move down	Pindah ke bawah
+Move earlier	Pindah lebih awal
+Move secrets	Pindahkan rahasia
+Move secrets to an encrypted file	Pindahkan rahasia ke file terenkripsi
+Move secrets to the keychain	Pindahkan rahasia ke keychain
+Move up	Pindah ke atas
+MySQL commits DDL statements implicitly; the transaction cannot roll back schema changes	MySQL melakukan commit DDL secara implisit; transaksi tidak bisa membatalkan perubahan skema
+NULL text	Teks NULL
+Navigator	Navigator
+New chart	Grafik baru
+New line before AND / OR	Baris baru sebelum AND / OR
+New master password	Kata sandi master baru
+New type	Tipe baru
+Next match	Hasil berikutnya
+No	Tidak
+No SQL generated for: {}	Tidak ada SQL yang dihasilkan untuk: {}
+No async runtime is available	Tidak ada runtime async
+No base map: geometries only	Tanpa peta dasar: hanya geometri
+No connection	Tanpa koneksi
+No geometries to show	Tidak ada geometri untuk ditampilkan
+No measurements	Tidak ada pengukuran
+No plan	Tidak ada plan
+No plottable values in {} rows	Tidak ada nilai yang bisa digambar dari {} baris
+No positive values to show	Tidak ada nilai positif untuk ditampilkan
+No query yet	Belum ada query
+No results	Tidak ada hasil
+No suggestions	Tidak ada saran
+No task named {}	Tidak ada task bernama {}
+No task with id {}	Tidak ada task dengan id {}
+No uncommitted statements.	Tidak ada statement yang belum di-commit.
+Not a DBiji task export (format {})	Bukan ekspor task DBiji (format {})
+Not a hex encoded WKB value	Bukan nilai WKB berenkode heks
+Note – double click to edit	Catatan – klik dua kali untuk mengubah
+Nothing to plot	Tidak ada yang bisa digambar
+OK	OK
+Object type	Tipe objek
+On fetched rows	Pada baris yang sudah diambil
+On the server (re-query)	Di server (query ulang)
+Once at {}	Sekali pada {}
+One color per row	Satu warna per baris
+One of the slowest nodes	Salah satu node paling lambat
+Only waiting locks	Hanya lock yang menunggu
+Open automatically while typing	Buka otomatis saat mengetik
+Open each query in a new result tab	Buka setiap query di tab hasil baru
+Open in editor	Buka di editor
+Open script in SQL editor	Buka skrip di editor SQL
+OpenAI-compatible server	Server kompatibel OpenAI
+Opening a session…	Membuka sesi…
+Opening a session… run the statement again in a moment.	Membuka sesi… jalankan statement lagi sebentar lagi.
+Operating system keychain	Keychain sistem operasi
+Operator	Operator
+Order	Urutan
+Other	Lainnya
+Outline	Outline
+Output	Output
+Overview: click or drag to move the view	Ikhtisar: klik atau seret untuk memindahkan tampilan
+PNG encoding failed: {}	Pengodean PNG gagal: {}
+Parameters	Parameter
+Parameters and variables	Parameter dan variabel
+Passwords and API keys are never written to configuration files.	Kata sandi dan kunci API tidak pernah ditulis ke file konfigurasi.
+Pause	Jeda
+Paused	Dijeda
+Permission denied by the AI service	Izin ditolak oleh layanan AI
+Pick a column	Pilih kolom
+Plan	Plan
+Preset	Preset
+Press a key combination… (Esc cancels)	Tekan kombinasi tombol… (Esc membatalkan)
+Previous match	Hasil sebelumnya
+Project	Proyek
+Property	Properti
+Provider	Penyedia
+Query timeout	Batas waktu query
+Rate limit reached; try again later	Batas permintaan tercapai; coba lagi nanti
+Reading both schemas…	Membaca kedua skema…
+Reading data…	Membaca data…
+Reading the AI response failed: {}	Membaca respons AI gagal: {}
+Reading the schema…	Membaca skema…
+Record a shortcut	Rekam pintasan
+Record executed queries	Rekam query yang dieksekusi
+Redo	Ulangi
+Reduce motion	Kurangi animasi
+Refresh (s)	Refresh (dtk)
+Refresh all	Refresh semua
+Refusing to send the API key over unencrypted HTTP to a remote host; use https	Menolak mengirim kunci API lewat HTTP tanpa enkripsi ke host jarak jauh; gunakan https
+Remove	Hapus
+Remove bookmark	Hapus bookmark
+Remove from diagram	Hapus dari diagram
+Remove join	Hapus join
+Remove key	Hapus kunci
+Remove table	Hapus tabel
+Remove the shortcut	Hapus pintasan
+Removed	Dihapus
+Rename alias	Ganti nama alias
+Reopen the editors of the last session on start	Buka kembali editor dari sesi terakhir saat mulai
+Repeated X values are summed	Nilai X berulang dijumlahkan
+Replace all	Ganti semua
+Replace routine {}({})	Ganti routine {}({})
+Replace view {}	Ganti view {}
+Request id: {}	Id permintaan: {}
+Reset	Atur ulang
+Reset all	Atur ulang semua
+Reset to default	Kembalikan ke bawaan
+Reset view	Atur ulang tampilan
+Reset zoom to 100%	Atur ulang zoom ke 100%
+Result sets	Result set
+Result {}	Hasil {}
+Results position	Posisi hasil
+Resume	Lanjutkan
+Right of the editor	Di kanan editor
+Right-click an object in the navigator to bookmark it.	Klik kanan objek di navigator untuk menandainya.
+Rollback	Rollback
+Row	Baris
+Row {}	Baris {}
+Rows fetched per page	Baris yang diambil per halaman
+Rows {} by {}x	Baris {} sebanyak {}x
+Run	Jalankan
+Run scheduled tasks while DBiji is open	Jalankan task terjadwal selama DBiji terbuka
+Run the query once to choose the chart columns.	Jalankan query sekali untuk memilih kolom grafik.
+Run {} statement(s) on "{}"?	Jalankan {} statement di "{}"?
+SQL	SQL
+SQL editor	Editor SQL
+SVG rendering failed: {}	Render SVG gagal: {}
+Sample every	Ambil sampel setiap
+Save changes	Simpan perubahan
+Save changes to "{}"?	Simpan perubahan ke "{}"?
+Save key	Simpan kunci
+Save or cancel the data changes first.	Simpan atau batalkan perubahan data terlebih dahulu.
+Save the diagram in the project	Simpan diagram di proyek
+Saved ER diagrams appear here.	Diagram ER yang disimpan muncul di sini.
+Saved to {}	Disimpan ke {}
+Saved: {} row(s) changed	Tersimpan: {} baris berubah
+Schedules restricting both the day of month and the day of week are not supported by the operating system scheduler	Jadwal yang membatasi tanggal dan hari sekaligus tidak didukung penjadwal sistem operasi
+Schema compare	Schema compare
+Schema comparison	Perbandingan skema
+Schema…	Skema…
+Scripts	Skrip
+Search SQL text…	Cari teks SQL…
+Secret storage	Penyimpanan rahasia
+Security	Keamanan
+Select a schema in the navigator first.	Pilih skema di navigator terlebih dahulu.
+Select all columns	Pilih semua kolom
+Select both tables	Pilih kedua tabel
+Select related tables	Pilih tabel terkait
+Send table and column names as context	Kirim nama tabel dan kolom sebagai konteks
+Separator	Pemisah
+Series	Seri
+Session {} — continue?	Sesi {} — lanjutkan?
+Sessions	Sesi
+Several tasks are named {}; use the task id	Beberapa task bernama {}; gunakan id task
+Share of plan: {}%	Porsi dari plan: {}%
+Shortcut	Pintasan
+Show column types	Tampilkan tipe kolom
+Show fractional seconds	Tampilkan pecahan detik
+Show grid	Tampilkan grid
+Show in Finder	Tampilkan di Finder
+Show line numbers	Tampilkan nomor baris
+Show node details	Tampilkan detail node
+Show overview map	Tampilkan peta ikhtisar
+Show row numbers	Tampilkan nomor baris
+Show system schemas and objects	Tampilkan skema dan objek sistem
+Show table comments	Tampilkan komentar tabel
+Show unchanged	Tampilkan yang tidak berubah
+Show user@host next to connection names	Tampilkan user@host di samping nama koneksi
+Skipped because a previous step failed	Dilewati karena langkah sebelumnya gagal
+Skipped: the previous run is still in progress	Dilewati: eksekusi sebelumnya masih berjalan
+Skipping {} remaining step(s) after an error	Melewati {} langkah tersisa setelah error
+Smart	Pintar
+Smart commit: switch to manual commit before data changes	Smart commit: beralih ke commit manual sebelum perubahan data
+Sort X	Urutkan X
+Sorting and filtering	Pengurutan dan filter
+Source and target must have the same number of key columns	Sumber dan target harus memiliki jumlah kolom kunci yang sama
+Source and target must list the same number of columns	Sumber dan target harus mencantumkan jumlah kolom yang sama
+Stacked	Bertumpuk
+Statement delimiter	Pemisah statement
+Status	Status
+Step task {} does not exist	Task langkah {} tidak ada
+Step task {} of {} does not exist	Task langkah {} dari {} tidak ada
+Step {} could not start: {}	Langkah {} tidak bisa dimulai: {}
+Stop the script on the first error	Hentikan skrip pada error pertama
+Success	Berhasil
+Summary	Ringkasan
+Sun	Min
+Swap	Tukar
+System	Sistem
+TLS error talking to the AI service: {}	Error TLS saat berkomunikasi dengan layanan AI: {}
+Tab size	Ukuran tab
+Table {}	Tabel {}
+Target	Target
+Terminal mode: print results as text	Mode terminal: tampilkan hasil sebagai teks
+Terminate session	Akhiri sesi
+The AI request stopped unexpectedly	Permintaan AI berhenti tak terduga
+The AI response stream ended unexpectedly	Aliran respons AI berakhir tak terduga
+The AI service URL must start with http:// or https://: {}	URL layanan AI harus diawali http:// atau https://: {}
+The AI service did not answer in time ({})	Layanan AI tidak menjawab tepat waktu ({})
+The AI service had an internal error	Layanan AI mengalami error internal
+The AI service host was not found	Host layanan AI tidak ditemukan
+The AI service is overloaded; try again later	Layanan AI sedang sibuk; coba lagi nanti
+The AI service rejected the request	Layanan AI menolak permintaan
+The AI service returned an error	Layanan AI mengembalikan error
+The SQL script task needs SQL text or a script file	Task skrip SQL membutuhkan teks SQL atau file skrip
+The X column does not exist in this result	Kolom X tidak ada di hasil ini
+The assistant sends your question, and optionally schema details, to the provider you configure. Nothing is sent while it is disabled.	Asisten mengirim pertanyaan Anda, dan opsional detail skema, ke penyedia yang Anda atur. Tidak ada yang dikirim selama asisten nonaktif.
+The composite task contains itself through step {}	Task komposit berisi dirinya sendiri lewat langkah {}
+The composite task {} contains itself through its steps	Task komposit {} berisi dirinya sendiri lewat langkah-langkahnya
+The connection is read-only.	Koneksi bersifat read-only.
+The connection is read-only; data and schema changes are blocked.	Koneksi bersifat read-only; perubahan data dan skema diblokir.
+The conversation is empty	Percakapan kosong
+The conversation must end with a user message	Percakapan harus diakhiri pesan pengguna
+The cron expression is empty	Ekspresi cron kosong
+The diagram is empty	Diagram kosong
+The folder needs a name	Folder membutuhkan nama
+The interval must be at least one second	Interval minimal satu detik
+The interval must be at most one year	Interval maksimal satu tahun
+The maximum number of tokens must be at least 1	Jumlah token maksimum minimal 1
+The model declined this request	Model menolak permintaan ini
+The model declined this request (category: {})	Model menolak permintaan ini (kategori: {})
+The next result is exported.	Hasil berikutnya akan diekspor.
+The operating system scheduler cannot restrict years	Penjadwal sistem operasi tidak bisa membatasi tahun
+The operating system scheduler has minute precision: use 0 seconds	Penjadwal sistem operasi berpresisi menit: gunakan 0 detik
+The project folder is not available.	Folder proyek tidak tersedia.
+The query did not return rows: {}	Query tidak mengembalikan baris: {}
+The query history is disabled.	Riwayat query dinonaktifkan.
+The request is too large; reduce the schema context or the conversation	Permintaan terlalu besar; kurangi konteks skema atau percakapan
+The result does not come from a single table.	Hasil tidak berasal dari satu tabel.
+The result has no geometry column.	Hasil tidak memiliki kolom geometri.
+The result is empty	Hasil kosong
+The run was aborted	Eksekusi dibatalkan
+The schedule is too complex for the operating system scheduler	Jadwal terlalu rumit untuk penjadwal sistem operasi
+The scheduler has been shut down	Penjadwal sudah dimatikan
+The scheduler is already running	Penjadwal sudah berjalan
+The schemas are identical.	Skema identik.
+The script contains statements that change data or schema.	Skrip berisi statement yang mengubah data atau skema.
+The session was closed; a new one is opened for the next statement.	Sesi ditutup; sesi baru dibuka untuk statement berikutnya.
+The step failed unexpectedly (internal error)	Langkah gagal tak terduga (error internal)
+The target database does not support transactions; the script is not wrapped	Database target tidak mendukung transaksi; skrip tidak dibungkus
+The task failed unexpectedly (internal error)	Task gagal tak terduga (error internal)
+The task needs a name	Task membutuhkan nama
+The task needs a {}	Task membutuhkan {}
+The task needs an id	Task membutuhkan id
+The task {} has no schedule	Task {} tidak memiliki jadwal
+The task {} is already running	Task {} sudah berjalan
+The timeout must be at least one second	Batas waktu minimal satu detik
+The vault is not active.	Brankas tidak aktif.
+Theme	Tema
+These statements will run in one transaction:	Statement berikut akan dijalankan dalam satu transaksi:
+This cron expression is too complex for the Windows Task Scheduler	Ekspresi cron ini terlalu rumit untuk Windows Task Scheduler
+This cron expression is too complex for the Windows Task Scheduler; use an interval or a daily schedule	Ekspresi cron ini terlalu rumit untuk Windows Task Scheduler; gunakan interval atau jadwal harian
+This database has no UPSERT statement.	Database ini tidak memiliki statement UPSERT.
+Time	Waktu
+Time format	Format waktu
+Timed out after {} s	Habis waktu setelah {} dtk
+Timestamp format	Format timestamp
+Title	Judul
+Toggle block comment	Alihkan komentar blok
+Toggle comment	Alihkan komentar
+Toggle replace	Alihkan ganti
+Toggle sort direction	Alihkan arah urutan
+Toolbar	Toolbar
+Top down	Atas ke bawah
+Transaction log	Log transaksi
+Tree	Pohon
+Type {} cannot be dropped automatically	Tipe {} tidak bisa dihapus otomatis
+Type {} differs but cannot be altered automatically	Tipe {} berbeda tetapi tidak bisa diubah otomatis
+Types	Tipe
+UPPER	HURUF BESAR
+Unchanged	Tidak berubah
+Unchanged objects	Objek yang tidak berubah
+Unknown column {0} in {1}	Kolom {0} tidak dikenal di {1}
+Unknown table: {0}	Tabel tidak dikenal: {0}
+Unknown table: {0}.{1}	Tabel tidak dikenal: {0}.{1}
+Unsaved changes	Perubahan belum disimpan
+Unsupported WKB geometry type {}	Tipe geometri WKB tidak didukung {}
+Unsupported cron macro: {}	Makro cron tidak didukung: {}
+Untitled	Tanpa judul
+Upper case	Huruf besar
+Use regular expression	Gunakan ekspresi reguler
+Use ⌘V to paste into the grid.	Gunakan ⌘V untuk menempel ke grid.
+Value formats	Format nilai
+Values are inserted as SQL text: quote strings, e.g. 'abc'.	Nilai disisipkan sebagai teks SQL: beri kutip pada string, mis. 'abc'.
+Very high	Sangat tinggi
+Virtual key saved	Virtual key disimpan
+WKB count {} exceeds the data size	Jumlah WKB {} melebihi ukuran data
+WKB ends unexpectedly at byte {}	WKB berakhir tak terduga pada byte {}
+Waiting for the first metrics…	Menunggu metrik pertama…
+Warning	Peringatan
+Weekdays at {}	Hari kerja pukul {}
+Weekends at {}	Akhir pekan pukul {}
+Whole word	Kata utuh
+Window	Jendela
+Wrap long lines	Bungkus baris panjang
+X	X
+Y	Y
+Yes	Ya
+Zoom	Zoom
+Zoom in	Perbesar
+Zoom out	Perkecil
+Zoom to fit	Zoom agar pas
+alias of {0}	alias dari {0}
+client command	perintah klien
+column or expression	kolom atau ekspresi
+cost {}	biaya {}
+cost {}..{}	biaya {}..{}
+function	fungsi
+identifying	mengidentifikasi
+join	join
+join condition	kondisi join
+last run {}	terakhir dijalankan {}
+lower	huruf kecil
+mandatory	wajib
+no data	tidak ada data
+not null	not null
+now	sekarang
+nullable	boleh null
+optional	opsional
+over-estimated	perkiraan berlebih
+primary key	primary key
+row {}: {}	baris {}: {}
+rows {} actual	baris {} aktual
+rows {} est.	baris {} perkiraan
+schema	skema
+snippet	snippet
+subquery	subquery
+table	tabel
+total	total
+under-estimated	perkiraan kurang
+unique	unik
+variable	variabel
+view	view
+where	where
+{0}: {1}	{0}: {1}
+{} (copy)	{} (salinan)
+{} added, {} removed, {} modified, {} unchanged	{} ditambah, {} dihapus, {} diubah, {} tidak berubah
+{} characters of SQL generated	{} karakter SQL dihasilkan
+{} columns	{} kolom
+{} connection(s) now use the Development type	{} koneksi kini memakai tipe Development
+{} counter resets	{} reset penghitung
+{} geometries	{} geometri
+{} locks	{} lock
+{} matches	{} hasil
+{} nodes	{} node
+{} not readable	{} tidak terbaca
+{} object(s) dropped	{} objek dihapus
+{} of {}	{} dari {}
+{} of {} entries	{} dari {} entri
+{} pending	{} tertunda
+{} row(s) affected	{} baris terpengaruh
+{} rows without values skipped	{} baris tanpa nilai dilewati
+{} secret(s) moved	{} rahasia dipindahkan
+{} selected	{} dipilih
+{} sessions, {} waiting for a lock	{} sesi, {} menunggu lock
+{} statement(s) executed on the target	{} statement dieksekusi di target
+{} statement(s) executed, {} failed, in {}	{} statement dieksekusi, {} gagal, dalam {}
+{} step(s) completed	{} langkah selesai
+{} total	{} total
+{} warnings	{} peringatan
+{} · {} columns	{} · {} kolom
+{}h{}m	{}j{}m
+{}m	{}m
+{}m{}s	{}m{}d
+{}s	{}d
+{}x fewer rows than estimated	{}x lebih sedikit baris dari perkiraan
+{}x more rows than estimated	{}x lebih banyak baris dari perkiraan
+AI Assistant	Asisten AI
+ALTER ... DROP removes part of the object	ALTER ... DROP menghapus sebagian objek
+Aggregates	Agregat
+Alter	Ubah
+Application	Aplikasi
+Call	Panggil
+Cancel Data Changes	Batalkan Perubahan Data
+Cancel Query	Batalkan Query
+Check Constraint	Check Constraint
+Check Constraints	Check Constraint
+Client command	Perintah klien
+Close Tab	Tutup Tab
+Command Palette	Palet Perintah
+Connections	Koneksi
+DELETE without WHERE removes every row	DELETE tanpa WHERE menghapus semua baris
+DROP permanently removes the object	DROP menghapus objek secara permanen
+Describe	Describe
+Domain	Domain
+Domains	Domain
+ER Diagram	Diagram ER
+Edit Connection	Ubah Koneksi
+Editor	Editor
+Event	Event
+Execute Script	Eksekusi Skrip
+Execute Selection	Eksekusi Pilihan
+Execute Statement	Eksekusi Statement
+Execute in New Tab	Eksekusi di Tab Baru
+Explain	Explain
+Explain Analyze	Explain Analyze
+Explain Execution Plan	Explain Execution Plan
+Export Data	Ekspor Data
+Extension	Ekstensi
+Extensions	Ekstensi
+Failed	Gagal
+Find Next	Cari Berikutnya
+Find Previous	Cari Sebelumnya
+Foreign Key	Foreign Key
+Foreign Keys	Foreign Key
+Foreign Table	Foreign Table
+Foreign Tables	Foreign Table
+Function	Fungsi
+Functions	Fungsi
+Go to Line	Ke Baris
+Grant	Grant
+Import Data	Impor Data
+Index	Index
+Insert	Insert
+Keyboard Shortcuts	Pintasan Keyboard
+Lock	Lock
+Materialized View	Materialized View
+Materialized Views	Materialized View
+Maximize Results Panel	Maksimalkan Panel Hasil
+Merge	Merge
+Navigation	Navigasi
+New Connection	Koneksi Baru
+New SQL Editor	Editor SQL Baru
+Next Tab	Tab Berikutnya
+Open SQL Console	Buka Konsol SQL
+Partition	Partisi
+Pragma	Pragma
+Previous Tab	Tab Sebelumnya
+Primary Key	Primary Key
+Primary Keys	Primary Key
+Procedure	Prosedur
+Procedures	Prosedur
+Query	Query
+Query History	Riwayat Query
+Rename	Ganti Nama
+Reset Zoom	Atur Ulang Zoom
+Revoke	Revoke
+Role	Role
+Roles	Role
+Running	Berjalan
+Save Data Changes	Simpan Perubahan Data
+Schema	Skema
+Select Active Connection	Pilih Koneksi Aktif
+Select Active Schema	Pilih Skema Aktif
+Sequence	Sequence
+Sequences	Sequence
+Session Manager	Session Manager
+Show	Show
+Show Plan Diagram	Tampilkan Diagram Plan
+Skipped	Dilewati
+Statement	Statement
+Succeeded	Berhasil
+Synonym	Sinonim
+Synonyms	Sinonim
+TRUNCATE removes every row	TRUNCATE menghapus semua baris
+Tablespace	Tablespace
+Tablespaces	Tablespace
+To Lower Case	Ke Huruf Kecil
+To Upper Case	Ke Huruf Besar
+Toggle Auto-Commit	Alihkan Auto-Commit
+Toggle Block Comment	Alihkan Komentar Blok
+Toggle Line Comment	Alihkan Komentar Baris
+Toggle Navigator	Alihkan Navigator
+Toggle Results Panel	Alihkan Panel Hasil
+Transaction	Transaksi
+Transactions	Transaksi
+Trigger	Trigger
+Truncate	Truncate
+UPDATE without WHERE changes every row	UPDATE tanpa WHERE mengubah semua baris
+Unique Key	Unique Key
+Unique Keys	Unique Key
+Update	Update
+Use	Use
+Zoom In	Perbesar
+Zoom Out	Perkecil

@@ -1793,7 +1793,7 @@ name = "dbiji-sql"
 version = "0.1.0"
 dependencies = [
  "dbiji-core",
- "regex",
+ "flate2",
  "serde",
  "serde_json",
  "sqlparser",

@@ -77,7 +77,7 @@ jobs:
     env:
       DBIJI_TEST_PG: postgres://dbiji:dbiji@127.0.0.1:55432/dbiji
       DBIJI_TEST_MYSQL: mysql://root:dbiji@127.0.0.1:53306/dbiji
-      DBIJI_TEST_MARIADB: mysql://root:dbiji@127.0.0.1:53307/dbiji
+      DBIJI_TEST_MARIADB: mariadb://root:dbiji@127.0.0.1:53307/dbiji
       DBIJI_TEST_CLICKHOUSE: http://dbiji:dbiji@127.0.0.1:58123
     steps:
       - uses: actions/checkout@v4

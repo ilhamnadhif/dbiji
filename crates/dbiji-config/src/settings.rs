@@ -577,17 +577,47 @@ pub struct ToolbarSettings {
 
 impl Default for ToolbarSettings {
     fn default() -> Self {
+        use crate::actions::Action as A;
+        // Groups: connection · context · execution · transaction · tools.
+        let groups: [&[A]; 5] = [
+            &[A::NewConnection, A::NewSqlEditor],
+            &[A::SelectConnection, A::SelectSchema],
+            &[
+                A::ExecuteStatement,
+                A::ExecuteScript,
+                A::ExplainPlan,
+                A::CancelQuery,
+            ],
+            &[A::Commit, A::Rollback, A::ToggleAutoCommit],
+            &[A::FormatSql, A::OpenHistory],
+        ];
+        let mut items = Vec::new();
+        for (i, g) in groups.iter().enumerate() {
+            if i > 0 {
+                items.push("|".to_string());
+            }
+            items.extend(g.iter().map(|a| a.id().to_string()));
+        }
         ToolbarSettings {
-            items: crate::actions::Action::default_toolbar()
-                .iter()
-                .map(|a| a.id().to_string())
-                .collect(),
+            items,
             hidden: Vec::new(),
         }
     }
 }
 
 impl ToolbarSettings {
+    /// Settings saved with the old default (no group separators) get the
+    /// grouped default; customised toolbars are kept.
+    pub fn upgrade_default(&mut self) {
+        let old: Vec<String> = crate::actions::Action::default_toolbar()
+            .iter()
+            .map(|a| a.id().to_string())
+            .collect();
+        if self.items == old {
+            self.items = ToolbarSettings::default().items;
+        }
+    }
+
     /// Visible actions in order (unknown ids and separators skipped).
     pub fn visible_actions(&self) -> Vec<crate::actions::Action> {
         self.items
@@ -803,6 +833,7 @@ pub fn load_with_warnings(paths: &AppPaths) -> (AppSettings, Vec<String>) {
             }
         },
     };
+    settings.toolbar.upgrade_default();
     let (keymap, kw) = keymap::load_config(paths);
     settings.keymap = keymap;
     warnings.extend(kw);

@@ -172,18 +172,38 @@ impl<'a> FilterBar<'a> {
         let mut actions = Vec::new();
         let mut apply = false;
         let mut clear = false;
-        // Space for the inputs after the fixed widgets (icons, labels, buttons, toggle).
-        let flexible = (ui.available_width() - 300.0).max(220.0);
-        ui.horizontal_wrapped(|ui| {
-            let server = grid.mode == DataMode::Server;
+        ui.horizontal(|ui| {
+            // Where filter and order apply: re-run on the server, or the fetched rows.
+            let mut client = grid.mode == DataMode::Client;
+            let hint = tr("Sort and filter fetched rows in DBiji (client) or re-run the query with WHERE / ORDER BY (server)");
+            ui.scope(|ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+                let stroke = ui.visuals().widgets.noninteractive.bg_stroke;
+                let left = egui::CornerRadius { nw: 4, sw: 4, ne: 0, se: 0 };
+                let right = egui::CornerRadius { nw: 0, sw: 0, ne: 4, se: 4 };
+                if ui.add(Button::new(tr("Server")).selected(!client).corner_radius(left).stroke(stroke)).on_hover_text(hint).clicked() {
+                    client = false;
+                }
+                if ui.add(Button::new(tr("Client")).selected(client).corner_radius(right).stroke(stroke)).on_hover_text(hint).clicked() {
+                    client = true;
+                }
+            });
+            grid.mode = if client { DataMode::Client } else { DataMode::Server };
+            let server = !client;
+            ui.add_space(4.0);
             ui.label(RichText::new(icon::FUNNEL).size(15.0)).on_hover_text(if server {
                 tr("WHERE condition sent to the database")
             } else {
                 tr("Client side filter expression (see help)")
             });
+            // The inputs share what is left after the fixed widgets: the
+            // ORDER BY label, two history buttons and the trailing buttons.
+            let label_w = ui.fonts_mut(|f| f.layout_no_wrap(tr("ORDER BY").to_string(), egui::TextStyle::Body.resolve(ui.style()), egui::Color32::WHITE).rect.width());
+            let button = ui.spacing().interact_size.y + ui.spacing().button_padding.x * 2.0 + ui.spacing().item_spacing.x;
+            let trailing = label_w + button * 6.0 + ui.spacing().item_spacing.x * 4.0;
+            let flexible = (ui.available_width() - trailing).max(160.0);
             let hint = if server { tr("WHERE condition, e.g. status = 'open'") } else { tr("Filter, e.g. amount > 100 and city = 'Bandung'") };
-            let width = flexible * 0.62;
-            let filter_resp = ui.add(TextEdit::singleline(&mut state.filter_text).hint_text(hint).desired_width(width).font(egui::TextStyle::Monospace));
+            let filter_resp = ui.add(TextEdit::singleline(&mut state.filter_text).hint_text(hint).desired_width(flexible * 0.62).font(egui::TextStyle::Monospace));
             if filter_resp.changed() {
                 state.rt.filter_error = None;
             }
@@ -225,12 +245,6 @@ impl<'a> FilterBar<'a> {
                         ui.close();
                     }
                 });
-            }
-            let mut client = grid.mode == DataMode::Client;
-            let label = if client { tr("Client") } else { tr("Server") };
-            if ui.toggle_value(&mut client, label).on_hover_text(tr("Sort and filter fetched rows in DBiji (client) or re-run the query with WHERE / ORDER BY (server)")).changed()
-            {
-                grid.mode = if client { DataMode::Client } else { DataMode::Server };
             }
         });
         if let Some(e) = &state.rt.filter_error {

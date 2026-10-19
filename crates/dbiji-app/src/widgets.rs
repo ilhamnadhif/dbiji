@@ -15,10 +15,17 @@ pub struct TableResponse {
     pub context_row: Option<usize>,
 }
 
+/// Space before the text of a table cell.
+const CELL_PAD: f32 = 6.0;
+
 /// Virtualised, striped, resizable table of text cells.
 pub fn simple_table(ui: &mut Ui, id_salt: impl std::hash::Hash + std::fmt::Debug, headers: &[&str], rows: &[Vec<String>], selected: Option<usize>) -> TableResponse {
     let mut out = TableResponse::default();
-    let row_h = ui.text_style_height(&egui::TextStyle::Body) + 4.0;
+    let row_h = ui.text_style_height(&egui::TextStyle::Body) + 8.0;
+    // Every column at least as wide as its header (plus the cell padding).
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    let header_w: Vec<f32> =
+        headers.iter().map(|h| ui.fonts_mut(|f| f.layout_no_wrap(h.to_string(), font.clone(), egui::Color32::WHITE).rect.width()) + 2.0 * CELL_PAD + 6.0).collect();
     let mut tb = TableBuilder::new(ui)
         .id_salt(id_salt)
         .striped(true)
@@ -26,17 +33,18 @@ pub fn simple_table(ui: &mut Ui, id_salt: impl std::hash::Hash + std::fmt::Debug
         .sense(egui::Sense::click())
         .auto_shrink([false, false])
         .cell_layout(egui::Layout::left_to_right(egui::Align::Center));
-    for (i, _) in headers.iter().enumerate() {
+    for (i, w) in header_w.iter().enumerate() {
         tb = if i + 1 == headers.len() {
-            tb.column(Column::remainder().at_least(60.0).clip(true))
+            tb.column(Column::remainder().at_least(w.max(60.0)).clip(true))
         } else {
-            tb.column(Column::auto().at_least(40.0).at_most(480.0).clip(true).resizable(true))
+            tb.column(Column::auto().at_least(w.max(40.0)).at_most(480.0).clip(true).resizable(true))
         };
     }
     tb.header(row_h + 2.0, |mut header| {
         for h in headers {
             header.col(|ui| {
-                ui.strong(*h);
+                ui.add_space(CELL_PAD);
+                ui.label(RichText::new(*h).strong());
             });
         }
     })
@@ -47,6 +55,7 @@ pub fn simple_table(ui: &mut Ui, id_salt: impl std::hash::Hash + std::fmt::Debug
             if let Some(cells) = rows.get(i) {
                 for c in cells.iter().take(headers.len()) {
                     row.col(|ui| {
+                        ui.add_space(CELL_PAD);
                         let short: String = c.chars().take(300).collect();
                         let first_line = short.lines().next().unwrap_or("");
                         let resp = ui.add(egui::Label::new(first_line).truncate().selectable(false));

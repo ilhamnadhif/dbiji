@@ -79,6 +79,9 @@ impl GridFrame<'_> {
         let set = open.then_some(SetOpenCommand::Bool(true));
         let shown = Popup::new(self.id.with("header_popup"), self.ctx.clone(), anchor, ui.layer_id())
             .kind(PopupKind::Menu)
+            .layout(egui::Layout::top_down_justified(egui::Align::Min))
+            .style(egui::containers::menu::menu_style)
+            .gap(0.0)
             .open_memory(set)
             .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
             .show(|ui| {

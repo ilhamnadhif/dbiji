@@ -40,56 +40,118 @@ impl TabView for WelcomeTab {
     }
 
     fn ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
+        use crate::keys::Action;
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            ui.add_space(24.0);
+            ui.add_space(32.0);
             ui.vertical_centered(|ui| {
-                ui.label(RichText::new("DBiji").size(32.0).strong());
+                ui.label(RichText::new("DBiji").size(34.0).strong());
                 ui.label(RichText::new(tr("Lightweight SQL client written in Rust")).weak());
-                ui.add_space(16.0);
-                let w = 260.0;
-                if ui.add_sized([w, 28.0], egui::Button::new(format!("{} {}", icon::PLUS, tr("New connection")))).clicked() {
-                    cx.push(AppCommand::NewConnection { kind: None, folder: None });
+                ui.label(RichText::new(format!("{} {}", tr("Version"), env!("CARGO_PKG_VERSION"))).small().weak());
+            });
+            ui.add_space(24.0);
+            // Two cards side by side when there is room, else stacked.
+            let card_w = 340.0;
+            let wide = ui.available_width() >= card_w * 2.0 + 48.0;
+            let total = if wide { card_w * 2.0 + 24.0 } else { card_w };
+            let margin = ((ui.available_width() - total) / 2.0).max(8.0);
+            let card = |ui: &mut Ui, title: &str, add: &mut dyn FnMut(&mut Ui)| {
+                egui::Frame::group(ui.style()).fill(ui.visuals().window_fill).corner_radius(8).inner_margin(16).show(ui, |ui| {
+                    ui.vertical(|ui| {
+                        ui.set_width(card_w - 34.0);
+                        ui.label(RichText::new(title).strong().size(15.0));
+                        ui.add_space(8.0);
+                        add(ui);
+                    });
+                });
+            };
+            let keymap = cx.keymap;
+            let shortcut = |a: Action| crate::keys::label(keymap, a);
+            // The cards only read the context; their commands run afterwards.
+            let cmds = std::cell::RefCell::new(Vec::new());
+            let push = |c: AppCommand| cmds.borrow_mut().push(c);
+            let ro: &AppContext = cx;
+            let mut start = |ui: &mut Ui| {
+                ui.spacing_mut().button_padding = egui::vec2(10.0, 6.0);
+                let full = egui::vec2(ui.available_width(), 32.0);
+                let accent = ui.visuals().selection.stroke.color;
+                let on_accent = if ui.visuals().dark_mode { egui::Color32::BLACK } else { egui::Color32::WHITE };
+                let primary = egui::Button::new(RichText::new(format!("{}  {}", icon::PLUS, tr("New connection"))).color(on_accent).strong()).fill(accent).min_size(full);
+                if ui.add(primary).clicked() {
+                    push(AppCommand::NewConnection { kind: None, folder: None });
                 }
-                if ui.add_sized([w, 28.0], egui::Button::new(format!("{} {}", icon::FILE_SQL, tr("New SQL editor")))).clicked() {
-                    cx.push(AppCommand::NewSqlEditor { connection: None, schema: None, text: None });
+                ui.add_space(4.0);
+                let items: [(&str, &str, Option<Action>, Option<&str>, AppCommand); 4] = [
+                    (icon::FILE_SQL, tr("New SQL editor"), Some(Action::NewSqlEditor), None, AppCommand::NewSqlEditor { connection: None, schema: None, text: None }),
+                    (icon::COMMAND, tr("Command palette"), Some(Action::CommandPalette), None, AppCommand::ShowPalette),
+                    (icon::DOWNLOAD_SIMPLE, tr("Import connections from DBeaver"), None, None, AppCommand::ImportConnections),
+                    (icon::DATABASE, tr("Create sample database"), None, Some(tr("A small SQLite shop database to try every feature")), AppCommand::CreateSampleDatabase),
+                ];
+                for (ic, label, action, tip, cmd) in items {
+                    let mut b = egui::Button::new(format!("{ic}  {label}")).min_size(full);
+                    if let Some(a) = action {
+                        let keys = shortcut(a);
+                        if !keys.is_empty() {
+                            b = b.shortcut_text(keys);
+                        }
+                    }
+                    let mut r = ui.add(b);
+                    if let Some(t) = tip {
+                        r = r.on_hover_text(t);
+                    }
+                    if r.clicked() {
+                        push(cmd);
+                    }
                 }
-                if ui.add_sized([w, 28.0], egui::Button::new(format!("{} {}", icon::DOWNLOAD_SIMPLE, tr("Import connections from DBeaver")))).clicked() {
-                    cx.push(AppCommand::ImportConnections);
-                }
-                if ui
-                    .add_sized([w, 28.0], egui::Button::new(format!("{} {}", icon::DATABASE, tr("Create sample database"))))
-                    .on_hover_text(tr("A small SQLite shop database to try every feature"))
-                    .clicked()
-                {
-                    cx.push(AppCommand::CreateSampleDatabase);
-                }
-                if ui.add_sized([w, 28.0], egui::Button::new(format!("{} {}", icon::COMMAND, tr("Command palette")))).clicked() {
-                    cx.push(AppCommand::ShowPalette);
-                }
-                ui.add_space(20.0);
-                ui.label(RichText::new(tr("Recent connections")).strong());
-                let mut recent: Vec<_> = cx.conns.configs().iter().filter(|c| c.last_connected.is_some()).cloned().collect();
+            };
+            let mut recent_ui = |ui: &mut Ui| {
+                let mut recent: Vec<_> = ro.conns.configs().iter().filter(|c| c.last_connected.is_some()).cloned().collect();
                 recent.sort_by_key(|c| std::cmp::Reverse(c.last_connected));
+                ui.label(RichText::new(tr("Recent connections")).weak().small());
                 if recent.is_empty() {
                     ui.weak(tr("None yet"));
                 }
-                for c in recent.into_iter().take(8) {
-                    if ui.link(format!("{} {}  —  {}", crate::nav::db_icon(c.kind), c.name, c.summary())).clicked() {
-                        cx.push(AppCommand::Connect(c.id.clone()));
-                        cx.push(AppCommand::NewSqlEditor { connection: Some(c.id.clone()), schema: None, text: None });
+                for c in recent.into_iter().take(6) {
+                    let text = format!("{}  {}", crate::nav::db_icon(c.kind), c.name);
+                    let r = ui.add(
+                        egui::Button::new(text)
+                            .frame(false)
+                            .right_text(RichText::new(crate::nav::connection_detail(&c)).weak().small())
+                            .min_size(egui::vec2(ui.available_width(), 26.0)),
+                    );
+                    if r.on_hover_text(tr("Connect and open a SQL editor")).clicked() {
+                        push(AppCommand::Connect(c.id.clone()));
+                        push(AppCommand::NewSqlEditor { connection: Some(c.id.clone()), schema: None, text: None });
                     }
                 }
-                let scripts = recent_scripts(ui, cx);
+                let scripts = recent_scripts(ui, ro);
                 if !scripts.is_empty() {
-                    ui.add_space(16.0);
-                    ui.label(RichText::new(tr("Recent scripts")).strong());
-                    for s in scripts {
-                        if ui.link(format!("{} {}", icon::FILE_SQL, s.relative)).on_hover_text(s.path.display().to_string()).clicked() {
-                            cx.push(AppCommand::OpenScript(s.path.clone()));
+                    ui.add_space(10.0);
+                    ui.label(RichText::new(tr("Recent scripts")).weak().small());
+                    for s in scripts.into_iter().take(6) {
+                        let r = ui.add(egui::Button::new(format!("{}  {}", icon::FILE_SQL, s.relative)).frame(false).min_size(egui::vec2(ui.available_width(), 26.0)));
+                        if r.on_hover_text(s.path.display().to_string()).clicked() {
+                            push(AppCommand::OpenScript(s.path.clone()));
                         }
                     }
                 }
+            };
+            ui.horizontal_top(|ui| {
+                ui.add_space(margin);
+                if wide {
+                    card(ui, tr("Start"), &mut start);
+                    ui.add_space(24.0);
+                    card(ui, tr("Recent"), &mut recent_ui);
+                } else {
+                    ui.vertical(|ui| {
+                        card(ui, tr("Start"), &mut start);
+                        ui.add_space(16.0);
+                        card(ui, tr("Recent"), &mut recent_ui);
+                    });
+                }
             });
+            for c in cmds.take() {
+                cx.push(c);
+            }
         });
     }
 

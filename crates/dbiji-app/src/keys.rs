@@ -87,6 +87,15 @@ pub fn shortcuts_table(ui: &mut egui::Ui, cx: &mut AppContext) {
     });
 }
 
+/// Colour cue of an action's icon: green to run, red to stop.
+pub fn action_color(action: Action, dark: bool) -> Option<egui::Color32> {
+    match action {
+        Action::ExecuteStatement | Action::ExecuteScript | Action::ExecuteInNewTab => Some(crate::theme::success_color(dark)),
+        Action::CancelQuery => Some(crate::theme::error_color(dark)),
+        _ => None,
+    }
+}
+
 /// Toolbar / palette icon of an action.
 pub fn action_icon(action: Action) -> &'static str {
     use egui_phosphor::regular as i;

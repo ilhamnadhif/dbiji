@@ -964,8 +964,10 @@ impl TabView for SettingsTab {
                 }
             }
             ui.add_space(12.0);
-            ui.weak(cx.services.paths.config_dir().display().to_string());
-            ui.add_space(12.0);
+            let dir = cx.services.paths.config_dir().to_path_buf();
+            if ui.add(egui::Button::new(format!("{} {}", icon::FOLDER_OPEN, tr("Open settings folder"))).frame(false)).on_hover_text(dir.display().to_string()).clicked() {
+                let _ = open::that_detached(&dir);
+            }
             if self.confirm_reset {
                 ui.label(tr("Reset every setting to its default? Connections, scripts and passwords are kept."));
                 ui.horizontal(|ui| {

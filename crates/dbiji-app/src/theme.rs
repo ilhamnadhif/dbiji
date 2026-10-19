@@ -187,7 +187,8 @@ pub fn visuals(theme: Theme) -> Visuals {
     w.inactive.fg_stroke = Stroke::new(1.0, p.text);
     w.inactive.bg_fill = p.button;
     w.inactive.weak_bg_fill = p.button;
-    w.inactive.bg_stroke = Stroke::new(1.0, Color32::TRANSPARENT);
+    // Also the border of text fields: they must stand out in dialogs too.
+    w.inactive.bg_stroke = Stroke::new(1.0, p.border);
     w.hovered.fg_stroke = Stroke::new(1.5, p.strong);
     w.hovered.bg_fill = p.button_hover;
     w.hovered.weak_bg_fill = p.button_hover;

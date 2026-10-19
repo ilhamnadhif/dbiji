@@ -1065,7 +1065,11 @@ impl DbijiApp {
                 let Some(action) = crate::keys::Action::from_id(id) else { continue };
                 let keys = crate::keys::label(&self.keymap, action);
                 let tip = if keys.is_empty() { crate::keys::action_label(action).to_string() } else { format!("{}  ({keys})", crate::keys::action_label(action)) };
-                let b = egui::Button::new(RichText::new(crate::keys::action_icon(action)).size(16.0)).frame(false).min_size(egui::vec2(26.0, 22.0));
+                let mut text = RichText::new(crate::keys::action_icon(action)).size(16.0);
+                if let Some(c) = crate::keys::action_color(action, ui.visuals().dark_mode) {
+                    text = text.color(c);
+                }
+                let b = egui::Button::new(text).frame(false).min_size(egui::vec2(26.0, 22.0));
                 if ui.add(b).on_hover_text(tip).clicked() {
                     self.commands.push(AppCommand::Action(action));
                 }

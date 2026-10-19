@@ -124,6 +124,31 @@ pub struct Navigator {
     prefs: dbiji_config::settings::NavigatorSettings,
 }
 
+/// Text next to a connection: `user@host:port/db`, or for a database file
+/// its folder (home as `~`, long paths shortened to the last folders).
+pub(crate) fn connection_detail(cfg: &ConnectionConfig) -> String {
+    if !cfg.kind.is_file_based() {
+        return cfg.summary();
+    }
+    let Some(path) = cfg.file_path.as_deref().filter(|p| !p.is_empty()) else { return String::new() };
+    let path = std::path::Path::new(path);
+    let file = path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+    let dir = path.parent().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
+    let home = std::env::var("HOME").ok().filter(|h| h.len() > 1);
+    let dir = match home {
+        Some(h) if dir.starts_with(&h) => format!("~{}", &dir[h.len()..]),
+        _ => dir,
+    };
+    let dir = if dir.chars().count() > 32 {
+        let parts: Vec<&str> = dir.split('/').filter(|p| !p.is_empty()).collect();
+        format!("…/{}", parts[parts.len().saturating_sub(2)..].join("/"))
+    } else {
+        dir
+    };
+    // The name is usually the file name: then the folder is enough.
+    if cfg.name == file { dir } else { format!("{dir}/{file}") }
+}
+
 pub fn kind_icon(kind: ObjectKind) -> &'static str {
     match kind {
         ObjectKind::Database => icon::DATABASE,
@@ -326,7 +351,7 @@ impl Navigator {
             node: node.clone(),
             depth,
             label: cfg.name.clone(),
-            detail: self.prefs.show_connection_details.then(|| cfg.summary()),
+            detail: self.prefs.show_connection_details.then(|| connection_detail(cfg)),
             icon: db_icon(cfg.kind),
             icon_color: color.or(marker),
             expandable: true,

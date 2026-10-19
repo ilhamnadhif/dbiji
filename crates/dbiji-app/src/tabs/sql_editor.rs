@@ -1067,13 +1067,14 @@ impl SqlEditorTab {
             ui.separator();
             let running = self.exec.is_some() || self.explain_job.is_some();
             let tip = |a: Action| format!("{} ({})", crate::keys::action_label(a), crate::keys::label(cx.keymap, a));
-            if ui.add_enabled(!running, egui::Button::new(icon::PLAY)).on_hover_text(tip(Action::ExecuteStatement)).clicked() {
+            let go = crate::theme::success_color(ui.visuals().dark_mode);
+            if ui.add_enabled(!running, egui::Button::new(RichText::new(icon::PLAY).color(go))).on_hover_text(tip(Action::ExecuteStatement)).clicked() {
                 self.run(cx, Request { scope: self.scope_for(true), new_tab: false, explain: None, confirmed: false, sql: None });
             }
             if ui.add_enabled(!running, egui::Button::new(icon::PLUS_SQUARE)).on_hover_text(tip(Action::ExecuteInNewTab)).clicked() {
                 self.run(cx, Request { scope: self.scope_for(true), new_tab: true, explain: None, confirmed: false, sql: None });
             }
-            if ui.add_enabled(!running, egui::Button::new(icon::FAST_FORWARD)).on_hover_text(tip(Action::ExecuteScript)).clicked() {
+            if ui.add_enabled(!running, egui::Button::new(RichText::new(icon::FAST_FORWARD).color(go))).on_hover_text(tip(Action::ExecuteScript)).clicked() {
                 self.run(cx, Request { scope: self.scope_for(false), new_tab: false, explain: None, confirmed: false, sql: None });
             }
             if ui.add_enabled(!running, egui::Button::new(icon::TREE_VIEW)).on_hover_text(tip(Action::ExplainPlan)).clicked() {

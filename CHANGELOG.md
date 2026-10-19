@@ -18,6 +18,8 @@ notes of a new version once after it was updated (Help → What's new).
 - Column menu (▾ in every column header): order ascending / descending, disable the order, filter by the current cell's value, write a custom condition, save or reset the default filter, remove all filters and orderings.
 - The result toolbar is grouped (refresh · editing · export · view · panels) with the row count and fetch buttons on the right; messages such as "The result has no geometry column" appear there instead of over the buttons.
 - Interface polish: a new start page (start actions with their shortcuts, recent connections and scripts); text fields with a visible border in dialogs; grouped main toolbar with green run and red stop buttons; the result filter bar on one line with a Server / Client switch; readable property tables; shorter database file paths in the navigator; notifications no longer cover the row count.
+- Tab with several rows selected shows them side by side (one column per row, like DBeaver); ⌘C copies the picked value.
+- The app icon has transparent corners (no white square in the Dock and Finder).
 - Record view redesigned: column names with key / link icons and types, values styled by kind (NULL, true / false, JSON), the selected field highlighted, a copy button per value, a row number to jump to.
 - Tab in the result grid shows the selected row as a record (column → value, long values wrapped) like DBeaver; Tab goes back, ← / → show the previous / next row.
 - New database… and New schema… (connection menu, database menu, Database menu, command palette): name, owner / encoding / template (PostgreSQL) or character set / collation (MySQL, MariaDB, SQL Server), the statement shown before it runs.

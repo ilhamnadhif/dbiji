@@ -727,6 +727,17 @@ fn settings_grid_menu_and_editor_helpers() {
     h.key_press(Key::Tab);
     frames(&mut h, 3);
     wait(&mut h, "grid again", |h| has(h, "Data grid,"));
+    // Several rows selected: side by side, one column per row.
+    h.key_press_modifiers(Modifiers::SHIFT, Key::ArrowDown);
+    h.key_press_modifiers(Modifiers::SHIFT, Key::ArrowDown);
+    frames(&mut h, 2);
+    h.key_press(Key::Tab);
+    frames(&mut h, 3);
+    wait(&mut h, "rows side by side", |h| has(h, "Record view, 3 rows"));
+    assert!(has(&h, "3 selected rows"), "{:?}", labels(&h));
+    h.key_press(Key::Tab);
+    frames(&mut h, 3);
+    wait(&mut h, "grid after the rows", |h| has(h, "Data grid,"));
     settle(&mut h, "record view");
 
     // Editor helpers: autocomplete, parameters, find, comment toggling.

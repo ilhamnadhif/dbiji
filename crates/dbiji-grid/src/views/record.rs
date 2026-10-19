@@ -8,6 +8,35 @@ use dbiji_core::{Value, tr, trf};
 use egui::{Button, Key, RichText, ScrollArea, TextEdit, Ui};
 use egui_phosphor::regular as icon;
 
+/// A value styled by kind: NULL / DEFAULT in italics, booleans with a
+/// check box, JSON in monospace, modified values highlighted.
+fn value_text(v: &Value, is_default: bool, modified: bool, fmt: &PreparedFormat, options: &GridOptions, theme: &GridTheme) -> RichText {
+    let rt = if is_default {
+        RichText::new(tr("[DEFAULT]")).italics().color(theme.weak)
+    } else if v.is_null() {
+        RichText::new(options.format.null_text.clone()).italics().color(theme.weak)
+    } else {
+        match v {
+            Value::Bool(true) => RichText::new(format!("{}  true", icon::CHECK_SQUARE)).color(theme.bool_true),
+            Value::Bool(false) => RichText::new(format!("{}  false", icon::SQUARE)).color(theme.text),
+            Value::Json(s) => RichText::new(s.to_string()).monospace().color(theme.text),
+            Value::Text(s) => RichText::new(clip(s)).color(theme.text),
+            other => RichText::new(clip(&fmt.format(other))).color(theme.text),
+        }
+    };
+    if modified { rt.background_color(theme.modified) } else { rt }
+}
+
+/// One line of text in `rect` (left, vertically centred, cut with "…").
+fn paint_text(ui: &Ui, rect: egui::Rect, text: RichText, fallback: egui::Color32) {
+    let galley = egui::WidgetText::from(text).into_galley(ui, Some(egui::TextWrapMode::Truncate), rect.width(), egui::TextStyle::Body);
+    let pos = egui::pos2(rect.left(), rect.center().y - galley.size().y / 2.0);
+    ui.painter_at(rect).galley(pos, galley, fallback);
+}
+
+/// Most rows shown side by side.
+const MAX_ROWS: usize = 50;
+
 /// Long values are cut (the value panel shows them in full).
 fn clip(s: &str) -> String {
     if s.chars().count() > 2000 { s.chars().take(2000).collect::<String>() + "…" } else { s.to_string() }
@@ -24,6 +53,8 @@ pub struct RecordViewState {
     cache: Option<RecordCache>,
     /// Take the keyboard focus on the next frame (opened with Tab).
     focus_request: bool,
+    /// Cell picked in the side-by-side view: (row, column).
+    picked: Option<(usize, usize)>,
 }
 
 impl RecordViewState {
@@ -34,7 +65,10 @@ impl RecordViewState {
     }
 }
 
-type RecordCache = ((u64, usize, Vec<usize>), Vec<(Value, bool, bool)>);
+/// A shown value: (value, is default, modified).
+type Shown = (Value, bool, bool);
+
+type RecordCache = ((u64, usize, Vec<usize>), Vec<Shown>);
 
 /// Single record view. The shown row is the grid's active row.
 pub struct RecordView<'a> {
@@ -60,6 +94,11 @@ impl<'a> RecordView<'a> {
         if nrows == 0 {
             ui.weak(tr("No rows"));
             return actions;
+        }
+        // Several selected rows: side by side, one column per row (DBeaver).
+        let selected = grid.selection().rows(nrows, MAX_ROWS + 1);
+        if selected.len() > 1 {
+            return show_rows(model, grid, options, state, ui, selected);
         }
         let (row, active_col) = grid.active_cell().unwrap_or((0, grid.visible_columns().first().copied().unwrap_or(0)));
         let row = row.min(nrows - 1);
@@ -246,22 +285,7 @@ impl<'a> RecordView<'a> {
                                 return;
                             }
                             let fmt = PreparedFormat::new(&options.format, grid.column_format(c));
-                            let mut rt = if *is_default {
-                                RichText::new(tr("[DEFAULT]")).italics().color(theme.weak)
-                            } else if v.is_null() {
-                                RichText::new(options.format.null_text.clone()).italics().color(theme.weak)
-                            } else {
-                                match v {
-                                    Value::Bool(true) => RichText::new(format!("{}  true", icon::CHECK_SQUARE)).color(theme.bool_true),
-                                    Value::Bool(false) => RichText::new(format!("{}  false", icon::SQUARE)).color(theme.text),
-                                    Value::Json(s) => RichText::new(s.to_string()).monospace().color(theme.text),
-                                    Value::Text(s) => RichText::new(clip(s)).color(theme.text),
-                                    other => RichText::new(clip(&fmt.format(other))).color(theme.text),
-                                }
-                            };
-                            if *modified {
-                                rt = rt.background_color(theme.modified);
-                            }
+                            let rt = value_text(v, *is_default, *modified, &fmt, options, &theme);
                             let can_edit = editable && model.can_edit_cell(row, c).is_ok();
                             let resp = ui.add(egui::Label::new(rt).wrap().sense(egui::Sense::click()));
                             let resp = if can_edit { resp.on_hover_text(tr("Double-click to edit")) } else { resp };
@@ -319,4 +343,207 @@ impl<'a> RecordView<'a> {
         }
         actions
     }
+}
+
+/// Values of `rows` for `columns`: (value, is default, modified); `false`
+/// when the store was busy (shown values may be incomplete).
+fn row_values(model: &ResultModel, rows: &[usize], columns: &[usize]) -> (Vec<Vec<Shown>>, bool) {
+    let mut all = Vec::with_capacity(rows.len());
+    let mut fresh = true;
+    for &r in rows {
+        let mut values = Vec::with_capacity(columns.len());
+        fresh &= model.visit_rows_for(r..r + 1, std::time::Duration::from_millis(2), |_, cells| {
+            for &c in columns {
+                let (v, is_default) = if model.is_virtual_column(c) {
+                    (cells.value_of(c).unwrap_or_default(), false)
+                } else {
+                    match cells.get(c) {
+                        CellRef::Value(v) => (v.clone(), false),
+                        CellRef::Default => (Value::Null, true),
+                        CellRef::Missing => (Value::Null, false),
+                    }
+                };
+                values.push((v, is_default, cells.is_modified(c)));
+            }
+        });
+        values.resize(columns.len(), (Value::Null, false, false));
+        all.push(values);
+    }
+    (all, fresh)
+}
+
+/// Selected rows side by side: the columns down the left, one column per
+/// row ("Row #9", "Row #10" …), a fixed header and shared horizontal scroll.
+fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOptions, state: &mut RecordViewState, ui: &mut Ui, mut rows: Vec<usize>) -> Vec<GridAction> {
+    let mut actions = Vec::new();
+    let more = rows.len() > MAX_ROWS;
+    rows.truncate(MAX_ROWS);
+    let theme = GridTheme::from_visuals(ui.visuals());
+    let needle = state.column_filter.to_lowercase();
+    let total_columns = grid.visible_columns().len();
+    let columns: Vec<usize> = grid.visible_columns().into_iter().filter(|&c| needle.is_empty() || model.column_name(c).to_lowercase().contains(&needle)).collect();
+    let (values, fresh) = row_values(model, &rows, &columns);
+    if !fresh {
+        ui.ctx().request_repaint_after(std::time::Duration::from_millis(10));
+    }
+    let text_of = |r: usize, i: usize| values.get(r).and_then(|vs| vs.get(i)).map(|(v, ..)| if v.is_null() { String::new() } else { v.to_text().into_owned() });
+    // Keyboard: Tab back to the grid, ⌘C copies the picked value.
+    let focus = ui.interact(ui.max_rect(), ui.id().with("record_focus"), egui::Sense::click());
+    if std::mem::take(&mut state.focus_request) || focus.clicked() {
+        focus.request_focus();
+    }
+    focus.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, trf("Record view, {} rows", &[&rows.len()])));
+    if focus.has_focus() && state.editing.is_none() {
+        ui.memory_mut(|m| m.set_focus_lock_filter(focus.id, egui::EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: false }));
+        if ui.input(|i| i.key_pressed(Key::Tab)) {
+            actions.push(GridAction::SwitchView(ResultViewKind::Grid));
+        }
+        let copy = ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Copy)));
+        if copy
+            && let Some((r, c)) = state.picked
+            && let (Some(ri), Some(ci)) = (rows.iter().position(|x| *x == r), columns.iter().position(|x| *x == c))
+            && let Some(t) = text_of(ri, ci)
+        {
+            ui.ctx().copy_text(t);
+            actions.push(GridAction::Notify { message: tr("Value copied").to_string(), error: false });
+        }
+    }
+    egui::Frame::new().inner_margin(egui::Margin::symmetric(4, 4)).show(ui, |ui| {
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(format!("{}  {}", icon::ROWS, trf("{} selected rows", &[&rows.len()]))).strong());
+            if more {
+                ui.label(RichText::new(trf("(the first {})", &[&MAX_ROWS])).weak());
+            }
+            ui.add_space(12.0);
+            ui.add(TextEdit::singleline(&mut state.column_filter).hint_text(format!("{}  {}", icon::MAGNIFYING_GLASS, tr("Filter columns"))).desired_width(220.0));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(RichText::new(format!("{}  {}", icon::KEYBOARD, tr("Tab: grid · ⌘C: copy"))).small().weak()).on_hover_text(tr("Select one row to see it as a record"));
+                if !needle.is_empty() {
+                    ui.label(RichText::new(trf("{} of {} columns", &[&columns.len(), &total_columns])).small().weak());
+                }
+            });
+        });
+    });
+    let body = egui::TextStyle::Body.resolve(ui.style());
+    let small = egui::FontId::monospace(egui::TextStyle::Small.resolve(ui.style()).size);
+    let measure = |ui: &Ui, text: String, font: egui::FontId| ui.fonts_mut(|f| f.layout_no_wrap(text, font, egui::Color32::WHITE).rect.width());
+    let name_w = columns.iter().map(|&c| measure(ui, model.column_name(c).to_string(), body.clone())).fold(0.0_f32, f32::max).clamp(100.0, 260.0) + 8.0;
+    let type_of = |c: usize| model.column_meta(c).map_or_else(|| tr("virtual").to_string(), |m| m.type_name.to_lowercase());
+    let type_w = columns.iter().map(|&c| measure(ui, type_of(c), small.clone())).fold(0.0_f32, f32::max).clamp(40.0, 140.0) + 16.0;
+    let lead = 24.0 + name_w + type_w;
+    let cell_w = ((ui.available_width() - lead - 16.0) / rows.len() as f32).clamp(150.0, 360.0);
+    let row_h = ui.text_style_height(&egui::TextStyle::Body) + 10.0;
+    let key_cols: Vec<usize> = model.editability().as_ref().map(|t| t.key_columns.clone()).unwrap_or_default();
+    let active_row = grid.active_cell().map(|(r, _)| r);
+    let editable = model.is_editable() && options.allow_editing;
+    let mut commit: Option<(usize, usize, String)> = None;
+    let mut open_value: Option<(usize, usize)> = None;
+    let mut picked = state.picked;
+    ScrollArea::horizontal().auto_shrink([false, false]).show(ui, |ui| {
+        ui.vertical(|ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
+            // Header: one column per row.
+            ui.horizontal(|ui| {
+                let (rect, _) = ui.allocate_exact_size(egui::vec2(lead, row_h), egui::Sense::hover());
+                ui.painter().rect_filled(rect, 0.0, theme.header_bg);
+                ui.painter().text(rect.left_center() + egui::vec2(8.0, 0.0), egui::Align2::LEFT_CENTER, tr("Column"), body.clone(), theme.weak);
+                for &r in &rows {
+                    let (rect, _) = ui.allocate_exact_size(egui::vec2(cell_w, row_h), egui::Sense::hover());
+                    let fill = if active_row == Some(r) { theme.header_selected_bg } else { theme.header_bg };
+                    ui.painter().rect_filled(rect, 0.0, fill);
+                    ui.painter().vline(rect.left(), rect.y_range(), egui::Stroke::new(1.0, theme.line));
+                    ui.painter().text(rect.left_center() + egui::vec2(8.0, 0.0), egui::Align2::LEFT_CENTER, trf("Row #{}", &[&(r + 1)]), body.clone(), theme.header_text);
+                }
+            });
+            ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                for (i, &c) in columns.iter().enumerate() {
+                    ui.horizontal(|ui| {
+                        let (lead_rect, _) = ui.allocate_exact_size(egui::vec2(lead, row_h), egui::Sense::hover());
+                        let stripe = if i % 2 == 1 { theme.stripe } else { theme.bg };
+                        let hovered = ui.input(|inp| inp.pointer.hover_pos()).is_some_and(|p| p.y >= lead_rect.top() && p.y < lead_rect.bottom() && ui.clip_rect().contains(p));
+                        let row_fill = if hovered { crate::theme::mix(theme.bg, theme.text, 0.06) } else { stripe };
+                        ui.painter().rect_filled(lead_rect, 0.0, row_fill);
+                        let p = ui.painter();
+                        let mut x = lead_rect.left() + 6.0;
+                        if key_cols.contains(&c) {
+                            p.text(egui::pos2(x, lead_rect.center().y), egui::Align2::LEFT_CENTER, icon::KEY, body.clone(), theme.warn);
+                        } else if model.foreign_key_for_column(c).is_some() {
+                            p.text(egui::pos2(x, lead_rect.center().y), egui::Align2::LEFT_CENTER, icon::LINK_SIMPLE, body.clone(), theme.link);
+                        }
+                        x += 18.0;
+                        let name = model.column_name(c);
+                        let name_rect = egui::Rect::from_min_size(egui::pos2(x, lead_rect.top()), egui::vec2(name_w, row_h));
+                        paint_text(ui, name_rect, RichText::new(name).color(theme.weak), theme.text);
+                        let type_rect = egui::Rect::from_min_size(egui::pos2(x + name_w, lead_rect.top()), egui::vec2(type_w - 6.0, row_h));
+                        paint_text(ui, type_rect, RichText::new(type_of(c)).font(small.clone()).color(theme.weak.gamma_multiply(0.8)), theme.text);
+                        for (j, &r) in rows.iter().enumerate() {
+                            if state.editing.as_ref().is_some_and(|(er, ec, _)| *er == r && *ec == c) {
+                                if let Some((_, _, text)) = state.editing.as_mut() {
+                                    let te = ui.add_sized([cell_w, row_h], TextEdit::singleline(text));
+                                    if te.lost_focus() {
+                                        if ui.input(|inp| inp.key_pressed(Key::Escape)) {
+                                            state.editing = None;
+                                        } else {
+                                            commit = Some((r, c, text.clone()));
+                                        }
+                                    } else if !te.has_focus() {
+                                        te.request_focus();
+                                    }
+                                }
+                                continue;
+                            }
+                            let (rect, resp) = ui.allocate_exact_size(egui::vec2(cell_w, row_h), egui::Sense::click());
+                            let is_picked = picked == Some((r, c));
+                            let fill = if is_picked { theme.selection } else { row_fill };
+                            ui.painter().rect_filled(rect, 0.0, fill);
+                            ui.painter().vline(rect.left(), rect.y_range(), egui::Stroke::new(1.0, theme.line));
+                            if is_picked {
+                                ui.painter().rect_stroke(rect.shrink(1.0), 2.0, egui::Stroke::new(1.5, theme.active_border), egui::StrokeKind::Inside);
+                            }
+                            let inner = rect.shrink2(egui::vec2(8.0, 0.0));
+                            let Some((v, is_default, modified)) = values.get(j).and_then(|vs| vs.get(i)) else { continue };
+                            let fmt = PreparedFormat::new(&options.format, grid.column_format(c));
+                            let rt = value_text(v, *is_default, *modified, &fmt, options, &theme);
+                            paint_text(ui, inner, rt, theme.text);
+                            let full = if v.is_null() { None } else { Some(v.to_text().into_owned()) };
+                            let resp = match full.filter(|t| t.chars().count() > 40 || t.contains('\n')) {
+                                Some(t) => resp.on_hover_text(clip(&t)),
+                                None => resp,
+                            };
+                            if resp.clicked() {
+                                picked = Some((r, c));
+                                focus.request_focus();
+                            }
+                            if resp.double_clicked() {
+                                let multi = matches!(v, Value::Text(s) if s.contains('\n')) || matches!(v, Value::Bytes(_));
+                                if editable && !multi && model.can_edit_cell(r, c).is_ok() {
+                                    state.editing = Some((r, c, if v.is_null() { String::new() } else { v.to_text().into_owned() }));
+                                    state.error = None;
+                                } else {
+                                    open_value = Some((r, c));
+                                }
+                            }
+                        }
+                    });
+                }
+            });
+        });
+    });
+    state.picked = picked;
+    if let Some(e) = &state.error {
+        ui.colored_label(theme.error, e);
+    }
+    if let Some((r, c, text)) = commit {
+        match model.set_cell(r, c, &text) {
+            Ok(()) => {
+                state.editing = None;
+                state.error = None;
+            }
+            Err(e) => state.error = Some(e),
+        }
+    }
+    if let Some((r, c)) = open_value {
+        actions.push(GridAction::OpenValuePanel { row: r, col: c });
+    }
+    actions
 }

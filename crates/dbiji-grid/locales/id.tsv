@@ -356,3 +356,9 @@ Type or drag to go to a row	Ketik atau seret untuk pindah baris
 Value copied	Nilai disalin
 of {}	dari {}
 {} of {} columns	{} dari {} kolom
+(the first {})	({} pertama)
+Record view, {} rows	Tampilan record, {} baris
+Row #{}	Baris #{}
+Select one row to see it as a record	Pilih satu baris untuk melihatnya sebagai record
+Tab: grid · ⌘C: copy	Tab: grid · ⌘C: salin
+{} selected rows	{} baris dipilih

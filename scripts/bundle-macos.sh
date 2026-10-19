@@ -50,12 +50,13 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/dbiji"
 
-# Icon: render the SVG with QuickLook, then build an .icns with iconutil.
+# Icon: render the SVG with AppKit (transparent corners; QuickLook thumbnails
+# have a white background), then build an .icns with iconutil.
 ICONSET="$DIST/DBiji.iconset"
 rm -rf "$ICONSET" && mkdir -p "$ICONSET"
 TMP_ICON="$(mktemp -d)"
-qlmanage -t -s 1024 -o "$TMP_ICON" crates/dbiji-app/assets/icon.svg >/dev/null 2>&1
-SRC_PNG="$TMP_ICON/icon.svg.png"
+SRC_PNG="$TMP_ICON/icon.png"
+swift scripts/render-icon.swift crates/dbiji-app/assets/icon.svg "$SRC_PNG" 1024
 for size in 16 32 64 128 256 512; do
   sips -z $size $size "$SRC_PNG" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
   double=$((size * 2))

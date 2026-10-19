@@ -41,13 +41,13 @@ Status: ☐ open · ☑ done (with the test that covers it).
 - ☑ Next / previous statement (⌘⌥↓ / ⌘⌥↑)
 - ☑ Morph selection to a delimited list; trim trailing spaces
 - ☑ Copy the current statement; count the rows of the current query
-- ☐ Execute stored procedure (dialog for the arguments, generates CALL / SELECT)
+- ☑ Execute stored procedure: navigator › routine › Execute… opens a CALL / SELECT / EXEC script with `:name` parameters (OUT arguments declared) — `dbiji-sql::generate::routine_tests`, `dbiji-app::ui_full::execute_routine_script`
 - ☑ Evaluate expression (`SELECT <selection>`)
-- ☐ Save / load an execution plan
+- ☑ Save / load an execution plan (JSON)
 - ☑ Search the selection on the web
 - ☑ Toggle the results layout (below / right) and the results panel
   — `dbiji-app::ui_full::editor_commands_from_dbeaver`, `dbiji-app::textops` unit tests
-- ☐ Formatter choices: compact formatter, external formatter command
+- ☑ Formatter choices: default, compact, external command; format only the statement under the cursor — `dbiji-app::textops::tests::external_formatter`, `dbiji-app::ui_full::editor_commands_from_dbeaver`
 
 ## 4. Data editor (result grid)
 

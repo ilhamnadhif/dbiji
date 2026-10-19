@@ -100,8 +100,9 @@ pub use diagnostics::{Diagnostic, Severity, diagnostics, script_diagnostics};
 pub use format::{FormatOptions, IndentStyle, format_sql};
 pub use fuzzy::{fuzzy_indices, fuzzy_score};
 pub use generate::{
-    GenerateOptions, ddl_sql, delete_sql, insert_sql, rows_delete_sql, rows_insert_sql,
-    rows_update_sql, select_sql, update_sql, upsert_sql,
+    GenerateOptions, RoutineArg, ddl_sql, delete_sql, insert_sql, parse_routine_args,
+    routine_call_sql, rows_delete_sql, rows_insert_sql, rows_update_sql, select_sql, update_sql,
+    upsert_sql,
 };
 pub use highlight::{HighlightClass, highlight};
 pub use outline::{OutlineItem, OutlineKind, outline};

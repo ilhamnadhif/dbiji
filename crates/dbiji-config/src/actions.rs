@@ -157,6 +157,8 @@ actions! {
     MorphToDelimited => ("editor.morph_delimited", "Morph to Delimited List", Editor, SqlEditor),
     /// Remove trailing whitespace (selection or whole script).
     TrimTrailingSpaces => ("editor.trim_trailing_spaces", "Trim Trailing Spaces", Editor, SqlEditor),
+    /// Open an execution plan saved earlier.
+    LoadExecutionPlan => ("sql.load_plan", "Load Execution Plan", Sql, SqlEditor),
     /// Collapse or expand the fold at the cursor.
     ToggleFold => ("editor.toggle_fold", "Toggle Folding", Editor, SqlEditor),
     /// Collapse every statement and block comment.

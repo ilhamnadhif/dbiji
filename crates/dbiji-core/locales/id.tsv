@@ -2446,3 +2446,22 @@ Highlight occurrences of the word under the cursor	Sorot kemunculan kata di bawa
 Toggle Folding	Lipat / Buka Lipatan
 Collapse All Foldings	Lipat Semua
 Expand All Foldings	Buka Semua Lipatan
+Execute…	Jalankan…
+Open a script that calls it with parameters	Buka skrip yang memanggilnya dengan parameter
+Call of	Pemanggilan
+Cannot read the routine	Tidak dapat membaca routine
+Save plan…	Simpan plan…
+Execution plan	Execution plan
+Plan saved	Plan disimpan
+Cannot save the plan	Tidak dapat menyimpan plan
+Cannot open the plan	Tidak dapat membuka plan
+This is not an execution plan saved by DBiji.	Ini bukan execution plan yang disimpan oleh DBiji.
+Load Execution Plan	Buka Execution Plan
+Compact	Ringkas
+External command	Perintah eksternal
+Command	Perintah
+Gets the SQL on standard input and writes the formatted SQL to standard output	Menerima SQL lewat standard input dan menulis SQL yang sudah diformat ke standard output
+Without a selection, format only the statement under the cursor	Tanpa seleksi, format hanya statement di bawah kursor
+Set the formatter command in Settings → SQL editor.	Atur perintah formatter di Settings → SQL editor.
+The script changed while it was formatted; format again.	Skrip berubah saat diformat; format lagi.
+The external formatter failed	Formatter eksternal gagal

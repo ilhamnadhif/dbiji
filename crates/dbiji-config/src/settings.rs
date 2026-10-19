@@ -222,6 +222,26 @@ pub struct SqlFormatSettings {
     pub lines_between_statements: u32,
     /// Preferred maximum line length.
     pub max_line_length: u32,
+    /// Which formatter runs.
+    #[serde(deserialize_with = "lenient")]
+    pub formatter: FormatterKind,
+    /// Command of the external formatter: reads SQL on stdin, writes it to stdout.
+    pub external_command: String,
+    /// Without a selection, format only the statement under the cursor.
+    pub statement_only: bool,
+}
+
+/// The SQL formatter used by Format SQL.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FormatterKind {
+    /// DBiji's formatter with the options above.
+    #[default]
+    Default,
+    /// Short clauses and lists kept on one line.
+    Compact,
+    /// An external program (`external_command`).
+    External,
 }
 
 impl Default for SqlFormatSettings {
@@ -234,6 +254,9 @@ impl Default for SqlFormatSettings {
             newline_before_and_or: true,
             lines_between_statements: 1,
             max_line_length: 120,
+            formatter: FormatterKind::Default,
+            external_command: String::new(),
+            statement_only: false,
         }
     }
 }

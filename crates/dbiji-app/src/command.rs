@@ -81,6 +81,11 @@ pub enum AppCommand {
         connection: String,
         folder: Option<&'static str>,
     },
+    /// Open an editor with a script that calls a function / procedure.
+    ExecuteRoutine {
+        connection: String,
+        routine: ObjectRef,
+    },
     OpenObject {
         connection: String,
         object: ObjectRef,

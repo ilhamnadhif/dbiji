@@ -422,7 +422,8 @@ fn menus_actions_commands_and_dialogs() {
     }
 
     // Every action, with an editor focused and with a table data tab focused.
-    let skip_actions = [Action::Quit, Action::Disconnect, Action::CloseTab];
+    // Quit closes the window; LoadExecutionPlan opens a native file dialog.
+    let skip_actions = [Action::Quit, Action::Disconnect, Action::CloseTab, Action::LoadExecutionPlan];
     h.state_mut().nav.select(dbiji_app::nav::NavNode::Connection(conn.clone()));
     h.state_mut().push_command(AppCommand::NewSqlEditor { connection: Some(conn.clone()), schema: None, text: Some("select * from product;\nselect 1;".into()) });
     frames(&mut h, 3);
@@ -1051,6 +1052,42 @@ fn editor_commands_from_dbeaver() {
     run(&mut h, Action::OpenDeclaration);
     frames(&mut h, 3);
     assert!(tab_titles(&h).iter().any(|t| t == "product"), "{:?}", tab_titles(&h));
+    // Execution plans: explain, save as JSON, load it back.
+    focus_tab(&mut h, "Script-1");
+    focused_editor(&mut h).set_text(&ctx, "select * from customer where id > 2");
+    focused_editor(&mut h).set_cursor(&ctx, 0);
+    let before = focused_editor(&mut h).result_count();
+    run(&mut h, Action::ExplainPlan);
+    wait(&mut h, "plan", |h| {
+        let e = focused_editor(h);
+        !e.is_running() && e.result_count() == before + 1 && e.result_is_plan(before)
+    });
+    let json = focused_editor(&mut h).plan_json(before).expect("plan json");
+    assert!(json.contains("\"dbiji_plan\"") && json.contains("customer"), "{json}");
+    focused_editor(&mut h).load_plan_json(&json).unwrap();
+    assert!(focused_editor(&mut h).result_is_plan(before + 1));
+    assert!(focused_editor(&mut h).load_plan_json("{\"x\": 1}").is_err());
+    // Formatter choices: compact, the statement under the cursor only, an external command.
+    {
+        use dbiji_config::settings::FormatterKind;
+        h.state_mut().settings.editor.format.formatter = FormatterKind::Compact;
+        h.state_mut().settings.editor.format.statement_only = true;
+        focused_editor(&mut h).set_text(&ctx, "select id, name from customer where id > 1 and name like 'A%';\nselect 1;");
+        focused_editor(&mut h).set_cursor(&ctx, 0);
+        run(&mut h, Action::FormatSql);
+        let t = focused_editor(&mut h).text().to_string();
+        assert!(t.starts_with("SELECT id, name"), "{t}");
+        assert!(t.ends_with("select 1;"), "only the first statement: {t}");
+        if cfg!(unix) {
+            h.state_mut().settings.editor.format.formatter = FormatterKind::External;
+            h.state_mut().settings.editor.format.external_command = "tr a-z A-Z".into();
+            h.state_mut().settings.editor.format.statement_only = false;
+            focused_editor(&mut h).set_text(&ctx, "select 2 from t;");
+            run(&mut h, Action::FormatSql);
+            wait(&mut h, "external formatter", |h| focused_editor(h).text() == "SELECT 2 FROM T;");
+        }
+        h.state_mut().settings.editor.format = Default::default();
+    }
     // Folding: collapse all statements, expand them again.
     focus_tab(&mut h, "Script-1");
     focused_editor(&mut h).set_text(&ctx, "select *\nfrom customer;\n\nselect *\nfrom product\nwhere id > 1;\n");
@@ -1069,4 +1106,63 @@ fn editor_commands_from_dbeaver() {
     run(&mut h, Action::ToggleResultsLayout);
     assert_eq!(h.state().settings.results.layout, before);
     no_errors(&mut h, "editor commands");
+}
+
+/// Navigator › routine › Execute…: a script that calls the routine with
+/// parameters, run through the parameter dialog (PostgreSQL).
+#[test]
+fn execute_routine_script() {
+    let Ok(url) = std::env::var("DBIJI_TEST_PG") else { return };
+    let (_dir, mut h, _sqlite) = setup();
+    let (cfg, password) = dbiji_config::parse_connection_url(&url).unwrap();
+    let id = cfg.id.clone();
+    {
+        let app = h.state_mut();
+        app.conns.upsert(cfg);
+        let backend = app.backend.clone();
+        app.conns.connect(&backend, &id, dbiji_app::conn::Credentials { password, ..Default::default() }).unwrap();
+    }
+    wait(&mut h, "pg connected", |h| h.state().conns.is_connected(&id));
+    let fname = format!("dbiji_add_{}", &uuid::Uuid::new_v4().simple().to_string()[..6]);
+    {
+        let app = h.state();
+        let s = app.conns.live(&id).unwrap().main.clone();
+        let sql = format!("CREATE FUNCTION public.{fname}(a integer, b integer) RETURNS integer LANGUAGE sql AS 'SELECT a + b'");
+        app.backend.block_on(async move { s.execute_update(&sql, &[]).await }).unwrap();
+    }
+    let routine = dbiji_core::ObjectRef::new(dbiji_core::ObjectKind::Function, Some("public".into()), fname.clone()).with_signature("(integer, integer)");
+    h.state_mut().push_command(AppCommand::ExecuteRoutine { connection: id.clone(), routine });
+    wait(&mut h, "call script", |h| {
+        h.state_mut().dock.find_active_focused().and_then(|(_, t)| t.view.as_any().downcast_ref::<SqlEditorTab>().map(|e| e.text().contains(&fname))).unwrap_or(false)
+    });
+    let text = focused_editor(&mut h).text().to_string();
+    assert!(text.contains(&format!("SELECT * FROM public.{fname}(:a, :b);")), "{text}");
+    wait(&mut h, "editor session", |h| focused_editor(h).session_ready());
+    let ctx = h.ctx.clone();
+    let at = text.find("SELECT").unwrap();
+    focused_editor(&mut h).set_cursor(&ctx, at);
+    click_editor(&mut h);
+    focused_editor(&mut h).set_cursor(&ctx, at);
+    frames(&mut h, 1);
+    h.key_press_modifiers(CMD, Key::Enter);
+    wait(&mut h, "parameter prompt", |h| focused_editor(h).pending_params().is_some());
+    h.event(egui::Event::Text("2".into()));
+    frames(&mut h, 2);
+    h.key_press(Key::Tab);
+    frames(&mut h, 2);
+    h.event(egui::Event::Text("40".into()));
+    frames(&mut h, 2);
+    h.key_press(Key::Enter);
+    wait(&mut h, "result", |h| {
+        let e = focused_editor(h);
+        !e.is_running() && e.result_count() == 1 && e.result_rows(0) == Some(1) && !e.result_is_error(0)
+    });
+    assert!(labels(&h).iter().any(|l| l.starts_with("Data grid, 1 rows")), "{:?}", labels(&h));
+    no_errors(&mut h, "execute routine");
+    {
+        let app = h.state();
+        let s = app.conns.live(&id).unwrap().main.clone();
+        let sql = format!("DROP FUNCTION public.{fname}(integer, integer)");
+        app.backend.block_on(async move { s.execute_update(&sql, &[]).await }).unwrap();
+    }
 }

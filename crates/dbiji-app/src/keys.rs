@@ -135,6 +135,7 @@ pub fn action_icon(action: Action) -> &'static str {
         Action::TrimTrailingSpaces => i::SCISSORS,
         Action::SearchWeb => i::GLOBE,
         Action::ToggleFold => i::CARET_UP_DOWN,
+        Action::LoadExecutionPlan => i::FOLDER_OPEN,
         Action::CollapseAllFolds => i::ARROWS_IN_LINE_VERTICAL,
         Action::ExpandAllFolds => i::ARROWS_OUT_LINE_VERTICAL,
         Action::ZoomIn => i::MAGNIFYING_GLASS_PLUS,

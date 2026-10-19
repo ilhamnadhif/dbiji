@@ -1242,6 +1242,10 @@ pub fn object_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, obj: &ObjectRef
             }
         }
     }
+    if obj.kind.is_routine() && ui.button(format!("{} {}", icon::PLAY, tr("Execute…"))).on_hover_text(tr("Open a script that calls it with parameters")).clicked() {
+        cx.push(AppCommand::ExecuteRoutine { connection: c.clone(), routine: obj.clone() });
+        ui.close();
+    }
     if obj.kind.is_routine() && ui.button(format!("{} {}", icon::BUG, tr("Debug"))).clicked() {
         cx.push(AppCommand::OpenDebugger { connection: c.clone(), routine: obj.clone() });
         ui.close();

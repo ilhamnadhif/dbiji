@@ -525,3 +525,274 @@ mod tests {
         assert!(rows_insert_sql(&d, &t, &cols, &[]).is_empty());
     }
 }
+
+/// One routine argument parsed from [`RoutineDef::arguments`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoutineArg {
+    /// Name without `@` (`p1`, `p2` … for unnamed arguments).
+    pub name: String,
+    /// Declared type.
+    pub data_type: String,
+    /// `OUT` / `OUTPUT` (not passed in).
+    pub out: bool,
+    /// `INOUT`.
+    pub inout: bool,
+}
+
+/// Split routine arguments (`a integer, OUT b text`, `IN p INT`,
+/// `@a int, @b nvarchar(10) OUTPUT`) at top-level commas.
+pub fn parse_routine_args(arguments: &str) -> Vec<RoutineArg> {
+    let mut parts = Vec::new();
+    let (mut depth, mut start) = (0i32, 0usize);
+    for (i, c) in arguments.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            ',' if depth == 0 => {
+                parts.push(&arguments[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(&arguments[start..]);
+    parts
+        .into_iter()
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .enumerate()
+        .map(|(i, p)| {
+            // Drop a DEFAULT clause.
+            let upper = p.to_uppercase();
+            let p = match upper.find(" DEFAULT ").or_else(|| upper.find(" = ")) {
+                Some(k) => p[..k].trim(),
+                None => p,
+            };
+            let mut words: Vec<&str> = p.split_whitespace().collect();
+            let mut out = false;
+            let mut inout = false;
+            if let Some(first) = words.first().map(|w| w.to_uppercase()) {
+                match first.as_str() {
+                    "IN" | "VARIADIC" => {
+                        words.remove(0);
+                    }
+                    "OUT" => {
+                        out = true;
+                        words.remove(0);
+                    }
+                    "INOUT" => {
+                        inout = true;
+                        words.remove(0);
+                    }
+                    _ => {}
+                }
+            }
+            if words
+                .last()
+                .is_some_and(|w| w.eq_ignore_ascii_case("OUTPUT") || w.eq_ignore_ascii_case("OUT"))
+            {
+                out = true;
+                words.pop();
+            }
+            let named = words.len() >= 2 || words.first().is_some_and(|w| w.starts_with('@'));
+            let (name, data_type) = if named {
+                (
+                    words[0]
+                        .trim_start_matches('@')
+                        .trim_matches('"')
+                        .to_string(),
+                    words[1..].join(" "),
+                )
+            } else {
+                (format!("p{}", i + 1), words.join(" "))
+            };
+            RoutineArg {
+                name,
+                data_type,
+                out,
+                inout,
+            }
+        })
+        .collect()
+}
+
+/// A script that calls `routine` with `:name` parameters (DBiji asks for
+/// their values when it runs): `SELECT * FROM f(…)` / `CALL p(…)` on
+/// PostgreSQL, `SELECT f(…)` / `CALL p(…)` on MySQL, `EXEC p @a = …` on
+/// SQL Server (OUTPUT arguments declared and selected).
+pub fn routine_call_sql(d: &dyn Dialect, routine: &dbiji_core::ddl::RoutineDef) -> String {
+    use dbiji_core::DbKind;
+    let name = d.qualified(routine.schema.as_deref(), &routine.name);
+    let args = parse_routine_args(&routine.arguments);
+    let procedure = routine.kind == Some(dbiji_core::ObjectKind::Procedure);
+    let param = |a: &RoutineArg| format!(":{}", a.name);
+    match d.kind() {
+        DbKind::SqlServer => {
+            let mut out = String::new();
+            for a in args.iter().filter(|a| a.out) {
+                out.push_str(&format!("DECLARE @{} {};\n", a.name, a.data_type));
+            }
+            if procedure {
+                let list: Vec<String> = args
+                    .iter()
+                    .map(|a| {
+                        if a.out {
+                            format!("@{0} = @{0} OUTPUT", a.name)
+                        } else {
+                            format!("@{} = {}", a.name, param(a))
+                        }
+                    })
+                    .collect();
+                out.push_str(&format!("EXEC {name} {};", list.join(", ")));
+            } else {
+                let list: Vec<String> = args.iter().map(param).collect();
+                out.push_str(&format!("SELECT {name}({});", list.join(", ")));
+            }
+            let outs: Vec<String> = args
+                .iter()
+                .filter(|a| a.out)
+                .map(|a| format!("@{0} AS {0}", a.name))
+                .collect();
+            if !outs.is_empty() {
+                out.push_str(&format!("\nSELECT {};", outs.join(", ")));
+            }
+            out
+        }
+        DbKind::MySql | DbKind::MariaDb => {
+            if procedure {
+                let list: Vec<String> = args
+                    .iter()
+                    .map(|a| {
+                        if a.out || a.inout {
+                            format!("@{}", a.name)
+                        } else {
+                            param(a)
+                        }
+                    })
+                    .collect();
+                let mut out = format!("CALL {name}({});", list.join(", "));
+                let outs: Vec<String> = args
+                    .iter()
+                    .filter(|a| a.out || a.inout)
+                    .map(|a| format!("@{0} AS {0}", a.name))
+                    .collect();
+                if !outs.is_empty() {
+                    out.push_str(&format!("\nSELECT {};", outs.join(", ")));
+                }
+                out
+            } else {
+                let list: Vec<String> = args.iter().map(param).collect();
+                format!("SELECT {name}({});", list.join(", "))
+            }
+        }
+        _ => {
+            if procedure {
+                let list: Vec<String> = args
+                    .iter()
+                    .map(|a| if a.out { "NULL".to_string() } else { param(a) })
+                    .collect();
+                format!("CALL {name}({});", list.join(", "))
+            } else {
+                let list: Vec<String> = args.iter().filter(|a| !a.out).map(param).collect();
+                format!("SELECT * FROM {name}({});", list.join(", "))
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod routine_tests {
+    use super::*;
+    use dbiji_core::ddl::RoutineDef;
+    use dbiji_core::dialect::GenericDialect;
+
+    /// The generic dialect with another kind.
+    struct Kind(dbiji_core::DbKind, GenericDialect);
+    impl Dialect for Kind {
+        fn kind(&self) -> dbiji_core::DbKind {
+            self.0
+        }
+        fn syntax(&self) -> &dbiji_core::SqlSyntax {
+            self.1.syntax()
+        }
+        fn ddl(&self) -> &dyn dbiji_core::ddl::DdlGenerator {
+            self.1.ddl()
+        }
+    }
+
+    fn def(kind: dbiji_core::ObjectKind, args: &str) -> RoutineDef {
+        RoutineDef {
+            schema: Some("app".into()),
+            name: "work".into(),
+            kind: Some(kind),
+            arguments: args.into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn arguments() {
+        let a =
+            parse_routine_args("a integer, OUT b text, c numeric(10, 2) DEFAULT 1.5, INOUT d int");
+        assert_eq!(
+            a.iter()
+                .map(|x| (x.name.as_str(), x.data_type.as_str(), x.out, x.inout))
+                .collect::<Vec<_>>(),
+            [
+                ("a", "integer", false, false),
+                ("b", "text", true, false),
+                ("c", "numeric(10, 2)", false, false),
+                ("d", "int", false, true)
+            ]
+        );
+        let a = parse_routine_args("integer, text");
+        assert_eq!(a[1].name, "p2");
+        let a = parse_routine_args("@a int, @b nvarchar(10) OUTPUT");
+        assert_eq!(
+            (a[1].name.as_str(), a[1].data_type.as_str(), a[1].out),
+            ("b", "nvarchar(10)", true)
+        );
+        assert!(parse_routine_args("").is_empty());
+    }
+
+    #[test]
+    fn calls() {
+        let pg = Kind(dbiji_core::DbKind::Postgres, GenericDialect::new());
+        assert_eq!(
+            routine_call_sql(
+                &pg,
+                &def(dbiji_core::ObjectKind::Function, "a integer, OUT b text")
+            ),
+            "SELECT * FROM app.work(:a);"
+        );
+        assert_eq!(
+            routine_call_sql(
+                &pg,
+                &def(dbiji_core::ObjectKind::Procedure, "a integer, OUT b text")
+            ),
+            "CALL app.work(:a, NULL);"
+        );
+        let my = Kind(dbiji_core::DbKind::MySql, GenericDialect::new());
+        assert_eq!(
+            routine_call_sql(
+                &my,
+                &def(
+                    dbiji_core::ObjectKind::Procedure,
+                    "IN p_id INT, OUT p_total DECIMAL(10,2)"
+                )
+            ),
+            "CALL app.work(:p_id, @p_total);\nSELECT @p_total AS p_total;"
+        );
+        let ms = Kind(dbiji_core::DbKind::SqlServer, GenericDialect::new());
+        assert_eq!(
+            routine_call_sql(
+                &ms,
+                &def(
+                    dbiji_core::ObjectKind::Procedure,
+                    "@a int, @b nvarchar(10) OUTPUT"
+                )
+            ),
+            "DECLARE @b nvarchar(10);\nEXEC app.work @a = :a, @b = @b OUTPUT;\nSELECT @b AS b;"
+        );
+    }
+}

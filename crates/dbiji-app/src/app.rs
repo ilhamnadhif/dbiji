@@ -60,6 +60,8 @@ pub struct DbijiApp {
     quit_confirmed: bool,
     /// "Generate SQL" requests waiting for the table definition.
     pending_generate: Vec<(String, dbiji_core::ObjectRef, String)>,
+    /// "Execute…" of routines waiting for their definition.
+    pending_routines: Vec<(String, dbiji_core::ObjectRef, crate::backend::Job<dbiji_core::DbResult<dbiji_core::ddl::RoutineDef>>)>,
     script_counter: u32,
     /// `DBIJI_BENCH_SCENARIO=workload`: connections still to open editors for.
     bench_workload: Option<Vec<String>>,
@@ -96,6 +98,7 @@ impl DbijiApp {
             active_tab: None,
             exit_at: std::env::var("DBIJI_BENCH_EXIT_AFTER_SECS").ok().and_then(|v| v.parse::<u64>().ok()).map(|s| Instant::now() + std::time::Duration::from_secs(s)),
             pending_generate: Vec::new(),
+            pending_routines: Vec::new(),
             script_counter: 0,
             confirm_quit: false,
             quit_confirmed: false,
@@ -285,6 +288,13 @@ impl DbijiApp {
             }
             AppCommand::OpenScript(path) => {
                 self.open_script(path);
+            }
+            AppCommand::ExecuteRoutine { connection, routine } => {
+                let Some(live) = self.conns.live_mut(&connection) else { return };
+                let Some(session) = live.ensure_session(&self.backend, routine.database.as_deref()) else { return };
+                let r = routine.clone();
+                let job = self.backend.spawn(async move { session.lock().await.routine_definition(&r).await });
+                self.pending_routines.push((connection, routine, job));
             }
             AppCommand::GenerateSql { connection, object, kind } => {
                 if object.kind.is_table_like() {
@@ -754,6 +764,25 @@ impl DbijiApp {
     }
 
     /// Finish "Generate SQL" requests whose table definitions arrived.
+    fn poll_routines(&mut self) {
+        let mut still = Vec::new();
+        for (conn, obj, mut job) in std::mem::take(&mut self.pending_routines) {
+            match job.poll() {
+                Some(Ok(def)) => {
+                    let Some(live) = self.conns.live(&conn) else { continue };
+                    let mut def = def;
+                    def.kind = def.kind.or(Some(obj.kind));
+                    let header = format!("-- {} {}\n", tr("Call of"), live.dialect.qualified(def.schema.as_deref(), &def.name));
+                    let text = format!("{header}{}\n", dbiji_sql::routine_call_sql(live.dialect.as_ref(), &def));
+                    self.commands.push(AppCommand::NewSqlEditor { connection: Some(conn), schema: Some(obj.schema_ref()), text: Some(text) });
+                }
+                Some(Err(e)) => self.toasts.error(tr("Cannot read the routine"), Some(e.full_text())),
+                None => still.push((conn, obj, job)),
+            }
+        }
+        self.pending_routines = still;
+    }
+
     fn poll_generate(&mut self) {
         let mut still = Vec::new();
         for (conn, obj, kind) in std::mem::take(&mut self.pending_generate) {
@@ -1039,6 +1068,10 @@ impl eframe::App for DbijiApp {
         }
         if !self.pending_generate.is_empty() {
             self.poll_generate();
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
+        if !self.pending_routines.is_empty() {
+            self.poll_routines();
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
         if self.settings.navigator.expand_on_connect {

@@ -28,6 +28,22 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// One entry of the results area.
+/// A saved plan: `{"dbiji_plan": 1, "sql": …, "plan": …}`.
+fn plan_file_json(sql: &str, plan: &QueryPlan) -> String {
+    serde_json::to_string_pretty(&serde_json::json!({ "dbiji_plan": 1, "sql": sql, "plan": plan })).unwrap_or_default()
+}
+
+/// Read a file written by [`plan_file_json`].
+fn parse_plan_file(text: &str) -> Result<(String, QueryPlan), String> {
+    let v: serde_json::Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
+    if v.get("dbiji_plan").is_none() {
+        return Err(tr("This is not an execution plan saved by DBiji.").to_string());
+    }
+    let sql = v.get("sql").and_then(|s| s.as_str()).unwrap_or("").to_string();
+    let plan = serde_json::from_value(v.get("plan").cloned().unwrap_or_default()).map_err(|e| e.to_string())?;
+    Ok((sql, plan))
+}
+
 enum ResultItem {
     Rows(Box<ResultPanel>),
     Plan { sql: String, plan: Box<QueryPlan>, state: dbiji_visual::plan::PlanViewState, view: PlanView },
@@ -120,6 +136,8 @@ pub struct SqlEditorTab {
     show_outline: bool,
     variables: BTreeMap<String, String>,
     params: Option<ParamPrompt>,
+    /// External formatter running on (range, text version).
+    format_job: Option<(std::ops::Range<usize>, u64, crate::backend::Job<Result<String, String>>)>,
     confirm: Option<Confirm>,
     pending_export: Option<BTreeMap<String, String>>,
     /// The next row result replaces the active result tab.
@@ -216,6 +234,7 @@ impl SqlEditorTab {
             show_outline: false,
             variables: BTreeMap::new(),
             params: None,
+            format_job: None,
             confirm: None,
             pending_export: None,
             replace_result: true,
@@ -454,6 +473,14 @@ impl SqlEditorTab {
             }
             Action::ToggleFold => {
                 self.editor.toggle_fold_at_cursor();
+            }
+            Action::LoadExecutionPlan => {
+                if let Some(path) = rfd::FileDialog::new().add_filter(tr("Execution plan"), &["json"]).pick_file() {
+                    let res = std::fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|t| self.load_plan_json(&t));
+                    if let Err(e) = res {
+                        cx.toasts.error(tr("Cannot open the plan"), Some(e));
+                    }
+                }
             }
             Action::CollapseAllFolds => self.editor.fold_all(),
             Action::ExpandAllFolds => self.editor.unfold_all(),
@@ -789,27 +816,47 @@ impl SqlEditorTab {
         self.log("INFO", tr("@export: the export dialog was opened with this query."));
     }
 
-    fn format(&mut self, cx: &AppContext) {
-        let f = &cx.settings.editor.format;
+    fn format(&mut self, cx: &mut AppContext) {
+        use dbiji_config::settings::FormatterKind;
+        let f = cx.settings.editor.format.clone();
+        let compact = f.formatter == FormatterKind::Compact;
         let opts = dbiji_sql::FormatOptions {
             keyword_case: keyword_case(f.keyword_case),
             indent: if f.use_tabs { dbiji_sql::IndentStyle::Tab } else { dbiji_sql::IndentStyle::Spaces(f.indent_width.min(16) as u8) },
             comma_first: f.comma_first,
-            newline_before_and_or: f.newline_before_and_or,
-            max_line_length: f.max_line_length as usize,
-            lines_between_statements: f.lines_between_statements as usize,
-            ..Default::default()
+            newline_before_and_or: f.newline_before_and_or && !compact,
+            max_line_length: if compact { (f.max_line_length as usize).max(160) } else { f.max_line_length as usize },
+            lines_between_statements: if compact { 0 } else { f.lines_between_statements as usize },
+            compact_short_lists: compact,
         };
         let ctx = cx.egui_ctx();
-        match self.editor.selection().filter(|r| !r.is_empty()) {
-            Some(r) => {
-                let formatted = dbiji_sql::format_sql(&self.editor.text()[r.clone()], self.lang.syntax(), &opts);
-                self.editor.replace_range(&ctx, r, &formatted);
+        // The selection, the statement under the cursor, or the whole script.
+        let range = match self.editor.selection().filter(|r| !r.is_empty()) {
+            Some(r) => r,
+            None if f.statement_only => match self.current_statement(cx) {
+                Some(r) => r,
+                None => return,
+            },
+            None => 0..self.editor.text().len(),
+        };
+        let source = self.editor.text()[range.clone()].to_string();
+        if f.formatter == FormatterKind::External {
+            let cmd = f.external_command.trim().to_string();
+            if cmd.is_empty() {
+                cx.toasts.info(tr("Set the formatter command in Settings → SQL editor."));
+                return;
             }
-            None => {
-                let formatted = dbiji_sql::format_sql(self.editor.text(), self.lang.syntax(), &opts);
-                self.editor.set_text(&ctx, formatted);
-            }
+            let version = self.editor.version();
+            let job =
+                cx.backend.spawn(async move { tokio::task::spawn_blocking(move || crate::textops::run_formatter(&cmd, &source)).await.unwrap_or_else(|e| Err(e.to_string())) });
+            self.format_job = Some((range, version, job));
+            return;
+        }
+        let formatted = dbiji_sql::format_sql(&source, self.lang.syntax(), &opts);
+        if range.start == 0 && range.end == self.editor.text().len() {
+            self.editor.set_text(&ctx, formatted);
+        } else {
+            self.editor.replace_range(&ctx, range, &formatted);
         }
     }
 
@@ -1056,6 +1103,7 @@ impl SqlEditorTab {
                     Action::ToggleFold,
                     Action::CollapseAllFolds,
                     Action::ExpandAllFolds,
+                    Action::LoadExecutionPlan,
                 ] {
                     let keys = crate::keys::label(cx.keymap, a);
                     let mut b = egui::Button::new(format!("{}  {}", crate::keys::action_icon(a), crate::keys::action_label(a)));
@@ -1177,6 +1225,14 @@ impl SqlEditorTab {
                         }
                         if let Some(c) = s.total_cost {
                             ui.weak(trf("Cost {}", &[&format!("{c:.1}")]));
+                        }
+                        if ui.small_button(format!("{} {}", icon::FLOPPY_DISK, tr("Save plan…"))).clicked()
+                            && let Some(path) = rfd::FileDialog::new().add_filter(tr("Execution plan"), &["json"]).set_file_name("plan.json").save_file()
+                        {
+                            match std::fs::write(&path, plan_file_json(sql, plan)) {
+                                Ok(()) => cx.toasts.success(tr("Plan saved")),
+                                Err(e) => cx.toasts.error(tr("Cannot save the plan"), Some(e.to_string())),
+                            }
                         }
                         ui.weak(sql.lines().next().unwrap_or(""));
                     });
@@ -1512,7 +1568,8 @@ impl TabView for SqlEditorTab {
             | A::SearchWeb
             | A::ToggleFold
             | A::CollapseAllFolds
-            | A::ExpandAllFolds => self.editor_command(&ctx, cx, action),
+            | A::ExpandAllFolds
+            | A::LoadExecutionPlan => self.editor_command(&ctx, cx, action),
             A::ExecuteStatement => self.run(cx, Request { scope: self.scope_for(true), new_tab: false, explain: None, confirmed: false, sql: None }),
             A::ExecuteSelection => self.run(cx, Request { scope: self.scope_for(true), new_tab: false, explain: None, confirmed: false, sql: None }),
             A::ExecuteScript => self.run(cx, Request { scope: self.scope_for(false), new_tab: false, explain: None, confirmed: false, sql: None }),
@@ -1613,6 +1670,23 @@ impl TabView for SqlEditorTab {
     }
 
     fn ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
+        if let Some((range, version, job)) = &mut self.format_job
+            && let Some(res) = job.poll()
+        {
+            let (range, version) = (range.clone(), *version);
+            self.format_job = None;
+            match res {
+                Ok(text) if self.editor.version() == version && range.end <= self.editor.text().len() => {
+                    let text = text.trim_end_matches('\n').to_string();
+                    self.editor.replace_range(ui.ctx(), range, &text);
+                }
+                Ok(_) => cx.toasts.info(tr("The script changed while it was formatted; format again.")),
+                Err(e) => cx.toasts.error(tr("The external formatter failed"), Some(e)),
+            }
+        }
+        if self.format_job.is_some() {
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
+        }
         let ctx = ui.ctx().clone();
         self.tab_id = cx.current_tab;
         self.dialect_sync(cx);
@@ -1777,6 +1851,21 @@ impl SqlEditorTab {
     }
     pub fn select_range(&mut self, ctx: &egui::Context, range: std::ops::Range<usize>) {
         self.editor.select(ctx, range);
+    }
+    /// Result `i` as a saved plan file (JSON).
+    pub fn plan_json(&self, i: usize) -> Option<String> {
+        match self.results.get(i) {
+            Some(ResultItem::Plan { sql, plan, .. }) => Some(plan_file_json(sql, plan)),
+            _ => None,
+        }
+    }
+    /// Show a saved plan as a new result.
+    pub fn load_plan_json(&mut self, text: &str) -> Result<(), String> {
+        let (sql, plan) = parse_plan_file(text)?;
+        self.results.push(ResultItem::Plan { sql, plan: Box::new(plan), state: Default::default(), view: PlanView::Diagram });
+        self.bottom = Bottom::Result(self.results.len() - 1);
+        self.show_results = true;
+        Ok(())
     }
     /// Foldable regions (first line, last line).
     pub fn fold_regions(&self) -> Vec<(usize, usize)> {

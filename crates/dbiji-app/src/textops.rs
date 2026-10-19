@@ -41,6 +41,47 @@ pub fn search_url(query: &str) -> String {
     format!("https://www.google.com/search?q={q}")
 }
 
+/// Run an external formatter: `command` (through the shell) gets `sql` on
+/// stdin and must print the formatted SQL; at most 10 seconds.
+pub fn run_formatter(command: &str, sql: &str) -> Result<String, String> {
+    use std::io::Write;
+    use std::process::Command;
+    let mut child =
+        if cfg!(windows) { Command::new("cmd").args(["/C", command]).spawn_piped() } else { Command::new("sh").args(["-c", command]).spawn_piped() }.map_err(|e| e.to_string())?;
+    let mut stdin = child.stdin.take().ok_or("no stdin")?;
+    let input = sql.to_string();
+    let writer = std::thread::spawn(move || stdin.write_all(input.as_bytes()));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        match child.try_wait().map_err(|e| e.to_string())? {
+            Some(_) => break,
+            None if std::time::Instant::now() >= deadline => {
+                let _ = child.kill();
+                return Err("the formatter did not finish within 10 seconds".into());
+            }
+            None => std::thread::sleep(std::time::Duration::from_millis(20)),
+        }
+    }
+    let _ = writer.join();
+    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        return Err(if err.is_empty() { format!("exit status {}", out.status) } else { err });
+    }
+    String::from_utf8(out.stdout).map_err(|_| "the formatter printed invalid UTF-8".to_string())
+}
+
+trait SpawnPiped {
+    fn spawn_piped(&mut self) -> std::io::Result<std::process::Child>;
+}
+
+impl SpawnPiped for std::process::Command {
+    fn spawn_piped(&mut self) -> std::io::Result<std::process::Child> {
+        use std::process::Stdio;
+        self.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()
+    }
+}
+
 /// `stmt` wrapped to count its rows.
 pub fn row_count_sql(stmt: &str) -> String {
     let body = stmt.trim().trim_end_matches(';').trim_end();
@@ -62,6 +103,14 @@ mod tests {
     #[test]
     fn trim() {
         assert_eq!(trim_trailing("select 1;  \n\tfrom t\t\r\nx "), "select 1;\n\tfrom t\r\nx");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn external_formatter() {
+        assert_eq!(run_formatter("tr a-z A-Z", "select 1 from t").unwrap(), "SELECT 1 FROM T");
+        assert!(run_formatter("exit 3", "x").is_err());
+        assert!(run_formatter("echo bad >&2; exit 1", "x").unwrap_err().contains("bad"));
     }
 
     #[test]

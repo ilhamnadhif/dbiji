@@ -258,6 +258,19 @@ impl SettingsTab {
         let f = &mut e.format;
         c |= grid(ui, "set_format", |ui| {
             let mut c = false;
+            {
+                use dbiji_config::settings::FormatterKind as K;
+                c |= row(ui, tr("Formatter"), |ui| {
+                    combo(ui, "set_fmt_kind", &mut f.formatter, &[(K::Default, tr("Default")), (K::Compact, tr("Compact")), (K::External, tr("External command"))])
+                });
+                if f.formatter == K::External {
+                    c |= row(ui, tr("Command"), |ui| {
+                        ui.add(egui::TextEdit::singleline(&mut f.external_command).hint_text("pg_format -").desired_width(320.0))
+                            .on_hover_text(tr("Gets the SQL on standard input and writes the formatted SQL to standard output"))
+                            .changed()
+                    });
+                }
+            }
             c |= row(ui, tr("Keyword case"), |ui| combo(ui, "set_fmt_case", &mut f.keyword_case, &case_opts));
             c |= row(ui, tr("Indent width"), |ui| num(ui, &mut f.indent_width, 1..=8, ""));
             c |= row(ui, tr("Lines between statements"), |ui| num(ui, &mut f.lines_between_statements, 0..=4, ""));
@@ -268,6 +281,8 @@ impl SettingsTab {
             c |= check(ui, &mut f.comma_first, tr("Commas at the start of lines"));
             ui.label("");
             c |= check(ui, &mut f.newline_before_and_or, tr("New line before AND / OR"));
+            ui.label("");
+            c |= check(ui, &mut f.statement_only, tr("Without a selection, format only the statement under the cursor"));
             c
         });
         heading(ui, tr("Parameters and variables"));

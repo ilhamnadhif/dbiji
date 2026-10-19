@@ -19,6 +19,8 @@ notes of a new version once after it was updated (Help → What's new).
 - The result toolbar is grouped (refresh · editing · export · view · panels) with the row count and fetch buttons on the right; messages such as "The result has no geometry column" appear there instead of over the buttons.
 - Interface polish: a new start page (start actions with their shortcuts, recent connections and scripts); text fields with a visible border in dialogs; grouped main toolbar with green run and red stop buttons; the result filter bar on one line with a Server / Client switch; readable property tables; shorter database file paths in the navigator; notifications no longer cover the row count.
 - Tab in the result grid shows the selected row as a record (column → value, long values wrapped) like DBeaver; Tab goes back, ← / → show the previous / next row.
+- New database… and New schema… (connection menu, database menu, Database menu, command palette): name, owner / encoding / template (PostgreSQL) or character set / collation (MySQL, MariaDB, SQL Server), the statement shown before it runs.
+- Main toolbar buttons that cannot work in the current tab are greyed out and say why (e.g. Run needs a SQL editor, Commit needs manual commit).
 - Exported files are named after the database, schema and table (or partition) as the database names them, then the date and time, e.g. `shop_public_orders_20261019_101500.csv` (MySQL: `shop_orders_…`, SQLite: `file_orders_…`).
 
 ## 0.2.0 — 2026-10-18

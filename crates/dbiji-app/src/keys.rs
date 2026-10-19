@@ -134,6 +134,7 @@ pub fn action_icon(action: Action) -> &'static str {
         Action::ToggleNavigator => i::SIDEBAR,
         Action::ToggleTheme => i::CIRCLE_HALF,
         Action::ToggleProperties => i::INFO,
+        Action::NewDatabase => i::DATABASE,
         Action::PendingTransactions => i::CLOCK_COUNTDOWN,
         Action::ShowErrorLog => i::WARNING_OCTAGON,
         Action::TipOfTheDay => i::LIGHTBULB,

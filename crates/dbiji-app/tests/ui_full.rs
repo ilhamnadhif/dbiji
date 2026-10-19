@@ -1341,6 +1341,23 @@ fn workspace_from_dbeaver() {
     settle(&mut h, "tip of the day");
     assert!(h.state().tip.is_none());
 
+    // Main toolbar: SQL editor actions are disabled without an editor.
+    let toolbar_enabled = |h: &H, icon: &str| -> bool {
+        let n = h.query_all_by_label(icon).find(|n| n.rect().top() < 70.0).unwrap_or_else(|| panic!("toolbar {icon:?}: {:?}", labels(h)));
+        !n.accesskit_node().is_disabled()
+    };
+    focus_tab(&mut h, "Welcome");
+    frames(&mut h, 2);
+    assert!(!toolbar_enabled(&h, egui_phosphor::regular::PLAY), "Run needs a SQL editor");
+    assert!(toolbar_enabled(&h, egui_phosphor::regular::FILE_SQL), "New SQL editor is always available");
+    h.state_mut().push_command(AppCommand::NewSqlEditor { connection: Some(conn.clone()), schema: None, text: None });
+    frames(&mut h, 3);
+    wait(&mut h, "editor session", |h| focused_editor(h).session_ready());
+    frames(&mut h, 2);
+    assert!(toolbar_enabled(&h, egui_phosphor::regular::PLAY), "Run in a SQL editor");
+    assert!(!toolbar_enabled(&h, egui_phosphor::regular::CHECK_CIRCLE), "nothing to commit in auto-commit mode");
+    settle(&mut h, "toolbar states");
+
     // Error log: errors of the session, filtered by level.
     dbiji_app::applog::push(tracing::Level::ERROR, "dbiji::test", "probe failure 42");
     dbiji_app::applog::push(tracing::Level::INFO, "dbiji::test", "probe info 43");

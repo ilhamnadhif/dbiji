@@ -27,7 +27,7 @@ pub mod secret;
 pub mod value;
 
 pub use config::{ConnectionConfig, DbKind};
-pub use dialect::{Dialect, SqlSyntax};
+pub use dialect::{Dialect, NewDatabase, SqlSyntax};
 pub use driver::{CancelHandle, ConnectParams, Driver, ExecOptions, QueryCursor, ResultHeader, ServerMessage, Session, TransactionMode};
 pub use error::{DbError, DbResult, ErrorKind};
 pub use i18n::{tr, trf};

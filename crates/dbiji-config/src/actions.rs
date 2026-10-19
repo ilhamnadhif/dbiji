@@ -207,6 +207,8 @@ actions! {
     PendingTransactions => ("tx.pending", "Pending Transactions", Transactions, Global),
     /// Create a connection.
     NewConnection => ("conn.new", "New Connection", Connections, Global),
+    /// Create a database on the selected connection's server.
+    NewDatabase => ("conn.new_database", "New Database", Connections, Global),
     /// Edit the selected connection.
     EditConnection => ("conn.edit", "Edit Connection", Connections, Global),
     /// Connect the selected connection.

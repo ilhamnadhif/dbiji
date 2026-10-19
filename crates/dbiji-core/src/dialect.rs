@@ -125,6 +125,28 @@ impl SqlSyntax {
 }
 
 /// A SQL dialect. All methods have ANSI defaults so dialects only override what differs.
+/// A database to create (each product uses the options it supports).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NewDatabase {
+    pub name: String,
+    /// PostgreSQL owner role.
+    pub owner: Option<String>,
+    /// PostgreSQL encoding, e.g. `UTF8`.
+    pub encoding: Option<String>,
+    /// PostgreSQL template database.
+    pub template: Option<String>,
+    /// MySQL / MariaDB character set, e.g. `utf8mb4`.
+    pub charset: Option<String>,
+    /// MySQL / MariaDB / SQL Server collation.
+    pub collation: Option<String>,
+}
+
+/// A charset / collation / encoding name, or `None` when it is empty or not
+/// a plain name (such values are never put into SQL).
+fn plain_name(v: &Option<String>) -> Option<&str> {
+    v.as_deref().map(str::trim).filter(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'))
+}
+
 pub trait Dialect: Send + Sync + 'static {
     fn kind(&self) -> DbKind;
     fn syntax(&self) -> &SqlSyntax;
@@ -254,6 +276,68 @@ pub trait Dialect: Send + Sync + 'static {
     fn maintenance_sql(&self, op: &str, targets: &[ObjectRef], options: &BTreeMap<String, bool>) -> Vec<String> {
         let _ = (op, targets, options);
         Vec::new()
+    }
+
+    /// `CREATE DATABASE`; `None` when the product has no databases to
+    /// create on the server (SQLite and DuckDB use files).
+    fn create_database_sql(&self, db: &NewDatabase) -> Option<String> {
+        let name = db.name.trim();
+        if name.is_empty() {
+            return None;
+        }
+        let q = self.quote_ident(name);
+        let ident = |v: &Option<String>| v.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(|s| self.quote_ident(s));
+        let mut sql = format!("CREATE DATABASE {q}");
+        match self.kind() {
+            DbKind::Postgres => {
+                if let Some(o) = ident(&db.owner) {
+                    sql.push_str(&format!(" OWNER {o}"));
+                }
+                if let Some(e) = plain_name(&db.encoding) {
+                    sql.push_str(&format!(" ENCODING {}", self.string_literal(e)));
+                }
+                if let Some(t) = ident(&db.template) {
+                    sql.push_str(&format!(" TEMPLATE {t}"));
+                }
+            }
+            DbKind::MySql | DbKind::MariaDb => {
+                if let Some(c) = plain_name(&db.charset) {
+                    sql.push_str(&format!(" CHARACTER SET {c}"));
+                }
+                if let Some(c) = plain_name(&db.collation) {
+                    sql.push_str(&format!(" COLLATE {c}"));
+                }
+            }
+            DbKind::SqlServer => {
+                if let Some(c) = plain_name(&db.collation) {
+                    sql.push_str(&format!(" COLLATE {c}"));
+                }
+            }
+            DbKind::CockroachDb | DbKind::ClickHouse => {}
+            DbKind::Sqlite | DbKind::DuckDb | DbKind::Generic => return None,
+        }
+        Some(sql)
+    }
+
+    /// `CREATE SCHEMA`; `None` when schemas are databases (MySQL, MariaDB,
+    /// ClickHouse) or attached files (SQLite).
+    fn create_schema_sql(&self, name: &str, owner: Option<&str>) -> Option<String> {
+        let name = name.trim();
+        if name.is_empty() {
+            return None;
+        }
+        let owner = owner.map(str::trim).filter(|o| !o.is_empty());
+        match self.kind() {
+            DbKind::Postgres | DbKind::CockroachDb | DbKind::SqlServer => {
+                let mut sql = format!("CREATE SCHEMA {}", self.quote_ident(name));
+                if let Some(o) = owner {
+                    sql.push_str(&format!(" AUTHORIZATION {}", self.quote_ident(o)));
+                }
+                Some(sql)
+            }
+            DbKind::DuckDb => Some(format!("CREATE SCHEMA {}", self.quote_ident(name))),
+            _ => None,
+        }
     }
 
     /// Statement changing a user's password (`None` = current user).

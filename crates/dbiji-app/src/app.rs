@@ -385,6 +385,20 @@ impl DbijiApp {
             AppCommand::ChangePassword { connection } => {
                 self.open_tab(Box::new(crate::tabs::dbtools::ChangePasswordTab::new(connection)));
             }
+            AppCommand::NewDatabase { connection } => {
+                if self.conns.is_connected(&connection) {
+                    self.dialogs.create_db = Some(crate::dialogs::create_db::CreateDatabaseDialog::database(connection));
+                } else {
+                    self.toasts.info(tr("Connect first, then create the database."));
+                }
+            }
+            AppCommand::NewSchema { connection, database } => {
+                if self.conns.is_connected(&connection) {
+                    self.dialogs.create_db = Some(crate::dialogs::create_db::CreateDatabaseDialog::schema(connection, database));
+                } else {
+                    self.toasts.info(tr("Connect first, then create the database."));
+                }
+            }
             AppCommand::OpenFdwConfigurator { connection } => {
                 self.open_tab(Box::new(crate::tabs::dbtools::FdwConfigTab::new(connection)));
             }
@@ -474,6 +488,13 @@ impl DbijiApp {
             A::NewSqlEditor => Some(AppCommand::NewSqlEditor { connection: conn, schema: None, text: None }),
             A::OpenSqlConsole => conn.map(|c| AppCommand::NewSqlConsole { connection: c }),
             A::NewConnection => Some(AppCommand::NewConnection { kind: None, folder: None }),
+            A::NewDatabase => match conn {
+                Some(c) => Some(AppCommand::NewDatabase { connection: c }),
+                None => {
+                    self.toasts.info(tr("Select a connection in the navigator first."));
+                    None
+                }
+            },
             A::EditConnection => conn.map(AppCommand::EditConnection),
             A::Connect => conn.map(AppCommand::Connect),
             A::Disconnect => conn.map(AppCommand::Disconnect),
@@ -940,6 +961,34 @@ impl DbijiApp {
                     ui.close();
                 }
                 ui.separator();
+                let conn = self.selected_connection().filter(|c| self.conns.is_connected(c));
+                // What the selected server can create.
+                let (db_ok, schema_ok, file_based) = conn.as_deref().and_then(|c| self.conns.live(c)).map_or((false, false, false), |l| {
+                    let probe = dbiji_core::NewDatabase { name: "x".into(), ..Default::default() };
+                    (l.dialect.create_database_sql(&probe).is_some(), l.dialect.create_schema_sql("x", None).is_some(), l.config.kind.is_file_based())
+                });
+                let why = if conn.is_none() {
+                    tr("Select a connected connection in the navigator first.")
+                } else if file_based {
+                    tr("A database of this type is a file: use New connection and choose a new file.")
+                } else {
+                    tr("Not supported by this database type.")
+                };
+                let resp = ui.add_enabled(db_ok, egui::Button::new(format!("{} {}", icon::DATABASE, tr("New database…")))).on_disabled_hover_text(why);
+                if resp.clicked()
+                    && let Some(c) = conn.clone()
+                {
+                    self.commands.push(AppCommand::NewDatabase { connection: c });
+                    ui.close();
+                }
+                if ui.add_enabled(schema_ok, egui::Button::new(format!("{} {}", icon::STACK, tr("New schema…")))).on_disabled_hover_text(why).clicked()
+                    && let Some(c) = conn
+                {
+                    let database = self.nav.selected_schema().and_then(|s| s.database);
+                    self.commands.push(AppCommand::NewSchema { connection: c, database });
+                    ui.close();
+                }
+                ui.separator();
                 if ui.button(format!("{} {}", icon::PLUGS, tr("Disconnect all"))).clicked() {
                     self.commands.push(AppCommand::DisconnectAll);
                     ui.close();
@@ -1049,6 +1098,34 @@ impl DbijiApp {
         });
     }
 
+    /// Whether a toolbar action can run now, with the reason when not.
+    fn toolbar_action_state(&self, action: crate::keys::Action) -> Result<(), &'static str> {
+        use crate::keys::Action as A;
+        let tab = self.active_tab.and_then(|id| self.dock.iter_all_tabs().find(|(_, t)| t.id == id)).map(|(_, t)| t);
+        if let Some(enabled) = tab.and_then(|t| t.view.action_enabled(action)) {
+            return if enabled {
+                Ok(())
+            } else {
+                match action {
+                    A::CancelQuery => Err(tr("No query is running.")),
+                    A::Commit | A::Rollback => Err(tr("Auto-commit is on: every statement is committed already.")),
+                    _ => Err(tr("Not available right now.")),
+                }
+            };
+        }
+        let editor_only = matches!(action, A::CancelQuery | A::Commit | A::Rollback | A::ToggleAutoCommit | A::SelectConnection | A::SelectSchema)
+            || action.context() == crate::keys::ActionContext::SqlEditor;
+        if editor_only {
+            return Err(tr("Available in a SQL editor: open one with New SQL editor."));
+        }
+        let needs_connection =
+            matches!(action, A::EditConnection | A::Connect | A::Disconnect | A::Reconnect | A::OpenSqlConsole | A::OpenSessionManager | A::NewDatabase | A::Export | A::Import);
+        if needs_connection && self.selected_connection().is_none() {
+            return Err(tr("Select a connection in the navigator first."));
+        }
+        Ok(())
+    }
+
     /// Main toolbar (customisable in the settings).
     fn toolbar(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
@@ -1065,12 +1142,18 @@ impl DbijiApp {
                 let Some(action) = crate::keys::Action::from_id(id) else { continue };
                 let keys = crate::keys::label(&self.keymap, action);
                 let tip = if keys.is_empty() { crate::keys::action_label(action).to_string() } else { format!("{}  ({keys})", crate::keys::action_label(action)) };
+                let state = self.toolbar_action_state(action);
                 let mut text = RichText::new(crate::keys::action_icon(action)).size(16.0);
-                if let Some(c) = crate::keys::action_color(action, ui.visuals().dark_mode) {
+                if let Some(c) = crate::keys::action_color(action, ui.visuals().dark_mode).filter(|_| state.is_ok()) {
                     text = text.color(c);
                 }
                 let b = egui::Button::new(text).frame(false).min_size(egui::vec2(26.0, 22.0));
-                if ui.add(b).on_hover_text(tip).clicked() {
+                let resp = ui.add_enabled(state.is_ok(), b).on_hover_text(&tip);
+                let resp = match state {
+                    Err(why) => resp.on_disabled_hover_text(format!("{tip}\n{why}")),
+                    Ok(()) => resp,
+                };
+                if resp.clicked() {
                     self.commands.push(AppCommand::Action(action));
                 }
             }

@@ -200,6 +200,15 @@ pub enum AppCommand {
     ChangePassword {
         connection: String,
     },
+    /// Create a database on the server of the connection.
+    NewDatabase {
+        connection: String,
+    },
+    /// Create a schema (in `database`, else the connection's database).
+    NewSchema {
+        connection: String,
+        database: Option<String>,
+    },
     /// Foreign data wrapper configurator (PostgreSQL).
     OpenFdwConfigurator {
         connection: String,

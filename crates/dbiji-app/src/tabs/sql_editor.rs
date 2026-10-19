@@ -1536,6 +1536,25 @@ impl TabView for SqlEditorTab {
         self.conn.as_deref()
     }
 
+    fn action_enabled(&self, action: Action) -> Option<bool> {
+        use Action as A;
+        let running = self.exec.is_some() || self.explain_job.is_some();
+        let tx = match &self.session {
+            SessionSlot::Ready(s) => Some(s.tx_state()),
+            _ => None,
+        };
+        match action {
+            A::CancelQuery => Some(running),
+            A::ExecuteStatement | A::ExecuteScript | A::ExecuteInNewTab | A::ExplainPlan => Some(!running),
+            // Only a manual-commit session has something to commit.
+            A::Commit | A::Rollback => Some(tx.as_ref().is_some_and(|t| t.mode == TransactionMode::Manual)),
+            A::ToggleAutoCommit => Some(tx.is_some()),
+            A::SelectConnection | A::SelectSchema => Some(true),
+            _ if action.context() == crate::keys::ActionContext::SqlEditor => Some(true),
+            _ => None,
+        }
+    }
+
     fn transaction_session(&self) -> Option<SessionHandle> {
         match &self.session {
             SessionSlot::Ready(s) => Some(s.clone()),

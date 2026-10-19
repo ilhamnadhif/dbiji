@@ -2581,3 +2581,26 @@ Connect and open a SQL editor	Hubungkan dan buka editor SQL
 Open settings folder	Buka folder pengaturan
 Recent	Terbaru
 Tab: back to the grid · ← →: previous / next row	Tab: kembali ke grid · ← →: baris sebelumnya / berikutnya
+(server default)	(bawaan server)
+A database of this type is a file: use New connection and choose a new file.	Database jenis ini berupa file: pakai New connection lalu pilih file baru.
+Auto-commit is on: every statement is committed already.	Auto-commit aktif: setiap statement sudah langsung di-commit.
+Available in a SQL editor: open one with New SQL editor.	Tersedia di editor SQL: buka dengan New SQL editor.
+Character set	Character set
+Connect first, then create the database.	Hubungkan dulu, lalu buat database-nya.
+Database {} created	Database {} dibuat
+Enter a name.	Isi nama.
+New database	Database baru
+New database…	Database baru…
+New schema	Skema baru
+New schema…	Skema baru…
+No query is running.	Tidak ada query yang berjalan.
+Not available right now.	Belum tersedia saat ini.
+Not supported by this database type.	Tidak didukung jenis database ini.
+On {}	Di {}
+Owner	Pemilik
+Schema {} created	Skema {} dibuat
+Select a connected connection in the navigator first.	Pilih koneksi yang sudah terhubung di navigator dulu.
+Select a connection in the navigator first.	Pilih koneksi di navigator dulu.
+Template	Template
+This database type cannot create it with SQL.	Jenis database ini tidak bisa membuatnya dengan SQL.
+New Database	Database Baru

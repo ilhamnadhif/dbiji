@@ -55,6 +55,13 @@ pub trait TabView: Any {
         None
     }
 
+    /// Whether the tab can run `action` now (toolbar buttons are disabled
+    /// otherwise); `None` when the tab does not handle the action.
+    fn action_enabled(&self, action: crate::keys::Action) -> Option<bool> {
+        let _ = action;
+        None
+    }
+
     /// The session of the tab's own transaction (Pending transactions).
     fn transaction_session(&self) -> Option<crate::conn::session::SessionHandle> {
         None

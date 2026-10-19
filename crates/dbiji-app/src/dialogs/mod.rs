@@ -1,6 +1,7 @@
 //! Modal and floating dialogs owned by the application.
 
 pub mod connection;
+pub mod create_db;
 pub mod drop;
 pub mod import;
 pub mod vault;
@@ -44,6 +45,7 @@ pub struct Dialogs {
     vault: vault::VaultDialog,
     pub import: Option<import::ImportDialog>,
     pub drop: Option<drop::DropDialog>,
+    pub create_db: Option<create_db::CreateDatabaseDialog>,
 }
 
 impl Dialogs {
@@ -116,6 +118,11 @@ impl Dialogs {
             && !d.show(ctx, cx)
         {
             self.drop = None;
+        }
+        if let Some(d) = self.create_db.as_mut()
+            && !d.show(ctx, cx)
+        {
+            self.create_db = None;
         }
         if self.about_open {
             let mut open = true;

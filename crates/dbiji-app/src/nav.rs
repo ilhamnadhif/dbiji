@@ -1241,6 +1241,7 @@ impl Navigator {
                     cx.push(AppCommand::NewSqlConsole { connection: id.clone() });
                     ui.close();
                 }
+                create_menu_items(ui, cx, id, None);
                 ui.separator();
                 if ui.button(format!("{} {}", icon::PENCIL, tr("Edit connection"))).clicked() {
                     cx.push(AppCommand::EditConnection(id.clone()));
@@ -1288,6 +1289,7 @@ impl Navigator {
                     cx.push(AppCommand::NewSqlEditor { connection: Some(conn.clone()), schema: Some(schema), text: None });
                     ui.close();
                 }
+                create_menu_items(ui, cx, conn, Some(db.clone()));
                 ui.menu_button(format!("{} {}", icon::WRENCH, tr("Tools")), |ui| tools_menu(ui, cx, conn, None));
             }
             NavNode::Schema { conn, schema } | NavNode::KindFolder { conn, schema, .. } => {
@@ -1420,6 +1422,26 @@ pub fn catalog_icon(i: CatalogIcon) -> &'static str {
 
 fn placeholder(depth: usize, kind: RowKind) -> Row {
     Row { node: NavNode::Folder(String::new()), depth, label: String::new(), detail: None, icon: "", icon_color: None, expandable: false, expanded: false, kind }
+}
+
+/// "New database…" / "New schema…" of a connected server (what its
+/// database type supports; `database`: schemas go into that database).
+pub fn create_menu_items(ui: &mut Ui, cx: &mut AppContext, conn: &str, database: Option<String>) {
+    let Some(live) = cx.conns.live(conn) else { return };
+    if live.config.read_only {
+        return;
+    }
+    let probe = dbiji_core::NewDatabase { name: "x".into(), ..Default::default() };
+    let databases = live.dialect.create_database_sql(&probe).is_some();
+    let schemas = live.dialect.create_schema_sql("x", None).is_some();
+    if databases && database.is_none() && ui.button(format!("{} {}", icon::DATABASE, tr("New database…"))).clicked() {
+        cx.push(AppCommand::NewDatabase { connection: conn.to_string() });
+        ui.close();
+    }
+    if schemas && ui.button(format!("{} {}", icon::STACK, tr("New schema…"))).clicked() {
+        cx.push(AppCommand::NewSchema { connection: conn.to_string(), database });
+        ui.close();
+    }
 }
 
 /// Administration tools for a connection.

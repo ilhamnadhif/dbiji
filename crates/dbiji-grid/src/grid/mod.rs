@@ -159,6 +159,14 @@ pub enum PanelKind {
 /// dialogs it owns). Everything else is handled inside the grid.
 #[derive(Debug, Clone, PartialEq)]
 pub enum GridAction {
+    /// Put this text at the end of the filter box and focus it (the user
+    /// types the value); empty: just focus the filter box.
+    EditFilter(String),
+    /// Save the filter box's WHERE / ORDER BY as the table's default
+    /// (reported as [`GridAction::DefaultFilter`] by the result view).
+    SaveDefaultFilter,
+    /// Empty the filter and order boxes (filters and orderings were removed).
+    ClearFilterText,
     /// Save the current WHERE / ORDER BY as the table's default (both
     /// `None`: forget the default).
     DefaultFilter {
@@ -453,8 +461,8 @@ pub(crate) fn paste_into(model: &mut ResultModel, state: &mut DataGridState, tex
     Ok(n)
 }
 
-/// Build a `WHERE` condition for "filter by value" in server mode.
-pub(crate) fn server_condition(model: &ResultModel, options: &GridOptions, col: usize, op: FilterOp, value: &Value) -> String {
+/// Quoted name of `col` in a server side `WHERE` condition.
+pub(crate) fn server_column(model: &ResultModel, options: &GridOptions, col: usize) -> String {
     let generic = dbiji_core::dialect::GenericDialect::new();
     let d: &dyn Dialect = options.dialect.as_deref().unwrap_or(&generic);
     // Query results are filtered as `SELECT * FROM (<query>) q WHERE ...`, so
@@ -470,7 +478,14 @@ pub(crate) fn server_condition(model: &ResultModel, options: &GridOptions, col: 
             .or_else(|| model.column_meta(col).and_then(|m| m.source.as_ref().map(|s| s.column.clone())))
             .unwrap_or_else(|| model.column_name(col).to_string())
     };
-    let c = d.quote_ident(&name);
+    d.quote_ident(&name)
+}
+
+/// Build a `WHERE` condition for "filter by value" in server mode.
+pub(crate) fn server_condition(model: &ResultModel, options: &GridOptions, col: usize, op: FilterOp, value: &Value) -> String {
+    let generic = dbiji_core::dialect::GenericDialect::new();
+    let d: &dyn Dialect = options.dialect.as_deref().unwrap_or(&generic);
+    let c = server_column(model, options, col);
     let type_name = model.column_meta(col).map(|m| m.type_name.as_str()).filter(|t| !t.is_empty());
     match op {
         FilterOp::IsNull => format!("{c} IS NULL"),

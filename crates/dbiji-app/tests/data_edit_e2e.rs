@@ -358,7 +358,7 @@ fn manual_commit_reorder_while_loading() {
             }
             h.until(&mut view, "re-ordered", |v| {
                 let p = v.panel.as_ref().unwrap();
-                if let Some((msg, true)) = &p.status {
+                if let Some((msg, true)) = p.status.as_ref().or(p.view.toolbar.notice.as_ref()) {
                     panic!("[{name}] {msg}");
                 }
                 p.model.row_count() > 0 && p.model.cell(0, 0).and_then(|x| x.as_i64()) == Some(first)

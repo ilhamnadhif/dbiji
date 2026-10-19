@@ -34,6 +34,9 @@ pub struct ToolbarState {
     pub view: ResultViewKind,
     /// Open side panels.
     pub open_panels: Vec<PanelKind>,
+    /// Message of the application shown next to the status: (text, error).
+    #[serde(skip)]
+    pub notice: Option<(String, bool)>,
     #[serde(skip)]
     rt: ToolbarRuntime,
 }
@@ -41,11 +44,18 @@ pub struct ToolbarState {
 #[derive(Debug, Clone, PartialEq, Default)]
 struct ToolbarRuntime {
     filter_error: Option<String>,
+    /// Focus the filter box (cursor at the end) on the next frame.
+    focus_filter: bool,
     next_refresh: Option<f64>,
     confirm_discard: bool,
 }
 
 impl ToolbarState {
+    /// Focus the filter box on the next frame, the cursor at the end.
+    pub fn focus_filter(&mut self) {
+        self.rt.focus_filter = true;
+    }
+
     /// Is a panel open?
     pub fn is_panel_open(&self, p: PanelKind) -> bool {
         self.open_panels.contains(&p)
@@ -177,6 +187,13 @@ impl<'a> FilterBar<'a> {
             if filter_resp.changed() {
                 state.rt.filter_error = None;
             }
+            if std::mem::take(&mut state.rt.focus_filter) {
+                let end = egui::text::CCursor::new(state.filter_text.chars().count());
+                let mut s = egui::text_edit::TextEditState::load(ui.ctx(), filter_resp.id).unwrap_or_default();
+                s.cursor.set_char_range(Some(egui::text::CCursorRange::one(end)));
+                s.store(ui.ctx(), filter_resp.id);
+                filter_resp.request_focus();
+            }
             if filter_resp.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
                 apply = true;
             }
@@ -292,12 +309,18 @@ impl<'a> ResultToolbar<'a> {
     }
 
     /// Show it. Returns actions for the application.
+    ///
+    /// Groups, left to right: refresh · editing (add, duplicate, delete,
+    /// save, discard) · export · view (segmented) · side panels; on the
+    /// right the status, a message of the application and the fetch
+    /// buttons next to the row count they change.
     pub fn show(self, ui: &mut Ui) -> Vec<GridAction> {
         let ResultToolbar { model, grid, state } = self;
         let mut actions = Vec::new();
         auto_refresh_tick(ui, model, state, &mut actions);
-        ui.horizontal_wrapped(|ui| {
+        ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
+            // --- refresh
             if ui.button(icon::ARROWS_CLOCKWISE).on_hover_text(tr("Refresh (Cmd+R)")).clicked() {
                 actions.push(GridAction::Refresh);
             }
@@ -331,22 +354,33 @@ impl<'a> ResultToolbar<'a> {
                     }
                 });
             });
-            ui.separator();
-            let fetching = model.fetch.fetching;
-            if ui.add_enabled(model.fetch.has_more && !fetching, Button::new(icon::CARET_DOUBLE_DOWN)).on_hover_text(tr("Fetch next page")).clicked() {
-                actions.push(GridAction::FetchMore);
-            }
-            if ui.add_enabled(model.fetch.has_more && !fetching, Button::new(icon::ARROW_LINE_DOWN)).on_hover_text(tr("Fetch all rows")).clicked() {
-                actions.push(GridAction::FetchAll);
-            }
-            if ui.add_enabled(!model.fetch.counting, Button::new(icon::HASH)).on_hover_text(tr("Calculate total row count")).clicked() {
-                actions.push(GridAction::CountTotal);
-            }
-            ui.separator();
+            group_separator(ui);
+            // --- editing
             let pending = model.pending_counts().total();
             let editable = model.is_editable();
-            let save_label = if pending > 0 { format!("{} {}", icon::FLOPPY_DISK, pending) } else { icon::FLOPPY_DISK.to_string() };
-            if ui.add_enabled(pending > 0, Button::new(save_label)).on_hover_text(trf("Save {} pending change(s) (Cmd+S)", &[&pending])).clicked() {
+            let notify = |r: Result<usize, String>, actions: &mut Vec<GridAction>| {
+                if let Err(e) = r {
+                    actions.push(GridAction::Notify { message: e, error: true });
+                }
+            };
+            if ui.add_enabled(editable, Button::new(icon::ROWS_PLUS_BOTTOM)).on_hover_text(tr("Add row")).clicked() {
+                notify(grid::add_row(model, grid), &mut actions);
+            }
+            if ui.add_enabled(editable, Button::new(icon::COPY_SIMPLE)).on_hover_text(tr("Duplicate selected rows")).clicked() {
+                notify(grid::duplicate_selected(model, grid), &mut actions);
+            }
+            if ui.add_enabled(editable, Button::new(icon::TRASH)).on_hover_text(tr("Delete selected rows")).clicked() {
+                notify(grid::delete_selected(model, grid), &mut actions);
+            }
+            // Save stands out while there is something to save.
+            let save = if pending > 0 {
+                let accent = ui.visuals().selection.stroke.color;
+                let text = if ui.visuals().dark_mode { egui::Color32::BLACK } else { egui::Color32::WHITE };
+                Button::new(RichText::new(format!("{} {} ({pending})", icon::FLOPPY_DISK, tr("Save"))).color(text)).fill(accent)
+            } else {
+                Button::new(icon::FLOPPY_DISK)
+            };
+            if ui.add_enabled(pending > 0, save).on_hover_text(trf("Save {} pending change(s) (Cmd+S)", &[&pending])).clicked() {
                 actions.push(GridAction::SaveChanges);
             }
             let cancel = ui.add_enabled(pending > 0, Button::new(icon::X_CIRCLE)).on_hover_text(tr("Discard pending changes"));
@@ -372,80 +406,120 @@ impl<'a> ResultToolbar<'a> {
                     state.rt.confirm_discard = false;
                 }
             }
-            ui.separator();
-            let notify = |r: Result<usize, String>, actions: &mut Vec<GridAction>| {
-                if let Err(e) = r {
-                    actions.push(GridAction::Notify { message: e, error: true });
-                }
-            };
-            if ui.add_enabled(editable, Button::new(icon::ROWS_PLUS_BOTTOM)).on_hover_text(tr("Add row")).clicked() {
-                notify(grid::add_row(model, grid), &mut actions);
-            }
-            if ui.add_enabled(editable, Button::new(icon::COPY_SIMPLE)).on_hover_text(tr("Duplicate selected rows")).clicked() {
-                notify(grid::duplicate_selected(model, grid), &mut actions);
-            }
-            if ui.add_enabled(editable, Button::new(icon::TRASH)).on_hover_text(tr("Delete selected rows")).clicked() {
-                notify(grid::delete_selected(model, grid), &mut actions);
-            }
             if !editable && let Some(r) = model.read_only_reason() {
                 ui.label(RichText::new(format!("{} {}", icon::LOCK_SIMPLE, r.short_label())).color(ui.visuals().warn_fg_color)).on_hover_text(r.message());
             }
-            ui.separator();
-            if ui.button(icon::EXPORT).on_hover_text(tr("Export…")).clicked() {
+            group_separator(ui);
+            // --- export
+            if ui.button(format!("{} {}", icon::EXPORT, tr("Export"))).on_hover_text(tr("Export…")).clicked() {
                 actions.push(GridAction::Export { rows: None, columns: grid.visible_columns() });
             }
-            ui.separator();
-            for (kind, ic, tip) in [
+            group_separator(ui);
+            // --- view: one segmented control
+            let views = [
                 (ResultViewKind::Grid, icon::TABLE, tr("Grid")),
                 (ResultViewKind::Text, icon::TEXT_AA, tr("Text")),
                 (ResultViewKind::Record, icon::ROWS, tr("Record")),
                 (ResultViewKind::Json, icon::BRACKETS_CURLY, tr("JSON")),
                 (ResultViewKind::Xml, icon::BRACKETS_ANGLE, tr("XML")),
-            ] {
-                if ui.add(Button::new(ic).selected(state.view == kind)).on_hover_text(tip).clicked() && state.view != kind {
-                    state.view = kind;
-                    actions.push(GridAction::SwitchView(kind));
+            ];
+            let mut items: Vec<(&str, &str, bool)> = views.iter().map(|(k, ic, tip)| (*ic, *tip, state.view == *k)).collect();
+            items.push((icon::CHART_BAR, tr("Chart"), false));
+            items.push((icon::MAP_TRIFOLD, tr("Spatial view"), false));
+            match segmented(ui, &items) {
+                Some(i) if i < views.len() => {
+                    let kind = views[i].0;
+                    if state.view != kind {
+                        state.view = kind;
+                        actions.push(GridAction::SwitchView(kind));
+                    }
                 }
+                Some(i) if i == views.len() => actions.push(GridAction::ShowChart),
+                Some(_) => actions.push(GridAction::ShowSpatial),
+                None => {}
             }
-            if ui.button(icon::CHART_BAR).on_hover_text(tr("Chart")).clicked() {
-                actions.push(GridAction::ShowChart);
-            }
-            if ui.button(icon::MAP_TRIFOLD).on_hover_text(tr("Spatial view")).clicked() {
-                actions.push(GridAction::ShowSpatial);
-            }
-            ui.separator();
-            for (p, ic, tip) in [
-                (PanelKind::Value, icon::EYE, tr("Value panel")),
-                (PanelKind::Metadata, icon::INFO, tr("Metadata")),
-                (PanelKind::Grouping, icon::STACK, tr("Grouping")),
-                (PanelKind::Calc, icon::CALCULATOR, tr("Calc")),
-                (PanelKind::References, icon::TREE_STRUCTURE, tr("References")),
-            ] {
-                let open = state.is_panel_open(p);
-                if ui.add(Button::new(ic).selected(open)).on_hover_text(tip).clicked() {
-                    state.set_panel_open(p, !open);
-                    actions.push(GridAction::TogglePanel(p));
+            group_separator(ui);
+            // --- side panels
+            let open_count = state.open_panels.len();
+            let label = if open_count > 0 { format!("{} {} ({open_count})", icon::SIDEBAR_SIMPLE, tr("Panels")) } else { format!("{} {}", icon::SIDEBAR_SIMPLE, tr("Panels")) };
+            let resp = ui.add(Button::new(label).selected(open_count > 0)).on_hover_text(tr("Side panels: value, metadata, grouping, calculations, references"));
+            Popup::menu(&resp).show(|ui| {
+                for (p, ic, tip) in [
+                    (PanelKind::Value, icon::EYE, tr("Value panel")),
+                    (PanelKind::Metadata, icon::INFO, tr("Metadata")),
+                    (PanelKind::Grouping, icon::STACK, tr("Grouping")),
+                    (PanelKind::Calc, icon::CALCULATOR, tr("Calc")),
+                    (PanelKind::References, icon::TREE_STRUCTURE, tr("References")),
+                ] {
+                    let open = state.is_panel_open(p);
+                    if ui.add(Button::new(format!("{ic}  {tip}")).right_text(if open { icon::CHECK } else { "" })).clicked() {
+                        state.set_panel_open(p, !open);
+                        actions.push(GridAction::TogglePanel(p));
+                        ui.close();
+                    }
                 }
-            }
-            let mut status = status_text(model);
-            if state.auto_refresh_secs.is_some() && (model.has_changes() || model.fetch.fetching) {
-                status.push_str(" · ");
-                status.push_str(tr("auto refresh paused"));
-            }
-            if let Some(e) = &model.fetch.error {
-                ui.colored_label(ui.visuals().error_fg_color, format!("{} {}", icon::WARNING, e));
-            }
-            // Right-align the status when it fits; otherwise it wraps to the next line.
-            let font = egui::TextStyle::Body.resolve(ui.style());
-            let w = ui.fonts_mut(|f| f.layout_no_wrap(status.clone(), font, egui::Color32::WHITE).rect.width());
-            let spare = ui.available_size_before_wrap().x - w - 8.0;
-            if spare > 0.0 {
-                ui.add_space(spare);
-            }
-            ui.weak(status);
+            });
+            // --- right: fetch buttons, status, messages (right to left)
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let fetching = model.fetch.fetching;
+                if ui.add_enabled(!model.fetch.counting, Button::new(icon::HASH)).on_hover_text(tr("Calculate total row count")).clicked() {
+                    actions.push(GridAction::CountTotal);
+                }
+                if model.fetch.has_more {
+                    if ui.add_enabled(!fetching, Button::new(icon::ARROW_LINE_DOWN)).on_hover_text(tr("Fetch all rows")).clicked() {
+                        actions.push(GridAction::FetchAll);
+                    }
+                    if ui.add_enabled(!fetching, Button::new(icon::CARET_DOUBLE_DOWN)).on_hover_text(tr("Fetch next page")).clicked() {
+                        actions.push(GridAction::FetchMore);
+                    }
+                }
+                let mut status = status_text(model);
+                if state.auto_refresh_secs.is_some() && (model.has_changes() || model.fetch.fetching) {
+                    status.push_str(" · ");
+                    status.push_str(tr("auto refresh paused"));
+                }
+                ui.add(egui::Label::new(RichText::new(status).color(ui.visuals().weak_text_color())).truncate());
+                if let Some(e) = &model.fetch.error {
+                    ui.add(egui::Label::new(RichText::new(format!("{} {}", icon::WARNING, e)).color(ui.visuals().error_fg_color)).truncate());
+                }
+                if let Some((message, error)) = state.notice.clone() {
+                    if ui.small_button(icon::X).on_hover_text(tr("Dismiss")).clicked() {
+                        state.notice = None;
+                    }
+                    let color = if error { ui.visuals().error_fg_color } else { ui.visuals().text_color() };
+                    let ic = if error { icon::WARNING_CIRCLE } else { icon::INFO };
+                    ui.add(egui::Label::new(RichText::new(format!("{ic} {message}")).color(color)).truncate()).on_hover_text(message);
+                }
+            });
         });
         actions
     }
+}
+
+/// Space and a line between toolbar groups.
+fn group_separator(ui: &mut Ui) {
+    ui.add_space(2.0);
+    ui.separator();
+    ui.add_space(2.0);
+}
+
+/// Connected toggle buttons; returns the index of the clicked one.
+fn segmented(ui: &mut Ui, items: &[(&str, &str, bool)]) -> Option<usize> {
+    let mut clicked = None;
+    let n = items.len();
+    ui.scope(|ui| {
+        ui.spacing_mut().item_spacing.x = 0.0;
+        let stroke = ui.visuals().widgets.noninteractive.bg_stroke;
+        for (i, (ic, tip, selected)) in items.iter().enumerate() {
+            let (first, last) = (i == 0, i + 1 == n);
+            let r = 4;
+            let corners = egui::CornerRadius { nw: if first { r } else { 0 }, sw: if first { r } else { 0 }, ne: if last { r } else { 0 }, se: if last { r } else { 0 } };
+            if ui.add(Button::new(*ic).selected(*selected).corner_radius(corners).stroke(stroke)).on_hover_text(*tip).clicked() {
+                clicked = Some(i);
+            }
+        }
+    });
+    clicked
 }
 
 fn auto_label(secs: u64) -> String {

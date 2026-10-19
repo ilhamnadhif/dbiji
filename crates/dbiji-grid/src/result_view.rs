@@ -166,6 +166,29 @@ impl<'a> ResultViewer<'a> {
             ResultViewKind::Json => DocumentView::new(model, &state.grid, options, &mut state.documents, DocumentKind::Json).show(ui),
             ResultViewKind::Xml => DocumentView::new(model, &state.grid, options, &mut state.documents, DocumentKind::Xml).show(ui),
         });
+        // Filter box requests of the column menu.
+        let some = |s: &str| Some(s.trim().to_string()).filter(|s| !s.is_empty());
+        let mut defaults = Vec::new();
+        for a in &actions {
+            match a {
+                GridAction::EditFilter(t) => {
+                    let cur = state.toolbar.filter_text.trim().to_string();
+                    if !t.is_empty() {
+                        state.toolbar.filter_text = if cur.is_empty() { t.clone() } else { format!("{cur} AND {t}") };
+                    }
+                    state.toolbar.focus_filter();
+                }
+                GridAction::SaveDefaultFilter => {
+                    defaults.push(GridAction::DefaultFilter { where_clause: some(&state.toolbar.filter_text), order_by: some(&state.toolbar.order_text) });
+                }
+                GridAction::ClearFilterText => {
+                    state.toolbar.filter_text.clear();
+                    state.toolbar.order_text.clear();
+                }
+                _ => {}
+            }
+        }
+        actions.extend(defaults);
         // Internal handling of some actions (they are still reported).
         for a in &actions {
             match a {

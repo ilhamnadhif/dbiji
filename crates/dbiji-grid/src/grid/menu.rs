@@ -9,7 +9,7 @@ use crate::model::ReadOnlyReason;
 use crate::view::{FilterOp, SortKey};
 use dbiji_core::dialect::GenericDialect;
 use dbiji_core::{Dialect, Value, tr, trf};
-use egui::{Button, Key, KeyboardShortcut, Modifiers, Popup, Response, Ui};
+use egui::{Button, Key, KeyboardShortcut, Modifiers, Popup, PopupCloseBehavior, PopupKind, Response, RichText, SetOpenCommand, Ui};
 use egui_phosphor::regular as icon;
 
 fn item(ui: &mut Ui, icon: &str, text: &str, shortcut: Option<KeyboardShortcut>) -> Response {
@@ -69,6 +69,120 @@ impl GridFrame<'_> {
                 ui.close();
             }
         });
+    }
+
+    /// The column menu of the header's ▾ button: ordering, filters by the
+    /// current cell's value, filter templates, default filter.
+    pub fn header_popup(&mut self, ui: &Ui) {
+        let Some((col, anchor, open)) = self.state.rt.header_popup else { return };
+        self.state.rt.header_popup = Some((col, anchor, false));
+        let set = open.then_some(SetOpenCommand::Bool(true));
+        let shown = Popup::new(self.id.with("header_popup"), self.ctx.clone(), anchor, ui.layer_id())
+            .kind(PopupKind::Menu)
+            .open_memory(set)
+            .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
+            .show(|ui| {
+                ui.set_min_width(240.0);
+                self.column_popup_items(ui, col);
+            });
+        if shown.is_none() {
+            self.state.rt.header_popup = None;
+        }
+    }
+
+    fn column_popup_items(&mut self, ui: &mut Ui, col: usize) {
+        let name = self.model.column_name(col).to_string();
+        let current = self.state.sort.iter().find(|k| k.column == col).copied();
+        let check = |on: bool| if on { icon::CHECK } else { "" };
+        // --- ordering
+        for desc in [false, true] {
+            let on = current.is_some_and(|k| k.descending == desc);
+            let (arrow, label) = if desc { (icon::ARROW_DOWN, trf("Order by {} DESC", &[&name])) } else { (icon::ARROW_UP, trf("Order by {} ASC", &[&name])) };
+            if ui.add(Button::new(format!("{arrow}  {label}")).right_text(check(on))).clicked() {
+                let key = if desc { SortKey::desc(col) } else { SortKey::asc(col) };
+                // A column already in the ordering keeps its place.
+                let keys = if current.is_some() { self.state.sort.iter().map(|k| if k.column == col { key } else { *k }).collect() } else { vec![key] };
+                apply_sort(self.model, self.state, self.options, keys, &self.ctx, &mut self.actions);
+                ui.close();
+            }
+        }
+        if ui.add_enabled(current.is_some(), Button::new(format!("{}  {}", icon::ARROWS_DOWN_UP, trf("Disable order by {}", &[&name])))).clicked() {
+            let keys = self.state.sort.iter().copied().filter(|k| k.column != col).collect();
+            apply_sort(self.model, self.state, self.options, keys, &self.ctx, &mut self.actions);
+            ui.close();
+        }
+        if !self.state.sort.is_empty() && current.is_none() {
+            ui.menu_button(format!("{}  {}", icon::LIST_PLUS, tr("Add to the ordering")), |ui| {
+                for (desc, label) in [(false, "ASC"), (true, "DESC")] {
+                    if ui.button(format!("{name} {label}")).clicked() {
+                        let mut keys = self.state.sort.clone();
+                        keys.push(if desc { SortKey::desc(col) } else { SortKey::asc(col) });
+                        apply_sort(self.model, self.state, self.options, keys, &self.ctx, &mut self.actions);
+                        ui.close();
+                    }
+                }
+            });
+        }
+        // --- filters
+        let server = self.state.mode == super::DataMode::Server;
+        let filterable = !(self.model.is_virtual_column(col) && server);
+        let row = self.active().map(|(r, _)| r).or((self.geo.nrows > 0).then_some(0));
+        if filterable && let Some(row) = row {
+            let value = self.model.cell(row, col).unwrap_or_default();
+            ui.separator();
+            ui.label(RichText::new(tr("Cell value")).weak().small());
+            let v = short_value(&value);
+            let ops: &[FilterOp] = if value.is_null() { &[FilterOp::Eq, FilterOp::NotEq] } else { &[FilterOp::Eq, FilterOp::NotEq, FilterOp::Gt, FilterOp::Lt] };
+            for &op in ops {
+                let label = if value.is_null() { format!("{name} {}", if op == FilterOp::Eq { "IS NULL" } else { "IS NOT NULL" }) } else { format!("{name} {} '{v}'", op.sql()) };
+                if ui.button(label).clicked() {
+                    apply_value_filter(self.model, self.state.mode, self.options, (col, op, &value), &self.ctx, &mut self.actions);
+                    ui.close();
+                }
+            }
+        }
+        if filterable {
+            ui.separator();
+            ui.label(RichText::new(tr("Custom")).weak().small());
+            let column = if server { super::server_column(self.model, self.options, col) } else { name.clone() };
+            for op in [FilterOp::Eq, FilterOp::NotEq, FilterOp::Gt, FilterOp::Lt] {
+                if ui.button(format!("{name} {} …", op.sql())).on_hover_text(tr("Type the value in the filter box")).clicked() {
+                    self.actions.push(GridAction::EditFilter(format!("{column} {} ", op.sql())));
+                    ui.close();
+                }
+            }
+            for op in [FilterOp::IsNull, FilterOp::IsNotNull] {
+                if ui.button(format!("{name} {}", op.sql())).clicked() {
+                    apply_value_filter(self.model, self.state.mode, self.options, (col, op, &Value::Null), &self.ctx, &mut self.actions);
+                    ui.close();
+                }
+            }
+        }
+        // --- default filter, reset
+        ui.separator();
+        if crate::model::source_table(self.model.columns()).is_ok() {
+            if item(ui, icon::PUSH_PIN, tr("Save as default filter"), None).on_hover_text(tr("Applied whenever this table's data is opened")).clicked() {
+                self.actions.push(GridAction::SaveDefaultFilter);
+                ui.close();
+            }
+            if item(ui, icon::PUSH_PIN_SLASH, tr("Reset default filter"), None).clicked() {
+                self.actions.push(GridAction::DefaultFilter { where_clause: None, order_by: None });
+                ui.close();
+            }
+        }
+        if item(ui, icon::FUNNEL_X, tr("Remove all filters and orderings"), None).clicked() {
+            self.state.sort.clear();
+            match self.state.mode {
+                super::DataMode::Client => self.model.clear_view(),
+                super::DataMode::Server => self.actions.push(GridAction::ServerQueryChanged { where_clause: Some(String::new()), order_by: Some(String::new()) }),
+            }
+            self.actions.push(GridAction::ClearFilterText);
+            ui.close();
+        }
+        if item(ui, icon::FUNNEL, tr("Edit filter…"), None).clicked() {
+            self.actions.push(GridAction::EditFilter(String::new()));
+            ui.close();
+        }
     }
 
     fn menu_items(&mut self, ui: &mut Ui) {
@@ -412,7 +526,7 @@ impl GridFrame<'_> {
     /// Auto-size `col` using a painter for measurement.
     pub fn autosize_with(&mut self, painter: &egui::Painter, col: usize) {
         let header = self.model.column_name(col).to_string();
-        let mut w = self.measure(painter, &header) + 2.0 * super::frame::PAD + super::input::SORT_ZONE + 4.0;
+        let mut w = self.measure(painter, &header) + 2.0 * super::frame::PAD + super::input::SORT_ZONE + super::input::MENU_ZONE + 4.0;
         let rows = self.geo.visible_rows(self.state.rt.scroll_y);
         let fmt = self.options.format.clone();
         let prepared = crate::format::PreparedFormat::new(&fmt, self.state.column_format(col));

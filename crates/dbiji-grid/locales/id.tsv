@@ -329,3 +329,17 @@ Purple	Ungu
 Save as default filter	Simpan sebagai filter bawaan
 Reset default filter	Hapus filter bawaan
 Applied whenever this table's data is opened	Dipakai setiap kali data tabel ini dibuka
+Column menu: {}	Menu kolom: {}
+Add to the ordering	Tambahkan ke urutan
+Cell value	Nilai sel
+Custom	Kustom
+Disable order by {}	Nonaktifkan urutan {}
+Edit filter…	Ubah filter…
+Order by {} ASC	Urutkan {} ASC
+Order by {} DESC	Urutkan {} DESC
+Remove all filters and orderings	Hapus semua filter dan urutan
+Type the value in the filter box	Ketik nilainya di kotak filter
+Dismiss	Tutup
+Export	Ekspor
+Panels	Panel
+Side panels: value, metadata, grouping, calculations, references	Panel samping: nilai, metadata, pengelompokan, kalkulasi, referensi

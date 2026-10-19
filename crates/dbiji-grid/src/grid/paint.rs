@@ -1,7 +1,7 @@
 //! Painting of the grid: body cells, row numbers, header, scrollbars, overlays.
 
 use super::frame::{Geo, GridFrame, PAD};
-use super::input::SORT_ZONE;
+use super::input::{MENU_ZONE, SORT_ZONE};
 use super::state::BodyCache;
 use super::state::Drag;
 use super::text::{GlyphCache, Placed, TextBatch, layout_slow, place_slow};
@@ -506,7 +506,7 @@ impl GridFrame<'_> {
                 left = ir.right() + 3.0;
             }
             let name = self.model.column_name(col);
-            let text_rect = Rect::from_min_max(pos2(left, r.top()), pos2(r.right() - SORT_ZONE, r.bottom()));
+            let text_rect = Rect::from_min_max(pos2(left, r.top()), pos2(r.right() - SORT_ZONE - MENU_ZONE, r.bottom()));
             if text_rect.width() > 4.0 {
                 let mut job =
                     LayoutJob::single_section(name.to_string(), TextFormat { font_id: self.font.clone(), color: theme.header_text, italics: is_virtual, ..Default::default() });
@@ -514,14 +514,32 @@ impl GridFrame<'_> {
                 let g = painter.layout_job(job);
                 painter.galley(pos2(text_rect.left(), r.center().y - g.rect.height() / 2.0), g, theme.header_text);
             }
+            // Column menu button (▾).
+            let menu = Rect::from_min_max(pos2(r.right() - MENU_ZONE, r.top()), r.max);
+            let header_hover = hover.is_some_and(|p| r.contains(p));
+            let menu_open = self.state.rt.header_popup.is_some_and(|(c, ..)| c == col);
+            let menu_color = if menu_open || hover.is_some_and(|p| menu.contains(p)) {
+                theme.header_text
+            } else if header_hover {
+                theme.weak
+            } else {
+                theme.weak.gamma_multiply(0.55)
+            };
+            if r.width() > MENU_ZONE + 8.0 {
+                if menu_open || hover.is_some_and(|p| menu.contains(p)) {
+                    painter.rect_filled(menu.shrink(2.0), CornerRadius::same(3), mix(theme.header_bg, theme.text, 0.10));
+                }
+                let small = FontId::new(self.font.size * 0.8, self.font.family.clone());
+                painter.text(menu.center(), Align2::CENTER_CENTER, egui_phosphor::regular::CARET_DOWN, small, menu_color);
+            }
             // Sort indicator.
             let sort_idx = self.state.sort.iter().position(|k| k.column == col);
-            let zone = Rect::from_min_max(pos2(r.right() - SORT_ZONE, r.top()), r.max);
+            let zone = Rect::from_min_max(pos2(r.right() - MENU_ZONE - SORT_ZONE, r.top()), pos2(r.right() - MENU_ZONE, r.bottom()));
             // The whole header cell sorts on click; hint the sort arrow while hovering it.
-            let zone_hover = hover.is_some_and(|p| r.contains(p));
+            let zone_hover = header_hover && !hover.is_some_and(|p| menu.contains(p));
             if let Some(i) = sort_idx {
                 let k = self.state.sort[i];
-                let icon = if k.descending { egui_phosphor::regular::CARET_DOWN } else { egui_phosphor::regular::CARET_UP };
+                let icon = if k.descending { egui_phosphor::regular::ARROW_DOWN } else { egui_phosphor::regular::ARROW_UP };
                 let small = FontId::new(self.font.size * 0.85, self.font.family.clone());
                 painter.text(zone.center(), Align2::CENTER_CENTER, icon, small.clone(), theme.active_border);
                 if multi_sort {
@@ -530,7 +548,7 @@ impl GridFrame<'_> {
                 }
             } else if zone_hover {
                 let small = FontId::new(self.font.size * 0.85, self.font.family.clone());
-                painter.text(zone.center(), Align2::CENTER_CENTER, egui_phosphor::regular::CARET_UP, small, theme.weak);
+                painter.text(zone.center(), Align2::CENTER_CENTER, egui_phosphor::regular::ARROW_UP, small, theme.weak);
             }
             painter.vline((x1 - 0.5).round() + 0.5, r.y_range(), Stroke::new(1.0, theme.line));
         }

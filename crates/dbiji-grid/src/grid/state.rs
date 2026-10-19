@@ -128,6 +128,9 @@ pub(crate) struct Runtime {
     pub last_geometry: Option<(egui::Rect, egui::Rect, egui::Rect, f32)>,
     /// Body shapes of the last frame, repeated when the store is busy.
     pub body_cache: Option<BodyCache>,
+    /// Column whose header menu (▾) is open, its anchor and whether it was
+    /// opened this frame.
+    pub header_popup: Option<(usize, egui::Rect, bool)>,
 }
 
 /// The painted body of the last frame. When the fetch task holds the row

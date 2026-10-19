@@ -223,6 +223,7 @@ pub(super) fn show(model: &mut ResultModel, state: &mut DataGridState, options: 
     f.context_menu(&body);
     f.context_menu(&rownums);
     f.header_menu(&header);
+    f.header_popup(ui);
     f.dialogs(ui);
 
     let selection_changed = f.state.rt.selection != f.selection_before;

@@ -2565,3 +2565,15 @@ View › Theme switches between the light and the dark theme, or follows the sys
 Help › Error log shows the errors and warnings of this session; Help › Collect diagnostic info saves them without any secret.	Bantuan › Log galat menampilkan galat dan peringatan sesi ini; Bantuan › Kumpulkan info diagnostik menyimpannya tanpa rahasia apa pun.
 Hold ⌘ / Ctrl and click a table name in the editor to open it.	Tahan ⌘ / Ctrl lalu klik nama tabel di editor untuk membukanya.
 Variables: ${object} ${database} ${schema} ${table} ${date} ${time} ${timestamp} ${index} ${extension}	Variabel: ${object} ${database} ${schema} ${table} ${date} ${time} ${timestamp} ${index} ${extension}
+Column menu: {}	Menu kolom: {}
+Add to the ordering	Tambahkan ke urutan
+Cell value	Nilai sel
+Disable order by {}	Nonaktifkan urutan {}
+Edit filter…	Ubah filter…
+Order by {} ASC	Urutkan {} ASC
+Order by {} DESC	Urutkan {} DESC
+Remove all filters and orderings	Hapus semua filter dan urutan
+Type the value in the filter box	Ketik nilainya di kotak filter
+Export	Ekspor
+Panels	Panel
+Side panels: value, metadata, grouping, calculations, references	Panel samping: nilai, metadata, pengelompokan, kalkulasi, referensi

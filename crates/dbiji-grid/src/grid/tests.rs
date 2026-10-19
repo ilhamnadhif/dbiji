@@ -138,9 +138,9 @@ fn fetch_more_is_emitted_near_the_end() {
 #[test]
 fn header_sort_client_and_server() {
     let mut h = GridHarness::new(editable_model(50));
-    // Click the sort zone of column "id" twice: ascending then descending.
+    // Click the header of column "id" twice: ascending then descending.
     let border = h.header_border(0);
-    let zone = egui::pos2(border.x - 8.0, border.y);
+    let zone = egui::pos2(border.x - 26.0, border.y);
     h.click_at(zone, PointerButton::Primary, Modifiers::NONE);
     h.wait_view_job();
     assert_eq!(h.state.sort, vec![crate::view::SortKey::asc(0)]);
@@ -386,4 +386,19 @@ fn fit_hide_empty_highlight_and_zoom() {
     assert_eq!(h.state.zoom, None);
     h.state.set_highlight("name", Some("name 1".into()), None);
     assert!(h.state.highlights.is_empty());
+}
+
+#[test]
+fn header_menu_button_opens_the_column_menu() {
+    let mut h = GridHarness::new(editable_model(20));
+    let border = h.header_border(1);
+    h.click_at(egui::pos2(border.x - 10.0, border.y), PointerButton::Primary, Modifiers::NONE);
+    assert_eq!(h.state.rt.header_popup.map(|p| p.0), Some(1), "▾ of the second column");
+    assert!(h.state.sort.is_empty(), "the ▾ does not sort");
+    // It stays open on the next frames; a click elsewhere closes it.
+    h.frame(vec![]);
+    assert!(h.state.rt.header_popup.is_some());
+    h.click_at(h.cell_center(5, 0), PointerButton::Primary, Modifiers::NONE);
+    h.frame(vec![]);
+    assert!(h.state.rt.header_popup.is_none());
 }

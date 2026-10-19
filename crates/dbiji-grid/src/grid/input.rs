@@ -13,6 +13,8 @@ use egui::{CursorIcon, Event, EventFilter, Key, Response, Sense, Ui, vec2};
 const RESIZE_GRAB: f32 = 4.0;
 /// Width of the sort indicator zone at the right of a header cell.
 pub(super) const SORT_ZONE: f32 = 16.0;
+/// Width of the column menu button (▾) at the right of a header.
+pub(super) const MENU_ZONE: f32 = 16.0;
 
 impl GridFrame<'_> {
     /// Handle all input. Returns the body, header and row number responses.
@@ -20,6 +22,7 @@ impl GridFrame<'_> {
         let id = self.id;
         let body = ui.interact(self.geo.body, id, Sense::click_and_drag());
         let header = ui.interact(self.geo.header, id.with("header"), Sense::click_and_drag());
+        self.header_menu_buttons(ui);
         let rownums = ui.interact(self.geo.rownums, id.with("rownums"), Sense::click_and_drag());
         let corner = ui.interact(self.geo.corner, id.with("corner"), Sense::click());
         self.focused = body.has_focus() || ui.memory(|m| m.has_focus(id));
@@ -155,6 +158,32 @@ impl GridFrame<'_> {
         (egui::Rect::from_min_size(egui::pos2(left, track.top()), vec2(w, track.height())), track)
     }
 
+    /// The ▾ button of every visible header (left of the resize border):
+    /// opens the column menu.
+    fn header_menu_buttons(&mut self, ui: &mut Ui) {
+        let sx = self.state.rt.scroll_x;
+        let range = self.geo.visible_cols(sx);
+        let (top, bottom) = (self.geo.header.top(), self.geo.header.bottom());
+        for pos in range.start..range.end.min(self.geo.cols.len()) {
+            let col = self.geo.cols[pos];
+            let (left, right) = (self.geo.col_left(pos, sx), self.geo.col_left(pos + 1, sx));
+            if right - left <= MENU_ZONE + 8.0 {
+                continue;
+            }
+            let zone = egui::Rect::from_min_max(egui::pos2(right - MENU_ZONE, top), egui::pos2(right - RESIZE_GRAB - 1.0, bottom)).intersect(self.geo.header);
+            if zone.width() <= 0.0 {
+                continue;
+            }
+            let resp = ui.interact(zone, self.id.with(("column_menu", col)), Sense::click());
+            let name = self.model.column_name(col).to_string();
+            resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, dbiji_core::trf("Column menu: {}", &[&name])));
+            if resp.clicked() {
+                let anchor = egui::Rect::from_min_max(egui::pos2(right - MENU_ZONE, top), egui::pos2(right, bottom));
+                self.state.rt.header_popup = Some((col, anchor, true));
+            }
+        }
+    }
+
     fn header_input(&mut self, ui: &mut Ui, header: &Response) {
         let sx = self.state.rt.scroll_x;
         let hover = header.hover_pos().or_else(|| header.interact_pointer_pos());
@@ -187,7 +216,7 @@ impl GridFrame<'_> {
                 self.state.rt.drag = Drag::Resize { col, start_width: self.state.column_width(col), start_x: p.x };
             } else if let Some(pos) = self.geo.col_at(p.x, sx, false) {
                 let right = self.geo.col_left(pos + 1, sx);
-                if p.x < right - SORT_ZONE {
+                if p.x < right - SORT_ZONE - MENU_ZONE {
                     let sel = &mut self.state.rt.selection;
                     if mods.shift {
                         let anchor = sel.anchor().col;
@@ -247,7 +276,8 @@ impl GridFrame<'_> {
         }
         // A click on a header (not a drag, not on a resize border) cycles the
         // sort of that column: ascending → descending → unsorted. Shift / ⌘
-        // add the column to the existing sort.
+        // add the column to the existing sort. (The ▾ buttons on top of the
+        // header open the column menu.)
         if header.clicked()
             && let Some(p) = header.interact_pointer_pos()
             && let Some(pos) = self.geo.col_at(p.x, sx, false)

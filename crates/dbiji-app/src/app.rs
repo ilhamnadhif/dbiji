@@ -1093,7 +1093,9 @@ impl DbijiApp {
                             ui.label(format!("/ {s}"));
                         }
                         ui.separator();
-                        ui.weak(format!("{} {}", live.server.product, live.server.version.split_whitespace().next().unwrap_or("")));
+                        // `version()` texts repeat the product ("PostgreSQL 16.4 on …"): show the number.
+                        let number = live.server.version.split_whitespace().find(|w| w.starts_with(|c: char| c.is_ascii_digit())).unwrap_or("");
+                        ui.weak(format!("{} {number}", live.server.product));
                     } else {
                         ui.weak(tr("not connected"));
                     }

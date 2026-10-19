@@ -471,7 +471,14 @@ impl ResultPanel {
                     self.start_save(cx);
                 }
             }
-            GridAction::ChangesDiscarded | GridAction::SelectionChanged | GridAction::Copied { .. } | GridAction::SwitchView(_) | GridAction::TogglePanel(_) => {}
+            GridAction::ChangesDiscarded
+            | GridAction::SelectionChanged
+            | GridAction::Copied { .. }
+            | GridAction::SwitchView(_)
+            | GridAction::TogglePanel(_)
+            | GridAction::EditFilter(_)
+            | GridAction::SaveDefaultFilter
+            | GridAction::ClearFilterText => {}
             GridAction::OpenValuePanel { .. } | GridAction::AutoRefreshChanged(_) => {}
             GridAction::ServerQueryChanged { where_clause, order_by } => {
                 if let Some(w) = where_clause {
@@ -826,9 +833,16 @@ impl ResultPanel {
                     allow_editing: !cx.conns.config(&self.conn).is_some_and(|c| c.read_only),
                     ..Default::default()
                 };
+                // Messages appear in the toolbar next to the status.
+                if self.status.is_some() {
+                    self.view.toolbar.notice = self.status.take();
+                }
                 let resp = ResultViewer::new(&mut self.model, &mut self.view, &options).id_salt(("result", &self.conn, &self.title)).show(ui);
                 for a in resp.actions {
                     self.handle(a, cx);
+                }
+                if self.status.is_some() {
+                    self.view.toolbar.notice = self.status.take();
                 }
             }
         }

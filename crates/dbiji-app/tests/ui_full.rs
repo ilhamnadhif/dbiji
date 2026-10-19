@@ -670,6 +670,50 @@ fn settings_grid_menu_and_editor_helpers() {
     wait(&mut h, "filter cleared", |h| rows_label(h).split(',').nth(1).unwrap_or_default() == all);
     no_errors(&mut h, "clear filter");
 
+    // Column menu (▾ in the header): order, disable the order, filters.
+    let column_menu = |h: &mut H| {
+        pause(h);
+        h.query_all_by_label("Column menu: id").next().unwrap_or_else(|| panic!("no ▾ for id: {:?}", labels(h))).click();
+        frames(h, 3);
+        assert!(has(h, "Order by id ASC"), "column menu: {:?}", labels(h));
+    };
+    // The id of the first row, through the grid's selected cell.
+    let first_id = |h: &mut H| -> String {
+        let body = h.query_all_by_label_contains("Data grid,").next().unwrap().rect();
+        let p = egui::pos2(body.left() + 20.0, body.top() + 8.0);
+        pause(h);
+        h.event(egui::Event::PointerMoved(p));
+        for pressed in [true, false] {
+            h.event(egui::Event::PointerButton { pos: p, button: egui::PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
+        }
+        frames(h, 2);
+        let l = rows_label(h);
+        l.split("id = ").nth(1).map(|v| v.split(',').next().unwrap_or("").trim().to_string()).unwrap_or_default()
+    };
+    let ascending = first_id(&mut h);
+    column_menu(&mut h);
+    click(&mut h, "Order by id DESC");
+    wait(&mut h, "ordered by id DESC", |h| {
+        let id = first_id(h);
+        !id.is_empty() && id != ascending
+    });
+    column_menu(&mut h);
+    click(&mut h, "Disable order by id");
+    wait(&mut h, "order removed", |h| first_id(h) == ascending);
+    column_menu(&mut h);
+    let eq = labels(&h).into_iter().find(|l| l.starts_with("id = '")).unwrap_or_else(|| panic!("cell value filters: {:?}", labels(&h)));
+    click(&mut h, &eq);
+    wait(&mut h, "filtered by the cell value", |h| rows_label(h).starts_with("Data grid, 1 rows"));
+    column_menu(&mut h);
+    click(&mut h, "Remove all filters and orderings");
+    wait(&mut h, "filters removed", |h| rows_label(h).split(',').nth(1).unwrap_or_default() == all);
+    // Custom: the condition goes into the filter box for the value.
+    column_menu(&mut h);
+    click(&mut h, "id > …");
+    let filter = h.query_all_by_role(egui::accesskit::Role::TextInput).filter_map(|n| n.accesskit_node().value()).find(|v| v.contains("id") && v.trim_end().ends_with('>'));
+    assert!(filter.is_some(), "filter box: {:?}", h.query_all_by_role(egui::accesskit::Role::TextInput).filter_map(|n| n.accesskit_node().value()).collect::<Vec<_>>());
+    settle(&mut h, "column menu");
+
     // Editor helpers: autocomplete, parameters, find, comment toggling.
     h.state_mut().push_command(AppCommand::NewSqlEditor { connection: Some(conn.clone()), schema: None, text: None });
     frames(&mut h, 3);
@@ -846,6 +890,9 @@ fn themes_whats_new_and_updates() {
     assert!(has(&h, &format!("What's new in DBiji {version}")), "{:?}", labels(&h));
     assert_eq!(h.state().settings.updates.last_seen_version.as_deref(), Some(version));
     assert!(!has(&h, "Check for updates automatically?"), "one popup at a time");
+    // egui centres a modal with the size of the previous frame: let the
+    // long notes settle before clicking.
+    frames(&mut h, 8);
     click(&mut h, "Continue");
     assert!(!has(&h, "What's new in DBiji"));
     assert!(has(&h, "Check for updates automatically?"), "{:?}", labels(&h));

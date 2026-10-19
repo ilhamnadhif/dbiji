@@ -1,14 +1,29 @@
 //! Fonts, light/dark visuals, accessibility tweaks and connection-type colours.
 
-use egui::{Color32, Context, FontDefinitions, Stroke, Theme, ThemePreference};
+use egui::{Color32, Context, FontData, FontDefinitions, FontFamily, Stroke, Theme, ThemePreference, Visuals};
+use std::sync::Arc;
 
 /// User theme choice (stored in `settings.json`).
 pub use dbiji_config::settings::Theme as ThemeChoice;
 
-/// Install the default fonts plus the Phosphor icon font as a fallback, so icons
-/// can be mixed into any label.
+/// Inter 4.1 Regular (SIL Open Font License, `assets/fonts/Inter-LICENSE.txt`):
+/// a typeface designed for screens, crisp at UI sizes; egui's default UI font
+/// is a light weight that looks faint and blurry. Subset without the private
+/// use area, where the Phosphor icons live (`pyftsubset --unicodes=
+/// U+0000-DFFF,U+F900-FFFF,U+10000-10FFFF --layout-features='*'`).
+const INTER: &[u8] = include_bytes!("../assets/fonts/Inter-Regular.ttf");
+
+/// Fonts: Inter for the UI, Hack for code, then egui's defaults (emoji and
+/// symbols) and the Phosphor icon font as fallbacks, so icons can be mixed
+/// into any label.
 pub fn setup_fonts(ctx: &Context) {
     let mut fonts = FontDefinitions::default();
+    fonts.font_data.insert("Inter".into(), Arc::new(FontData::from_static(INTER)));
+    let proportional = fonts.families.entry(FontFamily::Proportional).or_default();
+    proportional.retain(|f| f != "Ubuntu-Light");
+    proportional.insert(0, "Inter".into());
+    // Labels in monospace still find letters Hack lacks.
+    fonts.families.entry(FontFamily::Monospace).or_default().push("Inter".into());
     egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
     ctx.set_fonts(fonts);
 }
@@ -49,6 +64,7 @@ pub fn apply_theme(ctx: &Context, choice: ThemeChoice, high_contrast: bool) {
             style.spacing.button_padding = egui::vec2(6.0, 2.0);
             style.spacing.interact_size.y = 20.0;
             style.interaction.tooltip_delay = 0.4;
+            style.visuals = visuals(theme);
             let v = &mut style.visuals;
             v.window_highlight_topmost = true;
             if high_contrast {
@@ -65,6 +81,126 @@ pub fn apply_theme(ctx: &Context, choice: ThemeChoice, high_contrast: bool) {
             }
         });
     }
+}
+
+fn gray(v: u8) -> Color32 {
+    Color32::from_gray(v)
+}
+
+fn hex(rgb: u32) -> Color32 {
+    Color32::from_rgb((rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8)
+}
+
+/// DBiji's palettes: near-black (light) / near-white (dark) text with a
+/// solid secondary colour instead of egui's translucent grey, calm neutral
+/// panels and a clear blue selection.
+pub fn visuals(theme: Theme) -> Visuals {
+    let dark = theme == Theme::Dark;
+    let mut v = if dark { Visuals::dark() } else { Visuals::light() };
+    // Sharper glyphs: no fractional glyph positions (they blur stems).
+    v.text_options.subpixel_binning = false;
+    struct P {
+        text: Color32,
+        weak: Color32,
+        strong: Color32,
+        panel: Color32,
+        window: Color32,
+        field: Color32,
+        faint: Color32,
+        code: Color32,
+        line: Color32,
+        button: Color32,
+        button_hover: Color32,
+        button_active: Color32,
+        border: Color32,
+        border_hover: Color32,
+        accent: Color32,
+        selection: Color32,
+        link: Color32,
+        warn: Color32,
+        error: Color32,
+    }
+    let p = if dark {
+        P {
+            text: hex(0xDFE1E5),
+            weak: hex(0x9DA2AB),
+            strong: hex(0xFFFFFF),
+            panel: hex(0x1E1F22),
+            window: hex(0x2B2D30),
+            field: hex(0x1A1B1E),
+            faint: hex(0x232428),
+            code: hex(0x2B2D30),
+            line: hex(0x393B40),
+            button: hex(0x2B2D30),
+            button_hover: hex(0x393B40),
+            button_active: hex(0x43454A),
+            border: hex(0x43454A),
+            border_hover: hex(0x5A5D63),
+            accent: hex(0x548AF7),
+            selection: hex(0x2E436E),
+            link: hex(0x6CA7FF),
+            warn: hex(0xE0A64B),
+            error: hex(0xF2766D),
+        }
+    } else {
+        P {
+            text: hex(0x1F2328),
+            weak: hex(0x59636E),
+            strong: hex(0x000000),
+            panel: hex(0xF3F4F6),
+            window: hex(0xFFFFFF),
+            field: hex(0xFFFFFF),
+            faint: hex(0xF6F8FA),
+            code: hex(0xEEF0F3),
+            line: hex(0xD5DAE0),
+            button: hex(0xE8EBEF),
+            button_hover: hex(0xDCE1E7),
+            button_active: hex(0xCED5DD),
+            border: hex(0xC9D1D9),
+            border_hover: hex(0x9AA5B1),
+            accent: hex(0x0969DA),
+            selection: hex(0xC8DEFF),
+            link: hex(0x0969DA),
+            warn: hex(0x9A6700),
+            error: hex(0xCF222E),
+        }
+    };
+    v.override_text_color = None;
+    v.weak_text_color = Some(p.weak);
+    v.panel_fill = p.panel;
+    v.window_fill = p.window;
+    v.window_stroke = Stroke::new(1.0, p.line);
+    v.extreme_bg_color = p.field;
+    v.text_edit_bg_color = Some(p.field);
+    v.faint_bg_color = p.faint;
+    v.code_bg_color = p.code;
+    v.hyperlink_color = p.link;
+    v.warn_fg_color = p.warn;
+    v.error_fg_color = p.error;
+    v.selection.bg_fill = p.selection;
+    v.selection.stroke = Stroke::new(1.0, if dark { p.strong } else { p.accent });
+    let w = &mut v.widgets;
+    w.noninteractive.fg_stroke = Stroke::new(1.0, p.text);
+    w.noninteractive.bg_stroke = Stroke::new(1.0, p.line);
+    w.noninteractive.bg_fill = p.window;
+    w.noninteractive.weak_bg_fill = if dark { gray(0x26) } else { hex(0xEAEDF1) };
+    w.inactive.fg_stroke = Stroke::new(1.0, p.text);
+    w.inactive.bg_fill = p.button;
+    w.inactive.weak_bg_fill = p.button;
+    w.inactive.bg_stroke = Stroke::new(1.0, Color32::TRANSPARENT);
+    w.hovered.fg_stroke = Stroke::new(1.5, p.strong);
+    w.hovered.bg_fill = p.button_hover;
+    w.hovered.weak_bg_fill = p.button_hover;
+    w.hovered.bg_stroke = Stroke::new(1.0, p.border_hover);
+    w.active.fg_stroke = Stroke::new(2.0, p.strong);
+    w.active.bg_fill = p.button_active;
+    w.active.weak_bg_fill = p.button_active;
+    w.active.bg_stroke = Stroke::new(1.0, p.accent);
+    w.open.fg_stroke = Stroke::new(1.0, p.strong);
+    w.open.bg_fill = p.button_hover;
+    w.open.weak_bg_fill = p.button_hover;
+    w.open.bg_stroke = Stroke::new(1.0, p.border);
+    v
 }
 
 /// Colour of a connection type marker.

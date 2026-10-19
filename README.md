@@ -166,3 +166,5 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the DBeaver parity matr
 ## License
 
 MIT OR Apache-2.0.
+
+The bundled Inter typeface (`crates/dbiji-app/assets/fonts`) is licensed under the SIL Open Font License 1.1 (`Inter-LICENSE.txt`).

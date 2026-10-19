@@ -410,7 +410,7 @@ fn export_fetched_rows_without_database() {
     let store = dbiji_core::RowStore::shared(1 << 20);
     store.lock().extend((0..10).map(|i| vec![Value::Int(i), Value::text(format!("r{i}")), Value::Null]));
     let columns = vec![ColumnMeta::new("n", "int", DataKind::Int), ColumnMeta::new("label", "text", DataKind::Text), ColumnMeta::new("empty", "text", DataKind::Text)];
-    let mut tab = ExportTab::from_result(h.id.clone(), "Result 1".into(), store, columns, Some(vec![7, 2, 4]), vec![1, 0], Some("select 1".into()));
+    let mut tab = ExportTab::from_result(h.id.clone(), "Result 1".into(), None, store.clone(), columns.clone(), Some(vec![7, 2, 4]), vec![1, 0], Some("select 1".into()));
     assert_eq!(tab.result_source(), ResultSource::Selected);
     {
         let s = tab.settings_mut();
@@ -428,6 +428,20 @@ fn export_fetched_rows_without_database() {
     h.with_cx(|cx| tab.start(cx));
     h.until(&mut tab, "all fetched rows", |t| !t.is_running());
     assert_eq!(tab.last_summary().map(|s| s.rows), Some(10));
+
+    // The rows of a table (here a partition): database, schema, partition and the date.
+    let mut cfg = h.cm.config(&h.id).unwrap().clone();
+    cfg.database = Some("shop".into());
+    h.cm.upsert(cfg);
+    let part = dbiji_core::ObjectRef::new(dbiji_core::ObjectKind::Partition, Some("sales".into()), "orders_2026_10");
+    let mut tab = ExportTab::from_result(h.id.clone(), "orders_2026_10".into(), Some(part), store, columns, None, Vec::new(), None);
+    tab.settings_mut().output_folder = out.clone();
+    h.with_cx(|cx| tab.start(cx));
+    h.until(&mut tab, "partition rows", |t| !t.is_running());
+    let file = tab.last_summary().and_then(|s| s.items[0].file.clone()).expect("output file");
+    let name = file.file_name().unwrap().to_string_lossy().to_string();
+    let date = chrono::Local::now().format("%Y%m%d").to_string();
+    assert!(name.starts_with(&format!("shop_sales_orders_2026_10_{date}_")) && name.ends_with(".csv"), "{name}");
 }
 
 #[test]

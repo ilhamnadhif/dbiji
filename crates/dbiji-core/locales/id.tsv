@@ -2196,7 +2196,6 @@ Value formatting	Format nilai
 Value of the referenced table	Nilai dari tabel yang dirujuk
 Variable name	Nama variabel
 Variables appear when the routine stops.	Variabel muncul saat routine berhenti.
-Variables: ${table} ${schema} ${database} ${timestamp} ${date} ${index} ${extension}	Variabel: ${table} ${schema} ${database} ${timestamp} ${date} ${index} ${extension}
 WHERE filter (optional)	Filter WHERE (opsional)
 Waiting for the routine…	Menunggu routine…
 Warning:	Peringatan:
@@ -2565,3 +2564,4 @@ Settings › Keyboard lets you choose DBeaver-compatible shortcuts or define you
 View › Theme switches between the light and the dark theme, or follows the system.	Tampilan › Tema beralih antara tema terang dan gelap, atau mengikuti sistem.
 Help › Error log shows the errors and warnings of this session; Help › Collect diagnostic info saves them without any secret.	Bantuan › Log galat menampilkan galat dan peringatan sesi ini; Bantuan › Kumpulkan info diagnostik menyimpannya tanpa rahasia apa pun.
 Hold ⌘ / Ctrl and click a table name in the editor to open it.	Tahan ⌘ / Ctrl lalu klik nama tabel di editor untuk membukanya.
+Variables: ${object} ${database} ${schema} ${table} ${date} ${time} ${timestamp} ${index} ${extension}	Variabel: ${object} ${database} ${schema} ${table} ${date} ${time} ${timestamp} ${index} ${extension}

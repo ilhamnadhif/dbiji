@@ -157,3 +157,5 @@ Struktur proyek ada di [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), matriks par
 ## Lisensi
 
 MIT OR Apache-2.0.
+
+Font Inter yang disertakan (`crates/dbiji-app/assets/fonts`) berlisensi SIL Open Font License 1.1 (`Inter-LICENSE.txt`).

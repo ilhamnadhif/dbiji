@@ -756,7 +756,9 @@ fn tool_tabs_run() {
     // Export the customer table to CSV (default format) in ~/Downloads.
     nav_menu(&mut h, "customer", &["Export data"]);
     click(&mut h, "Run export");
-    let csv = wait_file(&mut h, &downloads, "export file", |n| n.starts_with("customer"));
+    // Named database (SQLite: the file) _ table _ date _ time.
+    let date = chrono::Local::now().format("%Y%m%d").to_string();
+    let csv = wait_file(&mut h, &downloads, "export file", |n| n.starts_with(&format!("dbiji-sample_customer_{date}_")) && n.ends_with(".csv"));
     let lines = std::fs::read_to_string(&csv).unwrap().lines().count();
     assert!(lines > 10, "{} has {lines} lines", csv.display());
     settle(&mut h, "export");

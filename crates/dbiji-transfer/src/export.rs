@@ -8,7 +8,7 @@ use crate::source::{CursorSource, RowSource};
 use async_trait::async_trait;
 use chrono::NaiveDateTime;
 use dbiji_core::driver::{CancelHandle, ExecOptions, Session, query_scalar};
-use dbiji_core::{DbError, DbResult, Dialect, ErrorKind, ObjectRef};
+use dbiji_core::{DbError, DbKind, DbResult, Dialect, ErrorKind, ObjectRef};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::future::Future;
@@ -22,7 +22,20 @@ use tokio_util::sync::CancellationToken;
 pub const DEFAULT_BATCH_SIZE: usize = 1000;
 
 /// Default file name pattern of export jobs; the extension is appended.
-pub const DEFAULT_FILE_NAME_PATTERN: &str = "${table}_${timestamp}";
+/// `${object}` is database, schema and table (or partition) as the source
+/// database names them, e.g. `shop_public_orders_20261018_160607.csv`.
+pub const DEFAULT_FILE_NAME_PATTERN: &str = "${object}_${date}_${time}";
+
+/// The source of an export, for `${object}` and `${database}` in file names.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct NameContext {
+    /// Database product.
+    pub kind: Option<DbKind>,
+    /// The connection's database (SQLite, DuckDB: the file name without its
+    /// extension); used when an object does not name its database.
+    pub database: Option<String>,
+}
 
 /// Opens sessions for background transfers. Implemented by the application
 /// (it knows how to resolve secrets, tunnels and the connection settings).
@@ -180,10 +193,13 @@ pub struct ExportJob {
     pub options: ExportOptions,
     /// Folder receiving the files (created when missing).
     pub output_folder: PathBuf,
-    /// File name pattern with `${table}`, `${schema}`, `${database}`,
-    /// `${timestamp}`, `${date}`, `${index}` and `${extension}` (alias
-    /// `${format}`); the extension is appended when the pattern has none.
+    /// File name pattern with `${object}` (database, schema and table as the
+    /// product names them), `${table}`, `${schema}`, `${database}`,
+    /// `${timestamp}`, `${date}`, `${time}`, `${index}` and `${extension}`
+    /// (alias `${format}`); the extension is appended when the pattern has none.
     pub file_name_pattern: String,
+    /// The source connection, for `${object}` and `${database}`.
+    pub source: NameContext,
     /// Items exported in parallel (each with its own session); only used
     /// with `open_new_connections`.
     pub threads: usize,
@@ -204,6 +220,7 @@ impl Default for ExportJob {
             options: ExportOptions::default(),
             output_folder: PathBuf::new(),
             file_name_pattern: DEFAULT_FILE_NAME_PATTERN.into(),
+            source: NameContext::default(),
             threads: 1,
             open_new_connections: true,
             continue_on_error: true,
@@ -265,19 +282,46 @@ fn sanitize_file_name(name: &str) -> String {
     if s.is_empty() { "export".into() } else { s }
 }
 
+/// Database, schema and table (or partition) of an item joined with `_`,
+/// as the product names them: PostgreSQL, CockroachDB and SQL Server
+/// `database_schema_table`; MySQL, MariaDB and ClickHouse `database_table`
+/// (the schema is the database); SQLite and DuckDB `file_table`, with the
+/// schema only when it is not `main`. Missing parts are left out.
+pub fn object_name(item: &ExportItem, ctx: &NameContext) -> String {
+    let some = |v: Option<&str>| v.map(str::trim).filter(|v| !v.is_empty()).map(str::to_string);
+    let table = item.table();
+    let schema = some(table.and_then(|t| t.schema.as_deref()));
+    let database = some(table.and_then(|t| t.database.as_deref())).or_else(|| some(ctx.database.as_deref()));
+    let parts = match ctx.kind {
+        Some(DbKind::MySql | DbKind::MariaDb | DbKind::ClickHouse) => vec![schema.or(database)],
+        Some(DbKind::Sqlite | DbKind::DuckDb) => vec![database, schema.filter(|s| !s.eq_ignore_ascii_case("main"))],
+        _ => vec![database, schema],
+    };
+    let mut out: Vec<String> = Vec::new();
+    for p in parts.into_iter().flatten().chain([item.name()]) {
+        if out.last().is_none_or(|l| !l.eq_ignore_ascii_case(&p)) {
+            out.push(p);
+        }
+    }
+    out.join("_")
+}
+
 /// Expand a file name pattern for one item (see [`ExportJob::file_name_pattern`]).
 /// `index` is 1-based.
-pub fn expand_file_name(pattern: &str, item: &ExportItem, index: usize, format: ExportFormat, timestamp: NaiveDateTime) -> String {
+pub fn expand_file_name(pattern: &str, item: &ExportItem, ctx: &NameContext, index: usize, format: ExportFormat, timestamp: NaiveDateTime) -> String {
     let pattern = if pattern.trim().is_empty() { DEFAULT_FILE_NAME_PATTERN } else { pattern };
     let table = item.table();
     let ext = format.extension();
     let has_ext = ["${extension}", "${ext}", "${format}"].iter().any(|v| pattern.contains(v));
+    let database = table.and_then(|t| t.database.as_deref()).or(ctx.database.as_deref()).unwrap_or("");
     let mut name = pattern
+        .replace("${object}", &object_name(item, ctx))
         .replace("${table}", &item.name())
         .replace("${schema}", table.and_then(|t| t.schema.as_deref()).unwrap_or(""))
-        .replace("${database}", table.and_then(|t| t.database.as_deref()).unwrap_or(""))
+        .replace("${database}", database)
         .replace("${timestamp}", &timestamp.format("%Y%m%d%H%M%S").to_string())
         .replace("${date}", &timestamp.format("%Y%m%d").to_string())
+        .replace("${time}", &timestamp.format("%H%M%S").to_string())
         .replace("${index}", &index.to_string())
         .replace("${extension}", ext)
         .replace("${ext}", ext)
@@ -294,7 +338,7 @@ pub fn expand_file_name(pattern: &str, item: &ExportItem, index: usize, format: 
 fn plan_files(job: &ExportJob, timestamp: NaiveDateTime) -> Vec<PathBuf> {
     let mut names: Vec<String> = Vec::with_capacity(job.items.len());
     for (i, item) in job.items.iter().enumerate() {
-        let name = expand_file_name(&job.file_name_pattern, item, i + 1, job.format, timestamp);
+        let name = expand_file_name(&job.file_name_pattern, item, &job.source, i + 1, job.format, timestamp);
         let mut candidate = name.clone();
         let mut n = 2;
         while names.iter().any(|x| x.eq_ignore_ascii_case(&candidate)) {
@@ -516,11 +560,32 @@ mod tests {
     fn file_names() {
         let ts = NaiveDate::from_ymd_opt(2026, 10, 18).unwrap().and_hms_opt(9, 8, 7).unwrap();
         let t = ExportItem::Table { table: ObjectRef::table(Some("public".into()), "users"), where_clause: None };
-        assert_eq!(expand_file_name("${table}_${timestamp}", &t, 1, ExportFormat::Csv, ts), "users_20261018090807.csv");
-        assert_eq!(expand_file_name("${schema}.${table}-${index}.${extension}", &t, 3, ExportFormat::Xlsx, ts), "public.users-3.xlsx");
+        let none = NameContext::default();
+        assert_eq!(expand_file_name("${table}_${timestamp}", &t, &none, 1, ExportFormat::Csv, ts), "users_20261018090807.csv");
+        assert_eq!(expand_file_name("${schema}.${table}-${index}.${extension}", &t, &none, 3, ExportFormat::Xlsx, ts), "public.users-3.xlsx");
         let q = ExportItem::Query { sql: "select 1".into(), name: Some("a/b".into()) };
-        assert_eq!(expand_file_name("${table}_${date}", &q, 1, ExportFormat::JsonLines, ts), "a_b_20261018.jsonl");
-        assert_eq!(expand_file_name("", &q, 1, ExportFormat::Sql, ts), "a_b_20261018090807.sql");
+        assert_eq!(expand_file_name("${table}_${date}", &q, &none, 1, ExportFormat::JsonLines, ts), "a_b_20261018.jsonl");
+        assert_eq!(expand_file_name("", &q, &none, 1, ExportFormat::Sql, ts), "a_b_20261018_090807.sql");
+
+        // ${object}: database, schema, table (or partition) as each product names them
+        let ctx = |kind, db: Option<&str>| NameContext { kind: Some(kind), database: db.map(Into::into) };
+        let pg = ctx(DbKind::Postgres, Some("shop"));
+        assert_eq!(expand_file_name("", &t, &pg, 1, ExportFormat::Csv, ts), "shop_public_users_20261018_090807.csv");
+        let part = ExportItem::Table { table: ObjectRef::new(dbiji_core::ObjectKind::Partition, Some("sales".into()), "orders_2026_10"), where_clause: None };
+        assert_eq!(object_name(&part, &pg), "shop_sales_orders_2026_10");
+        let other_db = ExportItem::Table { table: ObjectRef { database: Some("archive".into()), ..ObjectRef::table(Some("public".into()), "users") }, where_clause: None };
+        assert_eq!(object_name(&other_db, &pg), "archive_public_users");
+        let my = ExportItem::Table { table: ObjectRef::table(Some("shop".into()), "users"), where_clause: None };
+        assert_eq!(object_name(&my, &ctx(DbKind::MySql, Some("shop"))), "shop_users");
+        assert_eq!(object_name(&my, &ctx(DbKind::MariaDb, Some("other"))), "shop_users", "the schema is the database");
+        let lite = ExportItem::Table { table: ObjectRef::table(Some("main".into()), "users"), where_clause: None };
+        assert_eq!(object_name(&lite, &ctx(DbKind::Sqlite, Some("dbiji-sample"))), "dbiji-sample_users");
+        let attached = ExportItem::Table { table: ObjectRef::table(Some("aux".into()), "users"), where_clause: None };
+        assert_eq!(object_name(&attached, &ctx(DbKind::Sqlite, Some("app"))), "app_aux_users");
+        assert_eq!(object_name(&t, &ctx(DbKind::SqlServer, Some("Sales"))), "Sales_public_users");
+        // a query: the connection's database and the query name
+        assert_eq!(object_name(&q, &pg), "shop_a/b");
+        assert_eq!(object_name(&t, &none), "public_users");
     }
 
     #[test]

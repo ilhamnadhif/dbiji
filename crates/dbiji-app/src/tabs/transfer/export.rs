@@ -14,8 +14,8 @@ use dbiji_core::{ColumnMeta, DbError, DbKind, DbResult, Dialect, SharedRowStore,
 use dbiji_tasks::TaskKind;
 use dbiji_transfer::{
     BinaryEncoding, CancellationToken, CsvOptions, DbUnitOptions, EscapeStyle, ExportFormat, ExportItem, ExportItemSummary, ExportJob, ExportJobSummary, ExportOptions,
-    ExportTarget, HeaderStyle, HtmlOptions, IdentifierQuoting, JsonLayout, JsonOptions, LineEnding, MarkdownOptions, ParquetCompression, ParquetOptions, PhpOptions, Progress,
-    QuoteMode, RowStoreSource, SessionFactory, SqlInsertMode, SqlOptions, TxtOptions, ValueFormat, XlsxOptions, XmlNullMode, XmlOptions, create_sink, expand_file_name,
+    ExportTarget, HeaderStyle, HtmlOptions, IdentifierQuoting, JsonLayout, JsonOptions, LineEnding, MarkdownOptions, NameContext, ParquetCompression, ParquetOptions, PhpOptions,
+    Progress, QuoteMode, RowStoreSource, SessionFactory, SqlInsertMode, SqlOptions, TxtOptions, ValueFormat, XlsxOptions, XmlNullMode, XmlOptions, create_sink, expand_file_name,
     run_export_batched, run_export_job_with,
 };
 use egui::{RichText, Ui};
@@ -41,6 +41,8 @@ struct SourceItem {
 /// Rows already fetched into a result grid ([`ExportTab::from_result`]).
 struct Fetched {
     title: String,
+    /// The table (or partition) the rows come from, for the file name.
+    table: Option<ObjectRef>,
     store: SharedRowStore,
     columns: Vec<ColumnMeta>,
     /// Selected rows (store indices).
@@ -72,6 +74,17 @@ pub fn grid_store_rows(model: &dbiji_grid::ResultModel, display_rows: &[usize]) 
             _ => None,
         })
         .collect()
+}
+
+/// Database kind and current database of a connection, for file names
+/// (SQLite and DuckDB: the database file name without its extension).
+pub fn name_context(cx: &AppContext, conn: &str) -> NameContext {
+    let Some(cfg) = cx.conns.config(conn) else { return NameContext::default() };
+    let database = match cfg.kind {
+        DbKind::Sqlite | DbKind::DuckDb => cfg.file_path.as_deref().and_then(|p| std::path::Path::new(p).file_stem()).map(|s| s.to_string_lossy().into_owned()),
+        _ => cx.conns.live(conn).and_then(|l| l.current_database.clone()).or_else(|| cfg.database.clone()),
+    };
+    NameContext { kind: Some(cfg.kind), database: database.filter(|d| !d.is_empty()) }
 }
 
 /// The export wizard tab.
@@ -154,7 +167,17 @@ impl ExportTab {
     /// to the columns `cols` (indices into `columns`, in output order; empty
     /// = all). Both run without database access. With `sql` the query can
     /// also be run again for all rows (then the export can be saved as a task).
-    pub fn from_result(conn: String, title: String, store: SharedRowStore, columns: Vec<ColumnMeta>, rows: Option<Vec<usize>>, cols: Vec<usize>, sql: Option<String>) -> Self {
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_result(
+        conn: String,
+        title: String,
+        table: Option<ObjectRef>,
+        store: SharedRowStore,
+        columns: Vec<ColumnMeta>,
+        rows: Option<Vec<usize>>,
+        cols: Vec<usize>,
+        sql: Option<String>,
+    ) -> Self {
         let sql = sql.filter(|s| !s.trim().is_empty());
         let mut tab = Self::new(conn, Vec::new(), sql.clone());
         let name = Some(title.trim().to_string()).filter(|t| !t.is_empty());
@@ -162,7 +185,7 @@ impl ExportTab {
             *n = name;
         }
         tab.result_source = if rows.is_some() { ResultSource::Selected } else { ResultSource::Fetched };
-        tab.fetched = Some(Fetched { title, store, columns, rows, cols, sql });
+        tab.fetched = Some(Fetched { title, table, store, columns, rows, cols, sql });
         tab
     }
 
@@ -225,6 +248,7 @@ impl ExportTab {
 
     /// Run the export (the "Run" button).
     pub fn start(&mut self, cx: &mut AppContext) {
+        self.settings.source = name_context(cx, &self.conn);
         if self.run.is_some() {
             return;
         }
@@ -297,8 +321,12 @@ impl ExportTab {
         self.fetched.is_some() && self.result_source != ResultSource::Query
     }
 
-    /// Item naming the output file of a result grid export.
+    /// Item naming the output file of a result grid export: the table the
+    /// rows come from, else the result's title.
     fn fetched_item(&self) -> ExportItem {
+        if let Some(table) = self.fetched.as_ref().and_then(|f| f.table.clone()) {
+            return ExportItem::Table { table, where_clause: None };
+        }
         let name = self.fetched.as_ref().map(|f| f.title.trim().to_string()).filter(|t| !t.is_empty());
         ExportItem::Query { sql: String::new(), name }
     }
@@ -330,7 +358,7 @@ impl ExportTab {
         let format = self.settings.format;
         let dialect = cx.conns.registry.dialect(self.sql_dialect.unwrap_or(kind));
         let item = self.fetched_item();
-        let file = expand_file_name(&self.settings.file_name_pattern, &item, 1, format, chrono::Local::now().naive_local());
+        let file = expand_file_name(&self.settings.file_name_pattern, &item, &self.settings.source, 1, format, chrono::Local::now().naive_local());
         let path = self.settings.output_folder.join(file);
         let name = item.name();
         self.error = None;
@@ -660,7 +688,7 @@ impl ExportTab {
             ui.label(tr("File name"));
             ui.vertical(|ui| {
                 ui.add(egui::TextEdit::singleline(&mut self.settings.file_name_pattern).desired_width(360.0));
-                ui.weak(tr("Variables: ${table} ${schema} ${database} ${timestamp} ${date} ${index} ${extension}"));
+                ui.weak(tr("Variables: ${object} ${database} ${schema} ${table} ${date} ${time} ${timestamp} ${index} ${extension}"));
             });
             ui.end_row();
             ui.label(tr("Workers"));
@@ -677,7 +705,7 @@ impl ExportTab {
         section(ui, tr("Files"));
         let now = chrono::Local::now().naive_local();
         if self.fetched_mode() {
-            let name = expand_file_name(&self.settings.file_name_pattern, &self.fetched_item(), 1, self.settings.format, now);
+            let name = expand_file_name(&self.settings.file_name_pattern, &self.fetched_item(), &self.settings.source, 1, self.settings.format, now);
             ui.monospace(self.settings.output_folder.join(name).display().to_string());
             return;
         }
@@ -686,7 +714,7 @@ impl ExportTab {
             ui.weak(tr("No object selected."));
         }
         for (i, item) in job.items.iter().enumerate().take(50) {
-            let name = expand_file_name(&job.file_name_pattern, item, i + 1, job.format, now);
+            let name = expand_file_name(&job.file_name_pattern, item, &job.source, i + 1, job.format, now);
             ui.monospace(job.output_folder.join(name).display().to_string());
         }
         if job.items.len() > 50 {
@@ -1314,6 +1342,7 @@ impl TabView for ExportTab {
 
     fn ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
         self.poll(cx);
+        self.settings.source = name_context(cx, &self.conn);
         let uid = self.uid;
         egui::Panel::top(egui::Id::new(("exp_top", uid))).show(ui, |ui| {
             ui.add_space(4.0);

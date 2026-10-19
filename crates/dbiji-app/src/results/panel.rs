@@ -513,6 +513,7 @@ impl ResultPanel {
                 let tab = crate::tabs::transfer::ExportTab::from_result(
                     self.conn.clone(),
                     self.title.clone(),
+                    self.table.clone(),
                     self.src.store.clone(),
                     self.model.columns().to_vec(),
                     rows,

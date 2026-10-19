@@ -2623,3 +2623,4 @@ Show all databases in the navigator	Tampilkan semua database di navigator
 The navigator lists only the connection's database; the new one appears when all databases are shown.	Navigator hanya menampilkan database koneksi ini; database baru muncul jika semua database ditampilkan.
 Confirm statements that change data or schema	Konfirmasi statement yang mengubah data atau skema
 Connection type "{}" asks before statements that change data or schema.	Tipe koneksi "{}" meminta konfirmasi sebelum statement yang mengubah data atau skema.
+Resize {}	Ubah lebar {}

@@ -27,6 +27,29 @@ fn value_text(v: &Value, is_default: bool, modified: bool, fmt: &PreparedFormat,
     if modified { rt.background_color(theme.modified) } else { rt }
 }
 
+/// The draggable right border of a header cell: drag to resize, double-click
+/// to fit (`fit`). Returns true when `width` changed.
+/// The keyboard focus goes back to `focus` (the view) afterwards.
+fn resize_handle(ui: &mut Ui, cell: egui::Rect, id: egui::Id, label: &str, focus: egui::Id, width: &mut f32, fit: impl FnOnce(&Ui) -> f32) -> bool {
+    let handle = egui::Rect::from_x_y_ranges(cell.right() - 4.0..=cell.right() + 4.0, cell.y_range());
+    let resp = ui.interact(handle, id, egui::Sense::click_and_drag());
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, trf("Resize {}", &[&label])));
+    if resp.hovered() || resp.dragged() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+    }
+    let before = *width;
+    if resp.double_clicked() {
+        *width = fit(ui);
+    } else if resp.dragged() {
+        *width += resp.drag_delta().x;
+    }
+    *width = width.clamp(60.0, 1600.0);
+    if resp.clicked() || resp.double_clicked() || resp.drag_stopped() {
+        ui.memory_mut(|m| m.request_focus(focus));
+    }
+    (*width - before).abs() > f32::EPSILON
+}
+
 /// One line of text in `rect` (left, vertically centred, cut with "…").
 fn paint_text(ui: &Ui, rect: egui::Rect, text: RichText, fallback: egui::Color32) {
     let galley = egui::WidgetText::from(text).into_galley(ui, Some(egui::TextWrapMode::Truncate), rect.width(), egui::TextStyle::Body);
@@ -55,6 +78,10 @@ pub struct RecordViewState {
     focus_request: bool,
     /// Cell picked in the side-by-side view: (row, column).
     picked: Option<(usize, usize)>,
+    /// Widths set by the user in the side-by-side view: per row, and the
+    /// column-name column.
+    widths: std::collections::BTreeMap<usize, f32>,
+    lead_width: Option<f32>,
 }
 
 impl RecordViewState {
@@ -430,8 +457,24 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
     let name_w = columns.iter().map(|&c| measure(ui, model.column_name(c).to_string(), body.clone())).fold(0.0_f32, f32::max).clamp(100.0, 260.0) + 8.0;
     let type_of = |c: usize| model.column_meta(c).map_or_else(|| tr("virtual").to_string(), |m| m.type_name.to_lowercase());
     let type_w = columns.iter().map(|&c| measure(ui, type_of(c), small.clone())).fold(0.0_f32, f32::max).clamp(40.0, 140.0) + 16.0;
-    let lead = 24.0 + name_w + type_w;
-    let cell_w = ((ui.available_width() - lead - 16.0) / rows.len() as f32).clamp(150.0, 360.0);
+    let fit_lead = 24.0 + name_w + type_w;
+    let lead = state.lead_width.unwrap_or(fit_lead);
+    let default_w = ((ui.available_width() - lead - 16.0) / rows.len() as f32).clamp(150.0, 360.0);
+    let mut widths: Vec<f32> = rows.iter().map(|r| state.widths.get(r).copied().unwrap_or(default_w)).collect();
+    let mut lead_w = lead;
+    // Width that shows the longest value of row `j` (double-click on the border).
+    let fit_row = |ui: &Ui, j: usize, r: usize| -> f32 {
+        let mut w = measure(ui, trf("Row #{}", &[&(r + 1)]), body.clone());
+        for (i, &c) in columns.iter().enumerate() {
+            if let Some((v, is_default, modified)) = values.get(j).and_then(|vs| vs.get(i)) {
+                let fmt = PreparedFormat::new(&options.format, grid.column_format(c));
+                let rt = value_text(v, *is_default, *modified, &fmt, options, &theme);
+                let g = egui::WidgetText::from(rt).into_galley(ui, Some(egui::TextWrapMode::Extend), f32::INFINITY, egui::TextStyle::Body);
+                w = w.max(g.size().x);
+            }
+        }
+        w + 20.0
+    };
     let row_h = ui.text_style_height(&egui::TextStyle::Body) + 10.0;
     let key_cols: Vec<usize> = model.editability().as_ref().map(|t| t.key_columns.clone()).unwrap_or_default();
     let active_row = grid.active_cell().map(|(r, _)| r);
@@ -443,22 +486,29 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
             // Header: one column per row.
+            // Borders are resized by dragging, fitted by a double-click.
             ui.horizontal(|ui| {
-                let (rect, _) = ui.allocate_exact_size(egui::vec2(lead, row_h), egui::Sense::hover());
+                let (rect, _) = ui.allocate_exact_size(egui::vec2(lead_w, row_h), egui::Sense::hover());
                 ui.painter().rect_filled(rect, 0.0, theme.header_bg);
                 ui.painter().text(rect.left_center() + egui::vec2(8.0, 0.0), egui::Align2::LEFT_CENTER, tr("Column"), body.clone(), theme.weak);
-                for &r in &rows {
-                    let (rect, _) = ui.allocate_exact_size(egui::vec2(cell_w, row_h), egui::Sense::hover());
+                if resize_handle(ui, rect, ui.id().with("record_lead"), tr("Column"), focus.id, &mut lead_w, |_| fit_lead) {
+                    state.lead_width = Some(lead_w);
+                }
+                for (j, &r) in rows.iter().enumerate() {
+                    let (rect, _) = ui.allocate_exact_size(egui::vec2(widths[j], row_h), egui::Sense::hover());
                     let fill = if active_row == Some(r) { theme.header_selected_bg } else { theme.header_bg };
                     ui.painter().rect_filled(rect, 0.0, fill);
                     ui.painter().vline(rect.left(), rect.y_range(), egui::Stroke::new(1.0, theme.line));
                     ui.painter().text(rect.left_center() + egui::vec2(8.0, 0.0), egui::Align2::LEFT_CENTER, trf("Row #{}", &[&(r + 1)]), body.clone(), theme.header_text);
+                    if resize_handle(ui, rect, ui.id().with(("record_col", r)), &trf("Row #{}", &[&(r + 1)]), focus.id, &mut widths[j], |ui| fit_row(ui, j, r)) {
+                        state.widths.insert(r, widths[j]);
+                    }
                 }
             });
             ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                 for (i, &c) in columns.iter().enumerate() {
                     ui.horizontal(|ui| {
-                        let (lead_rect, _) = ui.allocate_exact_size(egui::vec2(lead, row_h), egui::Sense::hover());
+                        let (lead_rect, _) = ui.allocate_exact_size(egui::vec2(lead_w, row_h), egui::Sense::hover());
                         let stripe = if i % 2 == 1 { theme.stripe } else { theme.bg };
                         let hovered = ui.input(|inp| inp.pointer.hover_pos()).is_some_and(|p| p.y >= lead_rect.top() && p.y < lead_rect.bottom() && ui.clip_rect().contains(p));
                         let row_fill = if hovered { crate::theme::mix(theme.bg, theme.text, 0.06) } else { stripe };
@@ -472,14 +522,16 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
                         }
                         x += 18.0;
                         let name = model.column_name(c);
-                        let name_rect = egui::Rect::from_min_size(egui::pos2(x, lead_rect.top()), egui::vec2(name_w, row_h));
+                        // The type sits at the right of the column-name column.
+                        let type_left = (lead_rect.right() - type_w).max(x + 40.0);
+                        let name_rect = egui::Rect::from_min_max(egui::pos2(x, lead_rect.top()), egui::pos2(type_left - 4.0, lead_rect.bottom()));
                         paint_text(ui, name_rect, RichText::new(name).color(theme.weak), theme.text);
-                        let type_rect = egui::Rect::from_min_size(egui::pos2(x + name_w, lead_rect.top()), egui::vec2(type_w - 6.0, row_h));
+                        let type_rect = egui::Rect::from_min_max(egui::pos2(type_left, lead_rect.top()), egui::pos2(lead_rect.right() - 6.0, lead_rect.bottom()));
                         paint_text(ui, type_rect, RichText::new(type_of(c)).font(small.clone()).color(theme.weak.gamma_multiply(0.8)), theme.text);
                         for (j, &r) in rows.iter().enumerate() {
                             if state.editing.as_ref().is_some_and(|(er, ec, _)| *er == r && *ec == c) {
                                 if let Some((_, _, text)) = state.editing.as_mut() {
-                                    let te = ui.add_sized([cell_w, row_h], TextEdit::singleline(text));
+                                    let te = ui.add_sized([widths[j], row_h], TextEdit::singleline(text));
                                     if te.lost_focus() {
                                         if ui.input(|inp| inp.key_pressed(Key::Escape)) {
                                             state.editing = None;
@@ -492,7 +544,7 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
                                 }
                                 continue;
                             }
-                            let (rect, resp) = ui.allocate_exact_size(egui::vec2(cell_w, row_h), egui::Sense::click());
+                            let (rect, resp) = ui.allocate_exact_size(egui::vec2(widths[j], row_h), egui::Sense::click());
                             let is_picked = picked == Some((r, c));
                             let fill = if is_picked { theme.selection } else { row_fill };
                             ui.painter().rect_filled(rect, 0.0, fill);

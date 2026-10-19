@@ -739,6 +739,31 @@ fn settings_grid_menu_and_editor_helpers() {
     frames(&mut h, 3);
     wait(&mut h, "rows side by side", |h| has(h, "Record view, 3 rows"));
     assert!(has(&h, "3 selected rows"), "{:?}", labels(&h));
+    // Drag a column border: wider; double-click it: fitted to the values.
+    let handle = |h: &H| h.query_all_by_label_contains("Resize Row #").next().map(|n| n.rect()).unwrap_or_else(|| panic!("{:?}", labels(h)));
+    let start = handle(&h).center();
+    pause(&mut h);
+    h.event(egui::Event::PointerMoved(start));
+    h.event(egui::Event::PointerButton { pos: start, button: egui::PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    frames(&mut h, 1);
+    for dx in [20.0, 40.0, 80.0] {
+        h.event(egui::Event::PointerMoved(egui::pos2(start.x + dx, start.y)));
+        frames(&mut h, 1);
+    }
+    h.event(egui::Event::PointerButton { pos: egui::pos2(start.x + 80.0, start.y), button: egui::PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    frames(&mut h, 2);
+    let dragged = handle(&h).center().x;
+    assert!((dragged - start.x - 80.0).abs() < 6.0, "dragged from {} to {dragged}", start.x);
+    pause(&mut h);
+    for _ in 0..2 {
+        let p = handle(&h).center();
+        h.event(egui::Event::PointerMoved(p));
+        h.event(egui::Event::PointerButton { pos: p, button: egui::PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+        h.event(egui::Event::PointerButton { pos: p, button: egui::PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+        frames(&mut h, 1);
+    }
+    frames(&mut h, 2);
+    assert!((handle(&h).center().x - dragged).abs() > 6.0, "double-click fits the column");
     h.key_press(Key::Tab);
     frames(&mut h, 3);
     wait(&mut h, "grid after the rows", |h| has(h, "Data grid,"));

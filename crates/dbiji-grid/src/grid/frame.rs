@@ -171,7 +171,10 @@ pub(super) fn show(model: &mut ResultModel, state: &mut DataGridState, options: 
         }
     }
 
-    let font = options.font.clone().unwrap_or_else(|| TextStyle::Body.resolve(ui.style()));
+    let mut font = options.font.clone().unwrap_or_else(|| TextStyle::Body.resolve(ui.style()));
+    if let Some(z) = state.zoom {
+        font.size = (font.size * z.clamp(0.5, 3.0)).round();
+    }
     let theme = GridTheme::from_visuals(ui.visuals());
     let avail = ui.available_rect_before_wrap();
     let rect = Rect::from_min_size(avail.min, avail.size().max(vec2(160.0, 80.0)));
@@ -208,6 +211,9 @@ pub(super) fn show(model: &mut ResultModel, state: &mut DataGridState, options: 
     f.selection_before = f.state.rt.selection.clone();
 
     let (body, header, rownums) = f.interact(ui);
+    for cmd in std::mem::take(&mut f.state.rt.pending) {
+        f.run_command(ui, cmd);
+    }
     f.ensure_active_visible();
     f.check_fetch_more();
     f.paint(ui);

@@ -39,6 +39,30 @@ use dbiji_core::{Dialect, ObjectRef, Value, tr, trf};
 use std::sync::Arc;
 use std::time::Duration;
 
+/// Editing and layout commands that act on the active cell or the
+/// selection, run by the grid on its next frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GridCommand {
+    /// Insert a new row before the active one.
+    AddRowBefore,
+    /// Copy the values of the row above into the selected cells.
+    CopyFromAbove,
+    /// Copy the values of the row below into the selected cells.
+    CopyFromBelow,
+    /// A new UUID in each selected cell.
+    GenerateUuid,
+    /// Move the active column left.
+    MoveColumnLeft,
+    /// Move the active column right.
+    MoveColumnRight,
+    /// Column widths that fit the visible values.
+    FitColumnsToValues,
+    /// Column widths that fill the visible width.
+    FitColumnsToScreen,
+    /// Hide the columns without data.
+    HideEmptyColumns,
+}
+
 /// Display options of a grid, owned by the application.
 #[derive(Clone)]
 pub struct GridOptions {
@@ -135,6 +159,14 @@ pub enum PanelKind {
 /// dialogs it owns). Everything else is handled inside the grid.
 #[derive(Debug, Clone, PartialEq)]
 pub enum GridAction {
+    /// Save the current WHERE / ORDER BY as the table's default (both
+    /// `None`: forget the default).
+    DefaultFilter {
+        /// WHERE condition.
+        where_clause: Option<String>,
+        /// ORDER BY list.
+        order_by: Option<String>,
+    },
     /// The user scrolled near the end and `model.fetch.has_more` is set:
     /// fetch the next page and append it to `model.store()` (FR-D1).
     FetchMore,

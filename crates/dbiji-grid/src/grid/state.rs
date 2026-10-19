@@ -1,5 +1,6 @@
 //! Persistent layout state of a grid plus transient interaction state.
 
+use super::GridCommand;
 use super::selection::{CellPos, Selection};
 use super::text::GlyphCache;
 use crate::copy::CopyOptions;
@@ -61,6 +62,21 @@ pub fn default_width(name: &str, kind: DataKind) -> f32 {
     name_w.max(kind_w).clamp(48.0, 320.0)
 }
 
+/// Highlight of the rows whose `column` has `value` (`None` = NULL).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RowHighlight {
+    /// Column name.
+    pub column: String,
+    /// The value as text; `None` matches NULL.
+    pub value: Option<String>,
+    /// RGB colour.
+    pub color: [u8; 3],
+}
+
+/// Colours offered for row highlighting: (label, RGB).
+pub const HIGHLIGHT_COLORS: [(&str, [u8; 3]); 6] =
+    [("Red", [230, 70, 70]), ("Orange", [240, 150, 40]), ("Yellow", [230, 200, 40]), ("Green", [60, 180, 90]), ("Blue", [60, 130, 230]), ("Purple", [160, 90, 220])];
+
 /// Grid state the application keeps per result tab. The serialisable part
 /// (column widths, order, visibility, formats, sort, mode) can be stored to
 /// persist layouts; selection, scroll position and editing state are transient.
@@ -77,6 +93,10 @@ pub struct DataGridState {
     pub mode: DataMode,
     /// Last options used in the advanced copy dialog.
     pub copy_options: CopyOptions,
+    /// Text size of the grid (`None` = 100 %).
+    pub zoom: Option<f32>,
+    /// Rows highlighted by the value of a column.
+    pub highlights: Vec<RowHighlight>,
     #[serde(skip)]
     pub(crate) rt: Runtime,
 }
@@ -84,6 +104,8 @@ pub struct DataGridState {
 /// Transient interaction state.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Runtime {
+    /// Commands to run on the next frame (see [`DataGridState::request`]).
+    pub pending: Vec<GridCommand>,
     pub selection: Selection,
     pub scroll_x: f32,
     pub scroll_y: f64,
@@ -274,6 +296,24 @@ impl DataGridState {
     pub fn set_column_format(&mut self, col: usize, format: Option<ColumnFormat>) {
         if let Some(c) = self.columns.get_mut(col) {
             c.format = format.filter(|f| !f.is_empty());
+        }
+    }
+
+    /// Run a grid command on the next frame (menus, shortcuts, the command palette).
+    pub fn request(&mut self, cmd: GridCommand) {
+        self.rt.pending.push(cmd);
+    }
+
+    /// Change the grid text size by `step` (e.g. +0.1); `None` resets it.
+    pub fn zoom_by(&mut self, step: Option<f32>) {
+        self.zoom = step.map(|d| (self.zoom.unwrap_or(1.0) + d).clamp(0.5, 3.0)).filter(|z| (z - 1.0).abs() > 0.01);
+    }
+
+    /// Highlight (or stop highlighting, `color: None`) the rows where `column` is `value`.
+    pub fn set_highlight(&mut self, column: &str, value: Option<String>, color: Option<[u8; 3]>) {
+        self.highlights.retain(|h| !(h.column == column && h.value == value));
+        if let Some(color) = color {
+            self.highlights.push(RowHighlight { column: column.to_string(), value, color });
         }
     }
 

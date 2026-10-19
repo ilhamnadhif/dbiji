@@ -50,15 +50,16 @@ Status: ☐ open · ☑ done (with the test that covers it).
 
 ## 4. Data editor (result grid)
 
-- ☐ Add row before the current one; copy value from the row above / below
-- ☐ Generate UUID into the cell
-- ☐ Column widths: fit to screen / fit to values
-- ☐ Move column left / right (keyboard)
-- ☐ Hide columns that have no data
-- ☐ Zoom the grid in / out
-- ☐ Save the current filter as the table's default / reset it
-- ☐ Toggle the sort order of the current column (keyboard)
-- ☐ Row colouring by condition (e.g. `status = 'error'` red)
+- ☑ Add row before the current one (Shift+Insert); copy value from the row above / below (⌘⌥↑ / ⌘⌥↓)
+- ☑ Generate UUID into the selected cells
+- ☑ Column widths: fit to screen / fit to values; hide columns that have no data
+- ☑ Move column left / right (⌘⌥← / ⌘⌥→)
+- ☑ Zoom the grid in / out (saved with the layout)
+- ☑ Row highlighting by value (six colours, saved with the layout)
+  — `dbiji-grid::grid::tests::insert_before_copy_adjacent_uuid_and_columns`, `…::fit_hide_empty_highlight_and_zoom`, menu sweep in `dbiji-app::ui_full`
+- ☑ Save the current filter / order as the table's default and reset it (project virtual model)
+  — `dbiji-app::data_edit_e2e::default_filter_per_table`
+- ☑ Toggle the sort order of a column: click the header (ascending → descending → off)
 
 ## 5. Workspace and layout
 

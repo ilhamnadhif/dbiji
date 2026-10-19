@@ -196,6 +196,19 @@ impl<'a> FilterBar<'a> {
             if ui.button(icon::X).on_hover_text(tr("Clear filter and order")).clicked() {
                 clear = true;
             }
+            if crate::model::source_table(model.columns()).is_ok() {
+                ui.menu_button(icon::DOTS_THREE, |ui| {
+                    let some = |s: &str| Some(s.trim().to_string()).filter(|s| !s.is_empty());
+                    if ui.button(format!("{} {}", icon::PUSH_PIN, tr("Save as default filter"))).on_hover_text(tr("Applied whenever this table's data is opened")).clicked() {
+                        actions.push(GridAction::DefaultFilter { where_clause: some(&state.filter_text), order_by: some(&state.order_text) });
+                        ui.close();
+                    }
+                    if ui.button(format!("{} {}", icon::PUSH_PIN_SLASH, tr("Reset default filter"))).clicked() {
+                        actions.push(GridAction::DefaultFilter { where_clause: None, order_by: None });
+                        ui.close();
+                    }
+                });
+            }
             let mut client = grid.mode == DataMode::Client;
             let label = if client { tr("Client") } else { tr("Server") };
             if ui.toggle_value(&mut client, label).on_hover_text(tr("Sort and filter fetched rows in DBiji (client) or re-run the query with WHERE / ORDER BY (server)")).changed()

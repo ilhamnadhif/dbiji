@@ -1057,6 +1057,21 @@ impl ResultModel {
         Ok(row)
     }
 
+    /// Insert a new row before display row `row`. Returns its display index.
+    pub fn add_row_before(&mut self, row: usize) -> Result<usize, String> {
+        if row > 0 {
+            return self.add_row(Some(row - 1));
+        }
+        self.target()?;
+        let id = self.next_insert_id;
+        self.next_insert_id += 1;
+        let anchor = self.base_to_store(0);
+        self.inserted.insert(0, InsertedRow { id, anchor, after_base: 0, values: vec![CellValue::Default; self.columns.len()] });
+        self.push_undo(Undo::Insert(vec![id]));
+        self.generation += 1;
+        Ok(self.inserted_display(0))
+    }
+
     fn insert_row_inner(&mut self, after: Option<usize>, values: Vec<CellValue>) -> (usize, u64) {
         let id = self.next_insert_id;
         self.next_insert_id += 1;

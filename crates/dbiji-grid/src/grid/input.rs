@@ -446,6 +446,18 @@ impl GridFrame<'_> {
         for ev in events {
             match ev {
                 Event::Key { key, pressed: true, modifiers: m, .. } => {
+                    if m.command && m.alt {
+                        match key {
+                            Key::ArrowUp => self.copy_from_adjacent(true),
+                            Key::ArrowDown => self.copy_from_adjacent(false),
+                            Key::ArrowLeft => self.move_active_column(-1),
+                            Key::ArrowRight => self.move_active_column(1),
+                            _ => {}
+                        }
+                        if matches!(key, Key::ArrowUp | Key::ArrowDown | Key::ArrowLeft | Key::ArrowRight) {
+                            continue;
+                        }
+                    }
                     let sel = &mut self.state.rt.selection;
                     let mut moved = true;
                     match key {
@@ -487,6 +499,7 @@ impl GridFrame<'_> {
                         Key::R if m.command => self.actions.push(GridAction::Refresh),
                         Key::F5 => self.actions.push(GridAction::Refresh),
                         Key::D if m.command => self.duplicate_selected(),
+                        Key::Insert if m.shift => self.add_row_before_active(),
                         Key::Insert => self.add_row_after_active(),
                         Key::Enter | Key::F2 if m.shift => {
                             if let Some((row, col)) = self.active() {
@@ -709,6 +722,123 @@ impl GridFrame<'_> {
             }
             Err(e) => self.notify(e, true),
         }
+    }
+
+    /// Run a [`super::GridCommand`].
+    pub fn run_command(&mut self, ui: &Ui, cmd: super::GridCommand) {
+        use super::GridCommand as C;
+        match cmd {
+            C::AddRowBefore => self.add_row_before_active(),
+            C::CopyFromAbove => self.copy_from_adjacent(true),
+            C::CopyFromBelow => self.copy_from_adjacent(false),
+            C::GenerateUuid => self.generate_uuid(),
+            C::MoveColumnLeft => self.move_active_column(-1),
+            C::MoveColumnRight => self.move_active_column(1),
+            C::FitColumnsToValues => {
+                let painter = ui.painter().clone();
+                self.fit_columns_to_values(&painter);
+            }
+            C::FitColumnsToScreen => self.fit_columns_to_screen(),
+            C::HideEmptyColumns => self.hide_empty_columns(),
+        }
+    }
+
+    /// Add a new row before the active row.
+    pub fn add_row_before_active(&mut self) {
+        let before = self.active().map(|(r, _)| r).unwrap_or(0);
+        match self.model.add_row_before(before) {
+            Ok(row) => {
+                let col = self.state.rt.selection.active().col;
+                self.state.rt.selection.select_cell(CellPos::new(row, col));
+                self.state.rt.scroll_to_active = true;
+            }
+            Err(e) => self.notify(e, true),
+        }
+    }
+
+    /// Copy into the selected cells the value of the same column in the row
+    /// above (`above`) or below.
+    pub fn copy_from_adjacent(&mut self, above: bool) {
+        let cells = self.selected_cells(100_000);
+        let mut edits = Vec::with_capacity(cells.len());
+        for (r, c) in cells {
+            let src = if above { r.checked_sub(1) } else { Some(r + 1).filter(|&x| x < self.geo.nrows) };
+            let Some(src) = src else { continue };
+            let v = self.model.cell(src, c).unwrap_or(Value::Null);
+            edits.push((r, c, crate::model::CellValue::Value(v)));
+        }
+        if edits.is_empty() {
+            return;
+        }
+        if let Err(e) = self.model.set_cells(edits) {
+            self.notify(e, true);
+        }
+    }
+
+    /// Put a new random UUID into each selected cell.
+    pub fn generate_uuid(&mut self) {
+        let cells = self.selected_cells(100_000);
+        let edits = cells.into_iter().map(|(r, c)| (r, c, crate::model::CellValue::Value(Value::text(uuid::Uuid::new_v4().to_string())))).collect();
+        if let Err(e) = self.model.set_cells(edits) {
+            self.notify(e, true);
+        }
+    }
+
+    /// Move the active column one position to the left (`delta` -1) or right (+1).
+    pub fn move_active_column(&mut self, delta: isize) {
+        let Some((_, col)) = self.active() else { return };
+        let Some(pos) = self.geo.cols.iter().position(|&c| c == col) else { return };
+        let to = pos as isize + delta;
+        if to < 0 || to as usize >= self.geo.cols.len() {
+            return;
+        }
+        self.state.move_visible_column(pos, to as usize);
+        let row = self.state.rt.selection.active().row;
+        self.state.rt.selection.select_cell(CellPos::new(row, to as usize));
+        self.state.rt.scroll_to_active = true;
+    }
+
+    /// Widths that fit the visible values of every column.
+    pub fn fit_columns_to_values(&mut self, painter: &egui::Painter) {
+        for col in self.geo.cols.clone() {
+            self.autosize_with(painter, col);
+        }
+    }
+
+    /// Widths that fill the visible width, in proportion to the current ones.
+    pub fn fit_columns_to_screen(&mut self) {
+        let cols = self.geo.cols.clone();
+        let total: f32 = cols.iter().map(|&c| self.state.column_width(c)).sum();
+        let avail = self.geo.body.width() - 2.0;
+        if total <= 0.0 || avail <= 0.0 {
+            return;
+        }
+        let k = avail / total;
+        for c in cols {
+            let w = (self.state.column_width(c) * k).max(super::state::MIN_COLUMN_WIDTH);
+            self.state.set_column_width(c, w);
+        }
+    }
+
+    /// Hide the columns whose fetched values are all NULL or empty.
+    pub fn hide_empty_columns(&mut self) {
+        let cols = self.geo.cols.clone();
+        let mut has_data = vec![false; self.model.column_count()];
+        self.model.visit_rows(0..self.geo.nrows, |_, cells| {
+            for &c in &cols {
+                if !has_data[c] && cells.value_of(c).is_some_and(|v| !v.is_null() && !v.to_text().is_empty()) {
+                    has_data[c] = true;
+                }
+            }
+        });
+        let mut hidden = 0;
+        for c in cols {
+            if !has_data[c] {
+                self.state.set_column_visible(c, false);
+                hidden += 1;
+            }
+        }
+        self.notify(trf("{} column(s) without data hidden", &[&hidden]), false);
     }
 
     /// Add a new row after the active row and start editing it.

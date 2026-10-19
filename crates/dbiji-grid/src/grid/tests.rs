@@ -309,3 +309,81 @@ fn frames_do_not_wait_for_a_busy_store() {
     h.frame(vec![]);
     assert_eq!(h.state.active_cell(), Some((3, 1)));
 }
+
+#[test]
+fn insert_before_copy_adjacent_uuid_and_columns() {
+    let mut h = GridHarness::new(editable_model(5));
+    let cmd_alt = Modifiers::COMMAND | Modifiers::ALT;
+    h.click_at(h.cell_center(0, 0), PointerButton::Primary, Modifiers::NONE);
+    // Add a row before row 2 (Shift+Insert) and before the first row.
+    h.state.select_cell(2, 1);
+    h.frame(vec![]);
+    h.key(Key::Insert, Modifiers::SHIFT);
+    assert_eq!(h.model.row_count(), 6);
+    assert_eq!(h.model.row_state(2), RowState::Inserted);
+    assert_eq!(h.state.active_cell().map(|a| a.0), Some(2));
+    assert_eq!(h.model.cell(3, 1), Some(Value::text("name 2")), "the old row 2 moved down");
+    h.state.select_cell(0, 1);
+    h.frame(vec![]);
+    h.key(Key::Insert, Modifiers::SHIFT);
+    assert_eq!(h.model.row_state(0), RowState::Inserted);
+    assert_eq!(h.model.cell(1, 1), Some(Value::text("name 0")));
+    // Copy from the row above / below.
+    h.state.select_cell(4, 1); // stored "name 2"
+    h.frame(vec![]);
+    h.key(Key::ArrowUp, cmd_alt);
+    assert_eq!(h.model.cell(4, 1), h.model.cell(3, 1), "copied from the row above");
+    h.key(Key::ArrowDown, cmd_alt);
+    assert_eq!(h.model.cell(4, 1), Some(Value::text("name 3")), "copied from the row below");
+    // A UUID.
+    h.state.request(GridCommand::GenerateUuid);
+    h.frame(vec![]);
+    let v = h.model.cell(4, 1).unwrap().to_text().into_owned();
+    assert_eq!(v.len(), 36);
+    assert!(uuid::Uuid::parse_str(&v).is_ok(), "{v}");
+    // Move the active column right / left.
+    h.state.select_cell(0, 0);
+    h.frame(vec![]);
+    let before = h.state.visible_columns();
+    h.key(Key::ArrowRight, cmd_alt);
+    let after = h.state.visible_columns();
+    assert_eq!((after[0], after[1]), (before[1], before[0]));
+    assert_eq!(h.state.active_cell().map(|a| a.1), Some(before[0]), "the moved column stays active");
+    h.key(Key::ArrowLeft, cmd_alt);
+    assert_eq!(h.state.visible_columns(), before);
+}
+
+#[test]
+fn fit_hide_empty_highlight_and_zoom() {
+    let mut h = GridHarness::new(editable_model(5));
+    // Fit to screen: the columns fill the body.
+    h.state.request(GridCommand::FitColumnsToScreen);
+    h.frame(vec![]);
+    h.frame(vec![]);
+    let (body, ..) = h.geometry();
+    let total: f32 = h.state.visible_columns().iter().map(|&c| h.state.column_width(c)).sum();
+    assert!((total - (body.width() - 2.0)).abs() < 2.0, "{total} vs {}", body.width());
+    // A column with only NULLs is hidden.
+    for r in 0..5 {
+        h.model.set_cells(vec![(r, 2, crate::model::CellValue::Value(Value::Null))]).unwrap();
+    }
+    let visible = h.state.visible_columns().len();
+    h.state.request(GridCommand::HideEmptyColumns);
+    h.frame(vec![]);
+    assert_eq!(h.state.visible_columns().len(), visible - 1);
+    assert!(!h.state.visible_columns().contains(&2));
+    // Highlights and zoom are part of the saved layout.
+    h.state.set_highlight("name", Some("name 1".into()), Some([230, 70, 70]));
+    h.state.set_highlight("name", Some("name 1".into()), Some([60, 180, 90]));
+    assert_eq!(h.state.highlights.len(), 1, "one colour per value");
+    h.state.zoom_by(Some(0.2));
+    h.frame(vec![]);
+    let saved = serde_json::to_string(&h.state).unwrap();
+    let back: DataGridState = serde_json::from_str(&saved).unwrap();
+    assert_eq!(back.highlights, h.state.highlights);
+    assert_eq!(back.zoom, Some(1.2));
+    h.state.zoom_by(None);
+    assert_eq!(h.state.zoom, None);
+    h.state.set_highlight("name", Some("name 1".into()), None);
+    assert!(h.state.highlights.is_empty());
+}

@@ -17,6 +17,7 @@ pub struct TableDataView {
     conn: String,
     table: ObjectRef,
     where_clause: Option<String>,
+    order_by: Option<String>,
     session: AdminSession,
     exec: Option<Execution>,
     pub panel: Option<ResultPanel>,
@@ -26,12 +27,20 @@ pub struct TableDataView {
 
 impl TableDataView {
     pub fn new(conn: String, table: ObjectRef, where_clause: Option<String>) -> Self {
-        TableDataView { conn, table, where_clause, session: AdminSession::default(), exec: None, panel: None, error: None, started: false }
+        TableDataView { conn, table, where_clause, order_by: None, session: AdminSession::default(), exec: None, panel: None, error: None, started: false }
     }
 
     fn start(&mut self, cx: &mut AppContext, session: crate::conn::session::SessionHandle) {
         let Some(live) = cx.conns.live(&self.conn) else { return };
-        let sql = live.dialect.select_table(&self.table, None, self.where_clause.as_deref(), None, None);
+        // The table's default filter / order (virtual model), unless opened with a condition.
+        if self.where_clause.is_none() && self.order_by.is_none() {
+            let vm = cx.services.projects.as_ref().and_then(|p| p.virtual_model(&self.conn).ok());
+            if let Some(vt) = vm.as_ref().and_then(|m| crate::results::panel::vm_lookup(m, &self.table)) {
+                self.where_clause = vt.default_filter.clone();
+                self.order_by = vt.default_order.clone();
+            }
+        }
+        let sql = live.dialect.select_table(&self.table, None, self.where_clause.as_deref(), self.order_by.as_deref(), None);
         let plan = StmtPlan { index: 0, original: sql.clone(), range: 0..sql.len(), sql, is_write: false, client: None };
         let opts = ExecOpts { fetch_size: cx.settings.results.effective_fetch_size() as usize, store_budget: cx.settings.results.store_budget_bytes(), ..Default::default() };
         self.exec = Some(Execution::start(cx.backend, session, vec![plan], opts, None));
@@ -49,6 +58,9 @@ impl TableDataView {
                     let mut panel = ResultPanel::new(self.conn.clone(), self.table.name.clone(), src, Some(self.table.clone()));
                     if let Some(w) = &self.where_clause {
                         panel.view.toolbar.filter_text = w.clone();
+                    }
+                    if let Some(o) = &self.order_by {
+                        panel.view.toolbar.order_text = o.clone();
                     }
                     self.panel = Some(panel);
                 }

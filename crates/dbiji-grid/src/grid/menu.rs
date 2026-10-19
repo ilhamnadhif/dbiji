@@ -121,9 +121,27 @@ impl GridFrame<'_> {
                 self.add_row_after_active();
                 ui.close();
             }
+            if item(ui, icon::ROWS_PLUS_TOP, tr("Add row before"), Some(KeyboardShortcut::new(Modifiers::SHIFT, Key::Insert))).clicked() {
+                self.add_row_before_active();
+                ui.close();
+            }
             if item(ui, icon::COPY_SIMPLE, tr("Duplicate row(s)"), Some(KeyboardShortcut::new(cmd, Key::D))).clicked() {
                 self.duplicate_selected();
                 ui.close();
+            }
+            if active.is_some() {
+                if item(ui, icon::ARROW_FAT_LINE_DOWN, tr("Copy from row above"), Some(KeyboardShortcut::new(cmd | Modifiers::ALT, Key::ArrowUp))).clicked() {
+                    self.copy_from_adjacent(true);
+                    ui.close();
+                }
+                if item(ui, icon::ARROW_FAT_LINE_UP, tr("Copy from row below"), Some(KeyboardShortcut::new(cmd | Modifiers::ALT, Key::ArrowDown))).clicked() {
+                    self.copy_from_adjacent(false);
+                    ui.close();
+                }
+                if item(ui, icon::FINGERPRINT, tr("Generate UUID"), None).clicked() {
+                    self.generate_uuid();
+                    ui.close();
+                }
             }
             if item(ui, icon::TRASH, tr("Delete row(s)"), Some(KeyboardShortcut::new(Modifiers::NONE, Key::Delete))).clicked() {
                 self.delete_selected();
@@ -169,6 +187,25 @@ impl GridFrame<'_> {
                         }
                     }
                 });
+            });
+            ui.menu_button(format!("{}  {}", icon::PAINT_BUCKET, tr("Highlight rows with this value")), |ui| {
+                let text = (!value.is_null()).then(|| value.to_text().into_owned());
+                for (label, rgb) in super::state::HIGHLIGHT_COLORS {
+                    let swatch = egui::RichText::new("■").color(egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2]));
+                    if ui.button(egui::WidgetText::from(swatch)).on_hover_text(tr(label)).clicked() {
+                        self.state.set_highlight(&name, text.clone(), Some(rgb));
+                        ui.close();
+                    }
+                }
+                ui.separator();
+                if ui.button(tr("Remove this highlight")).clicked() {
+                    self.state.set_highlight(&name, text.clone(), None);
+                    ui.close();
+                }
+                if !self.state.highlights.is_empty() && ui.button(tr("Remove all highlights")).clicked() {
+                    self.state.highlights.clear();
+                    ui.close();
+                }
             });
             let has_filter = self.model.client_view_spec().filter.is_some();
             if has_filter && item(ui, icon::FUNNEL_X, tr("Clear client filter"), None).clicked() {
@@ -217,6 +254,18 @@ impl GridFrame<'_> {
                     self.model.remove_virtual_column(idx);
                     ui.close();
                 }
+            }
+        });
+        ui.menu_button(format!("{}  {}", icon::MAGNIFYING_GLASS_PLUS, tr("Zoom")), |ui| {
+            if ui.button(tr("Zoom in")).clicked() {
+                self.state.zoom_by(Some(0.1));
+            }
+            if ui.button(tr("Zoom out")).clicked() {
+                self.state.zoom_by(Some(-0.1));
+            }
+            if ui.button(tr("Reset zoom")).clicked() {
+                self.state.zoom_by(None);
+                ui.close();
             }
         });
         ui.separator();
@@ -284,6 +333,32 @@ impl GridFrame<'_> {
             self.autosize_with(&painter, col);
             ui.close();
         }
+        ui.menu_button(format!("{}  {}", icon::COLUMNS_PLUS_RIGHT, tr("Column layout")), |ui| {
+            let cmd_alt = Modifiers::COMMAND | Modifiers::ALT;
+            if item(ui, icon::ARROW_LEFT, tr("Move column left"), Some(KeyboardShortcut::new(cmd_alt, Key::ArrowLeft))).clicked() {
+                self.move_active_column(-1);
+                ui.close();
+            }
+            if item(ui, icon::ARROW_RIGHT, tr("Move column right"), Some(KeyboardShortcut::new(cmd_alt, Key::ArrowRight))).clicked() {
+                self.move_active_column(1);
+                ui.close();
+            }
+            ui.separator();
+            if item(ui, icon::ARROWS_OUT_LINE_HORIZONTAL, tr("Fit columns to values"), None).clicked() {
+                let ctx = self.ctx.clone();
+                let painter = egui::Painter::new(ctx, ui.layer_id(), ui.clip_rect());
+                self.fit_columns_to_values(&painter);
+                ui.close();
+            }
+            if item(ui, icon::ARROWS_HORIZONTAL, tr("Fit columns to screen"), None).clicked() {
+                self.fit_columns_to_screen();
+                ui.close();
+            }
+            if item(ui, icon::EYE_SLASH, tr("Hide columns without data"), None).clicked() {
+                self.hide_empty_columns();
+                ui.close();
+            }
+        });
         ui.menu_button(format!("{}  {}", icon::TEXT_AA, tr("Format")), |ui| {
             let mut f = self.state.column_format(col).cloned().unwrap_or_default();
             let mut changed = false;

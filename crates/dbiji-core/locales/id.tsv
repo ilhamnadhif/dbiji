@@ -2400,3 +2400,30 @@ User Mappings	User Mapping
 Users	Pengguna
 The object no longer exists.	Objek ini sudah tidak ada.
 View as table	Lihat sebagai tabel
+Default filter removed	Filter bawaan dihapus
+Default filter saved	Filter bawaan disimpan
+Cannot save the default filter	Tidak dapat menyimpan filter bawaan
+Add row before	Tambah baris sebelumnya
+Column layout	Tata letak kolom
+Copy from row above	Salin dari baris di atas
+Copy from row below	Salin dari baris di bawah
+Fit columns to screen	Paskan kolom ke layar
+Fit columns to values	Paskan kolom ke nilai
+Generate UUID	Buat UUID
+Hide columns without data	Sembunyikan kolom tanpa data
+Highlight rows with this value	Sorot baris dengan nilai ini
+Move column left	Geser kolom ke kiri
+Move column right	Geser kolom ke kanan
+Remove all highlights	Hapus semua sorotan
+Remove this highlight	Hapus sorotan ini
+Reset zoom	Ukuran normal
+{} column(s) without data hidden	{} kolom tanpa data disembunyikan
+Red	Merah
+Orange	Oranye
+Yellow	Kuning
+Green	Hijau
+Blue	Biru
+Purple	Ungu
+Save as default filter	Simpan sebagai filter bawaan
+Reset default filter	Hapus filter bawaan
+Applied whenever this table's data is opened	Dipakai setiap kali data tabel ini dibuka

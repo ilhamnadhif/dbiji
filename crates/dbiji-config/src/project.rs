@@ -281,6 +281,10 @@ pub struct VirtualTable {
     pub virtual_columns: Vec<VirtualColumn>,
     /// Dictionary settings.
     pub dictionary: Option<DictionaryConfig>,
+    /// WHERE condition applied when the table's data is opened.
+    pub default_filter: Option<String>,
+    /// ORDER BY applied when the table's data is opened.
+    pub default_order: Option<String>,
 }
 
 impl VirtualTable {
@@ -289,6 +293,8 @@ impl VirtualTable {
         self.virtual_key.as_ref().is_none_or(|k| k.is_empty())
             && self.virtual_columns.is_empty()
             && self.dictionary.is_none()
+            && self.default_filter.is_none()
+            && self.default_order.is_none()
     }
 }
 
@@ -1196,6 +1202,8 @@ mod tests {
                 dictionary: Some(DictionaryConfig {
                     description_columns: vec!["name".into()],
                 }),
+                default_filter: Some("status <> 'cancelled'".into()),
+                default_order: Some("ordered_at DESC".into()),
             },
         );
         pm.save_virtual_model("c1", &m).unwrap();

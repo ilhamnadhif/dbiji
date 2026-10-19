@@ -89,7 +89,7 @@ fn rows_of(model: &ResultModel, limit: usize) -> Vec<Row> {
 
 /// Virtual model entry of a table; the schema may be missing on either side
 /// (single-schema databases, unqualified result sources).
-fn vm_lookup<'a>(vm: &'a dbiji_config::VirtualModel, obj: &ObjectRef) -> Option<&'a dbiji_config::VirtualTable> {
+pub(crate) fn vm_lookup<'a>(vm: &'a dbiji_config::VirtualModel, obj: &ObjectRef) -> Option<&'a dbiji_config::VirtualTable> {
     vm.get_for(obj).or_else(|| {
         vm.tables.iter().find(|e| e.key.table.eq_ignore_ascii_case(&obj.name) && (e.key.schema.is_none() || obj.schema.is_none() || e.key.schema == obj.schema)).map(|e| &e.table)
     })
@@ -428,6 +428,21 @@ impl ResultPanel {
     fn handle(&mut self, action: GridAction, cx: &mut AppContext) {
         let backend = cx.backend;
         match action {
+            GridAction::DefaultFilter { where_clause, order_by } => {
+                let Some(table) = self.table.clone() else { return };
+                let Some(p) = cx.services.projects.as_ref() else { return };
+                let mut vm = p.virtual_model(&self.conn).unwrap_or_default();
+                let key = dbiji_config::project::VirtualTableKey::of(&table);
+                let mut vt = vm.get(&key).cloned().unwrap_or_default();
+                let reset = where_clause.is_none() && order_by.is_none();
+                vt.default_filter = where_clause;
+                vt.default_order = order_by;
+                vm.set(key, vt);
+                match p.save_virtual_model(&self.conn, &vm) {
+                    Ok(()) => cx.toasts.success(if reset { tr("Default filter removed") } else { tr("Default filter saved") }),
+                    Err(e) => cx.toasts.error(tr("Cannot save the default filter"), Some(e.to_string())),
+                }
+            }
             GridAction::FetchMore => self.src.fetch_more(backend, Self::fetch_size(cx), None),
             GridAction::FetchAll => {
                 let limit = cx.settings.results.confirm_fetch_all_above;

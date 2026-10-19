@@ -378,3 +378,44 @@ fn manual_commit_reorder_while_loading() {
         }
     }
 }
+
+/// "Save as default filter": the table opens with the saved WHERE / ORDER BY
+/// until the default is reset (stored in the project's virtual model).
+#[test]
+fn default_filter_per_table() {
+    for (name, url) in servers().into_iter().filter(|(n, _)| matches!(*n, "sqlite" | "postgres" | "mysql")) {
+        let mut h = H::new(&url);
+        let table = format!("dbiji_deflt_{}", &uuid::Uuid::new_v4().simple().to_string()[..8]);
+        h.sql(&format!("CREATE TABLE {table} (id INT PRIMARY KEY, name VARCHAR(10))"));
+        h.sql(&format!("INSERT INTO {table} VALUES (1, 'a'), (2, 'b'), (3, 'c')"));
+        let obj = ObjectRef::table(None, table.clone());
+        let mut view = TableDataView::new(h.id.clone(), obj.clone(), None);
+        h.until(&mut view, "rows", |v| v.panel.as_ref().is_some_and(|p| p.model.row_count() == 3));
+        let act = |h: &mut H, view: &mut TableDataView, a: dbiji_grid::GridAction| {
+            let mut cx = AppContext {
+                backend: &h.backend,
+                conns: &mut h.cm,
+                services: &h.services,
+                settings: &mut h.settings,
+                commands: &mut h.commands,
+                toasts: &mut h.toasts,
+                ops: &mut h.ops,
+                keymap: &h.keymap,
+                tab_active: true,
+                current_tab: Some(1),
+            };
+            view.panel.as_mut().unwrap().handle_for_tests(a, &mut cx);
+        };
+        act(&mut h, &mut view, dbiji_grid::GridAction::DefaultFilter { where_clause: Some("id > 1".into()), order_by: Some("id DESC".into()) });
+        let mut again = TableDataView::new(h.id.clone(), obj.clone(), None);
+        h.until(&mut again, "default filter applied", |v| {
+            v.panel.as_ref().is_some_and(|p| p.model.row_count() == 2 && p.model.cell(0, 0).and_then(|x| x.as_i64()) == Some(3) && p.view.toolbar.filter_text == "id > 1")
+        });
+        act(&mut h, &mut again, dbiji_grid::GridAction::DefaultFilter { where_clause: None, order_by: None });
+        let mut reset = TableDataView::new(h.id.clone(), obj.clone(), None);
+        h.until(&mut reset, "default removed", |v| v.panel.as_ref().is_some_and(|p| p.model.row_count() == 3 && p.view.toolbar.filter_text.is_empty()));
+        drop((view, again, reset));
+        h.sql(&format!("DROP TABLE {table}"));
+        let _ = name;
+    }
+}

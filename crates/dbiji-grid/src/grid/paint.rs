@@ -175,13 +175,34 @@ impl GridFrame<'_> {
         let row_h = geo.row_h;
         let content_right = geo.col_left(geo.cols.len(), sx).min(body.right());
 
+        let names = model.column_names();
+        let highlights: Vec<(usize, Option<String>, egui::Color32)> = self
+            .state
+            .highlights
+            .iter()
+            .filter_map(|h| {
+                let col = names.iter().position(|n| *n == h.column)?;
+                Some((col, h.value.clone(), egui::Color32::from_rgba_unmultiplied(h.color[0], h.color[1], h.color[2], 70)))
+            })
+            .collect();
         let fresh = model.visit_rows_for(rows.clone(), std::time::Duration::from_millis(6), |row, cells| {
             let y0 = geo.row_top(row, sy);
             let row_rect = Rect::from_min_max(pos2(body.left(), y0), pos2(content_right, y0 + row_h));
             let state = cells.state();
+            let highlight = highlights
+                .iter()
+                .find(|(c, v, _)| {
+                    let cell = cells.value_of(*c);
+                    match v {
+                        None => cell.as_ref().is_none_or(|x| x.is_null()),
+                        Some(t) => cell.as_ref().is_some_and(|x| !x.is_null() && x.to_text() == t.as_str()),
+                    }
+                })
+                .map(|h| h.2);
             let row_bg = match state {
                 RowState::Inserted => Some(theme.inserted),
                 RowState::Deleted => Some(theme.deleted),
+                _ if highlight.is_some() => highlight,
                 _ if striped && row % 2 == 1 => Some(theme.stripe),
                 _ => None,
             };

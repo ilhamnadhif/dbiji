@@ -141,6 +141,24 @@ actions! {
     MaximizeResults => ("sql.maximize_results", "Maximize Results Panel", View, Global),
     /// Format the SQL text.
     FormatSql => ("editor.format_sql", "Format SQL", Editor, SqlEditor),
+    /// Move the cursor to the start of the next statement.
+    NextStatement => ("editor.next_statement", "Next Statement", Editor, SqlEditor),
+    /// Move the cursor to the start of the previous statement.
+    PreviousStatement => ("editor.previous_statement", "Previous Statement", Editor, SqlEditor),
+    /// Copy the statement under the cursor (or the selection).
+    CopyStatement => ("sql.copy_statement", "Copy Current Statement", Sql, SqlEditor),
+    /// Count the rows the statement under the cursor returns.
+    SelectRowCount => ("sql.select_row_count", "Count Rows of the Query", Sql, SqlEditor),
+    /// Evaluate the selected expression (`SELECT <expression>`).
+    EvaluateExpression => ("sql.evaluate_expression", "Evaluate Expression", Sql, SqlEditor),
+    /// Open the table or view under the cursor.
+    OpenDeclaration => ("editor.open_declaration", "Open Declaration", Editor, SqlEditor),
+    /// Turn the selected lines into a quoted, comma separated list.
+    MorphToDelimited => ("editor.morph_delimited", "Morph to Delimited List", Editor, SqlEditor),
+    /// Remove trailing whitespace (selection or whole script).
+    TrimTrailingSpaces => ("editor.trim_trailing_spaces", "Trim Trailing Spaces", Editor, SqlEditor),
+    /// Search the selection or the word under the cursor on the web.
+    SearchWeb => ("editor.search_web", "Search on the Web", Editor, SqlEditor),
     /// Save the script.
     Save => ("editor.save", "Save", Editor, SqlEditor),
     /// Find text.
@@ -191,6 +209,8 @@ actions! {
     Refresh => ("view.refresh", "Refresh", View, Global),
     /// Show or hide the navigator.
     ToggleNavigator => ("view.toggle_navigator", "Toggle Navigator", View, Global),
+    /// Show the results below or to the right of the editor.
+    ToggleResultsLayout => ("view.toggle_results_layout", "Toggle Results Layout", View, Global),
     /// Switch between the light and the dark theme.
     ToggleTheme => ("view.toggle_theme", "Toggle Light / Dark Theme", View, Global),
     /// Increase the font size.

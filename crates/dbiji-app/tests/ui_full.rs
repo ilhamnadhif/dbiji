@@ -990,3 +990,72 @@ fn catalog_folders_in_the_navigator() {
     assert!(titles.iter().any(|t| t == &user), "{titles:?}");
     no_errors(&mut h, "pg role");
 }
+
+#[test]
+fn editor_commands_from_dbeaver() {
+    let (_dir, mut h, conn) = setup();
+    h.state_mut().push_command(AppCommand::NewSqlEditor { connection: Some(conn.clone()), schema: None, text: None });
+    frames(&mut h, 3);
+    wait(&mut h, "editor session", |h| focused_editor(h).session_ready());
+    let ctx = h.ctx.clone();
+    let script = "select * from customer;\n\nselect id, name   \nfrom product;  \n";
+    focused_editor(&mut h).set_text(&ctx, script);
+    focused_editor(&mut h).set_cursor(&ctx, 0);
+    frames(&mut h, 2);
+    click_editor(&mut h);
+    focused_editor(&mut h).set_cursor(&ctx, 0);
+    frames(&mut h, 1);
+    // Next / previous statement (Cmd+Alt+Down / Up).
+    h.key_press_modifiers(CMD | Modifiers::ALT, Key::ArrowDown);
+    frames(&mut h, 2);
+    let second = script.find("select id").unwrap();
+    assert_eq!(focused_editor(&mut h).editor_cursor(), second);
+    h.key_press_modifiers(CMD | Modifiers::ALT, Key::ArrowUp);
+    frames(&mut h, 2);
+    assert_eq!(focused_editor(&mut h).editor_cursor(), 0);
+    let run = |h: &mut H, a: Action| {
+        let ctx = h.ctx.clone();
+        h.state_mut().dispatch_action(&ctx, a);
+        frames(h, 2);
+    };
+    // Copy the current statement.
+    run(&mut h, Action::CopyStatement);
+    // Count rows of the statement under the cursor.
+    run(&mut h, Action::SelectRowCount);
+    wait(&mut h, "row count", |h| {
+        let e = focused_editor(h);
+        !e.is_running() && e.result_count() == 1 && e.result_rows(0) == Some(1)
+    });
+    // Evaluate the selected expression.
+    let expr = "select 6 * 7 as answer";
+    focused_editor(&mut h).set_text(&ctx, expr);
+    focused_editor(&mut h).select_range(&ctx, 7..12);
+    run(&mut h, Action::EvaluateExpression);
+    wait(&mut h, "evaluated", |h| {
+        let e = focused_editor(h);
+        !e.is_running() && e.result_count() == 2 && e.result_rows(1) == Some(1)
+    });
+    // Morph to a delimited list, trim trailing spaces.
+    focused_editor(&mut h).set_text(&ctx, "Ani\nBudi\nO'Neil");
+    focused_editor(&mut h).select_range(&ctx, 0..15);
+    run(&mut h, Action::MorphToDelimited);
+    assert_eq!(focused_editor(&mut h).text(), "'Ani', 'Budi', 'O''Neil'");
+    focused_editor(&mut h).set_text(&ctx, "select 1   \nfrom t\t\n");
+    focused_editor(&mut h).set_cursor(&ctx, 0);
+    run(&mut h, Action::TrimTrailingSpaces);
+    assert_eq!(focused_editor(&mut h).text(), "select 1\nfrom t\n");
+    // Open declaration (F3) on a table name.
+    focused_editor(&mut h).set_text(&ctx, "select * from product");
+    wait(&mut h, "completion catalog", |h| focused_editor(h).has_catalog());
+    focused_editor(&mut h).set_cursor(&ctx, 16);
+    run(&mut h, Action::OpenDeclaration);
+    frames(&mut h, 3);
+    assert!(tab_titles(&h).iter().any(|t| t == "product"), "{:?}", tab_titles(&h));
+    // Results layout toggles between below and right.
+    let before = h.state().settings.results.layout;
+    run(&mut h, Action::ToggleResultsLayout);
+    assert_ne!(h.state().settings.results.layout, before);
+    run(&mut h, Action::ToggleResultsLayout);
+    assert_eq!(h.state().settings.results.layout, before);
+    no_errors(&mut h, "editor commands");
+}

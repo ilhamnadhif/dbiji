@@ -454,6 +454,13 @@ impl DbijiApp {
             A::Disconnect => conn.map(AppCommand::Disconnect),
             A::Reconnect => conn.map(AppCommand::Reconnect),
             A::ToggleNavigator => Some(AppCommand::ToggleNavigator),
+            A::ToggleResultsLayout => {
+                use dbiji_config::settings::ResultsLayout;
+                let r = &mut self.settings.results.layout;
+                *r = if *r == ResultsLayout::Right { ResultsLayout::Bottom } else { ResultsLayout::Right };
+                self.save_settings();
+                None
+            }
             A::ToggleTheme => {
                 self.toggle_theme(ctx);
                 None

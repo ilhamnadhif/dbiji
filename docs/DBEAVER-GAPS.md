@@ -37,15 +37,16 @@ Status: ☐ open · ☑ done (with the test that covers it).
 
 - ☐ Code folding (statements, blocks, comments) with collapse / expand all
 - ☐ Mark occurrences of the word under the cursor
-- ☐ Open declaration: Cmd+click / F3 on a table, view or routine opens it
-- ☐ Next / previous statement navigation
-- ☐ Morph selection to a delimited list; trim leading / trailing spaces
-- ☐ Copy the current statement; select row count of the current query
+- ☑ Open declaration: Cmd+click / F3 on a table or view opens it
+- ☑ Next / previous statement (⌘⌥↓ / ⌘⌥↑)
+- ☑ Morph selection to a delimited list; trim trailing spaces
+- ☑ Copy the current statement; count the rows of the current query
 - ☐ Execute stored procedure (dialog for the arguments, generates CALL / SELECT)
-- ☐ Evaluate expression (`SELECT <selection>`)
+- ☑ Evaluate expression (`SELECT <selection>`)
 - ☐ Save / load an execution plan
-- ☐ Search the selection on the web
-- ☐ Quick toggle of the results layout (below / right) and the results panel
+- ☑ Search the selection on the web
+- ☑ Toggle the results layout (below / right) and the results panel
+  — `dbiji-app::ui_full::editor_commands_from_dbeaver`, `dbiji-app::textops` unit tests
 - ☐ Formatter choices: compact formatter, external formatter command
 
 ## 4. Data editor (result grid)

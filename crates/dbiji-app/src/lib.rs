@@ -28,6 +28,7 @@ pub mod sqllang;
 pub mod sqlprep;
 pub mod tabs;
 pub mod taskexec;
+pub mod textops;
 pub mod theme;
 pub mod toasts;
 pub mod tools;

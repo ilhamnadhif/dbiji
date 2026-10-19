@@ -2427,3 +2427,17 @@ Purple	Ungu
 Save as default filter	Simpan sebagai filter bawaan
 Reset default filter	Hapus filter bawaan
 Applied whenever this table's data is opened	Dipakai setiap kali data tabel ini dibuka
+More editor commands	Perintah editor lainnya
+No table or view named {}	Tidak ada tabel atau view bernama {}
+Select the lines to turn into a list first.	Pilih dulu baris yang akan dijadikan daftar.
+Statement copied	Statement disalin
+Copy Current Statement	Salin Statement Saat Ini
+Count Rows of the Query	Hitung Baris Query
+Evaluate Expression	Evaluasi Ekspresi
+Morph to Delimited List	Ubah Jadi Daftar Berpemisah
+Next Statement	Statement Berikutnya
+Open Declaration	Buka Deklarasi
+Previous Statement	Statement Sebelumnya
+Search on the Web	Cari di Web
+Toggle Results Layout	Ganti Tata Letak Hasil
+Trim Trailing Spaces	Hapus Spasi di Akhir Baris

@@ -16,7 +16,7 @@ use crate::sqllang::SqlLanguage;
 use crate::sqlprep::{PrepConfig, Scope};
 use crate::tabs::TabView;
 use dbiji_core::driver::TransactionMode;
-use dbiji_core::meta::{ObjectKind, ObjectRef, SchemaRef};
+use dbiji_core::meta::{ObjectRef, SchemaRef};
 use dbiji_core::plan::QueryPlan;
 use dbiji_core::{DbResult, tr, trf};
 use dbiji_editor::{ContextAction, EditorEvent, EditorOptions, EditorState, EditorTheme, SqlEditor};
@@ -73,6 +73,8 @@ struct Request {
     new_tab: bool,
     explain: Option<bool>,
     confirmed: bool,
+    /// SQL to run instead of the editor text (row count, evaluate expression).
+    sql: Option<String>,
 }
 
 struct ParamPrompt {
@@ -362,6 +364,101 @@ impl SqlEditorTab {
         }
     }
 
+    /// The selection, or the statement under the cursor.
+    fn current_statement(&self, cx: &AppContext) -> Option<std::ops::Range<usize>> {
+        if let Some(r) = self.editor.selection().filter(|r| !r.is_empty()) {
+            return Some(r);
+        }
+        let split = split_options(cx);
+        let text = self.editor.text();
+        dbiji_sql::statement_at(text, self.editor.cursor().min(text.len()), self.lang.syntax(), &split).map(|s| s.start..s.end)
+    }
+
+    /// Move the cursor to the next (`forward`) or previous statement.
+    fn goto_statement(&mut self, ctx: &egui::Context, cx: &AppContext, forward: bool) {
+        let split = split_options(cx);
+        let spans = dbiji_sql::split_statements(self.editor.text(), self.lang.syntax(), &split);
+        let c = self.editor.cursor();
+        let target = if forward { spans.iter().find(|s| s.start > c).map(|s| s.start) } else { spans.iter().rev().find(|s| s.start < c).map(|s| s.start) };
+        if let Some(t) = target {
+            self.editor.set_cursor(ctx, t);
+            self.editor.request_focus(ctx);
+        }
+    }
+
+    /// The selection or the word under the cursor.
+    fn selection_or_word(&self) -> Option<String> {
+        match self.editor.selected_text().filter(|t| !t.trim().is_empty()) {
+            Some(t) => Some(t.to_string()),
+            None => self.editor.word_at(&self.lang, self.editor.cursor()).map(|r| self.editor.text()[r].to_string()),
+        }
+    }
+
+    /// Open the table or view at `offset` (Cmd+click, F3).
+    fn open_declaration(&mut self, cx: &mut AppContext, offset: usize) {
+        let Some(conn) = self.conn.clone() else { return };
+        let Some(o) = dbiji_sql::object_at(self.editor.text(), offset, self.lang.syntax()) else { return };
+        let table = self.lang.catalog().and_then(|c| dbiji_sql::CompletionCatalog::find_table(c.as_ref(), o.schema.as_deref(), &o.table));
+        match table {
+            Some(t) => {
+                let obj = ObjectRef::new(t.kind, t.schema.clone(), t.name.clone()).with_database(self.schema.as_ref().and_then(|s| s.database.clone()));
+                cx.push(AppCommand::OpenObject { connection: conn, object: obj, page: ObjectPage::Properties });
+            }
+            None => cx.toasts.info(trf("No table or view named {}", &[&o.table])),
+        }
+    }
+
+    /// Editor commands of the "More" menu and their actions.
+    fn editor_command(&mut self, ctx: &egui::Context, cx: &mut AppContext, action: Action) {
+        match action {
+            Action::NextStatement => self.goto_statement(ctx, cx, true),
+            Action::PreviousStatement => self.goto_statement(ctx, cx, false),
+            Action::CopyStatement => {
+                if let Some(r) = self.current_statement(cx) {
+                    ctx.copy_text(self.editor.text()[r].trim().to_string());
+                    cx.toasts.info(tr("Statement copied"));
+                }
+            }
+            Action::SelectRowCount => {
+                if let Some(r) = self.current_statement(cx) {
+                    let sql = crate::textops::row_count_sql(&self.editor.text()[r]);
+                    self.run(cx, Request { scope: Scope::Script, new_tab: true, explain: None, confirmed: false, sql: Some(sql) });
+                }
+            }
+            Action::EvaluateExpression => {
+                if let Some(e) = self.selection_or_word() {
+                    let sql = format!("SELECT {}", e.trim().trim_end_matches(';'));
+                    self.run(cx, Request { scope: Scope::Script, new_tab: true, explain: None, confirmed: false, sql: Some(sql) });
+                }
+            }
+            Action::OpenDeclaration => {
+                let c = self.editor.cursor();
+                self.open_declaration(cx, c);
+            }
+            Action::MorphToDelimited => match self.editor.selection().filter(|r| !r.is_empty()) {
+                Some(r) => {
+                    let list = crate::textops::morph_to_delimited(&self.editor.text()[r.clone()]);
+                    self.editor.replace_range(ctx, r.clone(), &list);
+                    self.editor.select(ctx, r.start..r.start + list.len());
+                }
+                None => cx.toasts.info(tr("Select the lines to turn into a list first.")),
+            },
+            Action::TrimTrailingSpaces => {
+                let r = self.editor.selection().filter(|r| !r.is_empty()).unwrap_or(0..self.editor.text().len());
+                let trimmed = crate::textops::trim_trailing(&self.editor.text()[r.clone()]);
+                if trimmed != self.editor.text()[r.clone()] {
+                    self.editor.replace_range(ctx, r, &trimmed);
+                }
+            }
+            Action::SearchWeb => {
+                if let Some(q) = self.selection_or_word() {
+                    ctx.open_url(egui::OpenUrl::new_tab(crate::textops::search_url(&q)));
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// Execute (or explain) according to `req`.
     fn run(&mut self, cx: &mut AppContext, req: Request) {
         if self.exec.is_some() || self.explain_job.is_some() {
@@ -382,7 +479,7 @@ impl SqlEditorTab {
             cx.toasts.info(tr("Opening a session… run the statement again in a moment."));
             return;
         };
-        let text = self.editor.text().to_string();
+        let text = req.sql.clone().unwrap_or_else(|| self.editor.text().to_string());
         let prepared = {
             let cfg = self.prep_config(cx);
             crate::sqlprep::prepare(&text, req.scope.clone(), &cfg, &self.variables)
@@ -917,16 +1014,16 @@ impl SqlEditorTab {
             let running = self.exec.is_some() || self.explain_job.is_some();
             let tip = |a: Action| format!("{} ({})", crate::keys::action_label(a), crate::keys::label(cx.keymap, a));
             if ui.add_enabled(!running, egui::Button::new(icon::PLAY)).on_hover_text(tip(Action::ExecuteStatement)).clicked() {
-                self.run(cx, Request { scope: self.scope_for(true), new_tab: false, explain: None, confirmed: false });
+                self.run(cx, Request { scope: self.scope_for(true), new_tab: false, explain: None, confirmed: false, sql: None });
             }
             if ui.add_enabled(!running, egui::Button::new(icon::PLUS_SQUARE)).on_hover_text(tip(Action::ExecuteInNewTab)).clicked() {
-                self.run(cx, Request { scope: self.scope_for(true), new_tab: true, explain: None, confirmed: false });
+                self.run(cx, Request { scope: self.scope_for(true), new_tab: true, explain: None, confirmed: false, sql: None });
             }
             if ui.add_enabled(!running, egui::Button::new(icon::FAST_FORWARD)).on_hover_text(tip(Action::ExecuteScript)).clicked() {
-                self.run(cx, Request { scope: self.scope_for(false), new_tab: false, explain: None, confirmed: false });
+                self.run(cx, Request { scope: self.scope_for(false), new_tab: false, explain: None, confirmed: false, sql: None });
             }
             if ui.add_enabled(!running, egui::Button::new(icon::TREE_VIEW)).on_hover_text(tip(Action::ExplainPlan)).clicked() {
-                self.run(cx, Request { scope: self.scope_for(true), new_tab: true, explain: Some(false), confirmed: false });
+                self.run(cx, Request { scope: self.scope_for(true), new_tab: true, explain: Some(false), confirmed: false, sql: None });
             }
             if ui
                 .add_enabled(running, egui::Button::new(RichText::new(icon::STOP).color(crate::theme::error_color(ui.visuals().dark_mode))))
@@ -938,6 +1035,32 @@ impl SqlEditorTab {
             if ui.button(icon::TEXT_INDENT).on_hover_text(tip(Action::FormatSql)).clicked() {
                 self.format(cx);
             }
+            ui.menu_button(icon::DOTS_THREE_VERTICAL, |ui| {
+                for a in [
+                    Action::NextStatement,
+                    Action::PreviousStatement,
+                    Action::CopyStatement,
+                    Action::SelectRowCount,
+                    Action::EvaluateExpression,
+                    Action::OpenDeclaration,
+                    Action::MorphToDelimited,
+                    Action::TrimTrailingSpaces,
+                    Action::SearchWeb,
+                ] {
+                    let keys = crate::keys::label(cx.keymap, a);
+                    let mut b = egui::Button::new(format!("{}  {}", crate::keys::action_icon(a), crate::keys::action_label(a)));
+                    if !keys.is_empty() {
+                        b = b.shortcut_text(keys);
+                    }
+                    if ui.add(b).clicked() {
+                        ui.close();
+                        let ctx = ui.ctx().clone();
+                        self.editor_command(&ctx, cx, a);
+                    }
+                }
+            })
+            .response
+            .on_hover_text(tr("More editor commands"));
             ui.separator();
             // Transaction controls.
             let tx = match &self.session {
@@ -1301,22 +1424,12 @@ impl SqlEditorTab {
                 EditorEvent::SaveRequested => {
                     self.save(cx);
                 }
-                EditorEvent::LinkClicked { range, .. } => {
-                    let Some(conn) = self.conn.clone() else { continue };
-                    if let Some(o) = dbiji_sql::object_at(self.editor.text(), range.start, self.lang.syntax()) {
-                        let table = self.lang.catalog().and_then(|c| dbiji_sql::CompletionCatalog::find_table(c.as_ref(), o.schema.as_deref(), &o.table));
-                        if let Some(t) = table {
-                            let kind = if t.kind == ObjectKind::View { ObjectKind::View } else { t.kind };
-                            let obj = ObjectRef::new(kind, t.schema.clone(), t.name.clone()).with_database(self.schema.as_ref().and_then(|s| s.database.clone()));
-                            cx.push(AppCommand::OpenObject { connection: conn, object: obj, page: ObjectPage::Properties });
-                        }
-                    }
-                }
+                EditorEvent::LinkClicked { range, .. } => self.open_declaration(cx, range.start),
                 EditorEvent::ContextMenu(a) => match a {
-                    ContextAction::Execute => self.run(cx, Request { scope: self.scope_for(true), new_tab: false, explain: None, confirmed: false }),
-                    ContextAction::ExecuteScript => self.run(cx, Request { scope: self.scope_for(false), new_tab: false, explain: None, confirmed: false }),
-                    ContextAction::ExecuteNewTab => self.run(cx, Request { scope: self.scope_for(true), new_tab: true, explain: None, confirmed: false }),
-                    ContextAction::Explain => self.run(cx, Request { scope: self.scope_for(true), new_tab: true, explain: Some(false), confirmed: false }),
+                    ContextAction::Execute => self.run(cx, Request { scope: self.scope_for(true), new_tab: false, explain: None, confirmed: false, sql: None }),
+                    ContextAction::ExecuteScript => self.run(cx, Request { scope: self.scope_for(false), new_tab: false, explain: None, confirmed: false, sql: None }),
+                    ContextAction::ExecuteNewTab => self.run(cx, Request { scope: self.scope_for(true), new_tab: true, explain: None, confirmed: false, sql: None }),
+                    ContextAction::Explain => self.run(cx, Request { scope: self.scope_for(true), new_tab: true, explain: Some(false), confirmed: false, sql: None }),
                     ContextAction::Format => self.format(cx),
                     ContextAction::AddSpellingWord(w) => {
                         self.user_words.insert(w.to_lowercase());
@@ -1378,12 +1491,21 @@ impl TabView for SqlEditorTab {
         use Action as A;
         let ctx = cx.egui_ctx();
         match action {
-            A::ExecuteStatement => self.run(cx, Request { scope: self.scope_for(true), new_tab: false, explain: None, confirmed: false }),
-            A::ExecuteSelection => self.run(cx, Request { scope: self.scope_for(true), new_tab: false, explain: None, confirmed: false }),
-            A::ExecuteScript => self.run(cx, Request { scope: self.scope_for(false), new_tab: false, explain: None, confirmed: false }),
-            A::ExecuteInNewTab => self.run(cx, Request { scope: self.scope_for(true), new_tab: true, explain: None, confirmed: false }),
-            A::ExplainPlan | A::ShowPlanDiagram => self.run(cx, Request { scope: self.scope_for(true), new_tab: true, explain: Some(false), confirmed: false }),
-            A::ExplainAnalyze => self.run(cx, Request { scope: self.scope_for(true), new_tab: true, explain: Some(true), confirmed: false }),
+            A::NextStatement
+            | A::PreviousStatement
+            | A::CopyStatement
+            | A::SelectRowCount
+            | A::EvaluateExpression
+            | A::OpenDeclaration
+            | A::MorphToDelimited
+            | A::TrimTrailingSpaces
+            | A::SearchWeb => self.editor_command(&ctx, cx, action),
+            A::ExecuteStatement => self.run(cx, Request { scope: self.scope_for(true), new_tab: false, explain: None, confirmed: false, sql: None }),
+            A::ExecuteSelection => self.run(cx, Request { scope: self.scope_for(true), new_tab: false, explain: None, confirmed: false, sql: None }),
+            A::ExecuteScript => self.run(cx, Request { scope: self.scope_for(false), new_tab: false, explain: None, confirmed: false, sql: None }),
+            A::ExecuteInNewTab => self.run(cx, Request { scope: self.scope_for(true), new_tab: true, explain: None, confirmed: false, sql: None }),
+            A::ExplainPlan | A::ShowPlanDiagram => self.run(cx, Request { scope: self.scope_for(true), new_tab: true, explain: Some(false), confirmed: false, sql: None }),
+            A::ExplainAnalyze => self.run(cx, Request { scope: self.scope_for(true), new_tab: true, explain: Some(true), confirmed: false, sql: None }),
             A::CancelQuery => self.cancel(cx),
             A::SelectConnection => self.select_conn_open = true,
             A::SelectSchema => self.select_schema_open = true,
@@ -1507,7 +1629,7 @@ impl TabView for SqlEditorTab {
         }
         if self.auto_run && self.session_ready() && self.exec.is_none() {
             self.auto_run = false;
-            self.run(cx, Request { scope: Scope::Script, new_tab: true, explain: None, confirmed: true });
+            self.run(cx, Request { scope: Scope::Script, new_tab: true, explain: None, confirmed: true, sql: None });
         }
         self.poll_exec(&ctx, cx);
         self.toolbar(ui, cx);
@@ -1636,6 +1758,16 @@ impl SqlEditorTab {
     }
     pub fn set_text(&mut self, ctx: &egui::Context, text: &str) {
         self.editor.reset_text(ctx, text.to_string());
+    }
+    pub fn editor_cursor(&self) -> usize {
+        self.editor.cursor()
+    }
+    pub fn select_range(&mut self, ctx: &egui::Context, range: std::ops::Range<usize>) {
+        self.editor.select(ctx, range);
+    }
+    /// The autocomplete catalog of the connection is loaded.
+    pub fn has_catalog(&self) -> bool {
+        self.lang.catalog().is_some()
     }
     pub fn set_cursor(&mut self, ctx: &egui::Context, offset: usize) {
         self.editor.set_cursor(ctx, offset);

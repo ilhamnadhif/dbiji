@@ -129,6 +129,10 @@ impl Dialect for ClickHouseDialect {
         &self.ddl
     }
 
+    fn catalog_folders(&self) -> Vec<dbiji_core::catalog::CatalogFolder> {
+        crate::catalogs::folders()
+    }
+
     fn needs_quoting(&self, ident: &str) -> bool {
         needs_quoting(ident)
     }

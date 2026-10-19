@@ -64,6 +64,23 @@ pub enum AppCommand {
     CreateSampleDatabase,
 
     // --------------------------------------------------------------- objects
+    /// Open a catalog object (role, tablespace, user …).
+    OpenCatalogObject {
+        connection: String,
+        folder: &'static str,
+        ctx: dbiji_core::catalog::CatalogContext,
+    },
+    /// Show a catalog folder (settings, status …) as a table.
+    OpenCatalogTable {
+        connection: String,
+        folder: &'static str,
+        ctx: dbiji_core::catalog::CatalogContext,
+    },
+    /// Reload one catalog folder (all when `None`).
+    RefreshCatalog {
+        connection: String,
+        folder: Option<&'static str>,
+    },
     OpenObject {
         connection: String,
         object: ObjectRef,

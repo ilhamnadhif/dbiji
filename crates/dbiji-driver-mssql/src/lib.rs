@@ -18,6 +18,7 @@
 
 mod admin;
 mod catalog;
+mod catalogs;
 pub mod connect;
 mod cursor;
 pub mod ddl;

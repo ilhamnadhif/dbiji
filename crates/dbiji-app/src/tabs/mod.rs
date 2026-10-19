@@ -3,6 +3,7 @@
 
 pub mod admin;
 pub mod ai;
+pub mod catalog;
 pub mod compare;
 pub mod data_compare;
 pub mod dbtools;

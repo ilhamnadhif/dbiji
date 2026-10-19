@@ -21,6 +21,7 @@
 
 mod admin;
 mod catalog;
+mod catalogs;
 mod connect;
 mod cursor;
 mod ddl;

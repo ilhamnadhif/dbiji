@@ -31,6 +31,7 @@
 #![warn(missing_docs)]
 
 mod backup;
+mod catalogs;
 mod convert;
 pub mod ddl;
 mod dialect;

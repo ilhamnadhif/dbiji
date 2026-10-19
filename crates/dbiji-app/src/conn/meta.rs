@@ -2,6 +2,7 @@
 
 use crate::backend::{Backend, Loadable};
 use crate::conn::session::SessionHandle;
+use dbiji_core::catalog::{CatalogContext, CatalogFolder, CatalogRow};
 use dbiji_core::ddl::{SchemaSnapshot, SnapshotOptions, TableDef};
 use dbiji_core::meta::{DatabaseInfo, ObjectInfo, ObjectKind, ObjectRef, SchemaInfo, SchemaRef};
 use std::collections::HashMap;
@@ -17,6 +18,8 @@ pub struct MetadataCache {
     /// Light snapshots (tables, views, columns, keys) for autocomplete and ER diagrams.
     pub snapshots: HashMap<SchemaRef, Loadable<Arc<SchemaSnapshot>>>,
     pub table_defs: HashMap<ObjectRef, Loadable<Arc<TableDef>>>,
+    /// Catalog folders (roles, settings, users …), keyed by folder id and context.
+    pub catalog: HashMap<(&'static str, CatalogContext), Loadable<Vec<CatalogRow>>>,
     /// Incremented whenever any entry finishes loading; consumers rebuild derived data.
     pub generation: u64,
 }
@@ -44,6 +47,9 @@ impl MetadataCache {
         for v in self.table_defs.values_mut() {
             changed |= v.poll();
         }
+        for v in self.catalog.values_mut() {
+            changed |= v.poll();
+        }
         if changed {
             self.generation += 1;
         }
@@ -56,6 +62,7 @@ impl MetadataCache {
             || self.objects.values().any(Loadable::is_loading)
             || self.children.values().any(Loadable::is_loading)
             || self.snapshots.values().any(Loadable::is_loading)
+            || self.catalog.values().any(Loadable::is_loading)
     }
 
     /// Forget everything (refresh).
@@ -114,6 +121,21 @@ impl MetadataCache {
             let parent = parent.clone();
             *entry = Loadable::Loading(backend.spawn(async move { s.lock().await.list_children(&parent, kind).await }));
         }
+    }
+
+    pub fn request_catalog(&mut self, backend: &Backend, session: &SessionHandle, folder: &CatalogFolder, ctx: &CatalogContext) {
+        let entry = self.catalog.entry((folder.id, ctx.clone())).or_default();
+        if entry.is_not_loaded() {
+            let s = session.clone();
+            let (folder, ctx) = (folder.clone(), ctx.clone());
+            *entry = Loadable::Loading(backend.spawn(async move { dbiji_core::catalog::list(s.lock().await.as_mut(), &folder, &ctx).await }));
+        }
+    }
+
+    /// Forget one catalog folder (refresh).
+    pub fn clear_catalog(&mut self, folder: &str) {
+        self.catalog.retain(|(f, _), _| *f != folder);
+        self.generation += 1;
     }
 
     pub fn request_snapshot(&mut self, backend: &Backend, session: &SessionHandle, schema: &SchemaRef) {

@@ -89,6 +89,8 @@ pub struct LiveConnection {
     pub connected_at: Instant,
     pub current_database: Option<String>,
     pub current_schema: Option<String>,
+    /// Server-level object folders of the dialect (roles, settings …).
+    pub catalog_folders: Arc<Vec<dbiji_core::catalog::CatalogFolder>>,
     /// Stops the keep-alive task when the connection is dropped.
     _keepalive: KeepAlive,
 }
@@ -130,6 +132,11 @@ impl KeepAlive {
 }
 
 impl LiveConnection {
+    /// A catalog folder of this connection's dialect.
+    pub fn catalog_folder(&self, id: &str) -> Option<&dbiji_core::catalog::CatalogFolder> {
+        self.catalog_folders.iter().find(|f| f.id == id)
+    }
+
     pub fn kind(&self) -> DbKind {
         self.config.kind
     }
@@ -568,6 +575,7 @@ impl ConnectionManager {
                         let Some(cfg) = self.config(&id).cloned() else { continue };
                         let Some(driver) = self.registry.get(cfg.kind) else { continue };
                         let dialect = driver.dialect();
+                        let catalog_folders = Arc::new(dialect.catalog_folders());
                         let conn_type = self.connection_type(&cfg.connection_type);
                         let main = SessionHandle::new(c.session, format!("{} (main)", cfg.name), c.database.clone());
                         let keepalive = KeepAlive::start(backend, main.clone(), cfg.init.keep_alive_secs);
@@ -590,6 +598,7 @@ impl ConnectionManager {
                                 connected_at: Instant::now(),
                                 current_database: c.database,
                                 current_schema: c.schema,
+                                catalog_folders,
                                 _keepalive: keepalive,
                             },
                         );

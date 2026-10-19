@@ -11,6 +11,7 @@
 #![allow(clippy::result_large_err)]
 
 pub mod admin;
+pub mod catalog;
 pub mod config;
 pub mod ddl;
 pub mod dialect;

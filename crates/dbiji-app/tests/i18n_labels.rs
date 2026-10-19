@@ -12,6 +12,15 @@ fn runtime_labels_are_translated() {
         labels.push(a.label());
         labels.push(a.category().label());
     }
+    // Catalog folders of every dialect (navigator labels) and their groups.
+    for (_, d) in dbiji_app::driver_registry().drivers() {
+        for f in d.dialect().catalog_folders() {
+            labels.push(f.label);
+            if !f.group.label().is_empty() {
+                labels.push(f.group.label());
+            }
+        }
+    }
     use ObjectKind::*;
     for k in [
         Database,

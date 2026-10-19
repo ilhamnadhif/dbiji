@@ -209,6 +209,10 @@ impl Dialect for MySqlDialect {
         &self.ddl
     }
 
+    fn catalog_folders(&self) -> Vec<dbiji_core::catalog::CatalogFolder> {
+        crate::catalogs::folders()
+    }
+
     fn force_quote_ident(&self, ident: &str) -> String {
         format!("`{}`", ident.replace('`', "``"))
     }

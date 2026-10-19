@@ -924,3 +924,69 @@ fn themes_whats_new_and_updates() {
     frames(&mut h, 2);
     no_errors(&mut h, "updates");
 }
+
+#[test]
+fn catalog_folders_in_the_navigator() {
+    let (_dir, mut h, _conn) = setup();
+    // SQLite: Administer › Settings opens as a table of pragmas.
+    wait(&mut h, "Administer group", |h| nav_row(h, "Administer").is_some());
+    nav_double_click(&mut h, "Administer");
+    wait(&mut h, "Settings folder", |h| nav_row(h, "Settings").is_some());
+    nav_double_click(&mut h, "Settings");
+    wait(&mut h, "settings table", |h| {
+        let e = h
+            .state_mut()
+            .dock
+            .find_active_focused()
+            .and_then(|(_, t)| t.view.as_any_mut().downcast_mut::<SqlEditorTab>().map(|e| (e.is_running(), e.result_count(), e.result_rows(0))));
+        matches!(e, Some((false, 1, Some(n))) if n > 5)
+    });
+    no_errors(&mut h, "sqlite settings");
+    // Context menu of a folder: View as table, Refresh.
+    let n = sweep_menu(&mut h, "Settings", &|h: &mut H| nav_row(h, "Settings").unwrap().click_secondary(), &[]);
+    assert_eq!(n, 2);
+
+    // PostgreSQL: Security › Roles › <role> opens the role with its DDL.
+    let Ok(url) = std::env::var("DBIJI_TEST_PG") else { return };
+    let (mut cfg, password) = dbiji_config::parse_connection_url(&url).unwrap();
+    cfg.name = "pg-catalog".into();
+    let user = cfg.user.clone().unwrap();
+    let id = cfg.id.clone();
+    {
+        let app = h.state_mut();
+        app.conns.upsert(cfg);
+        let backend = app.backend.clone();
+        let creds = dbiji_app::conn::Credentials { password: password.clone(), ..Default::default() };
+        app.conns.connect(&backend, &id, creds).unwrap();
+    }
+    wait(&mut h, "pg connected", |h| h.state().conns.is_connected(&id));
+    h.state_mut().nav.expand(dbiji_app::nav::NavNode::Connection(id.clone()));
+    wait(&mut h, "Security group", |h| nav_row(h, "Security").is_some());
+    nav_double_click(&mut h, "Security");
+    wait(&mut h, "Roles folder", |h| nav_row(h, "Roles").is_some());
+    nav_double_click(&mut h, "Roles");
+    // The role (the database has the same name: the role row is the last one).
+    wait(&mut h, "role row", |h| h.query_all_by_label(&user).filter(|n| n.rect().left() < 120.0).count() >= 2);
+    pause(&mut h);
+    {
+        let n = h.query_all_by_label(&user).rfind(|n| n.rect().left() < 120.0).unwrap();
+        n.click();
+        n.click();
+    }
+    frames(&mut h, 3);
+    type RoleTab = (Option<String>, Vec<(String, String)>);
+    let role_tab = |h: &mut H| -> Option<RoleTab> {
+        h.state_mut()
+            .dock
+            .iter_all_tabs_mut()
+            .find_map(|(_, t)| t.view.as_any_mut().downcast_mut::<dbiji_app::tabs::catalog::CatalogObjectTab>().map(|c| (c.ddl_text().map(str::to_string), c.properties())))
+    };
+    wait(&mut h, "role DDL and properties", |h| role_tab(h).is_some_and(|(ddl, props)| ddl.is_some() && !props.is_empty()));
+    let (ddl, props) = role_tab(&mut h).unwrap();
+    let ddl = ddl.unwrap();
+    assert!(ddl.contains(&format!("CREATE ROLE {user}")) || ddl.contains(&format!("CREATE ROLE \"{user}\"")), "{ddl}");
+    assert!(props.iter().any(|(k, _)| k == "can_login"), "{props:?}");
+    let titles = tab_titles(&h);
+    assert!(titles.iter().any(|t| t == &user), "{titles:?}");
+    no_errors(&mut h, "pg role");
+}

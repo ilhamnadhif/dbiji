@@ -72,6 +72,7 @@
 #![allow(clippy::result_large_err)]
 
 pub mod admin;
+mod catalogs;
 pub mod connect;
 pub mod convert;
 pub mod cursor;

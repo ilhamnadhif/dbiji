@@ -239,6 +239,12 @@ pub trait Dialect: Send + Sync + 'static {
         format!("TRUNCATE TABLE {}", self.qualified_ref(table))
     }
 
+    /// Server-level and auxiliary objects shown in the navigator (roles,
+    /// tablespaces, settings, users, status …); see [`crate::catalog`].
+    fn catalog_folders(&self) -> Vec<crate::catalog::CatalogFolder> {
+        Vec::new()
+    }
+
     /// Maintenance operations offered for objects of this dialect.
     fn maintenance_ops(&self) -> Vec<MaintenanceOp> {
         Vec::new()

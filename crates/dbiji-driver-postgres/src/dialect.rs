@@ -157,6 +157,10 @@ impl Dialect for PgDialect {
         &self.ddl
     }
 
+    fn catalog_folders(&self) -> Vec<dbiji_core::catalog::CatalogFolder> {
+        crate::catalogs::folders(self.kind == DbKind::CockroachDb)
+    }
+
     fn needs_quoting(&self, ident: &str) -> bool {
         pg_needs_quoting(ident)
     }

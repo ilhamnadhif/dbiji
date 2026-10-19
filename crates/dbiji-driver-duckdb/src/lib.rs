@@ -33,6 +33,7 @@
 #![allow(clippy::result_large_err)]
 #![warn(missing_docs)]
 
+mod catalogs;
 mod convert;
 pub mod ddl;
 mod dialect;

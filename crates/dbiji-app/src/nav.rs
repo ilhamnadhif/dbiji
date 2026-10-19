@@ -7,6 +7,7 @@ use crate::backend::Loadable;
 use crate::command::{AppCommand, ObjectPage};
 use crate::conn::{ConnStatus, LiveConnection};
 use crate::cx::AppContext;
+use dbiji_core::catalog::{CatalogContext, CatalogFolder, CatalogGroup, CatalogIcon, CatalogScope};
 use dbiji_core::config::{ConnectionConfig, NavigatorView, wildcard_match};
 use dbiji_core::meta::{ObjectInfo, ObjectKind, ObjectRef, SchemaRef};
 use dbiji_core::{DbKind, tr};
@@ -19,13 +20,53 @@ use std::collections::HashSet;
 pub enum NavNode {
     Folder(String),
     Connection(String),
-    Database { conn: String, db: String },
-    Schema { conn: String, schema: SchemaRef },
-    KindFolder { conn: String, schema: SchemaRef, kind: ObjectKind },
-    Object { conn: String, obj: ObjectRef },
-    ChildFolder { conn: String, parent: ObjectRef, kind: ObjectKind },
-    Child { conn: String, obj: ObjectRef },
-    Extensions { conn: String, db: Option<String> },
+    Database {
+        conn: String,
+        db: String,
+    },
+    Schema {
+        conn: String,
+        schema: SchemaRef,
+    },
+    KindFolder {
+        conn: String,
+        schema: SchemaRef,
+        kind: ObjectKind,
+    },
+    Object {
+        conn: String,
+        obj: ObjectRef,
+    },
+    ChildFolder {
+        conn: String,
+        parent: ObjectRef,
+        kind: ObjectKind,
+    },
+    Child {
+        conn: String,
+        obj: ObjectRef,
+    },
+    Extensions {
+        conn: String,
+        db: Option<String>,
+    },
+    /// Group of server-level catalog folders (Security, Storage, Administer, System Info).
+    CatalogGroup {
+        conn: String,
+        group: CatalogGroup,
+    },
+    /// A catalog folder (roles, settings …); `ctx` holds its database, table or parent object.
+    CatalogFolder {
+        conn: String,
+        folder: &'static str,
+        ctx: CatalogContext,
+    },
+    /// An object of a catalog folder (`ctx.name`).
+    CatalogItem {
+        conn: String,
+        folder: &'static str,
+        ctx: CatalogContext,
+    },
 }
 
 impl NavNode {
@@ -39,7 +80,10 @@ impl NavNode {
             | NavNode::Object { conn: c, .. }
             | NavNode::ChildFolder { conn: c, .. }
             | NavNode::Child { conn: c, .. }
-            | NavNode::Extensions { conn: c, .. } => Some(c),
+            | NavNode::Extensions { conn: c, .. }
+            | NavNode::CatalogGroup { conn: c, .. }
+            | NavNode::CatalogFolder { conn: c, .. }
+            | NavNode::CatalogItem { conn: c, .. } => Some(c),
         }
     }
 }
@@ -267,6 +311,7 @@ impl Navigator {
         } else {
             self.build_schemas(backend, live, &mut child_rows, &cfg.id, None, depth + 1, &caps, show_system);
         }
+        self.push_server_catalog(live, &mut child_rows, &cfg.id, depth + 1, !caps.multiple_databases);
         if !filter_hit && !child_rows.iter().any(|r| r.kind == RowKind::Node) {
             rows.truncate(start);
             return;
@@ -324,6 +369,97 @@ impl Navigator {
                     }
                     self.push_objects(live, rows, conn, &schema, ObjectKind::Extension, depth + 2, false);
                 }
+            }
+            let folders: Vec<CatalogFolder> = live.catalog_folders.iter().filter(|f| f.scope == CatalogScope::Database).cloned().collect();
+            let ctx = CatalogContext { database: db_opt.map(str::to_string), ..Default::default() };
+            self.push_catalog_folders(live, rows, conn, folders, ctx, depth + 1);
+        }
+    }
+
+    /// Server-level catalog groups (and the database-level folders of
+    /// connections without a database level).
+    fn push_server_catalog(&self, live: &mut LiveConnection, rows: &mut Vec<Row>, conn: &str, depth: usize, with_database_scope: bool) {
+        let all = live.catalog_folders.clone();
+        if with_database_scope {
+            let folders: Vec<CatalogFolder> = all.iter().filter(|f| f.scope == CatalogScope::Database).cloned().collect();
+            self.push_catalog_folders(live, rows, conn, folders, CatalogContext::default(), depth);
+        }
+        for group in [CatalogGroup::Security, CatalogGroup::Storage, CatalogGroup::Administer, CatalogGroup::SystemInfo] {
+            let folders: Vec<CatalogFolder> = all.iter().filter(|f| f.scope == CatalogScope::Server && f.group == group).cloned().collect();
+            if folders.is_empty() {
+                continue;
+            }
+            let node = NavNode::CatalogGroup { conn: conn.to_string(), group };
+            let expanded = self.expanded.contains(&node);
+            let group_icon = match group {
+                CatalogGroup::Security => icon::SHIELD_CHECK,
+                CatalogGroup::Storage => icon::HARD_DRIVES,
+                CatalogGroup::Administer => icon::WRENCH,
+                _ => icon::INFO,
+            };
+            rows.push(Row { node, depth, label: tr(group.label()).to_string(), detail: None, icon: group_icon, icon_color: None, expandable: true, expanded, kind: RowKind::Node });
+            if expanded {
+                self.push_catalog_folders(live, rows, conn, folders, CatalogContext::default(), depth + 1);
+            }
+        }
+    }
+
+    /// Catalog folders and, when expanded, their objects and sub-folders.
+    fn push_catalog_folders(&self, live: &mut LiveConnection, rows: &mut Vec<Row>, conn: &str, folders: Vec<CatalogFolder>, base: CatalogContext, depth: usize) {
+        for f in folders {
+            let node = NavNode::CatalogFolder { conn: conn.to_string(), folder: f.id, ctx: base.clone() };
+            let expanded = !f.table_only && self.expanded.contains(&node);
+            rows.push(Row {
+                node,
+                depth,
+                label: tr(f.label).to_string(),
+                detail: None,
+                icon: if f.table_only { icon::TABLE } else { catalog_icon(f.icon) },
+                icon_color: None,
+                expandable: !f.table_only,
+                expanded,
+                kind: RowKind::Node,
+            });
+            if !expanded {
+                continue;
+            }
+            let items = match live.meta.catalog.get(&(f.id, base.clone())) {
+                Some(Loadable::Loaded(v)) => v.clone(),
+                Some(Loadable::Failed(e)) => {
+                    rows.push(placeholder(depth + 1, RowKind::Error(e.to_string())));
+                    continue;
+                }
+                _ => {
+                    rows.push(placeholder(depth + 1, RowKind::Loading));
+                    continue;
+                }
+            };
+            let mut shown = 0;
+            for it in items.iter().filter(|it| self.filter_matches(&it.name)) {
+                shown += 1;
+                let ctx = CatalogContext { name: Some(it.name.clone()), ..base.clone() };
+                let item = NavNode::CatalogItem { conn: conn.to_string(), folder: f.id, ctx };
+                let has_children = !f.children.is_empty();
+                let item_expanded = has_children && self.expanded.contains(&item);
+                rows.push(Row {
+                    node: item,
+                    depth: depth + 1,
+                    label: it.name.clone(),
+                    detail: it.detail.clone(),
+                    icon: catalog_icon(f.icon),
+                    icon_color: None,
+                    expandable: has_children,
+                    expanded: item_expanded,
+                    kind: RowKind::Node,
+                });
+                if item_expanded {
+                    let children: Vec<CatalogFolder> = f.children.iter().filter_map(|id| live.catalog_folder(id).cloned()).collect();
+                    let child_ctx = CatalogContext { parent: Some(it.name.clone()), name: None, ..base.clone() };
+                    self.push_catalog_folders(live, rows, conn, children, child_ctx, depth + 2);
+                }
+            }
+            if shown == 0 && self.filter.trim().is_empty() {
+                rows.push(placeholder(depth + 1, RowKind::Empty));
             }
         }
     }
@@ -530,6 +666,11 @@ impl Navigator {
                 }
             }
         }
+        if obj.kind.is_table_like() && !simple {
+            let folders: Vec<CatalogFolder> = live.catalog_folders.iter().filter(|f| f.scope == CatalogScope::Table).cloned().collect();
+            let ctx = CatalogContext { database: obj.database.clone(), schema: obj.schema.clone(), table: Some(obj.name.clone()), ..Default::default() };
+            self.push_catalog_folders(live, rows, conn, folders, ctx, depth);
+        }
     }
 
     /// Request loads for newly expanded child folders (needs a session).
@@ -541,6 +682,14 @@ impl Navigator {
                 && let Some(session) = live.ensure_session(backend, parent.database.as_deref())
             {
                 live.meta.request_children(backend, &session, parent, *kind);
+            }
+            if let NavNode::CatalogFolder { conn, folder, ctx } = node
+                && let Some(live) = cx.conns.live_mut(conn)
+                && let Some(f) = live.catalog_folder(folder).cloned()
+                && !f.table_only
+                && let Some(session) = live.ensure_session(backend, ctx.database.as_deref())
+            {
+                live.meta.request_catalog(backend, &session, &f, ctx);
             }
         }
     }
@@ -741,6 +890,12 @@ impl Navigator {
                 };
                 cx.push(AppCommand::OpenObject { connection: conn.clone(), object: obj.clone(), page });
             }
+            NavNode::CatalogItem { conn, folder, ctx } => {
+                cx.push(AppCommand::OpenCatalogObject { connection: conn.clone(), folder, ctx: ctx.clone() });
+            }
+            NavNode::CatalogFolder { conn, folder, ctx } if cx.conns.live(conn).and_then(|l| l.catalog_folder(folder)).is_some_and(|f| f.table_only) => {
+                cx.push(AppCommand::OpenCatalogTable { connection: conn.clone(), folder, ctx: ctx.clone() });
+            }
             other => self.toggle(&other.clone(), cx),
         }
     }
@@ -924,7 +1079,58 @@ impl Navigator {
                     ui.close();
                 }
             }
+            NavNode::CatalogGroup { conn, .. } => {
+                if ui.button(format!("{} {}", icon::ARROW_CLOCKWISE, tr("Refresh"))).clicked() {
+                    cx.push(AppCommand::RefreshCatalog { connection: conn.clone(), folder: None });
+                    ui.close();
+                }
+            }
+            NavNode::CatalogFolder { conn, folder, ctx } => {
+                if ui.button(format!("{} {}", icon::TABLE, tr("View as table"))).clicked() {
+                    cx.push(AppCommand::OpenCatalogTable { connection: conn.clone(), folder, ctx: ctx.clone() });
+                    ui.close();
+                }
+                if ui.button(format!("{} {}", icon::ARROW_CLOCKWISE, tr("Refresh"))).clicked() {
+                    cx.push(AppCommand::RefreshCatalog { connection: conn.clone(), folder: Some(folder) });
+                    ui.close();
+                }
+            }
+            NavNode::CatalogItem { conn, folder, ctx } => {
+                if ui.button(format!("{} {}", icon::ARROW_SQUARE_OUT, tr("Open"))).clicked() {
+                    cx.push(AppCommand::OpenCatalogObject { connection: conn.clone(), folder, ctx: ctx.clone() });
+                    ui.close();
+                }
+                if ui.button(format!("{} {}", icon::COPY, tr("Copy name"))).clicked() {
+                    ui.ctx().copy_text(ctx.name.clone().unwrap_or_default());
+                    ui.close();
+                }
+                if ui.button(format!("{} {}", icon::ARROW_CLOCKWISE, tr("Refresh"))).clicked() {
+                    cx.push(AppCommand::RefreshCatalog { connection: conn.clone(), folder: Some(folder) });
+                    ui.close();
+                }
+            }
         }
+    }
+}
+
+/// Icon of a catalog folder and its objects.
+pub fn catalog_icon(i: CatalogIcon) -> &'static str {
+    match i {
+        CatalogIcon::User => icon::USER,
+        CatalogIcon::Users => icon::USERS,
+        CatalogIcon::Storage => icon::HARD_DRIVES,
+        CatalogIcon::Settings => icon::SLIDERS,
+        CatalogIcon::Plug => icon::PLUG,
+        CatalogIcon::Server => icon::HARD_DRIVE,
+        CatalogIcon::Trigger => icon::LIGHTNING,
+        CatalogIcon::Language => icon::CODE,
+        CatalogIcon::Text => icon::TEXT_AA,
+        CatalogIcon::Shield => icon::SHIELD_CHECK,
+        CatalogIcon::Rule => icon::ARROW_BEND_DOWN_RIGHT,
+        CatalogIcon::Gauge => icon::GAUGE,
+        CatalogIcon::Engine => icon::ENGINE,
+        CatalogIcon::Key => icon::KEY,
+        CatalogIcon::Puzzle => icon::PUZZLE_PIECE,
     }
 }
 

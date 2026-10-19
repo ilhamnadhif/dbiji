@@ -174,7 +174,7 @@ impl DbijiApp {
     }
 
     /// Request connecting, prompting for credentials when needed.
-    fn request_connect(&mut self, id: &str) {
+    pub(crate) fn request_connect(&mut self, id: &str) {
         if self.conns.secrets.is_locked() {
             // Encrypted vault locked (auto-lock): ask for the master password first.
             self.dialogs.vault_open = true;

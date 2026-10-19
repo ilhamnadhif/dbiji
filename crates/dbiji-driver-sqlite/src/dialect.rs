@@ -502,6 +502,10 @@ impl Dialect for SqliteDialect {
         &self.ddl
     }
 
+    fn catalog_folders(&self) -> Vec<dbiji_core::catalog::CatalogFolder> {
+        crate::catalogs::folders()
+    }
+
     fn needs_quoting(&self, ident: &str) -> bool {
         sqlite_needs_quoting(ident)
     }

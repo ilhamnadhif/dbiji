@@ -17,6 +17,7 @@
 #![allow(clippy::result_large_err)]
 
 mod catalog;
+mod catalogs;
 mod cursor;
 pub mod ddl;
 pub mod dialect;

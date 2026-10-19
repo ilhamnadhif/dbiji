@@ -60,6 +60,8 @@ pub struct DbijiApp {
     quit_confirmed: bool,
     /// "Generate SQL" requests waiting for the table definition.
     pending_generate: Vec<(String, dbiji_core::ObjectRef, String)>,
+    /// Tab last revealed in the navigator (Link with editor).
+    linked_tab: Option<u64>,
     /// "Execute…" of routines waiting for their definition.
     pending_routines: Vec<(String, dbiji_core::ObjectRef, crate::backend::Job<dbiji_core::DbResult<dbiji_core::ddl::RoutineDef>>)>,
     script_counter: u32,
@@ -99,6 +101,7 @@ impl DbijiApp {
             exit_at: std::env::var("DBIJI_BENCH_EXIT_AFTER_SECS").ok().and_then(|v| v.parse::<u64>().ok()).map(|s| Instant::now() + std::time::Duration::from_secs(s)),
             pending_generate: Vec::new(),
             pending_routines: Vec::new(),
+            linked_tab: None,
             script_counter: 0,
             confirm_quit: false,
             quit_confirmed: false,
@@ -475,7 +478,7 @@ impl DbijiApp {
                 self.toggle_theme(ctx);
                 None
             }
-            A::CommandPalette => Some(AppCommand::ShowPalette),
+            A::CommandPalette | A::OpenDatabaseObject => Some(AppCommand::ShowPalette),
             A::OpenHistory => Some(AppCommand::OpenHistory),
             A::OpenErDiagram => match (conn, self.nav.selected_schema()) {
                 (Some(c), Some(s)) => Some(AppCommand::OpenErDiagram { connection: c, schema: s, tables: Vec::new() }),
@@ -1163,6 +1166,12 @@ impl eframe::App for DbijiApp {
             });
         }
         self.active_tab = self.dock.find_active_focused().map(|(_, t)| t.id);
+        if cx.settings.navigator.link_with_editor && self.active_tab != self.linked_tab {
+            self.linked_tab = self.active_tab;
+            if let Some((conn, obj)) = self.dock.find_active_focused().and_then(|(_, t)| t.view.navigator_object()) {
+                self.nav.reveal(&conn, &obj);
+            }
+        }
         egui::CentralPanel::default().frame(egui::Frame::new()).show(ui, |ui| {
             let mut viewer = DockViewer { cx: &mut cx, close_vetoed: Vec::new(), active_tab: self.active_tab };
             DockArea::new(&mut self.dock).style(egui_dock::Style::from_egui(ui.style().as_ref())).show_leaf_collapse_buttons(false).show_inside(ui, &mut viewer);

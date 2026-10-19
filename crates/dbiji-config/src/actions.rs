@@ -233,6 +233,8 @@ actions! {
     NextTab => ("tab.next", "Next Tab", Navigation, Global),
     /// Activate the previous tab.
     PrevTab => ("tab.previous", "Previous Tab", Navigation, Global),
+    /// Find a table, view or routine by name and open it.
+    OpenDatabaseObject => ("app.open_database_object", "Open Database Object", Navigation, Global),
     /// Open the command palette.
     CommandPalette => ("app.command_palette", "Command Palette", Navigation, Global),
     /// Open the query manager (history).

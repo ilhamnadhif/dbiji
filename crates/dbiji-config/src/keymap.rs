@@ -412,6 +412,7 @@ enum Platform {
 use Platform::{All, Mac, Other};
 
 const DBIJI_DEFAULTS: &[(Action, &str, Platform)] = &[
+    (Action::OpenDatabaseObject, "Cmd+Shift+D", All),
     (Action::NextStatement, "Cmd+Alt+Down", All),
     (Action::PreviousStatement, "Cmd+Alt+Up", All),
     (Action::OpenDeclaration, "F3", Mac),
@@ -466,6 +467,7 @@ const DBIJI_DEFAULTS: &[(Action, &str, Platform)] = &[
 /// DBeaver's documented defaults (Eclipse heritage); Ctrl maps to ⌘ on macOS
 /// except for completion (Ctrl+Space).
 const DBEAVER_DEFAULTS: &[(Action, &str, Platform)] = &[
+    (Action::OpenDatabaseObject, "Cmd+Shift+D", All),
     (Action::NextStatement, "Cmd+Alt+Down", All),
     (Action::PreviousStatement, "Cmd+Alt+Up", All),
     (Action::OpenDeclaration, "F3", Mac),

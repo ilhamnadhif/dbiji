@@ -114,6 +114,8 @@ enum RowKind {
 pub struct Navigator {
     expanded: HashSet<NavNode>,
     pub selected: Option<NavNode>,
+    /// Object to select once its row exists (Link with editor), with a deadline.
+    pending_reveal: Option<(String, ObjectRef, std::time::Instant)>,
     pub filter: String,
     rows: Vec<Row>,
     scroll_to_selected: bool,
@@ -157,6 +159,30 @@ pub fn db_icon(kind: DbKind) -> &'static str {
     }
 }
 
+/// The connection filter that applies to objects of `kind`.
+pub fn name_filter(f: &dbiji_core::config::ObjectFilters, kind: ObjectKind) -> &dbiji_core::config::NameFilter {
+    match kind {
+        ObjectKind::Database => &f.databases,
+        ObjectKind::Schema => &f.schemas,
+        ObjectKind::Table | ObjectKind::Partition | ObjectKind::ForeignTable => &f.tables,
+        ObjectKind::View | ObjectKind::MaterializedView => &f.views,
+        k if k.is_routine() => &f.routines,
+        _ => &f.other,
+    }
+}
+
+/// Mutable [`name_filter`].
+pub fn name_filter_mut(f: &mut dbiji_core::config::ObjectFilters, kind: ObjectKind) -> &mut dbiji_core::config::NameFilter {
+    match kind {
+        ObjectKind::Database => &mut f.databases,
+        ObjectKind::Schema => &mut f.schemas,
+        ObjectKind::Table | ObjectKind::Partition | ObjectKind::ForeignTable => &mut f.tables,
+        ObjectKind::View | ObjectKind::MaterializedView => &mut f.views,
+        k if k.is_routine() => &mut f.routines,
+        _ => &mut f.other,
+    }
+}
+
 fn filter_ok(cfg: &ConnectionConfig, kind: ObjectKind, name: &str) -> bool {
     let f = &cfg.filters;
     match kind {
@@ -173,6 +199,37 @@ impl Navigator {
     pub fn select(&mut self, node: NavNode) {
         self.selected = Some(node);
         self.scroll_to_selected = true;
+    }
+
+    /// Expand the path to `obj` and select it (once loaded).
+    pub fn reveal(&mut self, conn: &str, obj: &ObjectRef) {
+        let c = conn.to_string();
+        self.expanded.insert(NavNode::Connection(c.clone()));
+        if let Some(db) = &obj.database {
+            self.expanded.insert(NavNode::Database { conn: c.clone(), db: db.clone() });
+        }
+        for database in [obj.database.clone(), None] {
+            let schema = SchemaRef { database, schema: obj.schema.clone() };
+            self.expanded.insert(NavNode::Schema { conn: c.clone(), schema: schema.clone() });
+            self.expanded.insert(NavNode::KindFolder { conn: c.clone(), schema, kind: obj.kind });
+        }
+        self.pending_reveal = Some((c, obj.clone(), std::time::Instant::now() + std::time::Duration::from_secs(5)));
+    }
+
+    /// Select the pending revealed object when its row is there.
+    fn finish_reveal(&mut self) {
+        let Some((conn, obj, until)) = self.pending_reveal.clone() else { return };
+        let found = self.rows.iter().find(|r| match &r.node {
+            NavNode::Object { conn: c, obj: o } => *c == conn && o.kind == obj.kind && o.name == obj.name && o.schema == obj.schema,
+            _ => false,
+        });
+        if let Some(r) = found {
+            self.selected = Some(r.node.clone());
+            self.scroll_to_selected = true;
+            self.pending_reveal = None;
+        } else if std::time::Instant::now() > until {
+            self.pending_reveal = None;
+        }
     }
 
     pub fn expand(&mut self, node: NavNode) {
@@ -212,7 +269,7 @@ impl Navigator {
         }
         folders.sort_by_key(|f| f.to_lowercase());
         let mut configs: Vec<ConnectionConfig> = cx.conns.configs().to_vec();
-        configs.sort_by_key(|c| c.name.to_lowercase());
+        configs.sort_by_key(|c| (c.sort_index.unwrap_or(u32::MAX), c.name.to_lowercase()));
 
         // Top level folders, then connections without folder.
         self.build_folder_level(cx, &mut rows, &folders, &configs, None, 0);
@@ -723,6 +780,11 @@ impl Navigator {
             if ui.button(icon::ARROWS_IN_SIMPLE).on_hover_text(tr("Collapse all")).clicked() {
                 self.collapse_all();
             }
+            let mut link = cx.settings.navigator.link_with_editor;
+            if ui.toggle_value(&mut link, icon::LINK).on_hover_text(tr("Link with editor: select the object of the active tab")).changed() {
+                cx.settings.navigator.link_with_editor = link;
+                cx.push(AppCommand::SettingsChanged);
+            }
         });
         let search = ui.add(egui::TextEdit::singleline(&mut self.filter).hint_text(format!("{} {}", icon::MAGNIFYING_GLASS, tr("Filter objects"))).desired_width(f32::INFINITY));
         if search.changed() {
@@ -733,6 +795,10 @@ impl Navigator {
 
         self.request_child_loads(cx);
         self.build(cx);
+        self.finish_reveal();
+        if self.pending_reveal.is_some() {
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
+        }
 
         if cx.conns.configs().is_empty() {
             ui.vertical_centered(|ui| {
@@ -1019,6 +1085,27 @@ impl Navigator {
                     cx.push(AppCommand::DeleteConnection(id.clone()));
                     ui.close();
                 }
+                let others: Vec<String> = cx.conns.configs().iter().map(|c| c.id.clone()).filter(|c| c != id && cx.conns.is_connected(c)).collect();
+                if !others.is_empty() && ui.button(format!("{} {}", icon::PLUGS, tr("Disconnect others"))).clicked() {
+                    for o in others {
+                        cx.push(AppCommand::Disconnect(o));
+                    }
+                    ui.close();
+                }
+                ui.menu_button(format!("{} {}", icon::ARROWS_DOWN_UP, tr("Move")), |ui| {
+                    use crate::command::MovePos as M;
+                    for (pos, label, i) in [
+                        (M::Top, tr("To the top"), icon::ARROW_LINE_UP),
+                        (M::Up, tr("Up"), icon::ARROW_UP),
+                        (M::Down, tr("Down"), icon::ARROW_DOWN),
+                        (M::Bottom, tr("To the bottom"), icon::ARROW_LINE_DOWN),
+                    ] {
+                        if ui.button(format!("{i} {label}")).clicked() {
+                            cx.push(AppCommand::MoveConnection { id: id.clone(), to: pos });
+                            ui.close();
+                        }
+                    }
+                });
                 if connected {
                     ui.separator();
                     ui.menu_button(format!("{} {}", icon::WRENCH, tr("Tools")), |ui| {
@@ -1056,6 +1143,13 @@ impl Navigator {
                     ui.close();
                 }
                 ui.menu_button(format!("{} {}", icon::WRENCH, tr("Tools")), |ui| tools_menu(ui, cx, conn, Some(schema.clone())));
+                if let NavNode::KindFolder { kind, .. } = node
+                    && cx.conns.config(conn).is_some_and(|c| name_filter(&c.filters, *kind).is_active())
+                    && ui.button(format!("{} {}", icon::FUNNEL_X, tr("Clear navigator filter"))).on_hover_text(tr("Show the hidden objects of this type again")).clicked()
+                {
+                    cx.push(AppCommand::ClearNavigatorFilter { connection: conn.clone(), kind: *kind });
+                    ui.close();
+                }
                 ui.separator();
                 if ui.button(format!("{} {}", icon::ARROW_CLOCKWISE, tr("Refresh"))).clicked() {
                     cx.push(AppCommand::RefreshMetadata { connection: conn.clone(), object: None, schema: Some(schema.clone()) });
@@ -1110,6 +1204,27 @@ impl Navigator {
                 }
             }
         }
+    }
+}
+
+/// `CREATE INDEX` / unique constraint DDL for one column (edit before running).
+pub fn column_constraint_sql(d: &dyn dbiji_core::Dialect, column: &ObjectRef, unique: bool) -> String {
+    let table = column.table.clone().unwrap_or_default();
+    let qualified = d.qualified(column.schema.as_deref(), &table);
+    let col = d.quote_ident(&column.name);
+    let base = format!("{table}_{}", column.name).to_lowercase().replace(|c: char| !c.is_ascii_alphanumeric() && c != '_', "_");
+    if unique && d.kind() != dbiji_core::DbKind::Sqlite {
+        let name = d.quote_ident(&format!("uq_{base}"));
+        format!("ALTER TABLE {qualified} ADD CONSTRAINT {name} UNIQUE ({col});")
+    } else {
+        let name = d.quote_ident(&format!("{}_{base}", if unique { "uq" } else { "idx" }));
+        let schema_prefix = match (d.kind(), column.schema.as_deref()) {
+            // SQLite and PostgreSQL put the index in the table's schema.
+            (dbiji_core::DbKind::Sqlite, Some(s)) => format!("{}.", d.quote_ident(s)),
+            _ => String::new(),
+        };
+        let table_ref = if d.kind() == dbiji_core::DbKind::Sqlite { d.quote_ident(&table) } else { qualified };
+        format!("CREATE {}INDEX {schema_prefix}{name} ON {table_ref} ({col});", if unique { "UNIQUE " } else { "" })
     }
 }
 
@@ -1251,6 +1366,23 @@ pub fn object_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, obj: &ObjectRef
         ui.close();
     }
     ui.separator();
+    if obj.kind == ObjectKind::Column && obj.table.is_some() {
+        for (label, unique) in [(tr("Create index…"), false), (tr("Add unique constraint…"), true)] {
+            if ui.button(format!("{} {label}", if unique { icon::KEY } else { icon::LIST_NUMBERS })).clicked() {
+                if let Some(live) = cx.conns.live(conn) {
+                    let text = column_constraint_sql(live.dialect.as_ref(), obj, unique);
+                    cx.push(AppCommand::NewSqlEditor { connection: Some(conn.to_string()), schema: Some(obj.schema_ref()), text: Some(text) });
+                }
+                ui.close();
+            }
+        }
+    }
+    if obj.table.is_none()
+        && ui.button(format!("{} {}", icon::EYE_SLASH, tr("Hide in navigator"))).on_hover_text(tr("Adds the name to the connection's navigator filter")).clicked()
+    {
+        cx.push(AppCommand::HideInNavigator { connection: conn.to_string(), object: obj.clone() });
+        ui.close();
+    }
     if ui.button(format!("{} {}", icon::BOOKMARK_SIMPLE, tr("Add bookmark"))).clicked() {
         cx.push(AppCommand::AddBookmark { connection: c.clone(), object: obj.clone() });
         ui.close();

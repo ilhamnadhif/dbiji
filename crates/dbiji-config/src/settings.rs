@@ -539,6 +539,8 @@ pub struct NavigatorSettings {
     pub default_view: NavigatorView,
     /// Expand a connection's node after connecting.
     pub expand_on_connect: bool,
+    /// Select the object of the active editor in the navigator.
+    pub link_with_editor: bool,
 }
 
 impl Default for NavigatorSettings {
@@ -549,6 +551,7 @@ impl Default for NavigatorSettings {
             show_connection_details: true,
             default_view: NavigatorView::Advanced,
             expand_on_connect: true,
+            link_with_editor: false,
         }
     }
 }

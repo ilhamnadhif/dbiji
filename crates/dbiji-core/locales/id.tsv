@@ -2465,3 +2465,22 @@ Without a selection, format only the statement under the cursor	Tanpa seleksi, f
 Set the formatter command in Settings → SQL editor.	Atur perintah formatter di Settings → SQL editor.
 The script changed while it was formatted; format again.	Skrip berubah saat diformat; format lagi.
 The external formatter failed	Formatter eksternal gagal
+Disconnect others	Putuskan yang lain
+Move	Pindahkan
+To the top	Ke paling atas
+Up	Naik
+Down	Turun
+To the bottom	Ke paling bawah
+Clear navigator filter	Hapus filter navigator
+Show the hidden objects of this type again	Tampilkan lagi objek jenis ini yang disembunyikan
+Create index…	Buat index…
+Add unique constraint…	Tambah unique constraint…
+Hide in navigator	Sembunyikan di navigator
+Adds the name to the connection's navigator filter	Menambahkan nama ke filter navigator koneksi
+Cannot switch the project	Tidak dapat berpindah project
+New project…	Project baru…
+Project name	Nama project
+Create	Buat
+Cannot create the project	Tidak dapat membuat project
+Link with editor: select the object of the active tab	Tautkan dengan editor: pilih objek dari tab aktif
+Open Database Object	Buka Objek Database

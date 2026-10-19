@@ -6,6 +6,59 @@ use dbiji_core::tr;
 
 pub fn route(app: &mut DbijiApp, _ctx: &egui::Context, cmd: AppCommand) {
     match cmd {
+        AppCommand::MoveConnection { id, to } => {
+            use crate::command::MovePos;
+            let Some(folder) = app.conns.config(&id).map(|c| c.folder.clone()) else { return };
+            let mut siblings: Vec<(Option<u32>, String, String)> =
+                app.conns.configs().iter().filter(|c| c.folder == folder).map(|c| (c.sort_index, c.name.to_lowercase(), c.id.clone())).collect();
+            siblings.sort_by_key(|(i, n, _)| (i.unwrap_or(u32::MAX), n.clone()));
+            let mut order: Vec<String> = siblings.into_iter().map(|(_, _, id)| id).collect();
+            let Some(pos) = order.iter().position(|c| *c == id) else { return };
+            let item = order.remove(pos);
+            let new_pos = match to {
+                MovePos::Top => 0,
+                MovePos::Up => pos.saturating_sub(1),
+                MovePos::Down => (pos + 1).min(order.len()),
+                MovePos::Bottom => order.len(),
+            };
+            order.insert(new_pos, item);
+            for (i, c) in order.iter().enumerate() {
+                if let Some(cfg) = app.conns.config_mut(c) {
+                    cfg.sort_index = Some(i as u32);
+                }
+            }
+        }
+        AppCommand::HideInNavigator { connection, object } => {
+            let update = |f: &mut dbiji_core::config::ObjectFilters| {
+                let nf = crate::nav::name_filter_mut(f, object.kind);
+                if !nf.exclude.contains(&object.name) {
+                    nf.exclude.push(object.name.clone());
+                }
+                nf.enabled = true;
+            };
+            if let Some(cfg) = app.conns.config_mut(&connection) {
+                update(&mut cfg.filters);
+            }
+            if let Some(live) = app.conns.live_mut(&connection) {
+                update(&mut live.config.filters);
+            }
+        }
+        AppCommand::ClearNavigatorFilter { connection, kind } => {
+            let clear = |f: &mut dbiji_core::config::ObjectFilters| *crate::nav::name_filter_mut(f, kind) = Default::default();
+            if let Some(cfg) = app.conns.config_mut(&connection) {
+                clear(&mut cfg.filters);
+            }
+            if let Some(live) = app.conns.live_mut(&connection) {
+                clear(&mut live.config.filters);
+            }
+        }
+        AppCommand::SetActiveProject(name) => {
+            if let Some(p) = app.services.projects.as_ref()
+                && let Err(e) = p.set_active(&name)
+            {
+                app.toasts.error(dbiji_core::tr("Cannot switch the project"), Some(e.to_string()));
+            }
+        }
         AppCommand::OpenCatalogObject { connection, folder, ctx } => {
             if !app.conns.is_connected(&connection) {
                 app.request_connect(&connection);

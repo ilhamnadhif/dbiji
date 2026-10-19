@@ -452,6 +452,10 @@ impl ObjectEditorTab {
 }
 
 impl TabView for ObjectEditorTab {
+    fn navigator_object(&self) -> Option<(String, ObjectRef)> {
+        Some((self.conn.clone(), self.obj.clone()))
+    }
+
     fn title(&self) -> String {
         self.obj.name.clone()
     }

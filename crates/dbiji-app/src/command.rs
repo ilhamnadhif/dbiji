@@ -81,6 +81,23 @@ pub enum AppCommand {
         connection: String,
         folder: Option<&'static str>,
     },
+    /// Change the position of a connection among its folder's connections.
+    MoveConnection {
+        id: String,
+        to: MovePos,
+    },
+    /// Hide an object in the navigator (connection filter).
+    HideInNavigator {
+        connection: String,
+        object: ObjectRef,
+    },
+    /// Remove the navigator filter of one object type.
+    ClearNavigatorFilter {
+        connection: String,
+        kind: dbiji_core::ObjectKind,
+    },
+    /// Switch the project shown in the Project panel.
+    SetActiveProject(String),
     /// Open an editor with a script that calls a function / procedure.
     ExecuteRoutine {
         connection: String,
@@ -195,4 +212,13 @@ pub enum AppCommand {
     ShowShortcuts,
     ShowAbout,
     Quit,
+}
+
+/// Where [`AppCommand::MoveConnection`] moves a connection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MovePos {
+    Top,
+    Up,
+    Down,
+    Bottom,
 }

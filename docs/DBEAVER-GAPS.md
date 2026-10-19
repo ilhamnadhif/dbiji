@@ -25,13 +25,14 @@ Status: ☐ open · ☑ done (with the test that covers it).
 
 ## 2. Navigator behaviour
 
-- ☐ Hide selected object(s) / show only selected / clear navigator filter per node
-- ☐ Link with editor (select the active editor's object in the navigator)
-- ☐ Connection order: move up / down / top / bottom
-- ☐ Disconnect others
-- ☐ New index / constraint from selected columns
-- ☐ Open database object… (quick open dialog by name, all connections)
-- ☐ Multiple projects (create, switch active project)
+- ☑ Hide an object in the navigator (connection filter) and clear the filter of an object type
+- ☑ Link with editor (the active tab's table or view is selected in the navigator)
+- ☑ Connection order: move to the top / up / down / to the bottom (within its folder)
+- ☑ Disconnect others
+- ☑ Column › Create index… / Add unique constraint… (DDL in an editor)
+- ☑ Open Database Object (⇧⌘D, the command palette lists tables, views and routines)
+- ☑ Multiple projects: create, switch the active project (Project panel); scripts, diagrams and bookmarks follow
+  — `dbiji-app::ui_full::navigator_behaviour_from_dbeaver`, `dbiji-config::project::tests::active_project`
 
 ## 3. SQL editor
 

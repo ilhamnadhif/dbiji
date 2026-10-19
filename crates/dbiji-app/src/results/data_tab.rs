@@ -152,6 +152,10 @@ impl TableDataTab {
 }
 
 impl TabView for TableDataTab {
+    fn navigator_object(&self) -> Option<(String, ObjectRef)> {
+        Some((self.conn.clone(), self.table.clone()))
+    }
+
     fn title(&self) -> String {
         self.view.panel.as_ref().map(|p| p.title.clone()).unwrap_or_else(|| self.table.name.clone())
     }

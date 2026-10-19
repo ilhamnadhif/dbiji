@@ -18,6 +18,8 @@ pub struct ProjectView {
     loaded: Option<Instant>,
     filter: String,
     error: Option<String>,
+    /// Name typed for a new project.
+    new_project: Option<String>,
 }
 
 impl ProjectView {
@@ -36,6 +38,46 @@ impl ProjectView {
     pub fn ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
         if self.loaded.is_none_or(|t| t.elapsed() > Duration::from_secs(5)) {
             self.reload(cx);
+        }
+        if let Some(pm) = cx.services.projects.clone() {
+            let active = pm.active_name();
+            ui.horizontal(|ui| {
+                egui::ComboBox::from_id_salt("project_switch").selected_text(format!("{} {}", icon::FOLDER_SIMPLE, active)).width(ui.available_width() - 4.0).show_ui(ui, |ui| {
+                    for p in pm.list().unwrap_or_default() {
+                        if ui.selectable_label(p.name() == active, p.name()).clicked() && p.name() != active {
+                            cx.push(AppCommand::SetActiveProject(p.name().to_string()));
+                            self.loaded = None;
+                        }
+                    }
+                    ui.separator();
+                    if ui.button(format!("{} {}", icon::PLUS, tr("New project…"))).clicked() {
+                        self.new_project = Some(String::new());
+                    }
+                });
+            });
+            if let Some(name) = &mut self.new_project {
+                let mut done = false;
+                ui.horizontal(|ui| {
+                    let r = ui.add(egui::TextEdit::singleline(name).hint_text(tr("Project name")).desired_width(ui.available_width() - 60.0));
+                    let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                    if (ui.button(tr("Create")).clicked() || enter) && !name.trim().is_empty() {
+                        match pm.create(name.trim()) {
+                            Ok(p) => {
+                                cx.push(AppCommand::SetActiveProject(p.name().to_string()));
+                                self.loaded = None;
+                                done = true;
+                            }
+                            Err(e) => cx.toasts.error(tr("Cannot create the project"), Some(e.to_string())),
+                        }
+                    }
+                    if ui.button(icon::X).clicked() {
+                        done = true;
+                    }
+                });
+                if done {
+                    self.new_project = None;
+                }
+            }
         }
         ui.horizontal(|ui| {
             if ui.button(icon::FILE_PLUS).on_hover_text(tr("New SQL editor")).clicked() {

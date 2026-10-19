@@ -50,6 +50,10 @@ pub trait TabView: Any {
     }
 
     /// Unsaved changes (editor text, pending data edits).
+    /// The database object this tab shows (Link with editor).
+    fn navigator_object(&self) -> Option<(String, dbiji_core::ObjectRef)> {
+        None
+    }
     fn is_dirty(&self) -> bool {
         false
     }

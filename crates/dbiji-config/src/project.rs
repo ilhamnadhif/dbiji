@@ -422,9 +422,32 @@ impl ProjectManager {
         Ok(p)
     }
 
-    /// The default project ("General").
+    fn active_file(&self) -> PathBuf {
+        self.root.join(META_DIR).join("active-project")
+    }
+
+    /// Name of the active project ("General" unless another one was chosen).
+    pub fn active_name(&self) -> String {
+        std::fs::read_to_string(self.active_file())
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|n| valid_name(n).is_ok() && self.root.join(n).is_dir())
+            .unwrap_or_else(|| DEFAULT_PROJECT.to_string())
+    }
+
+    /// Make `name` the active project (scripts, diagrams and bookmarks).
+    pub fn set_active(&self, name: &str) -> DbResult<()> {
+        let p = self.get(name)?;
+        let file = self.active_file();
+        if let Some(dir) = file.parent() {
+            ensure_private_dir(dir)?;
+        }
+        std::fs::write(&file, &p.name).map_err(|e| io_err(&file, e))
+    }
+
+    /// The active project ("General" unless another one was chosen).
     pub fn default_project(&self) -> DbResult<Project> {
-        let p = self.project_handle(DEFAULT_PROJECT);
+        let p = self.project_handle(&self.active_name());
         p.ensure_layout()?;
         Ok(p)
     }
@@ -451,7 +474,11 @@ impl ProjectManager {
         if to.path.exists() {
             return Err(DbError::config(format!("Project '{new}' already exists")));
         }
+        let was_active = self.active_name() == from.name;
         std::fs::rename(&from.path, &to.path).map_err(|e| io_err(&from.path, e))?;
+        if was_active {
+            self.set_active(&to.name)?;
+        }
         Ok(to)
     }
 
@@ -471,7 +498,11 @@ impl ProjectManager {
         if p.name == DEFAULT_PROJECT {
             return Err(DbError::config("The default project cannot be deleted"));
         }
-        std::fs::remove_dir_all(&p.path).map_err(|e| io_err(&p.path, e))
+        std::fs::remove_dir_all(&p.path).map_err(|e| io_err(&p.path, e))?;
+        if self.active_name() == DEFAULT_PROJECT {
+            let _ = std::fs::remove_file(self.active_file());
+        }
+        Ok(())
     }
 
     fn session_file(&self) -> PathBuf {
@@ -1224,5 +1255,31 @@ mod tests {
         assert!(!pm.root().join(".dbiji/virtual/c1.json").exists());
         pm.delete_virtual_model("c1").unwrap();
         assert!(pm.virtual_model("../x").is_ok(), "ids are sanitized");
+    }
+
+    #[test]
+    fn active_project() {
+        let dir = std::env::temp_dir().join(format!("dbiji-projects-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let pm = ProjectManager::with_root(&dir).unwrap();
+        assert_eq!(pm.default_project().unwrap().name(), DEFAULT_PROJECT);
+        pm.create("Sales").unwrap();
+        pm.set_active("Sales").unwrap();
+        assert_eq!(pm.default_project().unwrap().name(), "Sales");
+        assert_eq!(
+            ProjectManager::with_root(&dir).unwrap().active_name(),
+            "Sales",
+            "remembered"
+        );
+        pm.rename("Sales", "Finance").unwrap();
+        assert_eq!(pm.active_name(), "Finance", "follows a rename");
+        pm.delete("Finance").unwrap();
+        assert_eq!(
+            pm.active_name(),
+            DEFAULT_PROJECT,
+            "back to the default after a delete"
+        );
+        assert!(pm.set_active("Missing").is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

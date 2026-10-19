@@ -488,6 +488,9 @@ pub struct ConnectionConfig {
     pub kind: DbKind,
     /// Navigator folder path, `/` separated.
     pub folder: Option<String>,
+    /// Position among the connections of its folder (moved by the user);
+    /// connections without one follow, by name.
+    pub sort_index: Option<u32>,
     pub description: Option<String>,
     pub host: String,
     pub port: Option<u16>,
@@ -546,6 +549,7 @@ impl Default for ConnectionConfig {
             navigator_view: NavigatorView::Advanced,
             color: None,
             last_connected: None,
+            sort_index: None,
         }
     }
 }

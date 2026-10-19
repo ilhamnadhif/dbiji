@@ -353,7 +353,7 @@ fn navigator_data_editing_and_context_menus() {
     assert_eq!(query_one(&db, "SELECT COUNT(*) FROM customer WHERE name = 'Zedka'"), "1");
 
     // Every navigator context menu, on every kind of node.
-    let skip = ["Delete", "Drop", "Disconnect", "Duplicate", "Copy name", "Connect"];
+    let skip = ["Delete", "Drop", "Disconnect", "Duplicate", "Copy name", "Connect", "Hide in navigator"];
     for node in ["dbiji-sample.db", "Tables", "customer", "Views"] {
         let label = node.to_string();
         let open = move |h: &mut H| {
@@ -1165,4 +1165,86 @@ fn execute_routine_script() {
         let sql = format!("DROP FUNCTION public.{fname}(integer, integer)");
         app.backend.block_on(async move { s.execute_update(&sql, &[]).await }).unwrap();
     }
+}
+
+#[test]
+fn navigator_behaviour_from_dbeaver() {
+    let (dir, mut h, conn) = setup();
+    wait(&mut h, "Tables", |h| nav_row(h, "Tables").is_some());
+    nav_double_click(&mut h, "Tables");
+    wait(&mut h, "customer", |h| nav_row(h, "customer").is_some());
+    // Hide an object, then clear the navigator filter of the folder.
+    nav_menu_item(&mut h, "customer", "Hide in navigator");
+    wait(&mut h, "customer hidden", |h| nav_row(h, "customer").is_none());
+    assert!(h.state().conns.config(&conn).unwrap().filters.tables.exclude.contains(&"customer".to_string()));
+    nav_menu_item(&mut h, "Tables", "Clear navigator filter");
+    wait(&mut h, "customer back", |h| nav_row(h, "customer").is_some());
+    // Column › Create index…: DDL in a new editor.
+    {
+        let id = conn.clone();
+        let table = dbiji_core::ObjectRef::table(Some("main".into()), "customer");
+        h.state_mut().nav.expand(dbiji_app::nav::NavNode::Object { conn: id.clone(), obj: table.clone() });
+        h.state_mut().nav.expand(dbiji_app::nav::NavNode::ChildFolder { conn: id, parent: table, kind: dbiji_core::ObjectKind::Column });
+    }
+    wait(&mut h, "columns", |h| nav_row(h, "email").is_some());
+    nav_menu_item(&mut h, "email", "Create index…");
+    wait(&mut h, "index DDL", |h| {
+        h.state_mut().dock.find_active_focused().and_then(|(_, t)| t.view.as_any().downcast_ref::<SqlEditorTab>().map(|e| e.text().starts_with("CREATE INDEX"))).unwrap_or(false)
+    });
+    let ddl = focused_editor(&mut h).text().to_string();
+    assert!(ddl.contains("customer") && ddl.contains("email"), "{ddl}");
+    // Link with editor: the active tab's table is selected in the navigator.
+    h.state_mut().settings.navigator.link_with_editor = true;
+    h.state_mut().push_command(AppCommand::OpenObject {
+        connection: conn.clone(),
+        object: dbiji_core::ObjectRef::table(Some("main".into()), "product"),
+        page: dbiji_app::command::ObjectPage::Data,
+    });
+    wait(&mut h, "product selected", |h| matches!(&h.state().nav.selected, Some(dbiji_app::nav::NavNode::Object { obj, .. }) if obj.name == "product"));
+    h.state_mut().settings.navigator.link_with_editor = false;
+    // A second connection: order and "Disconnect others".
+    let other = dir.0.join("other.db");
+    std::fs::write(&other, b"").unwrap();
+    h.state_mut().open_path(&other, false);
+    wait(&mut h, "second connected", |h| h.state().conns.configs().len() == 2 && h.state().conns.configs().iter().all(|c| h.state().conns.is_connected(&c.id)));
+    let names = |h: &H| -> Vec<String> {
+        let mut v: Vec<(Option<u32>, String)> = h.state().conns.configs().iter().map(|c| (c.sort_index, c.name.clone())).collect();
+        v.sort_by_key(|(i, n)| (i.unwrap_or(u32::MAX), n.to_lowercase()));
+        v.into_iter().map(|(_, n)| n).collect()
+    };
+    assert_eq!(names(&h), vec!["dbiji-sample.db", "other.db"]);
+    let other_id = h.state().conns.configs().iter().find(|c| c.name == "other.db").unwrap().id.clone();
+    h.state_mut().push_command(AppCommand::MoveConnection { id: other_id.clone(), to: dbiji_app::command::MovePos::Top });
+    frames(&mut h, 2);
+    assert_eq!(names(&h), vec!["other.db", "dbiji-sample.db"]);
+    nav_menu_item(&mut h, "other.db", "Disconnect others");
+    wait(&mut h, "sample disconnected", |h| !h.state().conns.is_connected(&conn));
+    assert!(h.state().conns.is_connected(&other_id));
+    // Projects: create, switch, back.
+    {
+        let pm = h.state().services.projects.clone().unwrap();
+        pm.create("Reports").unwrap();
+    }
+    h.state_mut().push_command(AppCommand::SetActiveProject("Reports".into()));
+    frames(&mut h, 2);
+    assert_eq!(h.state().services.projects.as_ref().unwrap().active_name(), "Reports");
+    h.state_mut().push_command(AppCommand::SetActiveProject("General".into()));
+    frames(&mut h, 2);
+    // Open Database Object (Cmd+Shift+D) opens the palette.
+    pause(&mut h);
+    h.key_press_modifiers(CMD | Modifiers::SHIFT, Key::D);
+    frames(&mut h, 2);
+    assert!(h.state().dialogs.palette_open);
+    h.key_press(Key::Escape);
+    frames(&mut h, 2);
+    no_errors(&mut h, "navigator behaviour");
+}
+
+/// Right-click a navigator row and click a menu item.
+fn nav_menu_item(h: &mut H, row: &str, item: &str) {
+    pause(h);
+    nav_row(h, row).unwrap_or_else(|| panic!("no navigator row {row:?}")).click_secondary();
+    frames(h, 2);
+    click(h, item);
+    frames(h, 3);
 }

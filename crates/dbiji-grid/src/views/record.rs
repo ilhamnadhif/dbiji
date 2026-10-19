@@ -50,6 +50,11 @@ fn resize_handle(ui: &mut Ui, cell: egui::Rect, id: egui::Id, label: &str, focus
     (*width - before).abs() > f32::EPSILON
 }
 
+/// A boolean column (or value): edited with a check box, never typed.
+fn is_bool_column(model: &ResultModel, c: usize, v: &Value) -> bool {
+    matches!(v, Value::Bool(_)) || model.column_kind(c) == dbiji_core::DataKind::Bool
+}
+
 /// One line of text in `rect` (left, vertically centred, cut with "…").
 fn paint_text(ui: &Ui, rect: egui::Rect, text: RichText, fallback: egui::Color32) {
     let galley = egui::WidgetText::from(text).into_galley(ui, Some(egui::TextWrapMode::Truncate), rect.width(), egui::TextStyle::Body);
@@ -255,6 +260,7 @@ impl<'a> RecordView<'a> {
         let key_cols: Vec<usize> = model.editability().as_ref().map(|t| t.key_columns.clone()).unwrap_or_default();
         let row_h = ui.text_style_height(&egui::TextStyle::Body) + 2.0;
         let mut copied: Option<String> = None;
+        let mut toggled: Option<(usize, usize, bool)> = None;
         ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
             for (i, &c) in columns.iter().enumerate() {
@@ -311,9 +317,26 @@ impl<'a> RecordView<'a> {
                                 }
                                 return;
                             }
+                            let can_edit = editable && model.can_edit_cell(row, c).is_ok();
+                            // Booleans: a check box (click to toggle), never typed.
+                            if is_bool_column(model, c, v) && !*is_default {
+                                let mut on = v.as_bool().unwrap_or(false);
+                                let text = if v.is_null() {
+                                    RichText::new(options.format.null_text.clone()).italics().color(theme.weak)
+                                } else {
+                                    RichText::new(if on { "true" } else { "false" })
+                                };
+                                let resp = ui.add_enabled(can_edit, egui::Checkbox::new(&mut on, text));
+                                if resp.changed() {
+                                    toggled = Some((row, c, on));
+                                }
+                                if resp.clicked() {
+                                    grid.select_cell(row, c);
+                                }
+                                return;
+                            }
                             let fmt = PreparedFormat::new(&options.format, grid.column_format(c));
                             let rt = value_text(v, *is_default, *modified, &fmt, options, &theme);
-                            let can_edit = editable && model.can_edit_cell(row, c).is_ok();
                             let resp = ui.add(egui::Label::new(rt).wrap().sense(egui::Sense::click()));
                             let resp = if can_edit { resp.on_hover_text(tr("Double-click to edit")) } else { resp };
                             if resp.double_clicked() {
@@ -349,6 +372,12 @@ impl<'a> RecordView<'a> {
                 ui.painter().set(bg, egui::Shape::rect_filled(rect, 4.0, fill));
             }
         });
+        if let Some((r, c, on)) = toggled {
+            match model.set_value(r, c, Value::Bool(on)) {
+                Ok(()) => state.error = None,
+                Err(e) => state.error = Some(e),
+            }
+        }
         if let Some(text) = copied {
             ui.ctx().copy_text(text);
             actions.push(GridAction::Notify { message: tr("Value copied").to_string(), error: false });
@@ -482,6 +511,7 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
     let mut commit: Option<(usize, usize, String)> = None;
     let mut open_value: Option<(usize, usize)> = None;
     let mut picked = state.picked;
+    let mut toggled: Option<(usize, usize, bool)> = None;
     ScrollArea::horizontal().auto_shrink([false, false]).show(ui, |ui| {
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
@@ -562,11 +592,17 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
                                 Some(t) => resp.on_hover_text(clip(&t)),
                                 None => resp,
                             };
+                            let boolean = is_bool_column(model, c, v) && !*is_default;
+                            let resp = if boolean && editable { resp.on_hover_text(tr("Click the box to change the value")) } else { resp };
+                            let on_box = resp.interact_pointer_pos().is_some_and(|p| p.x < inner.left() + 24.0);
                             if resp.clicked() {
                                 picked = Some((r, c));
                                 focus.request_focus();
+                                if boolean && on_box && editable && model.can_edit_cell(r, c).is_ok() {
+                                    toggled = Some((r, c, !v.as_bool().unwrap_or(false)));
+                                }
                             }
-                            if resp.double_clicked() {
+                            if resp.double_clicked() && !boolean {
                                 let multi = matches!(v, Value::Text(s) if s.contains('\n')) || matches!(v, Value::Bytes(_));
                                 if editable && !multi && model.can_edit_cell(r, c).is_ok() {
                                     state.editing = Some((r, c, if v.is_null() { String::new() } else { v.to_text().into_owned() }));
@@ -582,6 +618,12 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
         });
     });
     state.picked = picked;
+    if let Some((r, c, on)) = toggled {
+        match model.set_value(r, c, Value::Bool(on)) {
+            Ok(()) => state.error = None,
+            Err(e) => state.error = Some(e),
+        }
+    }
     if let Some(e) = &state.error {
         ui.colored_label(theme.error, e);
     }

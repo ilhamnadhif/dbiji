@@ -1608,3 +1608,35 @@ fn create_database_from_the_navigator() {
     let mut s = backend.block_on(driver.connect(&params)).unwrap();
     backend.block_on(dbiji_core::driver::execute_update(s.as_mut(), &format!("DROP DATABASE {name} WITH (FORCE)"), &[])).unwrap();
 }
+
+/// Booleans in the record view are check boxes: a click toggles, nothing is typed.
+#[test]
+fn boolean_check_boxes_in_the_record_view() {
+    let (_dir, mut h, conn) = setup();
+    exec_sql(&mut h, "CREATE TABLE flags (id INTEGER PRIMARY KEY, active BOOLEAN NOT NULL); INSERT INTO flags VALUES (1, 0), (2, 1);");
+    h.state_mut().push_command(AppCommand::RefreshMetadata { connection: conn.clone(), object: None, schema: None });
+    h.state_mut().push_command(AppCommand::OpenObject {
+        connection: conn.clone(),
+        object: dbiji_core::ObjectRef::table(Some("main".into()), "flags"),
+        page: dbiji_app::command::ObjectPage::Data,
+    });
+    wait(&mut h, "flags data", |h| has(h, "Data grid, 2 rows"));
+    let body = h.query_all_by_label_contains("Data grid,").next().unwrap().rect();
+    let p = egui::pos2(body.left() + 20.0, body.top() + 8.0);
+    pause(&mut h);
+    h.event(egui::Event::PointerMoved(p));
+    for pressed in [true, false] {
+        h.event(egui::Event::PointerButton { pos: p, button: egui::PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
+    }
+    frames(&mut h, 2);
+    h.key_press(Key::Tab);
+    wait(&mut h, "record view", |h| has(h, "Record view, row 1 of"));
+    let boxes = |h: &H| h.query_all_by_role(egui::accesskit::Role::CheckBox).filter_map(|n| n.accesskit_node().label()).collect::<Vec<_>>();
+    assert!(boxes(&h).iter().any(|l| l == "false"), "a check box for active: {:?}", boxes(&h));
+    pause(&mut h);
+    h.query_all_by_role(egui::accesskit::Role::CheckBox).find(|n| n.accesskit_node().label().as_deref() == Some("false")).unwrap().click();
+    frames(&mut h, 3);
+    assert!(boxes(&h).iter().any(|l| l == "true"), "toggled: {:?}", boxes(&h));
+    assert!(has(&h, "Save (1)"), "one pending change: {:?}", labels(&h));
+    assert!(h.query_all_by_role(egui::accesskit::Role::TextInput).all(|n| n.accesskit_node().value().as_deref() != Some("false")), "no text field for a boolean");
+}

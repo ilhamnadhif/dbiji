@@ -2624,3 +2624,4 @@ The navigator lists only the connection's database; the new one appears when all
 Confirm statements that change data or schema	Konfirmasi statement yang mengubah data atau skema
 Connection type "{}" asks before statements that change data or schema.	Tipe koneksi "{}" meminta konfirmasi sebelum statement yang mengubah data atau skema.
 Resize {}	Ubah lebar {}
+Click the box to change the value	Klik kotaknya untuk mengubah nilai

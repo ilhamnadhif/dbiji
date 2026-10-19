@@ -18,6 +18,7 @@ notes of a new version once after it was updated (Help → What's new).
 - Column menu (▾ in every column header): order ascending / descending, disable the order, filter by the current cell's value, write a custom condition, save or reset the default filter, remove all filters and orderings.
 - The result toolbar is grouped (refresh · editing · export · view · panels) with the row count and fetch buttons on the right; messages such as "The result has no geometry column" appear there instead of over the buttons.
 - Interface polish: a new start page (start actions with their shortcuts, recent connections and scripts); text fields with a visible border in dialogs; a main toolbar with global actions only (new connection and editor, query history, pending transactions, tasks, command palette; running, transactions and the active connection stay in the SQL editor's toolbar, green run and red stop); the result filter bar on one line with a Server / Client switch; readable property tables; shorter database file paths in the navigator; notifications no longer cover the row count.
+- Record view: booleans are check boxes (a click toggles them), never a text field.
 - Rows side by side: drag a column border in the header to resize it (also the column-name column), double-click the border to fit the longest value.
 - Tab with several rows selected shows them side by side (one column per row, like DBeaver); ⌘C copies the picked value.
 - The app icon has transparent corners (no white square in the Dock and Finder).

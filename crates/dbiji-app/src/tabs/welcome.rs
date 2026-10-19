@@ -26,6 +26,33 @@ fn recent_scripts(ui: &Ui, cx: &AppContext) -> Vec<dbiji_config::project::Script
     list
 }
 
+/// A clickable two-line row: icon, name, and a detail line (cut with "…").
+fn recent_row(ui: &mut Ui, icon: &str, name: &str, detail: &str) -> egui::Response {
+    let width = ui.available_width();
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, 42.0), egui::Sense::click());
+    let v = ui.visuals();
+    if resp.hovered() {
+        ui.painter().rect_filled(rect, 6.0, v.widgets.hovered.weak_bg_fill);
+    }
+    let text_color = v.text_color();
+    let weak = v.weak_text_color();
+    let painter = ui.painter_at(rect);
+    painter.text(egui::pos2(rect.left() + 10.0, rect.center().y), egui::Align2::LEFT_CENTER, icon, egui::TextStyle::Body.resolve(ui.style()), weak);
+    let left = rect.left() + 34.0;
+    let max_w = (rect.right() - left - 8.0).max(20.0);
+    let line = |text: &str, style: egui::TextStyle, color: egui::Color32| {
+        egui::WidgetText::from(RichText::new(text).color(color)).into_galley(ui, Some(egui::TextWrapMode::Truncate), max_w, style)
+    };
+    let top = line(name, egui::TextStyle::Body, text_color);
+    let bottom = line(detail, egui::TextStyle::Small, weak);
+    let y = rect.center().y - (top.size().y + bottom.size().y + 2.0) / 2.0;
+    let top_h = top.size().y;
+    painter.galley(egui::pos2(left, y), top, text_color);
+    painter.galley(egui::pos2(left, y + top_h + 2.0), bottom, weak);
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name));
+    resp
+}
+
 impl TabView for WelcomeTab {
     fn title(&self) -> String {
         tr("Welcome").to_string()
@@ -111,14 +138,8 @@ impl TabView for WelcomeTab {
                     ui.weak(tr("None yet"));
                 }
                 for c in recent.into_iter().take(6) {
-                    let text = format!("{}  {}", crate::nav::db_icon(c.kind), c.name);
-                    let r = ui.add(
-                        egui::Button::new(text)
-                            .frame(false)
-                            .right_text(RichText::new(crate::nav::connection_detail(&c)).weak().small())
-                            .min_size(egui::vec2(ui.available_width(), 26.0)),
-                    );
-                    if r.on_hover_text(tr("Connect and open a SQL editor")).clicked() {
+                    let detail = crate::nav::connection_detail(&c);
+                    if recent_row(ui, crate::nav::db_icon(c.kind), &c.name, &detail).on_hover_text(format!("{detail}\n{}", tr("Connect and open a SQL editor"))).clicked() {
                         push(AppCommand::Connect(c.id.clone()));
                         push(AppCommand::NewSqlEditor { connection: Some(c.id.clone()), schema: None, text: None });
                     }
@@ -128,7 +149,8 @@ impl TabView for WelcomeTab {
                     ui.add_space(10.0);
                     ui.label(RichText::new(tr("Recent scripts")).weak().small());
                     for s in scripts.into_iter().take(6) {
-                        let r = ui.add(egui::Button::new(format!("{}  {}", icon::FILE_SQL, s.relative)).frame(false).min_size(egui::vec2(ui.available_width(), 26.0)));
+                        let dir = s.path.parent().map(|p| p.display().to_string()).unwrap_or_default();
+                        let r = recent_row(ui, icon::FILE_SQL, &s.relative, &dir);
                         if r.on_hover_text(s.path.display().to_string()).clicked() {
                             push(AppCommand::OpenScript(s.path.clone()));
                         }

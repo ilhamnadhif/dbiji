@@ -1497,6 +1497,19 @@ fn create_database_from_the_navigator() {
     h.state_mut().push_command(AppCommand::Connect(id.clone()));
     wait(&mut h, "connected", |h| h.state().conns.is_connected(&id));
     wait(&mut h, "current database", |h| nav_row(h, &current).is_some());
+    // A schema belongs to a database: not on the connection, on the database.
+    pause(&mut h);
+    nav_row(&h, "pg-test").unwrap().click_secondary();
+    frames(&mut h, 2);
+    assert!(has(&h, "New database…") && !has(&h, "New schema…"), "connection menu: {:?}", labels(&h));
+    h.key_press(Key::Escape);
+    frames(&mut h, 2);
+    pause(&mut h);
+    nav_row(&h, &current).unwrap().click_secondary();
+    frames(&mut h, 2);
+    assert!(has(&h, "New schema…"), "database menu: {:?}", labels(&h));
+    h.key_press(Key::Escape);
+    frames(&mut h, 2);
     // Right-click the database: New database…
     let name = format!("dbiji_ui_{}", &uuid::Uuid::new_v4().simple().to_string()[..8]);
     pause(&mut h);

@@ -1297,6 +1297,20 @@ impl Navigator {
                     cx.push(AppCommand::NewSqlEditor { connection: Some(conn.clone()), schema: Some(schema.clone()), text: None });
                     ui.close();
                 }
+                // Another schema in the same database.
+                if matches!(node, NavNode::Schema { .. })
+                    && let Some(live) = cx.conns.live(conn)
+                    && live.dialect.create_schema_sql("x", None).is_some()
+                {
+                    let read_only = live.config.read_only;
+                    let database = schema.database.clone().or_else(|| live.current_database.clone());
+                    let b =
+                        ui.add_enabled(!read_only, egui::Button::new(format!("{} {}", icon::STACK, tr("New schema…")))).on_disabled_hover_text(tr("The connection is read-only."));
+                    if b.clicked() {
+                        cx.push(AppCommand::NewSchema { connection: conn.clone(), database });
+                        ui.close();
+                    }
+                }
                 if ui.button(format!("{} {}", icon::TABLE, tr("Create table"))).clicked() {
                     cx.push(AppCommand::CreateTable { connection: conn.clone(), schema: schema.clone() });
                     ui.close();
@@ -1426,12 +1440,15 @@ fn placeholder(depth: usize, kind: RowKind) -> Row {
 
 /// "New database…" / "New schema…" of a connected server (what its
 /// database type supports; `database`: schemas go into that database).
+/// `database`: the database node the menu belongs to, `None` on the
+/// connection node.
 pub fn create_menu_items(ui: &mut Ui, cx: &mut AppContext, conn: &str, database: Option<String>) {
     let Some(live) = cx.conns.live(conn) else { return };
     let read_only = live.config.read_only;
     let probe = dbiji_core::NewDatabase { name: "x".into(), ..Default::default() };
     let databases = live.dialect.create_database_sql(&probe).is_some();
     let schemas = live.dialect.create_schema_sql("x", None).is_some();
+    let multiple_databases = live.driver.info().capabilities.multiple_databases;
     let why = tr("The connection is read-only.");
     if databases {
         let b = ui.add_enabled(!read_only, egui::Button::new(format!("{} {}", icon::DATABASE, tr("New database…")))).on_disabled_hover_text(why);
@@ -1440,7 +1457,9 @@ pub fn create_menu_items(ui: &mut Ui, cx: &mut AppContext, conn: &str, database:
             ui.close();
         }
     }
-    if schemas {
+    // A schema belongs to a database: on servers with several databases it
+    // is created from a database (or schema) node, not the connection.
+    if schemas && (database.is_some() || !multiple_databases) {
         let b = ui.add_enabled(!read_only, egui::Button::new(format!("{} {}", icon::STACK, tr("New schema…")))).on_disabled_hover_text(why);
         if b.clicked() {
             cx.push(AppCommand::NewSchema { connection: conn.to_string(), database });

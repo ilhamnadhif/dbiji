@@ -1535,6 +1535,13 @@ impl TabView for SqlEditorTab {
         self.conn.as_deref()
     }
 
+    fn transaction_session(&self) -> Option<SessionHandle> {
+        match &self.session {
+            SessionSlot::Ready(s) => Some(s.clone()),
+            _ => None,
+        }
+    }
+
     fn dedupe_key(&self) -> Option<String> {
         self.path.as_ref().map(|p| format!("script:{}", p.display()))
     }

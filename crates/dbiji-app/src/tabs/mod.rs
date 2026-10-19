@@ -8,6 +8,7 @@ pub mod compare;
 pub mod data_compare;
 pub mod dbtools;
 pub mod er;
+pub mod errorlog;
 pub mod history;
 pub mod object;
 pub mod query_builder;
@@ -49,11 +50,17 @@ pub trait TabView: Any {
         None
     }
 
-    /// Unsaved changes (editor text, pending data edits).
     /// The database object this tab shows (Link with editor).
     fn navigator_object(&self) -> Option<(String, dbiji_core::ObjectRef)> {
         None
     }
+
+    /// The session of the tab's own transaction (Pending transactions).
+    fn transaction_session(&self) -> Option<crate::conn::session::SessionHandle> {
+        None
+    }
+
+    /// Unsaved changes (editor text, pending data edits).
     fn is_dirty(&self) -> bool {
         false
     }

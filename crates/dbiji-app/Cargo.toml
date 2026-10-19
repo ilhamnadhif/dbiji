@@ -60,6 +60,7 @@ tracing-subscriber.workspace = true
 rustls.workspace = true
 ureq.workspace = true
 open.workspace = true
+zip.workspace = true
 
 [dev-dependencies]
 egui_kittest = { version = "0.36", features = ["eframe"] }

@@ -120,6 +120,10 @@ pub struct GeneralSettings {
     pub restore_session: bool,
     /// Ask before quitting with unsaved scripts or pending data changes.
     pub confirm_exit_with_unsaved: bool,
+    /// Show a tip on start.
+    pub show_tips: bool,
+    /// Index of the next tip.
+    pub next_tip: usize,
 }
 
 impl Default for GeneralSettings {
@@ -131,6 +135,8 @@ impl Default for GeneralSettings {
             ui_scale: 1.0,
             restore_session: true,
             confirm_exit_with_unsaved: true,
+            show_tips: true,
+            next_tip: 0,
         }
     }
 }
@@ -541,6 +547,8 @@ pub struct NavigatorSettings {
     pub expand_on_connect: bool,
     /// Select the object of the active editor in the navigator.
     pub link_with_editor: bool,
+    /// Properties of the selected object below the tree.
+    pub show_properties: bool,
 }
 
 impl Default for NavigatorSettings {
@@ -552,6 +560,7 @@ impl Default for NavigatorSettings {
             default_view: NavigatorView::Advanced,
             expand_on_connect: true,
             link_with_editor: false,
+            show_properties: false,
         }
     }
 }

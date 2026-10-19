@@ -751,6 +751,142 @@ impl Navigator {
         }
     }
 
+    /// Properties of the selected node (Properties panel).
+    pub fn selected_properties(&self, cx: &AppContext) -> Vec<(String, String)> {
+        let Some(node) = &self.selected else { return Vec::new() };
+        let mut out: Vec<(String, String)> = Vec::new();
+        let mut add = |k: &str, v: Option<String>| {
+            if let Some(v) = v.filter(|v| !v.is_empty()) {
+                out.push((tr(k).to_string(), v));
+            }
+        };
+        let yes_no = |b: bool| Some(if b { tr("Yes") } else { tr("No") }.to_string());
+        match node {
+            NavNode::Folder(f) => add("Folder", Some(f.clone())),
+            NavNode::Connection(c) => {
+                let Some(cfg) = cx.conns.config(c) else { return Vec::new() };
+                add("Name", Some(cfg.name.clone()));
+                add("Database type", Some(cfg.kind.display_name().to_string()));
+                add("Host", Some(cfg.host.clone()));
+                add("Port", cfg.port.map(|p| p.to_string()));
+                add("File", cfg.file_path.clone());
+                add("Database", cfg.database.clone());
+                add("User", cfg.user.clone());
+                add("Connection type", Some(cx.conns.type_of(c).name));
+                add("Read-only", yes_no(cfg.read_only));
+                add("Description", cfg.description.clone());
+                match cx.conns.live(c) {
+                    Some(live) => {
+                        add("Server", Some(format!("{} {}", live.server.product, live.server.version)));
+                        add("Session", live.server.session_id.clone());
+                    }
+                    None => add("Status", Some(tr("not connected").to_string())),
+                }
+            }
+            NavNode::Database { conn, db } => {
+                add("Database", Some(db.clone()));
+                add("Connection", cx.conns.config(conn).map(|c| c.name.clone()));
+            }
+            NavNode::Schema { conn, schema } => {
+                add("Schema", schema.schema.clone());
+                add("Database", schema.database.clone());
+                add("Connection", cx.conns.config(conn).map(|c| c.name.clone()));
+            }
+            NavNode::KindFolder { conn, schema, kind } => {
+                add("Folder", Some(tr(kind.plural_label()).to_string()));
+                add("Schema", schema.schema.clone());
+                let n = cx.conns.live(conn).and_then(|l| l.meta.objects.get(&(schema.clone(), *kind))).and_then(|l| l.get()).map(|v| v.len());
+                add("Objects", n.map(|n| n.to_string()));
+            }
+            NavNode::ChildFolder { conn, parent, kind } => {
+                add("Folder", Some(tr(kind.plural_label()).to_string()));
+                add("Table", Some(parent.name.clone()));
+                let n = cx.conns.live(conn).and_then(|l| l.meta.children.get(&(parent.clone(), *kind))).and_then(|l| l.get()).map(|v| v.len());
+                add("Objects", n.map(|n| n.to_string()));
+            }
+            NavNode::Object { conn, obj } | NavNode::Child { conn, obj } => {
+                add("Name", Some(obj.name.clone()));
+                add("Type", Some(tr(obj.kind.label()).to_string()));
+                add("Table", obj.table.clone());
+                add("Schema", obj.schema.clone());
+                add("Database", obj.database.clone());
+                add("Signature", obj.signature.clone());
+                if let Some(live) = cx.conns.live(conn) {
+                    let info = live.meta.objects.values().chain(live.meta.children.values()).filter_map(|l| l.get()).flatten().find(|i| i.obj == *obj);
+                    if let Some(info) = info {
+                        add("Details", info.detail.clone());
+                        add("Comment", info.comment.clone());
+                        add("Estimated rows", info.row_estimate.filter(|n| *n >= 0).map(|n| n.to_string()));
+                        if info.is_system {
+                            add("System object", yes_no(true));
+                        }
+                    }
+                    if let Some(def) = live.meta.table_def(obj) {
+                        add("Columns", Some(def.columns.len().to_string()));
+                    }
+                }
+            }
+            NavNode::Extensions { db, .. } => {
+                add("Folder", Some(tr("Extensions").to_string()));
+                add("Database", db.clone());
+            }
+            NavNode::CatalogGroup { group, .. } => add("Folder", Some(tr(group.label()).to_string())),
+            NavNode::CatalogFolder { conn, folder, ctx } => {
+                let label = cx.conns.live(conn).and_then(|l| l.catalog_folder(folder)).map(|f| tr(f.label).to_string());
+                add("Folder", label);
+                let n = cx.conns.live(conn).and_then(|l| l.meta.catalog.get(&(*folder, ctx.clone()))).and_then(|l| l.get()).map(|v| v.len());
+                add("Objects", n.map(|n| n.to_string()));
+            }
+            NavNode::CatalogItem { conn, folder, ctx } => {
+                add("Name", ctx.name.clone());
+                let list_ctx = CatalogContext { name: None, ..ctx.clone() };
+                let row = cx
+                    .conns
+                    .live(conn)
+                    .and_then(|l| l.meta.catalog.get(&(*folder, list_ctx)))
+                    .and_then(|l| l.get())
+                    .and_then(|rows| rows.iter().find(|r| Some(&r.name) == ctx.name.as_ref()));
+                if let Some(row) = row {
+                    for (k, v) in row.values.iter().skip(1) {
+                        if !v.is_null() && !k.eq_ignore_ascii_case("detail") {
+                            out.push((k.replace('_', " "), v.to_text().into_owned()));
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    fn properties_ui(&self, ui: &mut Ui, cx: &AppContext) {
+        ui.horizontal(|ui| {
+            ui.strong(format!("{} {}", icon::INFO, tr("Properties")));
+        });
+        // only a node of the tree (not one removed since it was selected)
+        let in_tree = self.selected.as_ref().is_some_and(|sel| self.rows.iter().any(|r| &r.node == sel));
+        let props = if in_tree { self.selected_properties(cx) } else { Vec::new() };
+        if props.is_empty() {
+            ui.weak(tr("Select an object in the navigator."));
+            return;
+        }
+        egui::ScrollArea::vertical().id_salt("nav_properties_scroll").auto_shrink([false, false]).show(ui, |ui| {
+            egui::Grid::new("nav_properties_grid").num_columns(2).striped(true).spacing([10.0, 3.0]).show(ui, |ui| {
+                for (k, v) in &props {
+                    ui.label(RichText::new(k).weak());
+                    let first = v.lines().next().unwrap_or("");
+                    let resp = ui.add(egui::Label::new(first).truncate());
+                    resp.context_menu(|ui| {
+                        if ui.button(format!("{} {}", icon::COPY, tr("Copy"))).clicked() {
+                            ui.ctx().copy_text(v.clone());
+                            ui.close();
+                        }
+                    });
+                    ui.end_row();
+                }
+            });
+        });
+    }
+
     pub fn ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
         self.dark = ui.visuals().dark_mode;
         if self.prefs != cx.settings.navigator {
@@ -780,6 +916,11 @@ impl Navigator {
             if ui.button(icon::ARROWS_IN_SIMPLE).on_hover_text(tr("Collapse all")).clicked() {
                 self.collapse_all();
             }
+            let mut props = cx.settings.navigator.show_properties;
+            if ui.toggle_value(&mut props, icon::INFO).on_hover_text(tr("Properties panel")).changed() {
+                cx.settings.navigator.show_properties = props;
+                cx.push(AppCommand::SettingsChanged);
+            }
             let mut link = cx.settings.navigator.link_with_editor;
             if ui.toggle_value(&mut link, icon::LINK).on_hover_text(tr("Link with editor: select the object of the active tab")).changed() {
                 cx.settings.navigator.link_with_editor = link;
@@ -792,6 +933,9 @@ impl Navigator {
             self.scroll_to_selected = true;
         }
         ui.separator();
+        if cx.settings.navigator.show_properties && !cx.conns.configs().is_empty() {
+            egui::Panel::bottom("nav_properties").resizable(true).default_size(170.0).size_range(60.0..=600.0).show(ui, |ui| self.properties_ui(ui, cx));
+        }
 
         self.request_child_loads(cx);
         self.build(cx);

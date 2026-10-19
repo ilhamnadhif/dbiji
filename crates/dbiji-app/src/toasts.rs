@@ -59,9 +59,13 @@ impl Toasts {
         self.push(ToastKind::Success, title, None);
     }
     pub fn warning(&mut self, title: impl Into<String>, detail: Option<String>) {
+        let title = title.into();
+        crate::applog::push(tracing::Level::WARN, "dbiji::ui", log_text(&title, detail.as_deref()));
         self.push(ToastKind::Warning, title, detail);
     }
     pub fn error(&mut self, title: impl Into<String>, detail: Option<String>) {
+        let title = title.into();
+        crate::applog::push(tracing::Level::ERROR, "dbiji::ui", log_text(&title, detail.as_deref()));
         self.push(ToastKind::Error, title, detail);
     }
 
@@ -107,5 +111,13 @@ impl Toasts {
         if let Some(next) = self.items.iter().map(|t| t.duration.saturating_sub(now.duration_since(t.created))).min() {
             ctx.request_repaint_after(next + Duration::from_millis(20));
         }
+    }
+}
+
+/// Toast text for the application log.
+fn log_text(title: &str, detail: Option<&str>) -> String {
+    match detail.filter(|d| !d.is_empty()) {
+        Some(d) => format!("{title}: {d}"),
+        None => title.to_string(),
     }
 }

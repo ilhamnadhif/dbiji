@@ -203,6 +203,8 @@ actions! {
     Rollback => ("tx.rollback", "Rollback", Transactions, Global),
     /// Switch between auto-commit and manual commit.
     ToggleAutoCommit => ("tx.toggle_auto_commit", "Toggle Auto-Commit", Transactions, Global),
+    /// List the connections with uncommitted changes (commit / roll back).
+    PendingTransactions => ("tx.pending", "Pending Transactions", Transactions, Global),
     /// Create a connection.
     NewConnection => ("conn.new", "New Connection", Connections, Global),
     /// Edit the selected connection.
@@ -217,6 +219,8 @@ actions! {
     Refresh => ("view.refresh", "Refresh", View, Global),
     /// Show or hide the navigator.
     ToggleNavigator => ("view.toggle_navigator", "Toggle Navigator", View, Global),
+    /// Show the properties of the selected navigator object.
+    ToggleProperties => ("view.toggle_properties", "Toggle Properties Panel", View, Global),
     /// Show the results below or to the right of the editor.
     ToggleResultsLayout => ("view.toggle_results_layout", "Toggle Results Layout", View, Global),
     /// Switch between the light and the dark theme.
@@ -255,6 +259,12 @@ actions! {
     Help => ("help.contents", "Help", Help, Global),
     /// Show all keyboard shortcuts.
     ShowShortcuts => ("help.shortcuts", "Keyboard Shortcuts", Help, Global),
+    /// The application log (errors and warnings).
+    ShowErrorLog => ("help.error_log", "Error Log", Help, Global),
+    /// Show a tip about a feature.
+    TipOfTheDay => ("help.tip_of_the_day", "Tip of the Day", Help, Global),
+    /// Save the log, settings and system information (no secrets) as a zip file.
+    CollectDiagnostics => ("help.collect_diagnostics", "Collect Diagnostic Info", Help, Global),
 }
 
 impl Action {
@@ -339,7 +349,7 @@ mod tests {
         assert!(!ActionContext::SqlEditor.overlaps(ActionContext::ResultsGrid));
         assert_eq!(Action::SaveData.context(), ActionContext::ResultsGrid);
         assert_eq!(Action::Save.context(), ActionContext::SqlEditor);
-        assert!(Action::in_category(ActionCategory::Transactions).count() == 3);
+        assert!(Action::in_category(ActionCategory::Transactions).count() == 4);
         assert!(!Action::default_toolbar().is_empty());
     }
 }

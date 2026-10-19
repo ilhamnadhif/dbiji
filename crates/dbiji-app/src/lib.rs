@@ -5,12 +5,14 @@
 #![allow(clippy::result_large_err, clippy::type_complexity, clippy::too_many_arguments)]
 
 pub mod app;
+pub mod applog;
 pub mod backend;
 pub mod bench;
 pub mod bench_ui;
 pub mod command;
 pub mod conn;
 pub mod cx;
+pub mod diagnostics;
 pub mod dialogs;
 pub mod drivers;
 pub mod exec;
@@ -19,6 +21,7 @@ pub mod keys;
 pub mod nav;
 pub mod ops;
 pub mod palette;
+pub mod pending_tx;
 pub mod project_view;
 pub mod results;
 pub mod router;
@@ -30,6 +33,7 @@ pub mod tabs;
 pub mod taskexec;
 pub mod textops;
 pub mod theme;
+pub mod tips;
 pub mod toasts;
 pub mod tools;
 pub mod transferexec;
@@ -93,9 +97,13 @@ pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Option<CliAr
 }
 
 fn init_logging() {
-    use tracing_subscriber::EnvFilter;
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+    use tracing_subscriber::{EnvFilter, Layer};
     let filter = EnvFilter::try_from_env("DBIJI_LOG").unwrap_or_else(|_| EnvFilter::new("warn,dbiji=info"));
-    let _ = tracing_subscriber::fmt().with_env_filter(filter).with_target(false).try_init();
+    // the application log (Error log view, logs/dbiji.log) keeps warnings of every crate
+    let app_filter = EnvFilter::new("warn,dbiji=info");
+    let _ = tracing_subscriber::registry().with(tracing_subscriber::fmt::layer().with_target(false).with_filter(filter)).with(applog::LogLayer.with_filter(app_filter)).try_init();
 }
 
 fn window_icon() -> Option<egui::IconData> {
@@ -151,6 +159,10 @@ pub fn run() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    if let Err(e) = applog::open_file(paths.logs_dir()) {
+        eprintln!("cannot open the log file: {e}");
+    }
+    tracing::info!("DBiji {} started", env!("CARGO_PKG_VERSION"));
     let (settings, mut warnings) = dbiji_config::settings::load_with_warnings(&paths);
     dbiji_core::i18n::set_locale(settings.general.effective_locale());
     settings.results.apply_memory_limits();

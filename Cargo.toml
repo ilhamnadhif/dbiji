@@ -94,6 +94,7 @@ sys-locale = "0.3"
 petgraph = "0.8"
 sqlparser = { version = "0.63", features = ["visitor"] }
 open = "5"
+zip = { version = "9", default-features = false, features = ["deflate"] }
 
 # --- UI
 eframe = { version = "0.36", default-features = false, features = ["accesskit", "default_fonts", "glow", "links", "wayland", "x11"] }

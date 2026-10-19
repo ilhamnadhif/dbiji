@@ -102,6 +102,18 @@ pub struct SettingsTab {
     new_master2: String,
     old_master: String,
     message: Option<Result<String, String>>,
+    /// Asking whether to reset every setting.
+    confirm_reset: bool,
+}
+
+/// Every setting back to its default, except the language and the state
+/// of the update checks (seen version, skipped release).
+pub fn reset_settings(settings: &mut dbiji_config::settings::AppSettings) {
+    let locale = settings.general.locale;
+    let updates = settings.updates.clone();
+    *settings = Default::default();
+    settings.general.locale = locale;
+    settings.updates = updates;
 }
 
 impl Default for SettingsTab {
@@ -123,6 +135,7 @@ impl Default for SettingsTab {
             new_master2: String::new(),
             old_master: String::new(),
             message: None,
+            confirm_reset: false,
         }
     }
 }
@@ -952,6 +965,24 @@ impl TabView for SettingsTab {
             }
             ui.add_space(12.0);
             ui.weak(cx.services.paths.config_dir().display().to_string());
+            ui.add_space(12.0);
+            if self.confirm_reset {
+                ui.label(tr("Reset every setting to its default? Connections, scripts and passwords are kept."));
+                ui.horizontal(|ui| {
+                    if ui.button(RichText::new(tr("Reset")).color(crate::theme::error_color(ui.visuals().dark_mode))).clicked() {
+                        reset_settings(cx.settings);
+                        self.keymap = None;
+                        self.confirm_reset = false;
+                        self.message = Some(Ok(tr("The settings were reset to their defaults.").to_string()));
+                        changed = true;
+                    }
+                    if ui.button(tr("Cancel")).clicked() {
+                        self.confirm_reset = false;
+                    }
+                });
+            } else if ui.button(format!("{} {}", icon::ARROW_COUNTER_CLOCKWISE, tr("Reset all settings…"))).clicked() {
+                self.confirm_reset = true;
+            }
         });
         egui::CentralPanel::default().show(ui, |ui| {
             ui.heading(self.section.label());

@@ -2505,3 +2505,63 @@ Source connection	Koneksi sumber
 The database server connects to the source itself: SSH tunnels and proxies of the connection are not used	Server database terhubung sendiri ke sumber: tunnel SSH dan proxy koneksi tidak dipakai
 The {} extension must be installed on the server	Ekstensi {} harus terpasang di server
 This database	Database ini
+Cannot collect the diagnostic info	Tidak dapat mengumpulkan info diagnostik
+Collect diagnostic info	Kumpulkan info diagnostik
+Commit all	Commit semua
+Commit failed: {}	Commit gagal: {}
+Copy the shown entries	Salin entri yang ditampilkan
+Diagnostic info saved to {}	Info diagnostik disimpan ke {}
+Error log	Log galat
+Navigator / data editor	Navigator / editor data
+Next tip	Tips berikutnya
+No connection has uncommitted changes.	Tidak ada koneksi dengan perubahan yang belum di-commit.
+No entries.	Tidak ada entri.
+Opened by	Dibuka oleh
+Pending transactions	Transaksi tertunda
+Pending transactions…	Transaksi tertunda…
+Previous tip	Tips sebelumnya
+Properties panel	Panel properti
+Reset all settings…	Atur ulang semua pengaturan…
+Reset every setting to its default? Connections, scripts and passwords are kept.	Kembalikan semua pengaturan ke bawaan? Koneksi, skrip, dan kata sandi tetap disimpan.
+Review transactions	Tinjau transaksi
+Rollback all	Rollback semua
+Rollback failed: {}	Rollback gagal: {}
+Select an object in the navigator.	Pilih objek di navigator.
+Show log file	Tampilkan file log
+Show tips on start	Tampilkan tips saat mulai
+Since	Sejak
+The settings were reset to their defaults.	Pengaturan dikembalikan ke bawaan.
+These connections have uncommitted transactions; quitting rolls them back:	Koneksi ini punya transaksi yang belum di-commit; keluar akan me-rollback-nya:
+Tip of the day	Tips hari ini
+Errors and warnings	Galat dan peringatan
+Everything	Semua
+Database type	Jenis database
+Session	Sesi
+Signature	Signature
+Estimated rows	Perkiraan baris
+System object	Objek sistem
+Pending Transactions	Transaksi Tertunda
+Toggle Properties Panel	Tampilkan/Sembunyikan Panel Properti
+Error Log	Log Galat
+Tip of the Day	Tips Hari Ini
+Collect Diagnostic Info	Kumpulkan Info Diagnostik
+Press Ctrl+Enter (⌘↩ on macOS) to run the statement under the cursor; select text to run only the selection.	Tekan Ctrl+Enter (⌘↩ di macOS) untuk menjalankan statement di posisi kursor; pilih teks untuk menjalankan bagian itu saja.
+The command palette (⌘⇧P / Ctrl+Shift+P) runs any command and opens tables, views and routines by name.	Palet perintah (⌘⇧P / Ctrl+Shift+P) menjalankan perintah apa pun dan membuka tabel, view, dan routine berdasarkan nama.
+Open Database Object (⌘⇧D / Ctrl+Shift+D) finds a table or routine by name in every connected database.	Buka Objek Database (⌘⇧D / Ctrl+Shift+D) mencari tabel atau routine berdasarkan nama di semua database yang terhubung.
+Use :name or ${name} in a script: DBiji asks for the values when it runs.	Pakai :name atau ${name} di skrip: DBiji menanyakan nilainya saat dijalankan.
+Double-click a cell in the results to edit it; changes are saved with ⌘S / Ctrl+S or the Save button.	Klik dua kali sel di hasil untuk mengeditnya; perubahan disimpan dengan ⌘S / Ctrl+S atau tombol Simpan.
+Right-click a column header to filter, hide, pin or highlight rows with a value.	Klik kanan judul kolom untuk memfilter, menyembunyikan, menyematkan, atau menyorot baris dengan suatu nilai.
+Click a column header to sort: ascending, descending, then back to the original order.	Klik judul kolom untuk mengurutkan: naik, turun, lalu kembali ke urutan asli.
+Connection types (development, test, production) colour the connection and can require confirmation before data changes.	Jenis koneksi (development, test, production) memberi warna pada koneksi dan bisa meminta konfirmasi sebelum data diubah.
+In manual commit mode, Database › Pending transactions lists every connection with uncommitted changes.	Dalam mode commit manual, Database › Transaksi tertunda menampilkan semua koneksi dengan perubahan yang belum di-commit.
+Navigator › Link with editor selects the table of the active tab in the tree.	Navigator › Tautkan dengan editor memilih tabel dari tab aktif di pohon navigator.
+Fold long statements and block comments with the markers in the gutter; the SQL editor menu collapses or expands them all.	Lipat statement panjang dan komentar blok dengan penanda di gutter; menu editor SQL bisa melipat atau membuka semuanya.
+Drag a .sql file onto the window to open it; drop a SQLite or DuckDB file to add it as a connection.	Seret file .sql ke jendela untuk membukanya; jatuhkan file SQLite atau DuckDB untuk menambahkannya sebagai koneksi.
+Tools › Backup and Restore use pg_dump, mysqldump or sqlite3; Scope › All databases runs pg_dumpall.	Alat › Backup dan Restore memakai pg_dump, mysqldump, atau sqlite3; Cakupan › Semua database menjalankan pg_dumpall.
+Export results to CSV, JSON, Excel, SQL INSERT statements, Markdown and more from the results toolbar.	Ekspor hasil ke CSV, JSON, Excel, statement SQL INSERT, Markdown, dan lainnya dari toolbar hasil.
+The ER diagram of a schema opens from the navigator context menu; drag tables to arrange it.	Diagram ER sebuah skema dibuka dari menu konteks navigator; seret tabel untuk menatanya.
+Compare schemas or the data of two tables from the Database menu and generate the synchronisation script.	Bandingkan skema atau data dua tabel dari menu Database dan buat skrip sinkronisasinya.
+Settings › Keyboard lets you choose DBeaver-compatible shortcuts or define your own.	Pengaturan › Keyboard memungkinkan memilih pintasan yang kompatibel dengan DBeaver atau membuat sendiri.
+View › Theme switches between the light and the dark theme, or follows the system.	Tampilan › Tema beralih antara tema terang dan gelap, atau mengikuti sistem.
+Help › Error log shows the errors and warnings of this session; Help › Collect diagnostic info saves them without any secret.	Bantuan › Log galat menampilkan galat dan peringatan sesi ini; Bantuan › Kumpulkan info diagnostik menyimpannya tanpa rahasia apa pun.
+Hold ⌘ / Ctrl and click a table name in the editor to open it.	Tahan ⌘ / Ctrl lalu klik nama tabel di editor untuk membukanya.

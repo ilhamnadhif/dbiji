@@ -65,12 +65,13 @@ Status: ☐ open · ☑ done (with the test that covers it).
 
 ## 5. Workspace and layout
 
-- ☐ Properties panel for the selected navigator object
-- ☐ Error log view (application log)
-- ☐ Pending transactions dialog (connections with uncommitted changes)
-- ☐ Tip of the day
-- ☐ Reset settings
-- ☐ Collect diagnostic info (logs and settings without secrets, zipped)
+- ☑ Properties panel for the selected navigator object (View › Properties panel or the navigator toolbar): connection, database, schema, object (type, comment, estimated rows, columns) and catalog object properties
+- ☑ Error log view (Help › Error log): errors, warnings and info of the session, level filter, search, copy; also written to `logs/dbiji.log` (rotated at 2 MB, mode 0600) — `dbiji-app::applog::tests::buffer_and_file`
+- ☑ Pending transactions (Database › Pending transactions…): every session with an open transaction, commit / roll back one or all; quitting with open transactions asks first
+- ☑ Tip of the day (on start of an existing installation, can be turned off; Help › Tip of the day)
+- ☑ Reset settings (Settings › Reset all settings…; the language and the update choices are kept)
+- ☑ Collect diagnostic info (Help): zip with the log, settings and system info in ~/Downloads; no connection names, hosts, users, databases, file paths or properties, URL credentials masked, home directory as `~` — `dbiji-app::diagnostics::tests::masks_and_collects_without_identifying_data`
+  — `dbiji-app::ui_full::workspace_from_dbeaver`
 
 ## 6. Database tools and dashboards
 

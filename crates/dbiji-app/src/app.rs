@@ -71,6 +71,12 @@ pub struct DbijiApp {
     pub updates: crate::updates::Updates,
     /// Settings or connections existed before this start (not a first start).
     pub existing_install: bool,
+    /// Tip of the day window.
+    pub tip: Option<crate::tips::TipWindow>,
+    /// Pending transactions window.
+    pub pending_tx: crate::pending_tx::PendingTxDialog,
+    /// Collect diagnostic info running.
+    diagnostics: Option<crate::backend::Job<dbiji_core::DbResult<std::path::PathBuf>>>,
 }
 
 impl DbijiApp {
@@ -108,6 +114,9 @@ impl DbijiApp {
             bench_workload: None,
             updates: Default::default(),
             existing_install: false,
+            tip: None,
+            pending_tx: Default::default(),
+            diagnostics: None,
         };
         app.existing_install = crate::updates::is_existing_install(&app.services.paths);
         app.open_tab(Box::new(crate::tabs::welcome::WelcomeTab));
@@ -481,6 +490,27 @@ impl DbijiApp {
                 self.toggle_theme(ctx);
                 None
             }
+            A::ToggleProperties => {
+                self.settings.navigator.show_properties = !self.settings.navigator.show_properties;
+                self.save_settings();
+                None
+            }
+            A::PendingTransactions => {
+                self.pending_tx.open = true;
+                None
+            }
+            A::ShowErrorLog => {
+                self.open_tab(Box::new(crate::tabs::errorlog::ErrorLogTab::new()));
+                None
+            }
+            A::TipOfTheDay => {
+                self.show_tip();
+                None
+            }
+            A::CollectDiagnostics => {
+                self.collect_diagnostics(None);
+                None
+            }
             A::CommandPalette | A::OpenDatabaseObject => Some(AppCommand::ShowPalette),
             A::OpenHistory => Some(AppCommand::OpenHistory),
             A::OpenErDiagram => match (conn, self.nav.selected_schema()) {
@@ -829,7 +859,6 @@ impl DbijiApp {
         self.save_settings();
     }
 
-    /// Write `settings.json` / `keymap.json`.
     /// Use `theme` from now on (and save it).
     pub fn set_theme(&mut self, ctx: &egui::Context, theme: dbiji_config::settings::Theme) {
         self.settings.general.theme = theme;
@@ -844,6 +873,33 @@ impl DbijiApp {
         self.set_theme(ctx, next);
     }
 
+    /// Show the next tip.
+    pub fn show_tip(&mut self) {
+        let n = crate::tips::TIPS.len();
+        let index = self.settings.general.next_tip % n;
+        self.settings.general.next_tip = (index + 1) % n;
+        self.save_settings();
+        self.tip = Some(crate::tips::TipWindow { index });
+    }
+
+    /// Write the diagnostic zip (to `out`, by default into Downloads).
+    pub fn collect_diagnostics(&mut self, out: Option<std::path::PathBuf>) {
+        if self.diagnostics.is_some() {
+            return;
+        }
+        let out = out.unwrap_or_else(crate::diagnostics::default_output);
+        let paths = self.services.paths.clone();
+        let settings = self.settings.clone();
+        let conns = self.conns.configs().to_vec();
+        self.diagnostics = Some(crate::tabs::dbtools::spawn_blocking(&self.backend, move || crate::diagnostics::collect(&paths, &settings, &conns, &out)));
+    }
+
+    /// The diagnostic zip is being written.
+    pub fn collecting_diagnostics(&self) -> bool {
+        self.diagnostics.is_some()
+    }
+
+    /// Write `settings.json` / `keymap.json`.
     pub fn save_settings(&mut self) {
         if let Err(e) = dbiji_config::settings::save(&self.services.paths, &self.settings) {
             self.toasts.error(tr("Cannot save the settings"), Some(e.to_string()));
@@ -888,6 +944,10 @@ impl DbijiApp {
                     self.commands.push(AppCommand::DisconnectAll);
                     ui.close();
                 }
+                if ui.button(format!("{} {}", icon::CLOCK_COUNTDOWN, tr("Pending transactions…"))).clicked() {
+                    self.pending_tx.open = true;
+                    ui.close();
+                }
                 ui.separator();
                 if ui.button(format!("{} {}", icon::GIT_DIFF, tr("Compare schemas…"))).clicked() {
                     self.commands.push(AppCommand::OpenSchemaCompare { connection: None, schema: None });
@@ -926,6 +986,12 @@ impl DbijiApp {
                     self.commands.push(AppCommand::ToggleNavigator);
                     ui.close();
                 }
+                let mut props = self.settings.navigator.show_properties;
+                if ui.checkbox(&mut props, tr("Properties panel")).clicked() {
+                    self.settings.navigator.show_properties = props;
+                    self.save_settings();
+                    ui.close();
+                }
                 ui.menu_button(format!("{} {}", icon::CIRCLE_HALF, tr("Theme")), |ui| {
                     use dbiji_config::settings::Theme;
                     for (t, label) in [(Theme::System, tr("System")), (Theme::Light, tr("Light")), (Theme::Dark, tr("Dark"))] {
@@ -951,6 +1017,19 @@ impl DbijiApp {
                 }
                 if ui.button(tr("Create sample database")).clicked() {
                     self.commands.push(AppCommand::CreateSampleDatabase);
+                    ui.close();
+                }
+                if ui.button(format!("{} {}", icon::LIGHTBULB, tr("Tip of the day"))).clicked() {
+                    self.show_tip();
+                    ui.close();
+                }
+                ui.separator();
+                if ui.button(format!("{} {}", icon::WARNING_OCTAGON, tr("Error log"))).clicked() {
+                    self.open_tab(Box::new(crate::tabs::errorlog::ErrorLogTab::new()));
+                    ui.close();
+                }
+                if ui.add_enabled(self.diagnostics.is_none(), egui::Button::new(format!("{} {}", icon::FILE_ZIP, tr("Collect diagnostic info")))).clicked() {
+                    self.collect_diagnostics(None);
                     ui.close();
                 }
                 ui.separator();
@@ -1056,6 +1135,11 @@ impl eframe::App for DbijiApp {
             if !self.exit_after_first_frame && self.exit_at.is_none() && self.updates.start(&self.backend, &mut self.settings, self.existing_install) {
                 self.save_settings();
             }
+            // A tip on start, not on the first start and not over update notes.
+            let popup = self.updates.whats_new.is_some() || self.updates.ask || self.updates.available.is_some();
+            if self.existing_install && self.settings.general.show_tips && !popup && !self.exit_after_first_frame && self.exit_at.is_none() {
+                self.show_tip();
+            }
             if self.exit_after_first_frame {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
@@ -1093,7 +1177,7 @@ impl eframe::App for DbijiApp {
         self.shortcuts(&ctx);
         // Unsaved changes: ask before quitting.
         if ctx.input(|i| i.viewport().close_requested()) && !self.quit_confirmed && self.exit_at.is_none() && !self.exit_after_first_frame {
-            let dirty = self.dock.iter_all_tabs().any(|(_, t)| t.view.is_dirty());
+            let dirty = self.dock.iter_all_tabs().any(|(_, t)| t.view.is_dirty()) || !crate::pending_tx::collect(&self.dock, &self.conns).is_empty();
             if dirty && self.settings.general.confirm_exit_with_unsaved {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
                 self.confirm_quit = true;
@@ -1101,14 +1185,27 @@ impl eframe::App for DbijiApp {
         }
         if self.confirm_quit {
             let dirty: Vec<String> = self.dock.iter_all_tabs().filter(|(_, t)| t.view.is_dirty()).map(|(_, t)| t.view.title()).collect();
+            let pending = crate::pending_tx::collect(&self.dock, &self.conns);
             let mut decided: Option<bool> = None;
+            let mut review = false;
             let modal = egui::Modal::new(egui::Id::new("confirm_quit")).show(&ctx, |ui| {
                 ui.heading(tr("Unsaved changes"));
-                ui.label(tr("These tabs have unsaved changes:"));
-                for t in dirty.iter().take(10) {
-                    ui.label(format!("• {t}"));
+                if !dirty.is_empty() {
+                    ui.label(tr("These tabs have unsaved changes:"));
+                    for t in dirty.iter().take(10) {
+                        ui.label(format!("• {t}"));
+                    }
+                }
+                if !pending.is_empty() {
+                    ui.label(tr("These connections have uncommitted transactions; quitting rolls them back:"));
+                    for p in pending.iter().take(10) {
+                        ui.label(format!("• {} — {}", p.conn_name, p.owner));
+                    }
                 }
                 ui.horizontal(|ui| {
+                    if !pending.is_empty() && ui.button(tr("Review transactions")).clicked() {
+                        review = true;
+                    }
                     if ui.button(RichText::new(tr("Quit without saving")).color(crate::theme::error_color(ui.visuals().dark_mode))).clicked() {
                         decided = Some(true);
                     }
@@ -1117,6 +1214,10 @@ impl eframe::App for DbijiApp {
                     }
                 });
             });
+            if review {
+                self.pending_tx.open = true;
+                decided = Some(false);
+            }
             match decided {
                 Some(true) => {
                     self.confirm_quit = false;
@@ -1188,6 +1289,35 @@ impl eframe::App for DbijiApp {
         }
         if self.updates.ui(&ctx, &mut self.settings, &mut self.toasts) {
             self.save_settings();
+        }
+        if let Some(tip) = &mut self.tip {
+            let mut show = self.settings.general.show_tips;
+            let open = tip.show(&ctx, &mut show);
+            if !open {
+                self.tip = None;
+            }
+            if show != self.settings.general.show_tips {
+                self.settings.general.show_tips = show;
+                self.save_settings();
+            }
+        }
+        self.pending_tx.poll(&mut self.toasts);
+        if self.pending_tx.open {
+            let items = crate::pending_tx::collect(&self.dock, &self.conns);
+            self.pending_tx.show(&ctx, &self.backend, &items);
+        }
+        if let Some(job) = &mut self.diagnostics {
+            match job.poll() {
+                Some(Ok(path)) => {
+                    self.diagnostics = None;
+                    self.toasts.success(dbiji_core::trf("Diagnostic info saved to {}", &[&path.display()]));
+                }
+                Some(Err(e)) => {
+                    self.diagnostics = None;
+                    self.toasts.error(tr("Cannot collect the diagnostic info"), Some(e.to_string()));
+                }
+                None => ctx.request_repaint_after(std::time::Duration::from_millis(100)),
+            }
         }
         self.toasts.show(&ctx);
 

@@ -298,6 +298,8 @@ fn settle(h: &mut H, step: &str) {
     no_errors(h, step);
     h.key_press(Key::Escape);
     h.state_mut().dialogs = Default::default();
+    h.state_mut().tip = None;
+    h.state_mut().pending_tx.open = false;
     frames(h, 1);
 }
 
@@ -420,6 +422,8 @@ fn menus_actions_commands_and_dialogs() {
         h.state_mut().push_command(AppCommand::ToggleNavigator);
         frames(&mut h, 3);
     }
+    // View › Properties panel too: its labels would be taken for navigator rows.
+    h.state_mut().settings.navigator.show_properties = false;
 
     // Every action, with an editor focused and with a table data tab focused.
     // Quit closes the window; LoadExecutionPlan opens a native file dialog.
@@ -1247,4 +1251,119 @@ fn nav_menu_item(h: &mut H, row: &str, item: &str) {
     frames(h, 2);
     click(h, item);
     frames(h, 3);
+}
+
+#[test]
+fn workspace_from_dbeaver() {
+    let (dir, mut h, conn) = setup();
+    let run = |h: &mut H, a: Action| {
+        let ctx = h.ctx.clone();
+        h.state_mut().dispatch_action(&ctx, a);
+        frames(h, 3);
+    };
+    let name = h.state().conns.config(&conn).unwrap().name.clone();
+
+    // Tip of the day: next tip, turn off the tips on start, close.
+    run(&mut h, Action::TipOfTheDay);
+    let first = h.state().tip.as_ref().expect("tip window").index;
+    assert!(has(&h, dbiji_app::tips::TIPS[first]), "{:?}", labels(&h));
+    click(&mut h, "Next tip");
+    let second = h.state().tip.as_ref().unwrap().index;
+    assert_eq!(second, (first + 1) % dbiji_app::tips::TIPS.len());
+    assert!(has(&h, dbiji_app::tips::TIPS[second]));
+    click(&mut h, "Show tips on start");
+    assert!(!h.state().settings.general.show_tips);
+    h.state_mut().settings.general.show_tips = true;
+    settle(&mut h, "tip of the day");
+    assert!(h.state().tip.is_none());
+
+    // Error log: errors of the session, filtered by level.
+    dbiji_app::applog::push(tracing::Level::ERROR, "dbiji::test", "probe failure 42");
+    dbiji_app::applog::push(tracing::Level::INFO, "dbiji::test", "probe info 43");
+    run(&mut h, Action::ShowErrorLog);
+    wait(&mut h, "error log entry", |h| has(h, "probe failure 42"));
+    assert!(!has(&h, "probe info 43"), "info entries are hidden by default");
+    {
+        let (_, tab) = h.state_mut().dock.find_active_focused().unwrap();
+        tab.view.as_any_mut().downcast_mut::<dbiji_app::tabs::errorlog::ErrorLogTab>().expect("error log tab").set_level(tracing::Level::INFO);
+    }
+    frames(&mut h, 2);
+    assert!(has(&h, "probe info 43"));
+
+    // Properties panel of the selected navigator object.
+    run(&mut h, Action::ToggleProperties);
+    assert!(h.state().settings.navigator.show_properties);
+    pause(&mut h);
+    nav_row(&h, &name).expect("connection row").click();
+    frames(&mut h, 3);
+    assert!(has(&h, "Database type") && has(&h, "SQLite"), "{:?}", labels(&h));
+    wait(&mut h, "Tables", |h| nav_row(h, "Tables").is_some());
+    nav_double_click(&mut h, "Tables");
+    wait(&mut h, "customer", |h| nav_row(h, "customer").is_some());
+    pause(&mut h);
+    nav_row(&h, "customer").unwrap().click();
+    frames(&mut h, 3);
+    assert!(has(&h, "Schema") && h.query_all_by_label("customer").count() >= 2, "{:?}", labels(&h));
+    settle(&mut h, "properties panel");
+
+    // Pending transactions: an editor in manual commit mode with an insert.
+    h.state_mut().push_command(AppCommand::NewSqlEditor { connection: Some(conn.clone()), schema: None, text: None });
+    frames(&mut h, 3);
+    wait(&mut h, "editor session", |h| focused_editor(h).session_ready());
+    run(&mut h, Action::ToggleAutoCommit);
+    let ctx = h.ctx.clone();
+    focused_editor(&mut h).set_text(&ctx, "create table tx_probe (id integer);\ninsert into tx_probe values (1);");
+    frames(&mut h, 2);
+    run(&mut h, Action::ExecuteScript);
+    wait(&mut h, "uncommitted insert", |h| {
+        let app = h.state();
+        !dbiji_app::pending_tx::collect(&app.dock, &app.conns).is_empty()
+    });
+    run(&mut h, Action::PendingTransactions);
+    assert!(has(&h, "Pending transactions") && has(&h, "Commit all"), "{:?}", labels(&h));
+    assert!(h.query_all_by_label(&name).count() >= 2, "the connection is listed: {:?}", labels(&h));
+    click(&mut h, "Commit all");
+    wait(&mut h, "committed", |h| {
+        let app = h.state();
+        dbiji_app::pending_tx::collect(&app.dock, &app.conns).is_empty()
+    });
+    frames(&mut h, 2);
+    assert!(has(&h, "No connection has uncommitted changes."));
+    assert_eq!(query_one(&sample_db(&h, &conn), "select count(*) from tx_probe"), "1");
+    settle(&mut h, "pending transactions");
+
+    // Collect diagnostic info: a zip in ~/Downloads without identifying data.
+    run(&mut h, Action::CollectDiagnostics);
+    let zip_path = wait_file(&mut h, &dir.0.join("Downloads"), "diagnostic zip", |n| n.starts_with("dbiji-diagnostics-") && n.ends_with(".zip"));
+    wait(&mut h, "diagnostics done", |h| !h.state().collecting_diagnostics());
+    let mut zip = zip::ZipArchive::new(std::fs::File::open(&zip_path).unwrap()).unwrap();
+    let mut all = String::new();
+    for i in 0..zip.len() {
+        std::io::Read::read_to_string(&mut zip.by_index(i).unwrap(), &mut all).unwrap();
+    }
+    assert!(all.contains("SQLite") && all.contains("probe failure 42"), "{all}");
+    let db_file = sample_db(&h, &conn).display().to_string();
+    assert!(!all.contains(&name) && !all.contains(&db_file), "no connection name or file path");
+    settle(&mut h, "diagnostics");
+
+    // Reset settings (the update choices are kept).
+    h.state_mut().settings.navigator.link_with_editor = true;
+    run(&mut h, Action::OpenSettings);
+    click(&mut h, "Reset all settings");
+    pause(&mut h);
+    h.query_all_by_label("Reset").next().expect("confirm button").click();
+    frames(&mut h, 3);
+    let s = &h.state().settings;
+    assert!(!s.navigator.link_with_editor && !s.navigator.show_properties);
+    assert_eq!(s.updates.check_automatically, Some(false));
+    settle(&mut h, "reset settings");
+
+    // A tip on start of an existing installation.
+    let mut settings = Settings::default();
+    settings.updates.check_automatically = Some(false);
+    settings.updates.last_seen_version = Some(dbiji_app::updates::current_version().to_string());
+    let mut h2 = harness_with(&dir.0, settings);
+    h2.state_mut().existing_install = true;
+    frames(&mut h2, 3);
+    assert!(h2.state().tip.is_some(), "tip on start");
 }

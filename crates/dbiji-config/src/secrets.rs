@@ -221,6 +221,135 @@ impl SecretStore for KeychainStore {
     }
 }
 
+// ----------------------------------------------------------------- bundled
+
+/// Keeps every secret in one entry of another store, cached in memory.
+///
+/// With the macOS Keychain each entry has its own access list: one entry per
+/// password meant one permission prompt per password, again after every
+/// rebuild of an unsigned app and on every read when the user picked "Allow"
+/// rather than "Always Allow". One bundle entry read once per process means
+/// at most one prompt per launch. Entries of earlier versions (one per key)
+/// are moved into the bundle the first time they are read.
+pub struct BundledStore<S: SecretStore> {
+    inner: S,
+    state: Mutex<BundleState>,
+}
+
+#[derive(Default)]
+struct BundleState {
+    /// The bundle, once read.
+    secrets: Option<BTreeMap<String, Secret>>,
+    /// Keys looked up in the old per-key entries and not found.
+    no_legacy: std::collections::HashSet<String>,
+}
+
+impl<S: SecretStore> BundledStore<S> {
+    /// Key of the bundle entry.
+    pub const BUNDLE_KEY: &'static str = "dbiji:secrets";
+
+    /// Bundle the secrets of `inner`.
+    pub fn new(inner: S) -> BundledStore<S> {
+        BundledStore {
+            inner,
+            state: Mutex::new(BundleState::default()),
+        }
+    }
+
+    /// The underlying store.
+    pub fn inner(&self) -> &S {
+        &self.inner
+    }
+
+    fn load(&self, state: &mut BundleState) -> DbResult<()> {
+        if state.secrets.is_some() {
+            return Ok(());
+        }
+        let mut map = BTreeMap::new();
+        if let Some(blob) = self.inner.get(Self::BUNDLE_KEY)? {
+            let parsed: BTreeMap<String, String> = serde_json::from_str(blob.expose())
+                .map_err(|e| DbError::config(format!("The stored secrets cannot be read: {e}")))?;
+            for (k, v) in parsed {
+                map.insert(k, Secret::new(v));
+            }
+        }
+        state.secrets = Some(map);
+        Ok(())
+    }
+
+    fn save(&self, map: &BTreeMap<String, Secret>) -> DbResult<()> {
+        let plain: BTreeMap<&str, &str> =
+            map.iter().map(|(k, v)| (k.as_str(), v.expose())).collect();
+        let json = Zeroizing::new(
+            serde_json::to_string(&plain).map_err(|e| DbError::internal(e.to_string()))?,
+        );
+        self.inner
+            .set(Self::BUNDLE_KEY, &Secret::new(json.as_str()))
+    }
+}
+
+impl<S: SecretStore> SecretStore for BundledStore<S> {
+    fn get(&self, key: &str) -> DbResult<Option<Secret>> {
+        let mut state = self.state.lock();
+        self.load(&mut state)?;
+        if let Some(v) = state.secrets.as_ref().and_then(|m| m.get(key)) {
+            return Ok(Some(v.clone()));
+        }
+        if state.no_legacy.contains(key) {
+            return Ok(None);
+        }
+        // An entry of an earlier version: move it into the bundle.
+        match self.inner.get(key)? {
+            Some(v) => {
+                let map = state.secrets.get_or_insert_with(BTreeMap::new);
+                map.insert(key.to_string(), v.clone());
+                self.save(map)?;
+                let _ = self.inner.delete(key);
+                Ok(Some(v))
+            }
+            None => {
+                state.no_legacy.insert(key.to_string());
+                Ok(None)
+            }
+        }
+    }
+    fn set(&self, key: &str, value: &Secret) -> DbResult<()> {
+        let mut state = self.state.lock();
+        self.load(&mut state)?;
+        let map = state.secrets.get_or_insert_with(BTreeMap::new);
+        map.insert(key.to_string(), value.clone());
+        self.save(map)?;
+        state.no_legacy.insert(key.to_string());
+        let _ = self.inner.delete(key);
+        Ok(())
+    }
+    fn delete(&self, key: &str) -> DbResult<()> {
+        let mut state = self.state.lock();
+        self.load(&mut state)?;
+        let map = state.secrets.get_or_insert_with(BTreeMap::new);
+        if map.remove(key).is_some() {
+            self.save(map)?;
+        }
+        state.no_legacy.insert(key.to_string());
+        self.inner.delete(key)
+    }
+    fn backend_name(&self) -> &'static str {
+        self.inner.backend_name()
+    }
+    fn is_locked(&self) -> bool {
+        self.inner.is_locked()
+    }
+    fn list_keys(&self) -> DbResult<Vec<String>> {
+        let mut state = self.state.lock();
+        self.load(&mut state)?;
+        Ok(state
+            .secrets
+            .as_ref()
+            .map(|m| m.keys().cloned().collect())
+            .unwrap_or_default())
+    }
+}
+
 // ------------------------------------------------------------------- vault
 
 const VAULT_MAGIC: &[u8; 8] = b"DBIJIVLT";
@@ -754,7 +883,7 @@ impl SecretsManager {
         match security.secret_backend {
             SecretBackend::Keychain => SecretsManager {
                 backend: SecretBackend::Keychain,
-                store: Arc::new(KeychainStore::new()),
+                store: Arc::new(BundledStore::new(KeychainStore::new())),
                 vault: None,
             },
             SecretBackend::EncryptedFile => {
@@ -1251,6 +1380,98 @@ mod tests {
         let kc = SecretsManager::new(&paths, &SecuritySettings::default());
         assert_eq!(kc.store().backend_name(), "keychain");
         assert!(kc.vault().is_none());
+    }
+
+    /// Counts the reads of the store below (one bundle read per process).
+    struct Counting(MemoryStore, std::sync::atomic::AtomicUsize);
+
+    impl SecretStore for Counting {
+        fn get(&self, key: &str) -> DbResult<Option<Secret>> {
+            self.1.fetch_add(1, Ordering::SeqCst);
+            self.0.get(key)
+        }
+        fn set(&self, key: &str, value: &Secret) -> DbResult<()> {
+            self.0.set(key, value)
+        }
+        fn delete(&self, key: &str) -> DbResult<()> {
+            self.0.delete(key)
+        }
+        fn backend_name(&self) -> &'static str {
+            "counting"
+        }
+        fn is_locked(&self) -> bool {
+            false
+        }
+    }
+
+    #[test]
+    fn bundled_store_one_entry_read_once_and_migration() {
+        let inner = Counting(MemoryStore::new(), Default::default());
+        // An entry of an earlier version, one per key.
+        inner
+            .0
+            .set("conn:a:password", &Secret::new("old-a"))
+            .unwrap();
+        let store = BundledStore::new(inner);
+        assert_eq!(
+            store.get("conn:a:password").unwrap().unwrap().expose(),
+            "old-a"
+        );
+        // Moved into the bundle; the old entry is gone.
+        assert!(store.inner().0.get("conn:a:password").unwrap().is_none());
+        store.set("conn:b:password", &Secret::new("pw-b")).unwrap();
+        store
+            .set("ai:anthropic:api-key", &Secret::new("k\"ey"))
+            .unwrap();
+        let reads = store.inner().1.load(Ordering::SeqCst);
+        for _ in 0..20 {
+            assert_eq!(
+                store.get("conn:b:password").unwrap().unwrap().expose(),
+                "pw-b"
+            );
+            assert!(store.get("conn:missing:password").unwrap().is_none());
+        }
+        assert!(
+            store.inner().1.load(Ordering::SeqCst) <= reads + 1,
+            "cached: the store below is not read again"
+        );
+        assert_eq!(
+            store.inner().0.list_keys().unwrap(),
+            vec![BundledStore::<MemoryStore>::BUNDLE_KEY.to_string()]
+        );
+        // A new process reads the single bundle entry.
+        let again = BundledStore::new(MemoryStore::new());
+        again
+            .inner()
+            .set(
+                BundledStore::<MemoryStore>::BUNDLE_KEY,
+                &store
+                    .inner()
+                    .0
+                    .get(BundledStore::<MemoryStore>::BUNDLE_KEY)
+                    .unwrap()
+                    .unwrap(),
+            )
+            .unwrap();
+        assert_eq!(
+            again.get("ai:anthropic:api-key").unwrap().unwrap().expose(),
+            "k\"ey"
+        );
+        assert_eq!(
+            again.get("conn:a:password").unwrap().unwrap().expose(),
+            "old-a"
+        );
+        again.delete("conn:a:password").unwrap();
+        assert!(again.get("conn:a:password").unwrap().is_none());
+        let mut keys = again.list_keys().unwrap();
+        keys.sort();
+        assert_eq!(
+            keys,
+            vec![
+                "ai:anthropic:api-key".to_string(),
+                "conn:b:password".to_string()
+            ]
+        );
     }
 
     /// Touches the real OS keychain; run manually with `--ignored`.

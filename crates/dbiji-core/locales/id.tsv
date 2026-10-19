@@ -727,13 +727,11 @@ Compare	Bandingkan
 Confirm "fetch all" above	Konfirmasi "ambil semua" di atas
 Confirm DELETE / UPDATE without WHERE, DROP and TRUNCATE	Konfirmasi DELETE / UPDATE tanpa WHERE, DROP, dan TRUNCATE
 Confirm dangerous statements	Konfirmasi statement berbahaya
-Confirm every statement execution	Konfirmasi setiap eksekusi statement
 Confirm execution	Konfirmasi eksekusi
 Confirm saving data changes	Konfirmasi penyimpanan perubahan data
 Connecting… run the statement again when connected.	Menghubungkan… jalankan statement lagi setelah terhubung.
 Connection	Koneksi
 Connection to the AI service failed: {}	Koneksi ke layanan AI gagal: {}
-Connection type "{}" asks before every execution.	Tipe koneksi "{}" meminta konfirmasi sebelum setiap eksekusi.
 Connection types	Tipe koneksi
 Console	Konsol
 Copy SQL	Salin SQL
@@ -2623,3 +2621,5 @@ Tab: grid · ⌘C: copy	Tab: grid · ⌘C: salin
 {} selected rows	{} baris dipilih
 Show all databases in the navigator	Tampilkan semua database di navigator
 The navigator lists only the connection's database; the new one appears when all databases are shown.	Navigator hanya menampilkan database koneksi ini; database baru muncul jika semua database ditampilkan.
+Confirm statements that change data or schema	Konfirmasi statement yang mengubah data atau skema
+Connection type "{}" asks before statements that change data or schema.	Tipe koneksi "{}" meminta konfirmasi sebelum statement yang mengubah data atau skema.

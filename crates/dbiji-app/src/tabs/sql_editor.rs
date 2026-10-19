@@ -544,8 +544,10 @@ impl SqlEditorTab {
         }
         if !req.confirmed {
             let mut reasons: Vec<String> = Vec::new();
-            if ctype.confirm_execute {
-                reasons.push(trf("Connection type \"{}\" asks before every execution.", &[&ctype.name]));
+            // Only statements that change data or schema: reading (SELECT,
+            // EXPLAIN, SHOW …) runs without a question.
+            if ctype.confirm_execute && prepared.has_writes {
+                reasons.push(trf("Connection type \"{}\" asks before statements that change data or schema.", &[&ctype.name]));
             }
             if ctype.confirm_dangerous || cx.settings.execution.confirm_dangerous_statements {
                 for (i, d) in &prepared.dangers {

@@ -36,6 +36,8 @@ pub use project::{
     Bookmark, Project, ProjectManager, ScriptMeta, SessionState, SessionTab, VirtualModel,
     VirtualTable,
 };
-pub use secrets::{KeychainStore, MemoryStore, SecretStore, SecretsManager, VaultStore, ai_key};
+pub use secrets::{
+    BundledStore, KeychainStore, MemoryStore, SecretStore, SecretsManager, VaultStore, ai_key,
+};
 pub use settings::{AppSettings, SecretBackend};
 pub use templates::{SqlTemplate, TemplateLibrary, expand};

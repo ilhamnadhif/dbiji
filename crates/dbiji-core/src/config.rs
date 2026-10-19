@@ -137,7 +137,7 @@ pub struct ConnectionType {
     /// RGB colour used for the tab/status bar marker.
     pub color: [u8; 3],
     pub auto_commit: bool,
-    /// Ask for confirmation before executing any statement.
+    /// Ask for confirmation before statements that change data or schema.
     pub confirm_execute: bool,
     /// Ask for confirmation before saving data changes from the grid.
     pub confirm_data_change: bool,

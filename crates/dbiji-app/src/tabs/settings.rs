@@ -620,7 +620,7 @@ impl SettingsTab {
                     ui.label("");
                     c |= check(ui, &mut t.auto_commit, tr("Auto-commit by default"));
                     ui.label("");
-                    c |= check(ui, &mut t.confirm_execute, tr("Confirm every statement execution"));
+                    c |= check(ui, &mut t.confirm_execute, tr("Confirm statements that change data or schema"));
                     ui.label("");
                     c |= check(ui, &mut t.confirm_data_change, tr("Confirm saving data changes"));
                     ui.label("");
@@ -868,7 +868,9 @@ impl SettingsTab {
                     let r = mgr.switch_to_vault(vault, &keys, true).map_err(|e| e.to_string())?;
                     Ok(trf("{} secret(s) moved", &[&r.migrated.len()]))
                 } else {
-                    let r = mgr.switch_backend(SecretBackend::Keychain, std::sync::Arc::new(dbiji_config::KeychainStore::new()), &keys, true).map_err(|e| e.to_string())?;
+                    let r = mgr
+                        .switch_backend(SecretBackend::Keychain, std::sync::Arc::new(dbiji_config::BundledStore::new(dbiji_config::KeychainStore::new())), &keys, true)
+                        .map_err(|e| e.to_string())?;
                     Ok(trf("{} secret(s) moved", &[&r.migrated.len()]))
                 }
             })();

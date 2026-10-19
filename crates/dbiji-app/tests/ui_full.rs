@@ -1379,6 +1379,36 @@ fn workspace_from_dbeaver() {
     h.state_mut().settings.toolbar = Default::default();
     settle(&mut h, "toolbar states");
 
+    // Production: reading runs without a question, changing data asks.
+    {
+        let mut cfg = h.state().conns.config(&conn).unwrap().clone();
+        cfg.connection_type = "prod".into();
+        h.state_mut().conns.upsert(cfg);
+    }
+    h.state_mut().push_command(AppCommand::NewSqlEditor { connection: Some(conn.clone()), schema: None, text: None });
+    frames(&mut h, 3);
+    wait(&mut h, "editor session", |h| focused_editor(h).session_ready());
+    let ctx = h.ctx.clone();
+    focused_editor(&mut h).set_text(&ctx, "select count(*) from customer");
+    let run_stmt = |h: &mut H| {
+        let ctx = h.ctx.clone();
+        h.state_mut().dispatch_action(&ctx, Action::ExecuteStatement);
+        frames(h, 3);
+    };
+    run_stmt(&mut h);
+    assert!(focused_editor(&mut h).pending_confirmation().is_none(), "no question for a SELECT on production");
+    wait(&mut h, "select result", |h| !focused_editor(h).is_running() && focused_editor(h).result_count() == 1);
+    focused_editor(&mut h).set_text(&ctx, "update customer set name = name where id = 1");
+    run_stmt(&mut h);
+    let reasons = focused_editor(&mut h).pending_confirmation().expect("a question before changing data");
+    assert!(reasons.iter().any(|r| r.contains("change data or schema")), "{reasons:?}");
+    {
+        let mut cfg = h.state().conns.config(&conn).unwrap().clone();
+        cfg.connection_type = "dev".into();
+        h.state_mut().conns.upsert(cfg);
+    }
+    settle(&mut h, "production confirmation");
+
     // Error log: errors of the session, filtered by level.
     dbiji_app::applog::push(tracing::Level::ERROR, "dbiji::test", "probe failure 42");
     dbiji_app::applog::push(tracing::Level::INFO, "dbiji::test", "probe info 43");

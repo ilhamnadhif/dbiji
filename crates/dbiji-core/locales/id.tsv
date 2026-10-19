@@ -2604,3 +2604,14 @@ Select a connection in the navigator first.	Pilih koneksi di navigator dulu.
 Template	Template
 This database type cannot create it with SQL.	Jenis database ini tidak bisa membuatnya dengan SQL.
 New Database	Database Baru
+Copy the value	Salin nilai
+Key column	Kolom kunci
+Next row (→)	Baris berikutnya (→)
+Previous row (←)	Baris sebelumnya (←)
+Record view, row {} of {}	Tampilan record, baris {} dari {}
+References another table	Merujuk ke tabel lain
+Tab: grid · ← →: rows	Tab: grid · ← →: baris
+Type or drag to go to a row	Ketik atau seret untuk pindah baris
+Value copied	Nilai disalin
+of {}	dari {}
+{} of {} columns	{} dari {} kolom

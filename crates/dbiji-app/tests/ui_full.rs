@@ -718,12 +718,12 @@ fn settings_grid_menu_and_editor_helpers() {
     let _ = first_id(&mut h);
     h.key_press(Key::Tab);
     frames(&mut h, 3);
-    wait(&mut h, "record view", |h| has(h, "Row 1 of"));
+    wait(&mut h, "record view", |h| has(h, "Record view, row 1 of"));
     assert!(!has(&h, "Data grid,"), "the grid is replaced by the record view");
     assert!(h.query_all_by_label("name").next().is_some() && h.query_all_by_label("price").next().is_some(), "{:?}", labels(&h));
     h.key_press(Key::ArrowRight);
     frames(&mut h, 2);
-    assert!(has(&h, "Row 2 of"), "→ shows the next row: {:?}", labels(&h));
+    assert!(has(&h, "Record view, row 2 of"), "→ shows the next row: {:?}", labels(&h));
     h.key_press(Key::Tab);
     frames(&mut h, 3);
     wait(&mut h, "grid again", |h| has(h, "Data grid,"));

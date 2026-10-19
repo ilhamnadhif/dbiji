@@ -2459,7 +2459,6 @@ This is not an execution plan saved by DBiji.	Ini bukan execution plan yang disi
 Load Execution Plan	Buka Execution Plan
 Compact	Ringkas
 External command	Perintah eksternal
-Command	Perintah
 Gets the SQL on standard input and writes the formatted SQL to standard output	Menerima SQL lewat standard input dan menulis SQL yang sudah diformat ke standard output
 Without a selection, format only the statement under the cursor	Tanpa seleksi, format hanya statement di bawah kursor
 Set the formatter command in Settings → SQL editor.	Atur perintah formatter di Settings → SQL editor.
@@ -2480,7 +2479,29 @@ Adds the name to the connection's navigator filter	Menambahkan nama ke filter na
 Cannot switch the project	Tidak dapat berpindah project
 New project…	Project baru…
 Project name	Nama project
-Create	Buat
 Cannot create the project	Tidak dapat membuat project
 Link with editor: select the object of the active tab	Tautkan dengan editor: pilih objek dari tab aktif
 Open Database Object	Buka Objek Database
+(choose)	(pilih)
+:password is asked when the script runs; enter it as a string, e.g. 'secret'	:password ditanyakan saat skrip dijalankan; isi sebagai string, mis. 'rahasia'
+A backup of all databases is a plain SQL script; choose the plain format	Cadangan semua database berupa skrip SQL biasa; pilih format plain
+All databases (pg_dumpall)	Semua database (pg_dumpall)
+Choose the source connection	Pilih koneksi sumber
+Create it	Buat
+Enable or disable the trigger	Aktifkan atau nonaktifkan trigger
+Enter the remote schema	Isi skema remote
+Enter the server name and the local schema	Isi nama server dan skema lokal
+Foreign data wrapper	Foreign data wrapper
+Foreign data wrapper…	Foreign data wrapper…
+Foreign tables of {} through {}	Tabel asing dari {} melalui {}
+Local schema	Skema lokal
+Make the tables of another connection available in this database as foreign tables.	Jadikan tabel dari koneksi lain tersedia di database ini sebagai tabel asing.
+No foreign data wrapper reads this database	Tidak ada foreign data wrapper untuk database ini
+Only roles and tablespaces	Hanya role dan tablespace
+Remote schema	Skema remote
+Scope	Cakupan
+Server name	Nama server
+Source connection	Koneksi sumber
+The database server connects to the source itself: SSH tunnels and proxies of the connection are not used	Server database terhubung sendiri ke sumber: tunnel SSH dan proxy koneksi tidak dipakai
+The {} extension must be installed on the server	Ekstensi {} harus terpasang di server
+This database	Database ini

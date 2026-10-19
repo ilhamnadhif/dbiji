@@ -376,6 +376,9 @@ impl DbijiApp {
             AppCommand::ChangePassword { connection } => {
                 self.open_tab(Box::new(crate::tabs::dbtools::ChangePasswordTab::new(connection)));
             }
+            AppCommand::OpenFdwConfigurator { connection } => {
+                self.open_tab(Box::new(crate::tabs::dbtools::FdwConfigTab::new(connection)));
+            }
             AppCommand::OpenDebugger { connection, routine } => {
                 self.open_tab(Box::new(crate::tabs::dbtools::DebuggerTab::new(connection, routine)));
             }

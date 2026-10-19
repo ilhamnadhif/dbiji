@@ -280,6 +280,19 @@ impl Dialect for PgDialect {
                 options: &[("verbose", "Verbose", false)],
                 needs_autocommit: false,
             });
+            for (id, label, description) in [
+                ("disable_triggers", "Disable triggers", "Stop the triggers of the table (ALTER TABLE … DISABLE TRIGGER)"),
+                ("enable_triggers", "Enable triggers", "Turn the triggers of the table on again"),
+            ] {
+                ops.push(MaintenanceOp {
+                    id,
+                    label,
+                    description,
+                    applies_to: &[ObjectKind::Table, ObjectKind::Partition, ObjectKind::Trigger],
+                    options: &[("user_only", "Only user triggers (keep foreign key triggers)", true)],
+                    needs_autocommit: false,
+                });
+            }
             ops.push(MaintenanceOp {
                 id: "refresh",
                 label: "Refresh materialized view",
@@ -375,6 +388,18 @@ impl Dialect for PgDialect {
                         s.push_str(&name);
                     }
                     out.push(s);
+                }
+                "disable_triggers" | "enable_triggers" => {
+                    let verb = if op == "disable_triggers" { "DISABLE" } else { "ENABLE" };
+                    match (&t.kind, &t.table) {
+                        (ObjectKind::Trigger, Some(table)) => {
+                            out.push(format!("ALTER TABLE {} {verb} TRIGGER {}", qualified(t.schema.as_deref(), table), quote_ident(&t.name)));
+                        }
+                        _ => {
+                            let which = if on("user_only") { "USER" } else { "ALL" };
+                            out.push(format!("ALTER TABLE {} {verb} TRIGGER {which}", qualified(t.schema.as_deref(), &t.name)));
+                        }
+                    }
                 }
                 "refresh" => {
                     let mut s = "REFRESH MATERIALIZED VIEW".to_string();
@@ -500,5 +525,19 @@ mod tests {
         assert_eq!(d.type_kind("bit(1)"), DataKind::Bit);
         assert_eq!(d.type_kind("timestamp with time zone"), DataKind::DateTimeTz);
         assert_eq!(d.type_kind("_text"), DataKind::Array);
+    }
+
+    #[test]
+    fn trigger_maintenance() {
+        let d = PgDialect::new();
+        assert!(d.maintenance_ops().iter().any(|o| o.id == "disable_triggers"));
+        let t = ObjectRef::table(Some("app".into()), "orders");
+        let mut o = BTreeMap::new();
+        o.insert("user_only".to_string(), true);
+        assert_eq!(d.maintenance_sql("disable_triggers", std::slice::from_ref(&t), &o), vec!["ALTER TABLE app.orders DISABLE TRIGGER USER"]);
+        o.insert("user_only".to_string(), false);
+        assert_eq!(d.maintenance_sql("enable_triggers", std::slice::from_ref(&t), &o), vec!["ALTER TABLE app.orders ENABLE TRIGGER ALL"]);
+        let trig = ObjectRef::child(ObjectKind::Trigger, &t, "audit");
+        assert_eq!(d.maintenance_sql("disable_triggers", &[trig], &o), vec!["ALTER TABLE app.orders DISABLE TRIGGER audit"]);
     }
 }

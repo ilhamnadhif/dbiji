@@ -123,6 +123,10 @@ pub struct BackupForm {
     pub compression: u8,
     pub single_transaction: bool,
     pub routines: bool,
+    /// PostgreSQL: every database (`pg_dumpall`).
+    pub all_databases: bool,
+    /// With `all_databases`: only roles and tablespaces.
+    pub globals_only: bool,
     pub tool_path: String,
     /// Shell-like argument list.
     pub extra_args: String,
@@ -153,6 +157,8 @@ impl BackupForm {
             compression: o.compression.unwrap_or(6).min(9),
             single_transaction: o.single_transaction,
             routines: o.routines,
+            all_databases: o.all_databases,
+            globals_only: o.globals_only,
             tool_path: o.tool_path.clone().unwrap_or_default(),
             extra_args: join_args(&o.extra_args),
         }
@@ -176,6 +182,8 @@ impl BackupForm {
             compression: self.compress.then_some(self.compression.min(9)),
             single_transaction: self.single_transaction,
             routines: self.routines,
+            all_databases: self.all_databases,
+            globals_only: self.all_databases && self.globals_only,
             tool_path: opt(&self.tool_path),
             extra_args: split_args(&self.extra_args),
         }
@@ -185,6 +193,9 @@ impl BackupForm {
     pub fn validate(&self) -> Result<(), String> {
         if self.output.trim().is_empty() {
             return Err(tr("Choose the output file of the backup").to_string());
+        }
+        if self.all_databases && self.format != BackupFormat::Plain {
+            return Err(tr("A backup of all databases is a plain SQL script; choose the plain format").to_string());
         }
         if self.schema_only && self.data_only {
             return Err(tr("Schema only and data only cannot be combined").to_string());
@@ -203,7 +214,32 @@ impl BackupForm {
             let directory = self.format == BackupFormat::Directory;
             changed |= browse_row(ui, &mut self.output, tr("File to write"), |cur| if directory { dialog_near(cur).pick_folder() } else { dialog_near(cur).save_file() });
             ui.end_row();
-            if pg || sqlite {
+            if flavor == ToolFlavor::Postgres {
+                ui.label(tr("Scope"));
+                ui.horizontal(|ui| {
+                    let mut mode = match (self.all_databases, self.globals_only) {
+                        (false, _) => 0,
+                        (true, false) => 1,
+                        (true, true) => 2,
+                    };
+                    let before = mode;
+                    ui.radio_value(&mut mode, 0, tr("This database"));
+                    ui.radio_value(&mut mode, 1, tr("All databases (pg_dumpall)"));
+                    ui.radio_value(&mut mode, 2, tr("Only roles and tablespaces"));
+                    if mode != before {
+                        self.all_databases = mode > 0;
+                        self.globals_only = mode == 2;
+                        if self.all_databases && self.format != BackupFormat::Plain {
+                            self.output = retarget_extension_for(flavor, &self.output, self.format, BackupFormat::Plain);
+                            self.format = BackupFormat::Plain;
+                        }
+                        changed = true;
+                    }
+                });
+                ui.end_row();
+            }
+            let whole_server = self.all_databases && flavor == ToolFlavor::Postgres;
+            if (pg || sqlite) && !whole_server {
                 ui.label(tr("Format"));
                 egui::ComboBox::from_id_salt((id, "format")).selected_text(flavor_format_label(flavor, self.format)).width(200.0).show_ui(ui, |ui| {
                     for &f in formats(flavor) {
@@ -216,17 +252,24 @@ impl BackupForm {
                 });
                 ui.end_row();
             }
-            ui.label(tr("Database"));
-            changed |= ui.add(egui::TextEdit::singleline(&mut self.database).desired_width(220.0).hint_text(tr("(connection database)"))).changed();
-            ui.end_row();
-            if !sqlite {
-                ui.label(if flavor == ToolFlavor::MySql { tr("Databases") } else { tr("Schemas") });
-                changed |= ui.add(egui::TextEdit::singleline(&mut self.schemas).desired_width(340.0).hint_text(tr("comma separated; empty = all"))).changed();
+            // pg_dumpall has no database, schema or table selection.
+            if !whole_server {
+                ui.label(tr("Database"));
+                changed |= ui.add(egui::TextEdit::singleline(&mut self.database).desired_width(220.0).hint_text(tr("(connection database)"))).changed();
+                ui.end_row();
+                if !sqlite {
+                    ui.label(if flavor == ToolFlavor::MySql { tr("Databases") } else { tr("Schemas") });
+                    changed |= ui.add(egui::TextEdit::singleline(&mut self.schemas).desired_width(340.0).hint_text(tr("comma separated; empty = all"))).changed();
+                    ui.end_row();
+                }
+                ui.label(tr("Tables"));
+                changed |= ui.add(egui::TextEdit::singleline(&mut self.tables).desired_width(340.0).hint_text(tr("comma separated; empty = all"))).changed();
                 ui.end_row();
             }
-            ui.label(tr("Tables"));
-            changed |= ui.add(egui::TextEdit::singleline(&mut self.tables).desired_width(340.0).hint_text(tr("comma separated; empty = all"))).changed();
-            ui.end_row();
+            if whole_server && self.globals_only {
+                changed |= tool_row(ui, &mut self.tool_path, &mut self.extra_args);
+                return;
+            }
             ui.label(tr("Content"));
             ui.horizontal(|ui| {
                 let mut mode = if self.schema_only {
@@ -255,7 +298,9 @@ impl BackupForm {
             ui.label(tr("Options"));
             ui.vertical(|ui| {
                 changed |= ui.checkbox(&mut self.clean, tr("Drop objects before creating them")).changed();
-                changed |= ui.checkbox(&mut self.create_database, tr("Include CREATE DATABASE")).changed();
+                if !whole_server {
+                    changed |= ui.checkbox(&mut self.create_database, tr("Include CREATE DATABASE")).changed();
+                }
                 if pg {
                     changed |= ui.checkbox(&mut self.no_owner, tr("Do not restore object owners")).changed();
                     changed |= ui.checkbox(&mut self.no_privileges, tr("Do not dump privileges (GRANT / REVOKE)")).changed();
@@ -266,7 +311,7 @@ impl BackupForm {
                     changed |= ui.checkbox(&mut self.single_transaction, tr("Single transaction (consistent snapshot)")).changed();
                     changed |= ui.checkbox(&mut self.routines, tr("Include routines and events")).changed();
                 }
-                if pg && self.format != BackupFormat::Tar {
+                if pg && self.format != BackupFormat::Tar && !whole_server {
                     ui.horizontal(|ui| {
                         changed |= ui.checkbox(&mut self.compress, tr("Compression level")).changed();
                         ui.add_enabled_ui(self.compress, |ui| {
@@ -1032,6 +1077,10 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(BackupForm::from_options(&o).to_options(), o);
+        let all = BackupOptions { output: "/tmp/all.sql".into(), all_databases: true, globals_only: true, ..Default::default() };
+        assert_eq!(BackupForm::from_options(&all).to_options(), all);
+        let form = BackupForm { all_databases: true, format: BackupFormat::Custom, output: "/tmp/a.dump".into(), ..Default::default() };
+        assert!(form.validate().is_err(), "pg_dumpall writes plain SQL only");
         let r = RestoreOptions { input: "/tmp/x.dump".into(), format: BackupFormat::Custom, clean: true, exit_on_error: true, ..Default::default() };
         assert_eq!(RestoreForm::from_options(&r).to_options(), r);
         assert!(!RestoreForm::default().exit_on_error);

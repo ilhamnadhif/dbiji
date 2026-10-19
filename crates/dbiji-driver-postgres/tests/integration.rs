@@ -1399,6 +1399,13 @@ async fn backup_and_restore_with_local_tools() {
             })
             .await;
         }
+        // roles and tablespaces of the whole server (pg_dumpall)
+        let globals = dir.join("globals.sql");
+        let cmd = driver.backup_command(&params, &BackupOptions { output: globals.clone(), all_databases: true, globals_only: true, ..Default::default() }).unwrap();
+        assert!(cmd.program.ends_with("pg_dumpall"), "{}", cmd.program);
+        assert!(run(&cmd), "pg_dumpall failed: {}", cmd.display());
+        let text = std::fs::read_to_string(&globals).unwrap();
+        assert!(text.contains("CREATE ROLE") && !text.contains(&format!("{schema}.bk")), "{text}");
         // execute a script with the local client
         let script = dir.join("script.sql");
         std::fs::write(&script, format!("INSERT INTO {schema}.bk VALUES (3, 'three');\n")).unwrap();

@@ -1,16 +1,18 @@
 //! Database administration tools (FR-A1 / FR-A2): backup and restore with
 //! the vendor command line tools, maintenance operations (VACUUM, ANALYZE,
 //! OPTIMIZE ...), changing the password of the connection user and the
-//! routine debugger. Every tool works on its own database session so that
+//! routine debugger and the foreign data wrapper configurator. Every tool works on its own database session so that
 //! a slow operation never blocks the navigator or an editor.
 
 mod backup;
 mod debugger;
+mod fdw;
 mod maintenance;
 mod password;
 
 pub use backup::{BackupForm, BackupTab, RestoreForm, ToolOutcome};
 pub use debugger::{DebuggerTab, RoutineArg};
+pub use fdw::{FdwConfigTab, FdwSpec, fdw_script, spec_for};
 pub use maintenance::{MaintenanceTab, StatementResult};
 pub use password::ChangePasswordTab;
 

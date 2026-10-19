@@ -293,6 +293,63 @@ const METRICS: &[(&str, &str, &str, &str, &str, bool)] = &[
         "",
         true,
     ),
+    // DBeaver's "InnoDB memory" and "Key efficiency" dashboards.
+    (
+        "Innodb_buffer_pool_bytes_data",
+        "innodb_memory.data",
+        "Buffer pool data",
+        "InnoDB memory",
+        "bytes",
+        false,
+    ),
+    (
+        "Innodb_buffer_pool_pages_total",
+        "innodb_memory.pages_total",
+        "Buffer pool pages",
+        "InnoDB memory",
+        "",
+        false,
+    ),
+    (
+        "Innodb_buffer_pool_pages_free",
+        "innodb_memory.pages_free",
+        "Free pages",
+        "InnoDB memory",
+        "",
+        false,
+    ),
+    (
+        "Key_read_requests",
+        "keys.read_requests",
+        "Key read requests",
+        "Key efficiency",
+        "",
+        true,
+    ),
+    (
+        "Key_reads",
+        "keys.reads",
+        "Key reads from disk",
+        "Key efficiency",
+        "",
+        true,
+    ),
+    (
+        "Key_write_requests",
+        "keys.write_requests",
+        "Key write requests",
+        "Key efficiency",
+        "",
+        true,
+    ),
+    (
+        "Key_writes",
+        "keys.writes",
+        "Key writes to disk",
+        "Key efficiency",
+        "",
+        true,
+    ),
     ("Uptime", "server.uptime", "Uptime", "Server", "s", false),
 ];
 
@@ -320,6 +377,22 @@ pub fn metrics_from_status(status: &HashMap<String, f64>) -> Vec<Metric> {
             "InnoDB",
             "innodb.buffer_pool_hit_ratio",
             "Buffer pool hit ratio",
+            ratio,
+            "%",
+        ));
+    }
+    let key_req = status.get("key_read_requests").copied();
+    let key_reads = status.get("key_reads").copied();
+    if let (Some(req), Some(rd)) = (key_req, key_reads) {
+        let ratio = if req > 0.0 {
+            ((1.0 - rd / req) * 100.0).clamp(0.0, 100.0)
+        } else {
+            100.0
+        };
+        out.push(Metric::gauge(
+            "Key efficiency",
+            "keys.cache_hit_ratio",
+            "Key cache hit ratio",
             ratio,
             "%",
         ));
@@ -409,6 +482,9 @@ mod tests {
         s.insert("innodb_buffer_pool_read_requests".to_string(), 1000.0);
         s.insert("innodb_buffer_pool_reads".to_string(), 10.0);
         s.insert("uptime".to_string(), 60.0);
+        s.insert("key_read_requests".to_string(), 200.0);
+        s.insert("key_reads".to_string(), 50.0);
+        s.insert("innodb_buffer_pool_bytes_data".to_string(), 1048576.0);
         let m = metrics_from_status(&s);
         let get = |k: &str| m.iter().find(|x| x.key == k).cloned().unwrap();
         assert_eq!(get("connections.connected").kind, MetricKind::Gauge);
@@ -416,6 +492,9 @@ mod tests {
         assert!((get("innodb.buffer_pool_hit_ratio").value - 99.0).abs() < 1e-9);
         assert_eq!(get("innodb.buffer_pool_hit_ratio").unit, "%");
         assert_eq!(get("server.uptime").unit, "s");
+        assert!((get("keys.cache_hit_ratio").value - 75.0).abs() < 1e-9);
+        assert_eq!(get("keys.read_requests").kind, MetricKind::Counter);
+        assert_eq!(get("innodb_memory.data").unit, "bytes");
         assert!(m.iter().all(|x| x.key != "queries.slow"));
     }
 

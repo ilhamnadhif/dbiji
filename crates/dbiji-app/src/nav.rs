@@ -1288,6 +1288,10 @@ pub fn tools_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, schema: Option<S
         cx.push(AppCommand::OpenSearch { connection: Some(conn.to_string()), data: true });
         ui.close();
     }
+    if cx.conns.live(conn).is_some_and(|l| l.config.kind == DbKind::Postgres) && ui.button(format!("{} {}", icon::PLUGS_CONNECTED, tr("Foreign data wrapper…"))).clicked() {
+        cx.push(AppCommand::OpenFdwConfigurator { connection: conn.to_string() });
+        ui.close();
+    }
     let can_change_password = cx.conns.live(conn).is_some_and(|l| l.dialect.change_password_sql(None, "x").is_some());
     if can_change_password && ui.button(format!("{} {}", icon::PASSWORD, tr("Change password"))).clicked() {
         cx.push(AppCommand::ChangePassword { connection: conn.to_string() });
@@ -1376,6 +1380,13 @@ pub fn object_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, obj: &ObjectRef
                 ui.close();
             }
         }
+    }
+    if obj.kind == ObjectKind::Trigger
+        && cx.conns.live(conn).is_some_and(|l| l.dialect.maintenance_ops().iter().any(|o| o.applies_to.contains(&ObjectKind::Trigger)))
+        && ui.button(format!("{} {}", icon::BROOM, tr("Maintenance"))).on_hover_text(tr("Enable or disable the trigger")).clicked()
+    {
+        cx.push(AppCommand::OpenMaintenance { connection: conn.to_string(), objects: vec![obj.clone()] });
+        ui.close();
     }
     if obj.table.is_none()
         && ui.button(format!("{} {}", icon::EYE_SLASH, tr("Hide in navigator"))).on_hover_text(tr("Adds the name to the connection's navigator filter")).clicked()

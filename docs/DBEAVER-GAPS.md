@@ -74,7 +74,7 @@ Status: ☐ open · ☑ done (with the test that covers it).
 
 ## 6. Database tools and dashboards
 
-- ☐ PostgreSQL global backup (`pg_dumpall`)
-- ☐ Enable / disable triggers tool (PostgreSQL, SQL Server)
-- ☐ PostgreSQL foreign data wrapper configurator
-- ☐ Database-specific dashboards: PostgreSQL (transactions per second, sessions, block IO), MySQL (queries, traffic, InnoDB data / memory, key efficiency)
+- ☑ PostgreSQL global backup (`pg_dumpall`): all databases, or only roles and tablespaces (Backup › Scope) — `dbiji-driver-postgres::tools::tests::dumpall`, `dbiji-driver-postgres::integration::backup_and_restore_with_local_tools`, `dbiji-app::tabs::dbtools::backup::tests::forms_roundtrip`
+- ☑ Enable / disable triggers (PostgreSQL: user or all triggers of a table, one trigger; SQL Server) from Maintenance — `dbiji-driver-postgres::dialect::tests::trigger_maintenance`, `dbiji-driver-mssql::dialect` tests
+- ☑ Foreign data wrapper configurator: Tools › Foreign data wrapper… generates CREATE EXTENSION / SERVER / USER MAPPING / IMPORT FOREIGN SCHEMA from another connection (postgres_fdw, mysql_fdw, tds_fdw, sqlite_fdw, clickhouse_fdw, duckdb_fdw); the password is the `:password` parameter, never written to the script — `dbiji-app::tabs::dbtools::fdw::tests::scripts`, `dbiji-app::fdw_e2e::postgres_fdw_script_imports_a_schema`
+- ☑ Database-specific dashboards: PostgreSQL (transactions per second, sessions, block IO — already present), MySQL InnoDB memory and key efficiency (cache hit ratio) added — `dbiji-driver-mysql::admin::tests::metric_mapping`

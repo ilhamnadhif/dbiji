@@ -197,6 +197,9 @@ pub(crate) fn backup_command(params: &ConnectParams, opts: &BackupOptions) -> Db
     if opts.schema_only && opts.data_only {
         return Err(DbError::config("Schema only and data only cannot be combined"));
     }
+    if opts.all_databases {
+        return dumpall_command(params, opts);
+    }
     let program = find_tool("pg_dump", opts.tool_path.as_deref())?;
     let mut args = vec!["--verbose".to_string(), "--no-password".to_string()];
     let fmt = match opts.format {
@@ -244,6 +247,51 @@ pub(crate) fn backup_command(params: &ConnectParams, opts: &BackupOptions) -> Db
     }
     args.extend(opts.extra_args.iter().cloned());
     args.extend(connection_args(params, opts.database.as_deref()));
+    Ok(CommandSpec { program, args, env: tool_env(params), stdin_file: None, stdout_file: None })
+}
+
+/// `pg_dumpall`: every database (or only roles and tablespaces) as a plain
+/// SQL script, restored with `psql`.
+fn dumpall_command(params: &ConnectParams, opts: &BackupOptions) -> DbResult<CommandSpec> {
+    if opts.format != BackupFormat::Plain {
+        return Err(DbError::config("A backup of all databases is a plain SQL script; choose the plain format"));
+    }
+    let program = find_tool("pg_dumpall", opts.tool_path.as_deref())?;
+    let mut args = vec!["--verbose".to_string(), "--no-password".to_string(), format!("--file={}", path_str(&opts.output))];
+    if opts.globals_only {
+        args.push("--globals-only".into());
+    } else {
+        if opts.schema_only {
+            args.push("--schema-only".into());
+        }
+        if opts.data_only {
+            args.push("--data-only".into());
+        }
+    }
+    if opts.clean {
+        args.push("--clean".into());
+        args.push("--if-exists".into());
+    }
+    if opts.no_owner {
+        args.push("--no-owner".into());
+    }
+    if opts.no_privileges {
+        args.push("--no-privileges".into());
+    }
+    if opts.inserts {
+        args.push("--inserts".into());
+    }
+    args.extend(opts.extra_args.iter().cloned());
+    // pg_dumpall connects to every database itself; -d is the initial one
+    // and always a connection string.
+    let mut conn = connection_args(params, opts.database.as_deref());
+    if let Some(i) = conn.iter().position(|a| a == "-d")
+        && let Some(v) = conn.get_mut(i + 1)
+        && !v.contains('=')
+    {
+        *v = format!("dbname={}", conninfo_value(v));
+    }
+    args.extend(conn);
     Ok(CommandSpec { program, args, env: tool_env(params), stdin_file: None, stdout_file: None })
 }
 
@@ -402,5 +450,22 @@ mod tests {
         assert_eq!(c.args.last().unwrap(), "/tmp/in.dump");
         let s = client_command(&params(), Path::new("/tmp/x.sql")).unwrap();
         assert!(s.args.contains(&"--file=/tmp/x.sql".to_string()));
+    }
+
+    #[test]
+    fn dumpall() {
+        let mut p = dbiji_core::ConnectParams::from_config(&dbiji_core::ConnectionConfig::new(dbiji_core::DbKind::Postgres, "x"), None);
+        p.host = "db.local".into();
+        p.port = 5432;
+        p.user = Some("admin".into());
+        let opts = BackupOptions { output: "/tmp/all.sql".into(), all_databases: true, globals_only: true, format: BackupFormat::Plain, ..Default::default() };
+        let c = backup_command(&p, &opts).unwrap();
+        assert!(c.program.ends_with("pg_dumpall"), "{}", c.program);
+        assert!(c.args.contains(&"--globals-only".to_string()) && c.args.contains(&"--file=/tmp/all.sql".to_string()), "{:?}", c.args);
+        let p = dbiji_core::ConnectParams { database: Some("app db".into()), ..p };
+        let c = backup_command(&p, &opts).unwrap();
+        assert!(c.args.windows(2).any(|w| w[0] == "-d" && w[1] == "dbname='app db'"), "{:?}", c.args);
+        let custom = BackupOptions { format: BackupFormat::Custom, ..opts };
+        assert!(backup_command(&p, &custom).is_err(), "pg_dumpall writes plain SQL only");
     }
 }

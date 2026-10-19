@@ -200,6 +200,10 @@ pub enum AppCommand {
     ChangePassword {
         connection: String,
     },
+    /// Foreign data wrapper configurator (PostgreSQL).
+    OpenFdwConfigurator {
+        connection: String,
+    },
     OpenSearch {
         connection: Option<String>,
         data: bool,

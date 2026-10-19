@@ -287,6 +287,22 @@ impl Dialect for MsSqlDialect {
                 needs_autocommit: false,
             },
             MaintenanceOp {
+                id: "disable_triggers",
+                label: "Disable triggers",
+                description: "Stop the triggers of a table (DISABLE TRIGGER)",
+                applies_to: &[ObjectKind::Table, ObjectKind::Trigger],
+                options: &[],
+                needs_autocommit: false,
+            },
+            MaintenanceOp {
+                id: "enable_triggers",
+                label: "Enable triggers",
+                description: "Turn the triggers of a table on again (ENABLE TRIGGER)",
+                applies_to: &[ObjectKind::Table, ObjectKind::Trigger],
+                options: &[],
+                needs_autocommit: false,
+            },
+            MaintenanceOp {
                 id: "rebuild_indexes",
                 label: "Rebuild indexes",
                 description: "Rebuild all indexes of a table (ALTER INDEX ALL ... REBUILD)",
@@ -351,6 +367,18 @@ impl Dialect for MsSqlDialect {
             if t.kind == ObjectKind::Index { t.parent_table().map(|p| self.qualified_ref(&p)).unwrap_or_else(|| self.qualified_ref(t)) } else { self.qualified_ref(t) }
         };
         match op {
+            "disable_triggers" | "enable_triggers" => {
+                let verb = if op == "disable_triggers" { "DISABLE" } else { "ENABLE" };
+                targets
+                    .iter()
+                    .map(|t| match (&t.kind, &t.table) {
+                        (ObjectKind::Trigger, Some(table)) => {
+                            format!("{verb} TRIGGER {} ON {}", self.qualified(t.schema.as_deref(), &t.name), self.qualified(t.schema.as_deref(), table))
+                        }
+                        _ => format!("{verb} TRIGGER ALL ON {}", self.qualified_ref(t)),
+                    })
+                    .collect()
+            }
             "update_statistics" => targets
                 .iter()
                 .map(|t| {
@@ -521,5 +549,15 @@ mod tests {
         assert!(b[0].contains("COPY_ONLY"));
         assert_eq!(d.change_password_sql(Some("bob"), "p'w").unwrap(), "ALTER LOGIN [bob] WITH PASSWORD = N'p''w'");
         assert!(d.change_password_sql(None, "x").unwrap().contains("SUSER_SNAME()"));
+    }
+
+    #[test]
+    fn trigger_maintenance() {
+        let d = MsSqlDialect::default();
+        let t = ObjectRef::table(Some("dbo".into()), "orders");
+        let none = BTreeMap::new();
+        assert_eq!(d.maintenance_sql("disable_triggers", std::slice::from_ref(&t), &none), vec!["DISABLE TRIGGER ALL ON dbo.orders"]);
+        let trig = ObjectRef::child(ObjectKind::Trigger, &t, "audit");
+        assert_eq!(d.maintenance_sql("enable_triggers", &[trig], &none), vec!["ENABLE TRIGGER dbo.audit ON dbo.orders"]);
     }
 }

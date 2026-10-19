@@ -190,6 +190,10 @@ pub struct BackupOptions {
     pub single_transaction: bool,
     /// MySQL: include routines and events.
     pub routines: bool,
+    /// Every database of the server (PostgreSQL: `pg_dumpall`).
+    pub all_databases: bool,
+    /// With `all_databases`: only roles and tablespaces (`--globals-only`).
+    pub globals_only: bool,
     /// Path to the tool; empty = look it up in PATH.
     pub tool_path: Option<String>,
     pub extra_args: Vec<String>,

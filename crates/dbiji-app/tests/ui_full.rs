@@ -29,10 +29,14 @@ fn harness(dir: &std::path::Path) -> H {
     harness_with(dir, settings)
 }
 
-fn harness_with(dir: &std::path::Path, mut settings: Settings) -> H {
+fn harness_with(dir: &std::path::Path, settings: Settings) -> H {
+    let conns = ConnectionManager::new(dbiji_app::driver_registry(), Arc::new(MemorySecrets::default()), Arc::new(DirectNet));
+    harness_conns(dir, settings, conns)
+}
+
+fn harness_conns(dir: &std::path::Path, mut settings: Settings, conns: ConnectionManager) -> H {
     let backend = Arc::new(Backend::new().unwrap());
     let services = Services::ephemeral(&dir.join("home"));
-    let conns = ConnectionManager::new(dbiji_app::driver_registry(), Arc::new(MemorySecrets::default()), Arc::new(DirectNet));
     settings.general.restore_session = false;
     let h = Harness::builder().with_size(egui::vec2(1400.0, 900.0)).with_max_steps(400).with_step_dt(1.0 / 60.0).build_eframe(move |cc| {
         dbiji_app::theme::setup_fonts(&cc.egui_ctx);
@@ -1458,4 +1462,75 @@ fn workspace_from_dbeaver() {
     h2.state_mut().existing_install = true;
     frames(&mut h2, 3);
     assert!(h2.state().tip.is_some(), "tip on start");
+}
+
+/// New database… from the navigator on PostgreSQL (DBIJI_TEST_PG): the
+/// dialog, CREATE DATABASE and the new database in the tree.
+#[test]
+fn create_database_from_the_navigator() {
+    let Some(url) = std::env::var("DBIJI_TEST_PG").ok().filter(|u| !u.trim().is_empty()) else { return };
+    let guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    dbiji_core::i18n::set_locale(dbiji_core::i18n::Locale::En);
+    let dir = Dir(std::env::temp_dir().join(format!("dbiji-ui-{}", uuid::Uuid::new_v4().simple())), guard);
+    std::fs::create_dir_all(&dir.0).unwrap();
+    // SAFETY: the walkthroughs run one at a time (SERIAL).
+    unsafe {
+        std::env::set_var("HOME", &dir.0);
+        std::env::set_var("DBIJI_UPDATE_URL", "off");
+    }
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let (mut cfg, password) = dbiji_config::parse_connection_url(&url).unwrap();
+    cfg.name = "pg-test".into();
+    cfg.save_password = true;
+    let current = cfg.database.clone().unwrap_or_else(|| "postgres".into());
+    let secrets = Arc::new(MemorySecrets::default());
+    if let Some(pw) = &password {
+        dbiji_app::conn::SecretSource::set(secrets.as_ref(), &dbiji_core::config::secret_key(&cfg.id, dbiji_core::config::SecretSlot::Password), pw).unwrap();
+    }
+    let mut conns = ConnectionManager::new(dbiji_app::driver_registry(), secrets, Arc::new(DirectNet));
+    let id = cfg.id.clone();
+    conns.upsert(cfg.clone());
+    let mut settings = Settings::default();
+    settings.updates.check_automatically = Some(false);
+    let mut h = harness_conns(&dir.0, settings, conns);
+    frames(&mut h, 3);
+    h.state_mut().push_command(AppCommand::Connect(id.clone()));
+    wait(&mut h, "connected", |h| h.state().conns.is_connected(&id));
+    wait(&mut h, "current database", |h| nav_row(h, &current).is_some());
+    // Right-click the database: New database…
+    let name = format!("dbiji_ui_{}", &uuid::Uuid::new_v4().simple().to_string()[..8]);
+    pause(&mut h);
+    nav_row(&h, &current).unwrap().click_secondary();
+    frames(&mut h, 2);
+    click(&mut h, "New database…");
+    wait(&mut h, "dialog", |h| has(h, "Show all databases in the navigator"));
+    frames(&mut h, 2);
+    h.event(egui::Event::Text(name.clone()));
+    frames(&mut h, 2);
+    let preview = |h: &H| {
+        h.query_all_by_label_contains("")
+            .chain(h.query_all_by_role(egui::accesskit::Role::MultilineTextInput))
+            .filter_map(|n| n.accesskit_node().value().or(n.accesskit_node().label()))
+            .any(|t| t.contains(&format!("CREATE DATABASE {name}")))
+    };
+    assert!(preview(&h), "statement preview: {:?}", labels(&h));
+    // The dialog keeps its size: the button is where it was a frame ago.
+    let label = format!("{} Create", egui_phosphor::regular::PLUS);
+    frames(&mut h, 2);
+    let before = h.query_all_by_label(&label).next().expect("Create button").rect();
+    frames(&mut h, 5);
+    assert_eq!(h.query_all_by_label(&label).next().unwrap().rect(), before, "the dialog does not grow");
+    pause(&mut h);
+    h.query_all_by_label(&format!("{} Create", egui_phosphor::regular::PLUS)).next().expect("Create button").click();
+    frames(&mut h, 2);
+    // Created, and listed because "Show all databases" was turned on.
+    wait(&mut h, "new database in the navigator", |h| nav_row(h, &name).is_some());
+    assert!(h.state().conns.config(&id).unwrap().init.show_all_databases);
+    no_errors(&mut h, "create database");
+    // Clean up on a separate session.
+    let backend = Backend::new().unwrap();
+    let driver = dbiji_app::driver_registry().get(dbiji_core::DbKind::Postgres).unwrap();
+    let params = dbiji_core::ConnectParams::from_config(&cfg, password);
+    let mut s = backend.block_on(driver.connect(&params)).unwrap();
+    backend.block_on(dbiji_core::driver::execute_update(s.as_mut(), &format!("DROP DATABASE {name} WITH (FORCE)"), &[])).unwrap();
 }

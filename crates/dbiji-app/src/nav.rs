@@ -1428,19 +1428,24 @@ fn placeholder(depth: usize, kind: RowKind) -> Row {
 /// database type supports; `database`: schemas go into that database).
 pub fn create_menu_items(ui: &mut Ui, cx: &mut AppContext, conn: &str, database: Option<String>) {
     let Some(live) = cx.conns.live(conn) else { return };
-    if live.config.read_only {
-        return;
-    }
+    let read_only = live.config.read_only;
     let probe = dbiji_core::NewDatabase { name: "x".into(), ..Default::default() };
     let databases = live.dialect.create_database_sql(&probe).is_some();
     let schemas = live.dialect.create_schema_sql("x", None).is_some();
-    if databases && database.is_none() && ui.button(format!("{} {}", icon::DATABASE, tr("New database…"))).clicked() {
-        cx.push(AppCommand::NewDatabase { connection: conn.to_string() });
-        ui.close();
+    let why = tr("The connection is read-only.");
+    if databases {
+        let b = ui.add_enabled(!read_only, egui::Button::new(format!("{} {}", icon::DATABASE, tr("New database…")))).on_disabled_hover_text(why);
+        if b.clicked() {
+            cx.push(AppCommand::NewDatabase { connection: conn.to_string() });
+            ui.close();
+        }
     }
-    if schemas && ui.button(format!("{} {}", icon::STACK, tr("New schema…"))).clicked() {
-        cx.push(AppCommand::NewSchema { connection: conn.to_string(), database });
-        ui.close();
+    if schemas {
+        let b = ui.add_enabled(!read_only, egui::Button::new(format!("{} {}", icon::STACK, tr("New schema…")))).on_disabled_hover_text(why);
+        if b.clicked() {
+            cx.push(AppCommand::NewSchema { connection: conn.to_string(), database });
+            ui.close();
+        }
     }
 }
 

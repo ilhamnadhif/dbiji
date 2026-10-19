@@ -2621,3 +2621,5 @@ Row #{}	Baris #{}
 Select one row to see it as a record	Pilih satu baris untuk melihatnya sebagai record
 Tab: grid · ⌘C: copy	Tab: grid · ⌘C: salin
 {} selected rows	{} baris dipilih
+Show all databases in the navigator	Tampilkan semua database di navigator
+The navigator lists only the connection's database; the new one appears when all databases are shown.	Navigator hanya menampilkan database koneksi ini; database baru muncul jika semua database ditampilkan.

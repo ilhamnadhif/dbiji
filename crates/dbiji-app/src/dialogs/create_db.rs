@@ -19,17 +19,20 @@ pub struct CreateDatabaseDialog {
     job: Option<Job<DbResult<()>>>,
     error: Option<String>,
     focus: bool,
+    /// Turn on "Show all databases" so the new database appears in the
+    /// navigator (offered while only the connection's database is shown).
+    show_all: bool,
 }
 
 impl CreateDatabaseDialog {
     /// A new database on the server of `conn`.
     pub fn database(conn: String) -> Self {
-        CreateDatabaseDialog { conn, schema_in: None, db: NewDatabase::default(), job: None, error: None, focus: true }
+        CreateDatabaseDialog { conn, schema_in: None, db: NewDatabase::default(), job: None, error: None, focus: true, show_all: true }
     }
 
     /// A new schema in `database` (`None` = the connection's database).
     pub fn schema(conn: String, database: Option<String>) -> Self {
-        CreateDatabaseDialog { conn, schema_in: Some(database), db: NewDatabase::default(), job: None, error: None, focus: true }
+        CreateDatabaseDialog { conn, schema_in: Some(database), db: NewDatabase::default(), job: None, error: None, focus: true, show_all: false }
     }
 
     /// The statement for the current input.
@@ -55,6 +58,15 @@ impl CreateDatabaseDialog {
                 Ok(()) => {
                     let what = if schema { tr("Schema {} created") } else { tr("Database {} created") };
                     cx.toasts.success(trf(what, &[&self.db.name.trim()]));
+                    if !schema && self.show_all && cx.conns.live(&self.conn).is_some_and(|l| !l.config.init.show_all_databases && l.driver.info().capabilities.multiple_databases) {
+                        if let Some(mut cfg) = cx.conns.config(&self.conn).cloned() {
+                            cfg.init.show_all_databases = true;
+                            cx.conns.upsert(cfg);
+                        }
+                        if let Some(live) = cx.conns.live_mut(&self.conn) {
+                            live.config.init.show_all_databases = true;
+                        }
+                    }
                     cx.push(AppCommand::RefreshMetadata { connection: self.conn.clone(), object: None, schema: None });
                     return false;
                 }
@@ -63,6 +75,8 @@ impl CreateDatabaseDialog {
         }
         let Some(live) = cx.conns.live(&self.conn) else { return false };
         let (kind, read_only, conn_name) = (live.config.kind, live.config.read_only, live.config.name.clone());
+        // Only the connection's database is listed: offer to list all of them.
+        let offer_show_all = !schema && !live.config.init.show_all_databases && live.driver.info().capabilities.multiple_databases;
         let (driver, params, cfg) = (live.driver.clone(), live.params().clone(), live.config.clone());
         let sql = self.sql(live.dialect.as_ref());
         let busy = self.job.is_some();
@@ -107,9 +121,21 @@ impl CreateDatabaseDialog {
                     _ => {}
                 }
             });
+            if offer_show_all {
+                ui.checkbox(&mut self.show_all, tr("Show all databases in the navigator"))
+                    .on_hover_text(tr("The navigator lists only the connection's database; the new one appears when all databases are shown."));
+            }
             ui.add_space(6.0);
             match &sql {
-                Some(s) => crate::widgets::code_view(ui, ("create_db_sql", &self.conn), &format!("{s};")),
+                // A bounded preview: a view that fills the available space
+                // would make the dialog grow every frame (and move its buttons).
+                Some(s) => {
+                    egui::ScrollArea::vertical().id_salt(("create_db_sql", &self.conn)).max_height(120.0).show(ui, |ui| {
+                        let text = format!("{s};");
+                        let mut t = text.as_str();
+                        ui.add(egui::TextEdit::multiline(&mut t).code_editor().desired_rows(2).desired_width(f32::INFINITY));
+                    });
+                }
                 None if self.db.name.trim().is_empty() => {
                     ui.weak(tr("Enter a name."));
                 }

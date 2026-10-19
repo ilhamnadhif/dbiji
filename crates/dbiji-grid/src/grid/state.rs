@@ -131,6 +131,8 @@ pub(crate) struct Runtime {
     /// Column whose header menu (▾) is open, its anchor and whether it was
     /// opened this frame.
     pub header_popup: Option<(usize, egui::Rect, bool)>,
+    /// Take the keyboard focus on the next frame.
+    pub focus_request: bool,
 }
 
 /// The painted body of the last frame. When the fetch task holds the row
@@ -197,6 +199,11 @@ pub(crate) enum Drag {
 }
 
 impl DataGridState {
+    /// Take the keyboard focus on the next frame (e.g. back from the record view).
+    pub fn request_focus(&mut self) {
+        self.rt.focus_request = true;
+    }
+
     /// Default layout for `columns`.
     pub fn new(columns: &[ColumnMeta]) -> Self {
         let cols: Vec<ColumnState> = columns.iter().map(|c| ColumnState { name: c.name.clone(), width: default_width(&c.name, c.kind), ..Default::default() }).collect();

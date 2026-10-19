@@ -208,6 +208,15 @@ impl<'a> ResultViewer<'a> {
                         state.toolbar.order_text = o.clone();
                     }
                 }
+                // From the toolbar, or Tab in the grid / record view.
+                GridAction::SwitchView(kind) => {
+                    state.toolbar.view = *kind;
+                    match kind {
+                        ResultViewKind::Grid => state.grid.request_focus(),
+                        ResultViewKind::Record => state.record.request_focus(),
+                        _ => {}
+                    }
+                }
                 GridAction::TogglePanel(p) if state.toolbar.is_panel_open(*p) => {
                     state.active_panel = Some(*p);
                 }

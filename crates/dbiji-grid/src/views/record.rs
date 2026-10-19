@@ -1,7 +1,7 @@
 //! Record view: one row transposed (column | value), editable (FR-D5).
 
 use crate::format::PreparedFormat;
-use crate::grid::{DataGridState, GridAction, GridOptions};
+use crate::grid::{DataGridState, GridAction, GridOptions, ResultViewKind};
 use crate::model::{CellRef, ResultModel, RowState};
 use crate::theme::GridTheme;
 use dbiji_core::{Value, tr, trf};
@@ -17,6 +17,16 @@ pub struct RecordViewState {
     error: Option<String>,
     /// Last shown values: ((generation, row, columns), values) for frames where the store is busy.
     cache: Option<RecordCache>,
+    /// Take the keyboard focus on the next frame (opened with Tab).
+    focus_request: bool,
+}
+
+impl RecordViewState {
+    /// Take the keyboard focus on the next frame: Tab goes back to the
+    /// grid, ← / → show the previous / next row.
+    pub fn request_focus(&mut self) {
+        self.focus_request = true;
+    }
 }
 
 type RecordCache = ((u64, usize, Vec<usize>), Vec<(Value, bool, bool)>);
@@ -49,6 +59,23 @@ impl<'a> RecordView<'a> {
         let (row, active_col) = grid.active_cell().unwrap_or((0, grid.visible_columns().first().copied().unwrap_or(0)));
         let row = row.min(nrows - 1);
         let mut go_to: Option<usize> = None;
+        // Keyboard focus of the view (fields being edited have their own).
+        let focus = ui.interact(ui.max_rect(), ui.id().with("record_focus"), egui::Sense::click());
+        if std::mem::take(&mut state.focus_request) || focus.clicked() {
+            focus.request_focus();
+        }
+        if focus.has_focus() && state.editing.is_none() {
+            ui.memory_mut(|m| m.set_focus_lock_filter(focus.id, egui::EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: false }));
+            ui.input(|i| {
+                if i.key_pressed(Key::Tab) {
+                    actions.push(GridAction::SwitchView(ResultViewKind::Grid));
+                } else if i.key_pressed(Key::ArrowRight) && row + 1 < nrows {
+                    go_to = Some(row + 1);
+                } else if i.key_pressed(Key::ArrowLeft) && row > 0 {
+                    go_to = Some(row - 1);
+                }
+            });
+        }
         ui.horizontal(|ui| {
             if ui.add_enabled(row > 0, Button::new(icon::CARET_DOUBLE_LEFT)).on_hover_text(tr("First row")).clicked() {
                 go_to = Some(0);
@@ -73,9 +100,10 @@ impl<'a> RecordView<'a> {
                 ui.colored_label(ui.visuals().warn_fg_color, s);
             }
             ui.add(TextEdit::singleline(&mut state.column_filter).hint_text(tr("Filter columns")).desired_width(160.0));
+            ui.weak(tr("Tab: back to the grid · ← →: previous / next row"));
         });
         // Keyboard: Page Up / Page Down move between rows when no field is edited.
-        if state.editing.is_none() && ui.ui_contains_pointer() {
+        if state.editing.is_none() && go_to.is_none() && ui.ui_contains_pointer() {
             ui.input(|i| {
                 if i.key_pressed(Key::PageDown) && row + 1 < nrows {
                     go_to = Some(row + 1);
@@ -122,34 +150,49 @@ impl<'a> RecordView<'a> {
         let editable = model.is_editable() && options.allow_editing;
         let mut commit: Option<(usize, usize, String)> = None;
         let mut open_value: Option<usize> = None;
-        let row_h = ui.text_style_height(&egui::TextStyle::Body) + 10.0;
-        ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, row_h, columns.len(), |ui, range| {
-            egui::Grid::new("dbiji_record_grid").num_columns(2).striped(true).min_col_width(140.0).spacing([12.0, 4.0]).show(ui, |ui| {
-                for i in range {
-                    let c = columns[i];
-                    let Some((v, is_default, modified)) = values.get(i) else { continue };
-                    let meta = model.column_meta(c);
-                    let name = model.column_name(c);
-                    let mut label = RichText::new(name).strong();
-                    if model.is_virtual_column(c) {
-                        label = label.italics();
-                    }
-                    ui.label(label).on_hover_text(meta.map_or_else(|| tr("Virtual column").to_string(), |m| m.type_name.clone()));
-                    let editing_this = state.editing.as_ref().is_some_and(|(r, col, _)| *r == row && *col == c);
-                    if editing_this {
-                        if let Some((_, _, text)) = state.editing.as_mut() {
-                            let resp = ui.add(TextEdit::singleline(text).desired_width(f32::INFINITY));
-                            if resp.lost_focus() {
-                                if ui.input(|i| i.key_pressed(Key::Escape)) {
-                                    state.editing = None;
-                                } else {
-                                    commit = Some((row, c, text.clone()));
-                                }
-                            } else if !resp.has_focus() {
-                                resp.request_focus();
-                            }
+        // Column names in a fixed column, values wrapped over the rest of the width.
+        let font = egui::TextStyle::Body.resolve(ui.style());
+        let name_w = columns
+            .iter()
+            .map(|&c| ui.fonts_mut(|f| f.layout_no_wrap(model.column_name(c).to_string(), font.clone(), egui::Color32::WHITE).rect.width()))
+            .fold(0.0_f32, f32::max)
+            .clamp(100.0, 280.0)
+            + 12.0;
+        let row_h = ui.text_style_height(&egui::TextStyle::Body) + 6.0;
+        ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+            for (i, &c) in columns.iter().enumerate() {
+                let Some((v, is_default, modified)) = values.get(i) else { continue };
+                let fill = if i % 2 == 1 { theme.stripe } else { egui::Color32::TRANSPARENT };
+                egui::Frame::new().fill(fill).inner_margin(egui::Margin::symmetric(6, 3)).show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.horizontal_top(|ui| {
+                        let meta = model.column_meta(c);
+                        let name = model.column_name(c);
+                        let mut label = RichText::new(name).strong();
+                        if model.is_virtual_column(c) {
+                            label = label.italics();
                         }
-                    } else {
+                        let hint = meta.map_or_else(|| tr("Virtual column").to_string(), |m| m.type_name.clone());
+                        ui.allocate_ui_with_layout(egui::vec2(name_w, row_h), egui::Layout::left_to_right(egui::Align::Min), |ui| {
+                            ui.set_min_width(name_w);
+                            ui.add(egui::Label::new(label).truncate()).on_hover_text(hint);
+                        });
+                        let editing_this = state.editing.as_ref().is_some_and(|(r, col, _)| *r == row && *col == c);
+                        if editing_this {
+                            if let Some((_, _, text)) = state.editing.as_mut() {
+                                let resp = ui.add(TextEdit::singleline(text).desired_width(f32::INFINITY));
+                                if resp.lost_focus() {
+                                    if ui.input(|i| i.key_pressed(Key::Escape)) {
+                                        state.editing = None;
+                                    } else {
+                                        commit = Some((row, c, text.clone()));
+                                    }
+                                } else if !resp.has_focus() {
+                                    resp.request_focus();
+                                }
+                            }
+                            return;
+                        }
                         let fmt = PreparedFormat::new(&options.format, grid.column_format(c));
                         let (text, color) = if *is_default {
                             (tr("[DEFAULT]").to_string(), theme.weak)
@@ -160,15 +203,18 @@ impl<'a> RecordView<'a> {
                                 Value::Text(s) | Value::Json(s) => s.to_string(),
                                 other => fmt.format(other).into_owned(),
                             };
-                            let t = if t.chars().count() > 500 { t.chars().take(500).collect::<String>() + "…" } else { t };
+                            let t = if t.chars().count() > 2000 { t.chars().take(2000).collect::<String>() + "…" } else { t };
                             (t, theme.text)
                         };
                         let mut rt = RichText::new(text).color(color);
                         if *modified {
                             rt = rt.background_color(theme.modified);
                         }
+                        if grid.active_cell().is_some_and(|(_, ac)| ac == c) {
+                            rt = rt.underline();
+                        }
                         let can_edit = editable && model.can_edit_cell(row, c).is_ok();
-                        let resp = ui.add(egui::Label::new(rt).truncate().sense(egui::Sense::click()));
+                        let resp = ui.add(egui::Label::new(rt).wrap().sense(egui::Sense::click()));
                         let resp = if can_edit { resp.on_hover_text(tr("Double-click to edit")) } else { resp };
                         if resp.double_clicked() {
                             let multi = matches!(v, Value::Text(s) if s.contains('\n')) || matches!(v, Value::Bytes(_));
@@ -182,10 +228,9 @@ impl<'a> RecordView<'a> {
                         if resp.clicked() {
                             grid.select_cell(row, c);
                         }
-                    }
-                    ui.end_row();
-                }
-            });
+                    });
+                });
+            }
         });
         if let Some(e) = &state.error {
             ui.colored_label(theme.error, e);

@@ -25,6 +25,9 @@ impl GridFrame<'_> {
         self.header_menu_buttons(ui);
         let rownums = ui.interact(self.geo.rownums, id.with("rownums"), Sense::click_and_drag());
         let corner = ui.interact(self.geo.corner, id.with("corner"), Sense::click());
+        if std::mem::take(&mut self.state.rt.focus_request) {
+            ui.memory_mut(|m| m.request_focus(id));
+        }
         self.focused = body.has_focus() || ui.memory(|m| m.has_focus(id));
         if self.focused {
             ui.memory_mut(|m| m.set_focus_lock_filter(id, EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: true }));
@@ -511,7 +514,12 @@ impl GridFrame<'_> {
                         Key::End if m.command => sel.move_by(nrows as isize, ncols as isize, nrows, ncols, m.shift),
                         Key::Home => sel.move_by(0, -(ncols as isize), nrows, ncols, m.shift),
                         Key::End => sel.move_by(0, ncols as isize, nrows, ncols, m.shift),
-                        Key::Tab => sel.tab(m.shift, nrows, ncols),
+                        // Tab shows the record view (DBeaver); Shift+Tab moves left.
+                        Key::Tab if m.shift => sel.tab(true, nrows, ncols),
+                        Key::Tab => {
+                            self.actions.push(GridAction::SwitchView(super::ResultViewKind::Record));
+                            moved = false;
+                        }
                         _ => moved = false,
                     }
                     if moved {

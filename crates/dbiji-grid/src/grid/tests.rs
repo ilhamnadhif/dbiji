@@ -25,8 +25,13 @@ fn renders_and_navigates_with_keyboard() {
     assert_eq!(h.state.selection().cell_count(100, 4), 4);
     h.key(Key::PageDown, Modifiers::NONE);
     assert!(h.state.active_cell().unwrap().0 > 5);
+    // Tab shows the record view (DBeaver) and keeps the cell; Shift+Tab moves left.
+    let before = h.state.active_cell();
     h.key(Key::Tab, Modifiers::NONE);
+    assert!(h.actions.contains(&GridAction::SwitchView(crate::grid::ResultViewKind::Record)), "{:?}", h.actions);
+    assert_eq!(h.state.active_cell(), before);
     h.key(Key::Tab, Modifiers::SHIFT);
+    assert_eq!(h.state.active_cell().map(|c| c.1), before.map(|c| c.1.saturating_sub(1)));
     h.key(Key::A, Modifiers::COMMAND);
     assert!(h.state.selection().is_all());
 }

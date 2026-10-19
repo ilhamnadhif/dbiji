@@ -714,6 +714,21 @@ fn settings_grid_menu_and_editor_helpers() {
     assert!(filter.is_some(), "filter box: {:?}", h.query_all_by_role(egui::accesskit::Role::TextInput).filter_map(|n| n.accesskit_node().value()).collect::<Vec<_>>());
     settle(&mut h, "column menu");
 
+    // Tab: the selected row as a record (column → value), Tab again: the grid.
+    let _ = first_id(&mut h);
+    h.key_press(Key::Tab);
+    frames(&mut h, 3);
+    wait(&mut h, "record view", |h| has(h, "Row 1 of"));
+    assert!(!has(&h, "Data grid,"), "the grid is replaced by the record view");
+    assert!(h.query_all_by_label("name").next().is_some() && h.query_all_by_label("price").next().is_some(), "{:?}", labels(&h));
+    h.key_press(Key::ArrowRight);
+    frames(&mut h, 2);
+    assert!(has(&h, "Row 2 of"), "→ shows the next row: {:?}", labels(&h));
+    h.key_press(Key::Tab);
+    frames(&mut h, 3);
+    wait(&mut h, "grid again", |h| has(h, "Data grid,"));
+    settle(&mut h, "record view");
+
     // Editor helpers: autocomplete, parameters, find, comment toggling.
     h.state_mut().push_command(AppCommand::NewSqlEditor { connection: Some(conn.clone()), schema: None, text: None });
     frames(&mut h, 3);

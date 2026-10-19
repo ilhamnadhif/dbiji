@@ -35,8 +35,8 @@ Status: ☐ open · ☑ done (with the test that covers it).
 
 ## 3. SQL editor
 
-- ☐ Code folding (statements, blocks, comments) with collapse / expand all
-- ☐ Mark occurrences of the word under the cursor
+- ☑ Code folding (multi-line statements and block comments): gutter markers, toggle at the cursor, collapse / expand all; a fold opens when the cursor enters it — `dbiji-editor::headless::folding_and_occurrences`, `dbiji-editor::fold` unit test, `dbiji-app::ui_full::editor_commands_from_dbeaver`
+- ☑ Mark occurrences of the word under the cursor (visible lines, whole words; Settings → SQL editor)
 - ☑ Open declaration: Cmd+click / F3 on a table or view opens it
 - ☑ Next / previous statement (⌘⌥↓ / ⌘⌥↑)
 - ☑ Morph selection to a delimited list; trim trailing spaces

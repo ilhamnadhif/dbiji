@@ -28,6 +28,8 @@ const PAD_LEFT: f32 = 6.0;
 const PAD_TOP: f32 = 2.0;
 /// Width reserved for gutter markers.
 const MARK_W: f32 = 12.0;
+/// Width of the fold marker column of the gutter.
+const FOLD_W: f32 = 12.0;
 /// Bracket matching scan limit (bytes in each direction).
 const BRACKET_SCAN: usize = 64 * 1024;
 
@@ -299,7 +301,7 @@ impl<'a> SqlEditor<'a> {
             (MARK_W + digits * char_w + 10.0).round()
         } else {
             MARK_W
-        };
+        } + if options.folding { FOLD_W } else { 0.0 };
 
         if st.find.open {
             find_bar::show_find_bar(ui, st, lang, options, theme);
@@ -331,6 +333,14 @@ impl<'a> SqlEditor<'a> {
         let anchor_line = st.layout.line_at_y(anchor_y);
         let rows_into_anchor =
             (anchor_y - st.layout.line_top(anchor_line)) / st.layout.row_height();
+        if options.folding {
+            st.sync_folds(lang);
+            if st.folds.is_stale(st.version()) {
+                ctx.request_repaint_after(std::time::Duration::from_millis(450));
+            }
+        } else {
+            st.clear_folds();
+        }
         st.layout
             .set_params(&ctx, &st.text, &st.index, params, theme);
         if st.layout.has_estimates() {
@@ -357,6 +367,10 @@ impl<'a> SqlEditor<'a> {
         let mut typed = Vec::new();
         if had_focus {
             typed = input::handle_keyboard(st, &ctx, lang, options, &mut events).typed;
+            if options.folding {
+                // A cursor moved into a collapsed region opens it.
+                st.sync_folds(lang);
+            }
         }
 
         // Highlighting.
@@ -459,6 +473,11 @@ impl<'a> SqlEditor<'a> {
 
             let vis = (viewport.min.y - PAD_TOP)..(viewport.max.y - PAD_TOP);
             let lines = st.layout.lines_in(vis);
+            st.occurrences = if options.mark_occurrences && st.sel.is_empty() && !lines.is_empty() {
+                occurrences(st, lang, &lines)
+            } else {
+                Vec::new()
+            };
             st.layout
                 .ensure_galleys(&ctx, &st.text, &st.index, lines.clone());
             let focused = response.has_focus();
@@ -700,6 +719,27 @@ fn pointer(
         st.undo.close_group();
     }
 
+    // Gutter: fold markers.
+    if options.folding
+        && gutter.hovered()
+        && primary_pressed
+        && p.x >= frame.gutter.right() - FOLD_W - 3.0
+    {
+        let line = st.layout.line_at_y(p.y - frame.origin.y);
+        if st.folds.toggle(line) {
+            let cursor_line = st.index.line_of_offset(st.sel.cursor);
+            if let Some((a, b)) = st.folds.region_at(line)
+                && st.folds.collapsed.contains(&a)
+                && cursor_line > a
+                && cursor_line <= b
+            {
+                st.sel = crate::text::Selection::caret(st.index.line_start(a));
+            }
+            st.sync_folds(lang);
+            ui.ctx().request_repaint();
+            return;
+        }
+    }
     // Gutter: line selection.
     if gutter.hovered() && primary_pressed {
         gutter.request_focus();
@@ -934,6 +974,9 @@ fn byte_range_rects(
     let first = st.index.line_of_offset(range.start).max(lines.start);
     let last = st.index.line_of_offset(range.end).min(lines.end - 1);
     for l in first..=last {
+        if st.layout.is_hidden(l) {
+            continue;
+        }
         let lr = st.index.line_range(l);
         if range.end < lr.start || range.start > lr.end {
             continue;
@@ -966,6 +1009,45 @@ fn squiggle(painter: &Painter, rect: Rect, color: Color32) {
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Occurrences of the word under the cursor in the visible `lines`
+/// (case-insensitive, whole words; none when it occurs only once).
+fn occurrences(
+    st: &EditorState,
+    lang: &dyn EditorLanguage,
+    lines: &Range<usize>,
+) -> Vec<Range<usize>> {
+    let Some(word) = st.word_at(lang, st.sel.cursor) else {
+        return Vec::new();
+    };
+    let w = &st.text[word.clone()];
+    if w.chars().count() < 2 || w.chars().all(|c| c.is_ascii_digit()) {
+        return Vec::new();
+    }
+    let start = st.index.line_start(lines.start);
+    let end = st.index.line_end(lines.end - 1);
+    let hay = &st.text[start..end];
+    let lower_hay = hay.to_lowercase();
+    let lower_w = w.to_lowercase();
+    if lower_hay.len() != hay.len() || lower_w.len() != w.len() {
+        return Vec::new(); // lowercase changed byte lengths: skip rather than misplace
+    }
+    let is_word = |c: Option<char>| c.is_some_and(|c| lang.is_word_char(c));
+    let mut out = Vec::new();
+    let mut from = 0;
+    while let Some(i) = lower_hay[from..].find(&lower_w) {
+        let a = from + i;
+        let b = a + lower_w.len();
+        if !is_word(hay[..a].chars().next_back()) && !is_word(hay[b..].chars().next()) {
+            out.push(start + a..start + b);
+            if out.len() >= 500 {
+                break;
+            }
+        }
+        from = b;
+    }
+    if out.len() < 2 { Vec::new() } else { out }
+}
+
 fn paint(
     ui: &Ui,
     st: &mut EditorState,
@@ -1010,7 +1092,11 @@ fn paint(
         }
     }
     let cursor_line = st.index.line_of_offset(st.sel.cursor);
-    if options.highlight_current_line && st.sel.is_empty() && lines.contains(&cursor_line) {
+    if options.highlight_current_line
+        && st.sel.is_empty()
+        && lines.contains(&cursor_line)
+        && !st.layout.is_hidden(cursor_line)
+    {
         let top = st.layout.line_top(cursor_line);
         tp.rect_filled(
             band(top, st.layout.line_rows(cursor_line) as f32),
@@ -1039,6 +1125,13 @@ fn paint(
             for r in byte_range_rects(st, &ctx, frame, m, &lines, 2.0) {
                 tp.rect_filled(r, 2.0, color);
             }
+        }
+    }
+
+    // Occurrences of the word under the cursor.
+    for m in std::mem::take(&mut st.occurrences) {
+        for r in byte_range_rects(st, &ctx, frame, m, &lines, 0.0) {
+            tp.rect_filled(r, 2.0, theme.occurrence);
         }
     }
 
@@ -1082,13 +1175,38 @@ fn paint(
 
     // Text.
     for l in lines.clone() {
+        if st.layout.is_hidden(l) {
+            continue;
+        }
         let g = st.layout.galley(&ctx, &st.text, &st.index, l);
         let top = st.layout.line_top(l);
+        let width = g.rect.width();
         tp.galley(
             pos2(frame.origin.x, frame.origin.y + top + frame.text_dy),
             g,
             theme.text,
         );
+        if options.folding && st.folds.collapsed.contains(&l) {
+            // Placeholder of the hidden lines.
+            let x = frame.origin.x + width + frame.char_w;
+            let r = Rect::from_min_size(
+                pos2(x, frame.origin.y + top + 2.0),
+                vec2(frame.char_w * 3.0, frame.row_h - 4.0),
+            );
+            tp.rect_stroke(
+                r,
+                3.0,
+                Stroke::new(1.0, theme.gutter_text),
+                egui::StrokeKind::Inside,
+            );
+            tp.text(
+                r.center(),
+                egui::Align2::CENTER_CENTER,
+                "…",
+                frame.font_id.clone(),
+                theme.gutter_text,
+            );
+        }
     }
 
     // Diagnostics, spelling, links, IME.
@@ -1236,10 +1354,41 @@ fn paint_gutter(
         let y = frame.origin.y + st.layout.line_top(line) + frame.row_h / 2.0;
         painter.circle_filled(pos2(g.left() + MARK_W / 2.0 + 1.0, y), 3.5, color);
     }
+    let fold_w = if options.folding { FOLD_W } else { 0.0 };
+    if options.folding {
+        for l in lines.clone() {
+            if st.layout.is_hidden(l) || st.folds.region_at(l).is_none() {
+                continue;
+            }
+            let collapsed = st.folds.collapsed.contains(&l);
+            let c = pos2(
+                g.right() - 3.0 - FOLD_W / 2.0,
+                frame.origin.y + st.layout.line_top(l) + frame.row_h / 2.0,
+            );
+            let s = 3.5;
+            let pts = if collapsed {
+                vec![
+                    pos2(c.x - s * 0.6, c.y - s),
+                    pos2(c.x + s * 0.8, c.y),
+                    pos2(c.x - s * 0.6, c.y + s),
+                ]
+            } else {
+                vec![
+                    pos2(c.x - s, c.y - s * 0.6),
+                    pos2(c.x + s, c.y - s * 0.6),
+                    pos2(c.x, c.y + s * 0.8),
+                ]
+            };
+            painter.add(Shape::convex_polygon(pts, theme.gutter_text, Stroke::NONE));
+        }
+    }
     if !options.line_numbers {
         return;
     }
     for l in lines {
+        if st.layout.is_hidden(l) {
+            continue;
+        }
         let top = frame.origin.y + st.layout.line_top(l) + frame.text_dy;
         let color = if l == cursor_line {
             theme.gutter_current_text
@@ -1247,7 +1396,7 @@ fn paint_gutter(
             theme.gutter_text
         };
         let galley = painter.layout_no_wrap((l + 1).to_string(), frame.font_id.clone(), color);
-        let x = g.right() - 6.0 - galley.size().x;
+        let x = g.right() - 6.0 - fold_w - galley.size().x;
         painter.galley(pos2(x, top), galley, color);
     }
 }

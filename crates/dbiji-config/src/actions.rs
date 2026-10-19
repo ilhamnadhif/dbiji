@@ -157,6 +157,12 @@ actions! {
     MorphToDelimited => ("editor.morph_delimited", "Morph to Delimited List", Editor, SqlEditor),
     /// Remove trailing whitespace (selection or whole script).
     TrimTrailingSpaces => ("editor.trim_trailing_spaces", "Trim Trailing Spaces", Editor, SqlEditor),
+    /// Collapse or expand the fold at the cursor.
+    ToggleFold => ("editor.toggle_fold", "Toggle Folding", Editor, SqlEditor),
+    /// Collapse every statement and block comment.
+    CollapseAllFolds => ("editor.collapse_all_folds", "Collapse All Foldings", Editor, SqlEditor),
+    /// Expand every folded region.
+    ExpandAllFolds => ("editor.expand_all_folds", "Expand All Foldings", Editor, SqlEditor),
     /// Search the selection or the word under the cursor on the web.
     SearchWeb => ("editor.search_web", "Search on the Web", Editor, SqlEditor),
     /// Save the script.

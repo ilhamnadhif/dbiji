@@ -79,6 +79,8 @@ struct LineInfo {
     rows: u32,
     width: f32,
     exact: bool,
+    /// Inside a collapsed fold: no rows, not painted.
+    hidden: bool,
 }
 
 /// Inputs that affect geometry or appearance of laid out lines.
@@ -814,10 +816,36 @@ impl DocLayout {
             self.row_starts[0] = 0;
         }
         for l in from..n {
-            acc += self.lines[l].rows.max(1);
+            let info = &self.lines[l];
+            acc += if info.hidden { 0 } else { info.rows.max(1) };
             self.row_starts[l + 1] = acc;
         }
         self.rows_dirty_from = n + 1;
+    }
+
+    /// Hide exactly the lines of `ranges` (collapsed folds), showing all others.
+    pub fn set_hidden(&mut self, ranges: &[Range<usize>]) {
+        let n = self.lines.len();
+        let mut first_changed = n;
+        let mut r = 0;
+        for l in 0..n {
+            while r < ranges.len() && ranges[r].end <= l {
+                r += 1;
+            }
+            let hide = r < ranges.len() && ranges[r].contains(&l);
+            if self.lines[l].hidden != hide {
+                self.lines[l].hidden = hide;
+                first_changed = first_changed.min(l);
+            }
+        }
+        if first_changed < n {
+            self.rows_dirty_from = self.rows_dirty_from.min(first_changed);
+        }
+    }
+
+    /// The line is inside a collapsed fold.
+    pub fn is_hidden(&self, line: usize) -> bool {
+        self.lines.get(line).is_some_and(|l| l.hidden)
     }
 
     /// Total number of rows.

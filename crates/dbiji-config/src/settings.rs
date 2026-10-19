@@ -288,6 +288,10 @@ pub struct EditorSettings {
     pub highlight_current_line: bool,
     /// Show line numbers.
     pub line_numbers: bool,
+    /// Fold markers for statements and block comments.
+    pub folding: bool,
+    /// Highlight the other occurrences of the word under the cursor.
+    pub mark_occurrences: bool,
     /// Wrap long lines.
     pub word_wrap: bool,
     /// Blank line handling for "execute statement".
@@ -317,6 +321,8 @@ impl Default for EditorSettings {
             auto_close_brackets: true,
             highlight_current_line: true,
             line_numbers: true,
+            folding: true,
+            mark_occurrences: true,
             word_wrap: false,
             blank_line_delimiter: BlankLineDelimiter::Smart,
             statement_delimiter: ";".into(),

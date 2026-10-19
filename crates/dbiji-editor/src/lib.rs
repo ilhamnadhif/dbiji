@@ -96,6 +96,7 @@ mod code_view;
 mod completion;
 mod find;
 mod find_bar;
+mod fold;
 mod input;
 mod language;
 mod layout;

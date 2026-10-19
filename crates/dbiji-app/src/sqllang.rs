@@ -189,6 +189,21 @@ impl EditorLanguage for SqlLanguage {
         Some(obj.start..obj.end)
     }
 
+    fn fold_ranges(&self, text: &str) -> Vec<Range<usize>> {
+        let mut out: Vec<Range<usize>> = dbiji_sql::split_statements(text, &self.syntax, &dbiji_sql::SplitOptions::default())
+            .into_iter()
+            .filter(|s| text[s.start..s.end].contains('\n'))
+            .map(|s| s.start..s.end)
+            .collect();
+        out.extend(
+            dbiji_sql::tokenize(text, &self.syntax)
+                .into_iter()
+                .filter(|t| t.kind == dbiji_sql::TokenKind::BlockComment && text[t.start..t.end].contains('\n'))
+                .map(|t| t.start..t.end),
+        );
+        out
+    }
+
     fn spell_suggestions(&self, word: &str) -> Vec<String> {
         dbiji_sql::SpellChecker::english().suggestions(word, 6)
     }

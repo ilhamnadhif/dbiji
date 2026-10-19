@@ -1051,6 +1051,17 @@ fn editor_commands_from_dbeaver() {
     run(&mut h, Action::OpenDeclaration);
     frames(&mut h, 3);
     assert!(tab_titles(&h).iter().any(|t| t == "product"), "{:?}", tab_titles(&h));
+    // Folding: collapse all statements, expand them again.
+    focus_tab(&mut h, "Script-1");
+    focused_editor(&mut h).set_text(&ctx, "select *\nfrom customer;\n\nselect *\nfrom product\nwhere id > 1;\n");
+    frames(&mut h, 3);
+    assert_eq!(focused_editor(&mut h).fold_regions(), vec![(0, 1), (3, 5)]);
+    run(&mut h, Action::CollapseAllFolds);
+    frames(&mut h, 2);
+    assert_eq!(focused_editor(&mut h).folded_lines(), vec![0, 3]);
+    run(&mut h, Action::ExpandAllFolds);
+    frames(&mut h, 2);
+    assert!(focused_editor(&mut h).folded_lines().is_empty());
     // Results layout toggles between below and right.
     let before = h.state().settings.results.layout;
     run(&mut h, Action::ToggleResultsLayout);

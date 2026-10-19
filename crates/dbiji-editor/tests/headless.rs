@@ -575,7 +575,8 @@ fn events_cursor_focus_and_links() {
     let char_w = h
         .ctx
         .fonts_mut(|f| f.glyph_width(&egui::FontId::monospace(13.0), '0'));
-    let x_users = 12.0 + 2.0 * char_w + 6.0 + 16.0 * char_w;
+    // Gutter: markers, two digits, padding, fold markers.
+    let x_users = 12.0 + 2.0 * char_w + 6.0 + 12.0 + 16.0 * char_w;
     h.events.clear();
     h.click(Pos2::new(x_users, 2.0 + rh / 2.0), cmd());
     assert!(
@@ -981,4 +982,65 @@ fn plain_language_trait_defaults() {
     assert_eq!(lang.line_comment(), "--");
     assert!(lang.complete("x", 1).is_none());
     assert!(!lang.should_auto_complete("x.", 2, '.'));
+}
+
+#[test]
+fn folding_and_occurrences() {
+    let text = "select id,\n  name\nfrom users;\n/* a\n   b */\nselect 1;\nselect total\nfrom orders\nwhere total > 1;\n";
+    let mut h = Harness::new(text);
+    h.focus();
+    h.frame(vec![]);
+    let regions = h.state.fold_regions();
+    assert_eq!(
+        regions,
+        vec![(0, 2), (3, 4), (6, 8)],
+        "statements and the block comment"
+    );
+    // Collapse all: only the first lines of the regions stay visible.
+    h.state.fold_all();
+    h.frame(vec![]);
+    for l in [1, 2, 4, 7, 8] {
+        assert!(h.state.is_line_hidden(l), "line {l} hidden");
+    }
+    for l in [0, 3, 5, 6] {
+        assert!(!h.state.is_line_hidden(l), "line {l} visible");
+    }
+    // Moving down from line 0 skips the hidden lines.
+    h.state.set_cursor(&h.ctx, 0);
+    h.frame(vec![]);
+    h.key(Key::ArrowDown, Modifiers::NONE);
+    assert_eq!(
+        h.state.line_col().0,
+        4,
+        "the cursor jumps over the fold (1-based line 4)"
+    );
+    // Moving the cursor into a fold opens it.
+    let inside = h.state.line_range(7).start;
+    h.state.set_cursor(&h.ctx, inside);
+    h.frame(vec![]);
+    h.frame(vec![]);
+    assert!(!h.state.is_line_hidden(7), "the fold with the cursor opens");
+    assert!(h.state.is_line_hidden(1), "other folds stay closed");
+    // Editing a fold's first line opens it; the folds below shift with the new lines.
+    h.state.set_cursor(&h.ctx, 0);
+    h.frame(vec![]);
+    h.state.insert_at_cursor(&h.ctx, "-- top\n\n");
+    h.frame(vec![]);
+    assert_eq!(
+        h.state.folded_lines(),
+        vec![5],
+        "the comment fold moved from line 3 to 5"
+    );
+    assert!(h.state.is_line_hidden(6) && !h.state.is_line_hidden(3));
+    h.state.unfold_all();
+    h.frame(vec![]);
+    assert!((0..h.state.line_count()).all(|l| !h.state.is_line_hidden(l)));
+    // Toggle at the cursor.
+    let l = h.state.line_range(3).start;
+    h.state.set_cursor(&h.ctx, l);
+    assert!(h.state.toggle_fold_at_cursor());
+    h.frame(vec![]);
+    assert!(h.state.is_line_hidden(3) || h.state.is_line_hidden(4));
+    h.state.unfold_all();
+    h.frame(vec![]);
 }

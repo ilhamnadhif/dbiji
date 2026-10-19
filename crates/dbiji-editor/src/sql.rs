@@ -186,6 +186,61 @@ fn skip_quoted(b: &[u8], mut i: usize, quote: u8, backslash: bool) -> usize {
 }
 
 impl EditorLanguage for BasicSqlLanguage {
+    /// Multi-line statements (split at `;` outside strings and comments)
+    /// and block comments.
+    fn fold_ranges(&self, text: &str) -> Vec<Range<usize>> {
+        let b = text.as_bytes();
+        let mut out = Vec::new();
+        let (mut i, mut stmt_start) = (0usize, None::<usize>);
+        while i < b.len() {
+            match b[i] {
+                b'\'' => {
+                    stmt_start.get_or_insert(i);
+                    i += 1;
+                    while i < b.len() && b[i] != b'\'' {
+                        i += 1;
+                    }
+                }
+                b'/' if b.get(i + 1) == Some(&b'*') => {
+                    let start = i;
+                    i += 2;
+                    while i + 1 < b.len() && !(b[i] == b'*' && b[i + 1] == b'/') {
+                        i += 1;
+                    }
+                    i = (i + 2).min(b.len());
+                    if text[start..i].contains('\n') {
+                        out.push(start..i);
+                    }
+                    continue;
+                }
+                b'-' if b.get(i + 1) == Some(&b'-') => {
+                    while i < b.len() && b[i] != b'\n' {
+                        i += 1;
+                    }
+                    continue;
+                }
+                b';' => {
+                    if let Some(s) = stmt_start.take()
+                        && text[s..i].contains('\n')
+                    {
+                        out.push(s..i + 1);
+                    }
+                }
+                c if !c.is_ascii_whitespace() => {
+                    stmt_start.get_or_insert(i);
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        if let Some(s) = stmt_start
+            && text[s..].trim_end().contains('\n')
+        {
+            out.push(s..text.trim_end().len());
+        }
+        out
+    }
+
     fn highlight(&self, text: &str) -> Vec<(Range<usize>, TokenStyle)> {
         let b = text.as_bytes();
         let mut out = Vec::with_capacity(text.len() / 4);

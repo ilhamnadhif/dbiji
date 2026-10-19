@@ -153,6 +153,8 @@ fn editor_options(cx: &AppContext) -> EditorOptions {
     o.tab_size = e.tab_size as usize;
     o.insert_spaces = e.insert_spaces;
     o.line_numbers = e.line_numbers;
+    o.folding = e.folding;
+    o.mark_occurrences = e.mark_occurrences;
     o.highlight_current_line = e.highlight_current_line;
     o.word_wrap = e.word_wrap;
     o.auto_close_brackets = e.auto_close_brackets || e.auto_close_quotes;
@@ -450,6 +452,11 @@ impl SqlEditorTab {
                     self.editor.replace_range(ctx, r, &trimmed);
                 }
             }
+            Action::ToggleFold => {
+                self.editor.toggle_fold_at_cursor();
+            }
+            Action::CollapseAllFolds => self.editor.fold_all(),
+            Action::ExpandAllFolds => self.editor.unfold_all(),
             Action::SearchWeb => {
                 if let Some(q) = self.selection_or_word() {
                     ctx.open_url(egui::OpenUrl::new_tab(crate::textops::search_url(&q)));
@@ -1046,6 +1053,9 @@ impl SqlEditorTab {
                     Action::MorphToDelimited,
                     Action::TrimTrailingSpaces,
                     Action::SearchWeb,
+                    Action::ToggleFold,
+                    Action::CollapseAllFolds,
+                    Action::ExpandAllFolds,
                 ] {
                     let keys = crate::keys::label(cx.keymap, a);
                     let mut b = egui::Button::new(format!("{}  {}", crate::keys::action_icon(a), crate::keys::action_label(a)));
@@ -1499,7 +1509,10 @@ impl TabView for SqlEditorTab {
             | A::OpenDeclaration
             | A::MorphToDelimited
             | A::TrimTrailingSpaces
-            | A::SearchWeb => self.editor_command(&ctx, cx, action),
+            | A::SearchWeb
+            | A::ToggleFold
+            | A::CollapseAllFolds
+            | A::ExpandAllFolds => self.editor_command(&ctx, cx, action),
             A::ExecuteStatement => self.run(cx, Request { scope: self.scope_for(true), new_tab: false, explain: None, confirmed: false, sql: None }),
             A::ExecuteSelection => self.run(cx, Request { scope: self.scope_for(true), new_tab: false, explain: None, confirmed: false, sql: None }),
             A::ExecuteScript => self.run(cx, Request { scope: self.scope_for(false), new_tab: false, explain: None, confirmed: false, sql: None }),
@@ -1764,6 +1777,14 @@ impl SqlEditorTab {
     }
     pub fn select_range(&mut self, ctx: &egui::Context, range: std::ops::Range<usize>) {
         self.editor.select(ctx, range);
+    }
+    /// Foldable regions (first line, last line).
+    pub fn fold_regions(&self) -> Vec<(usize, usize)> {
+        self.editor.fold_regions()
+    }
+    /// First lines of the collapsed folds.
+    pub fn folded_lines(&self) -> Vec<usize> {
+        self.editor.folded_lines()
     }
     /// The autocomplete catalog of the connection is loaded.
     pub fn has_catalog(&self) -> bool {

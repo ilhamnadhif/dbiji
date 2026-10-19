@@ -23,6 +23,10 @@ pub struct EditorOptions {
     pub insert_spaces: bool,
     /// Show the line-number gutter.
     pub line_numbers: bool,
+    /// Fold markers in the gutter; collapsed regions hide their lines.
+    pub folding: bool,
+    /// Highlight the other occurrences of the word under the cursor.
+    pub mark_occurrences: bool,
     /// Highlight the row(s) of the cursor line.
     pub highlight_current_line: bool,
     /// Highlight the bracket matching the one next to the cursor.
@@ -80,6 +84,8 @@ impl Default for EditorOptions {
             tab_size: 4,
             insert_spaces: true,
             line_numbers: true,
+            folding: true,
+            mark_occurrences: true,
             highlight_current_line: true,
             highlight_matching_brackets: true,
             word_wrap: false,

@@ -74,6 +74,8 @@ pub struct EditorTheme {
     pub spelling: Color32,
     /// Background of every find match.
     pub find_match: Color32,
+    /// Other occurrences of the word under the cursor.
+    pub occurrence: Color32,
     /// Background of the current find match.
     pub find_current: Color32,
     /// Background of matching brackets.
@@ -121,6 +123,7 @@ impl EditorTheme {
             info: Color32::from_rgb(0x1A, 0x73, 0xE8),
             spelling: Color32::from_rgb(0x1A, 0x73, 0xE8),
             find_match: Color32::from_rgba_unmultiplied(0xF5, 0xA6, 0x23, 90),
+            occurrence: Color32::from_rgba_unmultiplied(0x2D, 0x7F, 0xF9, 40),
             find_current: Color32::from_rgba_unmultiplied(0xF5, 0x7C, 0x00, 170),
             bracket_match: Color32::from_rgba_unmultiplied(0x00, 0x96, 0x46, 40),
             bracket_outline: Color32::from_rgb(0x8C, 0xB4, 0x96),
@@ -163,6 +166,7 @@ impl EditorTheme {
             info: Color32::from_rgb(0x4A, 0x9E, 0xFF),
             spelling: Color32::from_rgb(0x4A, 0x9E, 0xFF),
             find_match: Color32::from_rgba_unmultiplied(0xE0, 0x8A, 0x1E, 70),
+            occurrence: Color32::from_rgba_unmultiplied(0x6C, 0xA8, 0xFF, 45),
             find_current: Color32::from_rgba_unmultiplied(0xF0, 0x9A, 0x2E, 150),
             bracket_match: Color32::from_rgba_unmultiplied(0x3F, 0xBF, 0x7F, 40),
             bracket_outline: Color32::from_rgb(0x6A, 0x9A, 0x7A),

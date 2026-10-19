@@ -125,6 +125,10 @@ pub struct EditorState {
     pub(crate) link_cache: Option<(u64, usize, Option<Range<usize>>)>,
     pub(crate) hover_link: Option<Range<usize>>,
     pub(crate) drag_select: Option<DragMode>,
+    /// Foldable regions and collapsed folds.
+    pub(crate) folds: crate::fold::Folds,
+    /// Visible occurrences of the word under the cursor (painted this frame).
+    pub(crate) occurrences: Vec<Range<usize>>,
     /// Galley of the lines exposed to AccessKit last frame and the char
     /// index of its first character (maps screen-reader selections back).
     pub(crate) a11y_view: Option<(std::sync::Arc<egui::Galley>, usize)>,
@@ -259,6 +263,8 @@ impl EditorState {
             link_cache: None,
             hover_link: None,
             drag_select: None,
+            folds: Default::default(),
+            occurrences: Vec::new(),
             a11y_view: None,
         }
     }
@@ -662,6 +668,76 @@ impl EditorState {
     }
 
     // ----------------------------------------------------------------------
+    // Folding
+
+    /// Recompute the foldable regions (after edits) and apply the collapsed
+    /// ones to the layout; expands folds hiding the cursor.
+    pub(crate) fn sync_folds(&mut self, lang: &dyn EditorLanguage) {
+        let version = self.version;
+        // Big documents: recompute once typing pauses (regions are shifted meanwhile).
+        let idle = self.now - self.last_edit_time > 0.4;
+        if self.folds.is_stale(version) && (self.text.len() <= 200_000 || idle) {
+            self.folds.update(&self.text, &self.index, version, lang);
+        }
+        let cursor_line = self.index.line_of_offset(self.sel.cursor);
+        self.folds.reveal(cursor_line);
+        let hidden = self.folds.hidden();
+        if hidden != self.folds.applied {
+            self.layout.set_hidden(&hidden);
+            self.folds.applied = hidden;
+        }
+    }
+
+    /// Forget all folds (folding switched off).
+    pub(crate) fn clear_folds(&mut self) {
+        if !self.folds.applied.is_empty() || !self.folds.collapsed.is_empty() {
+            self.folds.collapsed.clear();
+            self.layout.set_hidden(&[]);
+            self.folds.applied.clear();
+        }
+    }
+
+    /// Collapse every foldable region.
+    pub fn fold_all(&mut self) {
+        self.folds.collapsed = self.folds.regions.iter().map(|r| r.0).collect();
+    }
+
+    /// Expand every folded region.
+    pub fn unfold_all(&mut self) {
+        self.folds.collapsed.clear();
+    }
+
+    /// Collapse or expand the innermost region at the cursor.
+    pub fn toggle_fold_at_cursor(&mut self) -> bool {
+        let line = self.index.line_of_offset(self.sel.cursor);
+        match self.folds.region_containing(line) {
+            Some((start, _)) => {
+                self.folds.toggle(start);
+                if self.folds.collapsed.contains(&start) && line != start {
+                    // Keep the cursor visible: on the fold's first line.
+                    self.sel = Selection::caret(self.index.line_start(start));
+                }
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// First lines of the collapsed regions.
+    pub fn folded_lines(&self) -> Vec<usize> {
+        self.folds.collapsed.iter().copied().collect()
+    }
+
+    /// Foldable regions as (first line, last line).
+    pub fn fold_regions(&self) -> Vec<(usize, usize)> {
+        self.folds.regions.clone()
+    }
+
+    /// The line is hidden in a collapsed region.
+    pub fn is_line_hidden(&self, line: usize) -> bool {
+        self.layout.is_hidden(line)
+    }
+
     // Internal mutation API
 
     /// Replace `range` (current coordinates) with `text` and update every
@@ -681,6 +757,8 @@ impl EditorState {
             old_last - first + 1,
             new_last - first + 1,
         );
+        self.folds
+            .on_splice(first, old_last - first + 1, new_last - first + 1);
         let ins_len = text.len();
         self.shift_markers(&|o, right| map_through(o, &range, ins_len, right));
         self.after_edit();
@@ -752,6 +830,11 @@ impl EditorState {
         self.layout.splice(
             &self.text,
             &self.index,
+            first_line,
+            old_last_line - first_line + 1,
+            new_last_line - first_line + 1,
+        );
+        self.folds.on_splice(
             first_line,
             old_last_line - first_line + 1,
             new_last_line - first_line + 1,

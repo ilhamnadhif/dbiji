@@ -401,11 +401,13 @@ async fn statement_timeout_and_abandoned_cursors() {
     // a fast statement with a timeout is not affected
     assert_eq!(query_all_opts(&mut s, "SELECT 1", &opts).await.unwrap()[0][0], Value::Int(1));
 
-    // closing with unread rows cancels the remaining work quickly
-    let started = Instant::now();
+    // closing with unread rows cancels the remaining work quickly (timed from
+    // the close: PostgreSQL materialises the whole generate_series result
+    // before the first row, which can take seconds on a busy machine)
     let mut cur = s.execute("SELECT g FROM generate_series(1, 50000000) g", &[], &ExecOptions::default()).await.unwrap();
     assert!(matches!(cur.next_result().await.unwrap(), Some(ResultHeader::Rows(_))));
     assert_eq!(cur.fetch(10).await.unwrap().len(), 10);
+    let started = Instant::now();
     cur.close().await.unwrap();
     assert!(started.elapsed() < Duration::from_secs(5), "close took {:?}", started.elapsed());
     assert_eq!(scalar(&mut s, "SELECT 2").await, Value::Int(2));

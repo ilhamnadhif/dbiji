@@ -225,6 +225,8 @@ impl SettingsTab {
             for (v, l) in [
                 (&mut e.insert_spaces, tr("Insert spaces instead of tabs")),
                 (&mut e.line_numbers, tr("Show line numbers")),
+                (&mut e.folding, tr("Code folding (statements, block comments)")),
+                (&mut e.mark_occurrences, tr("Highlight occurrences of the word under the cursor")),
                 (&mut e.highlight_current_line, tr("Highlight the current line")),
                 (&mut e.word_wrap, tr("Wrap long lines")),
                 (&mut e.auto_close_quotes, tr("Close quotes automatically")),

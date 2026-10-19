@@ -270,6 +270,12 @@ pub trait EditorLanguage {
     fn highlight_generation(&self) -> u64 {
         0
     }
+
+    /// Foldable byte ranges (statements, block comments) spanning several lines.
+    fn fold_ranges(&self, text: &str) -> Vec<Range<usize>> {
+        let _ = text;
+        Vec::new()
+    }
 }
 
 /// A language with no highlighting and no completion (plain text editing).

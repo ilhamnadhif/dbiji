@@ -95,7 +95,7 @@ impl PendingTxDialog {
         }
         let mut open = true;
         let mut action: Option<(Option<usize>, bool)> = None;
-        egui::Window::new(format!("{} {}", icon::CLOCK_COUNTDOWN, tr("Pending transactions")))
+        egui::Window::new(format!("{} {}", icon::QUEUE, tr("Pending transactions")))
             .id(egui::Id::new("pending_transactions"))
             .open(&mut open)
             .collapsible(false)

@@ -1363,6 +1363,11 @@ fn workspace_from_dbeaver() {
     };
     focus_tab(&mut h, "Welcome");
     frames(&mut h, 2);
+    // The default toolbar has global actions only (run, commit … are in the editor).
+    assert!(h.query_all_by_label(egui_phosphor::regular::PLAY).all(|n| n.rect().top() >= 70.0), "no Run in the main toolbar by default");
+    // A customised toolbar with editor actions: disabled without an editor.
+    h.state_mut().settings.toolbar.items = ["sql.new_editor", "sql.execute_statement", "tx.commit"].map(String::from).to_vec();
+    frames(&mut h, 2);
     assert!(!toolbar_enabled(&h, egui_phosphor::regular::PLAY), "Run needs a SQL editor");
     assert!(toolbar_enabled(&h, egui_phosphor::regular::FILE_SQL), "New SQL editor is always available");
     h.state_mut().push_command(AppCommand::NewSqlEditor { connection: Some(conn.clone()), schema: None, text: None });
@@ -1371,6 +1376,7 @@ fn workspace_from_dbeaver() {
     frames(&mut h, 2);
     assert!(toolbar_enabled(&h, egui_phosphor::regular::PLAY), "Run in a SQL editor");
     assert!(!toolbar_enabled(&h, egui_phosphor::regular::CHECK_CIRCLE), "nothing to commit in auto-commit mode");
+    h.state_mut().settings.toolbar = Default::default();
     settle(&mut h, "toolbar states");
 
     // Error log: errors of the session, filtered by level.

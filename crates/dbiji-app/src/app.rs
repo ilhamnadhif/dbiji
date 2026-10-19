@@ -993,7 +993,7 @@ impl DbijiApp {
                     self.commands.push(AppCommand::DisconnectAll);
                     ui.close();
                 }
-                if ui.button(format!("{} {}", icon::CLOCK_COUNTDOWN, tr("Pending transactions…"))).clicked() {
+                if ui.button(format!("{} {}", icon::QUEUE, tr("Pending transactions…"))).clicked() {
                     self.pending_tx.open = true;
                     ui.close();
                 }

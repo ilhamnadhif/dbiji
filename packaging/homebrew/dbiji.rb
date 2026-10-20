@@ -3,8 +3,8 @@
 # then update `version` and `sha256` (printed by the script) and submit to a tap:
 #   brew tap dbiji/tap && brew install --cask dbiji
 cask "dbiji" do
-  version "0.3.4"
-  sha256 "4452cd01902157317895a622925c6ed55b815270fca4706d1b908920170c2298"
+  version "0.3.5"
+  sha256 "51189385268a1bdc3a7e7835a513c88afdb962492a669eebfc81a8c72ac9ae68"
 
   url "https://github.com/ilhamnadhif/dbiji/releases/download/v#{version}/DBiji-#{version}.dmg"
   name "DBiji"

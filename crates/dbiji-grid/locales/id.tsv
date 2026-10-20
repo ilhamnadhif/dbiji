@@ -372,3 +372,5 @@ Hide empty	Sembunyikan yang kosong
 {} hidden	{} disembunyikan
 Hide the columns that are NULL or empty in this row	Sembunyikan kolom yang NULL atau kosong di baris ini
 Hide the columns that are NULL or empty in every row	Sembunyikan kolom yang NULL atau kosong di semua baris
+Tab: back to the grid · ← →: previous / next row · ⌘C: copy the picked value	Tab: kembali ke grid · ← →: baris sebelumnya / berikutnya · ⌘C: salin nilai yang dipilih
+Tab: grid · ← →: rows · ⌘C: copy	Tab: grid · ← →: baris · ⌘C: salin

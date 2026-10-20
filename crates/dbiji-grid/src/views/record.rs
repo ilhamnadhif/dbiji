@@ -65,6 +65,9 @@ fn paint_text(ui: &Ui, rect: egui::Rect, text: RichText, fallback: egui::Color32
 /// Most rows shown side by side.
 const MAX_ROWS: usize = 50;
 
+/// Width key of the value column when one row is shown.
+const SINGLE: usize = usize::MAX;
+
 /// Long values are cut (the value panel shows them in full).
 fn clip(s: &str) -> String {
     if s.chars().count() > 2000 { s.chars().take(2000).collect::<String>() + "…" } else { s.to_string() }
@@ -81,14 +84,13 @@ pub struct RecordViewState {
     cache: Option<RecordCache>,
     /// Take the keyboard focus on the next frame (opened with Tab).
     focus_request: bool,
-    /// Cell picked in the side-by-side view: (row, column).
+    /// Cell picked in the table: (row, column).
     picked: Option<(usize, usize)>,
-    /// Widths set by the user in the side-by-side view: per row, and the
-    /// column-name column.
+    /// Widths set by the user: per row (side by side), of the single row's
+    /// value column ([`SINGLE`]), and of the column-name column.
     widths: std::collections::BTreeMap<usize, f32>,
     lead_width: Option<f32>,
-    /// "Differences only" / "Hide empty" set here (else the options').
-    differences_only: Option<bool>,
+    /// "Hide empty" set here (else the options').
     hide_empty: Option<bool>,
     /// Columns hidden as empty at the last frame.
     hidden_empty: usize,
@@ -114,10 +116,7 @@ fn hide_empty_toggle(ui: &mut Ui, state: &mut RecordViewState, options: &GridOpt
 
 impl RecordViewState {
     fn prefs(&self, options: &GridOptions) -> GridAction {
-        GridAction::RecordPrefs {
-            differences_only: self.differences_only.unwrap_or(options.record_differences_only),
-            hide_empty: self.hide_empty.unwrap_or(options.record_hide_empty),
-        }
+        GridAction::RecordPrefs { hide_empty: self.hide_empty.unwrap_or(options.record_hide_empty) }
     }
 }
 
@@ -226,8 +225,8 @@ impl<'a> RecordView<'a> {
                     actions.push(state.prefs(options));
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(RichText::new(format!("{}  {}", icon::KEYBOARD, tr("Tab: grid · ← →: rows"))).small().weak())
-                        .on_hover_text(tr("Tab: back to the grid · ← →: previous / next row"));
+                    ui.label(RichText::new(format!("{}  {}", icon::KEYBOARD, tr("Tab: grid · ← →: rows · ⌘C: copy"))).small().weak())
+                        .on_hover_text(tr("Tab: back to the grid · ← →: previous / next row · ⌘C: copy the picked value"));
                     if !state.column_filter.trim().is_empty() {
                         let needle = state.column_filter.to_lowercase();
                         let shown = grid.visible_columns().into_iter().filter(|&c| model.column_name(c).to_lowercase().contains(&needle)).count();
@@ -252,198 +251,7 @@ impl<'a> RecordView<'a> {
             state.error = None;
         }
         let row = go_to.unwrap_or(row);
-        ui.separator();
-        let theme = GridTheme::from_visuals(ui.visuals());
-        let needle = state.column_filter.to_lowercase();
-        let columns: Vec<usize> = grid.visible_columns().into_iter().filter(|&c| needle.is_empty() || model.column_name(c).to_lowercase().contains(&needle)).collect();
-        let mut values: Vec<(Value, bool, bool)> = Vec::with_capacity(columns.len());
-        let key = (model.generation(), row, columns.clone());
-        let fresh = model.visit_rows_for(row..row + 1, std::time::Duration::from_millis(4), |_, cells| {
-            for &c in &columns {
-                let (v, is_default) = if model.is_virtual_column(c) {
-                    (cells.value_of(c).unwrap_or_default(), false)
-                } else {
-                    match cells.get(c) {
-                        CellRef::Value(v) => (v.clone(), false),
-                        CellRef::Default => (Value::Null, true),
-                        CellRef::Missing => (Value::Null, false),
-                    }
-                };
-                values.push((v, is_default, cells.is_modified(c)));
-            }
-        });
-        if fresh {
-            state.cache = Some((key, values.clone()));
-        } else {
-            // The fetch task holds the store: show the last values and retry soon.
-            if let Some((_, cached)) = state.cache.as_ref().filter(|(k, _)| k.1 == row && k.2 == columns) {
-                values = cached.clone();
-            }
-            ui.ctx().request_repaint_after(std::time::Duration::from_millis(10));
-        }
-        let key_cols: Vec<usize> = model.editability().as_ref().map(|t| t.key_columns.clone()).unwrap_or_default();
-        // "Hide empty": NULL and empty values go (key columns stay).
-        let hide_empty = state.hide_empty.unwrap_or(options.record_hide_empty);
-        let keep: Vec<usize> =
-            (0..columns.len()).filter(|&i| !hide_empty || key_cols.contains(&columns[i]) || !values.get(i).is_some_and(|(v, d, _)| !*d && is_empty_value(v))).collect();
-        state.hidden_empty = columns.len() - keep.len();
-        let columns: Vec<usize> = keep.iter().map(|&i| columns[i]).collect();
-        let values: Vec<Shown> = keep.iter().filter_map(|&i| values.get(i).cloned()).collect();
-        let editable = model.is_editable() && options.allow_editing;
-        let mut commit: Option<(usize, usize, String)> = None;
-        let mut open_value: Option<usize> = None;
-        // One line per column: key / link icon, name (secondary; its type
-        // on hover), the value wrapped over the rest of the width, copy.
-        let body = egui::TextStyle::Body.resolve(ui.style());
-        let measure = |ui: &Ui, text: String, font: egui::FontId| ui.fonts_mut(|f| f.layout_no_wrap(text, font, egui::Color32::WHITE).rect.width());
-        let name_w = columns.iter().map(|&c| measure(ui, model.column_name(c).to_string(), body.clone())).fold(0.0_f32, f32::max).clamp(100.0, 300.0) + 8.0;
-        let type_of = |c: usize| model.column_meta(c).map_or_else(|| tr("virtual").to_string(), |m| m.type_name.to_lowercase());
-        let row_h = ui.text_style_height(&egui::TextStyle::Body) + 2.0;
-        let mut copied: Option<String> = None;
-        let mut toggled: Option<(usize, usize, bool)> = None;
-        // Key columns stay at the top while the others scroll.
-        let (pinned, rest): (Vec<usize>, Vec<usize>) = (0..columns.len()).partition(|&i| key_cols.contains(&columns[i]));
-        let mut draw = |ui: &mut Ui, list: &[usize]| {
-            ui.spacing_mut().item_spacing.y = 0.0;
-            for &i in list {
-                let c = columns[i];
-                let Some((v, is_default, modified)) = values.get(i) else { continue };
-                let active = active_col == c;
-                let bg = ui.painter().add(egui::Shape::Noop);
-                let frame = egui::Frame::new().inner_margin(egui::Margin { left: 8, right: 4, top: 5, bottom: 5 }).show(ui, |ui| {
-                    ui.set_width(ui.available_width());
-                    ui.horizontal_top(|ui| {
-                        // Key / foreign key marker.
-                        let marker = if key_cols.contains(&c) {
-                            Some((icon::KEY, theme.warn, tr("Key column")))
-                        } else if model.foreign_key_for_column(c).is_some() {
-                            Some((icon::LINK_SIMPLE, theme.link, tr("References another table")))
-                        } else {
-                            None
-                        };
-                        ui.allocate_ui_with_layout(egui::vec2(16.0, row_h), egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                            ui.set_min_width(16.0);
-                            if let Some((ic, color, tip)) = marker {
-                                ui.label(RichText::new(ic).color(color)).on_hover_text(tip);
-                            }
-                        });
-                        let mut name = RichText::new(model.column_name(c)).color(if active { theme.text } else { theme.weak });
-                        if model.is_virtual_column(c) {
-                            name = name.italics();
-                        }
-                        ui.allocate_ui_with_layout(egui::vec2(name_w, row_h), egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                            ui.set_min_width(name_w);
-                            if ui.add(egui::Label::new(name).truncate().sense(egui::Sense::click())).on_hover_text(type_of(c)).clicked() {
-                                grid.select_cell(row, c);
-                            }
-                        });
-                        let value_w = (ui.available_width() - 30.0).max(80.0);
-                        ui.allocate_ui_with_layout(egui::vec2(value_w, row_h), egui::Layout::top_down(egui::Align::Min), |ui| {
-                            ui.set_width(value_w);
-                            let editing_this = state.editing.as_ref().is_some_and(|(r, col, _)| *r == row && *col == c);
-                            if editing_this {
-                                if let Some((_, _, text)) = state.editing.as_mut() {
-                                    let resp = ui.add(TextEdit::singleline(text).desired_width(f32::INFINITY));
-                                    if resp.lost_focus() {
-                                        if ui.input(|i| i.key_pressed(Key::Escape)) {
-                                            state.editing = None;
-                                        } else {
-                                            commit = Some((row, c, text.clone()));
-                                        }
-                                    } else if !resp.has_focus() {
-                                        resp.request_focus();
-                                    }
-                                }
-                                return;
-                            }
-                            let can_edit = editable && model.can_edit_cell(row, c).is_ok();
-                            // Booleans: a check box (click to toggle), never typed.
-                            if is_bool_column(model, c, v) && !*is_default {
-                                let mut on = v.as_bool().unwrap_or(false);
-                                let text = if v.is_null() {
-                                    RichText::new(options.format.null_text.clone()).italics().color(theme.weak)
-                                } else {
-                                    RichText::new(if on { "true" } else { "false" })
-                                };
-                                let resp = ui.add_enabled(can_edit, egui::Checkbox::new(&mut on, text));
-                                if resp.changed() {
-                                    toggled = Some((row, c, on));
-                                }
-                                if resp.clicked() {
-                                    grid.select_cell(row, c);
-                                }
-                                return;
-                            }
-                            let fmt = PreparedFormat::new(&options.format, grid.column_format(c));
-                            let rt = value_text(v, *is_default, *modified, &fmt, options, &theme);
-                            let resp = ui.add(egui::Label::new(rt).wrap().sense(egui::Sense::click()));
-                            let resp = if can_edit { resp.on_hover_text(tr("Double-click to edit")) } else { resp };
-                            if resp.double_clicked() {
-                                let multi = matches!(v, Value::Text(s) if s.contains('\n')) || matches!(v, Value::Bytes(_));
-                                if can_edit && !multi {
-                                    state.editing = Some((row, c, if v.is_null() { String::new() } else { v.to_text().into_owned() }));
-                                    state.error = None;
-                                } else {
-                                    open_value = Some(c);
-                                }
-                            }
-                            if resp.clicked() {
-                                grid.select_cell(row, c);
-                            }
-                        });
-                        let copy = ui.add(Button::new(RichText::new(icon::COPY).color(theme.weak)).frame(false)).on_hover_text(tr("Copy the value"));
-                        if copy.clicked() {
-                            copied = Some(if v.is_null() { String::new() } else { v.to_text().into_owned() });
-                        }
-                    });
-                });
-                let rect = frame.response.rect;
-                let hovered = ui.rect_contains_pointer(rect);
-                let fill = if active {
-                    theme.selection
-                } else if hovered {
-                    crate::theme::mix(theme.bg, theme.text, 0.06)
-                } else if i % 2 == 1 {
-                    theme.stripe
-                } else {
-                    egui::Color32::TRANSPARENT
-                };
-                ui.painter().set(bg, egui::Shape::rect_filled(rect, 4.0, fill));
-            }
-        };
-        if !pinned.is_empty() && !rest.is_empty() {
-            ui.vertical(|ui| draw(ui, &pinned));
-            ui.separator();
-            ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| draw(ui, &rest));
-        } else {
-            let all: Vec<usize> = (0..columns.len()).collect();
-            ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| draw(ui, &all));
-        }
-        if let Some((r, c, on)) = toggled {
-            match model.set_value(r, c, Value::Bool(on)) {
-                Ok(()) => state.error = None,
-                Err(e) => state.error = Some(e),
-            }
-        }
-        if let Some(text) = copied {
-            ui.ctx().copy_text(text);
-            actions.push(GridAction::Notify { message: tr("Value copied").to_string(), error: false });
-        }
-        if let Some(e) = &state.error {
-            ui.colored_label(theme.error, e);
-        }
-        if let Some((r, c, text)) = commit {
-            match model.set_cell(r, c, &text) {
-                Ok(()) => {
-                    state.editing = None;
-                    state.error = None;
-                }
-                Err(e) => state.error = Some(e),
-            }
-        }
-        if let Some(c) = open_value {
-            actions.push(GridAction::OpenValuePanel { row, col: c });
-        }
+        rows_table(model, grid, options, state, ui, &[row], &focus, &mut actions);
         actions
     }
 }
@@ -475,36 +283,13 @@ fn row_values(model: &ResultModel, rows: &[usize], columns: &[usize]) -> (Vec<Ve
     (all, fresh)
 }
 
-/// Selected rows side by side: the columns down the left, one column per
-/// row ("Row #9", "Row #10" …), a fixed header and shared horizontal scroll.
+/// Selected rows side by side: the header ("3 selected rows", the column
+/// filter, Hide empty) above the table of [`rows_table`].
 fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOptions, state: &mut RecordViewState, ui: &mut Ui, mut rows: Vec<usize>) -> Vec<GridAction> {
     let mut actions = Vec::new();
     let more = rows.len() > MAX_ROWS;
     rows.truncate(MAX_ROWS);
-    let theme = GridTheme::from_visuals(ui.visuals());
-    let needle = state.column_filter.to_lowercase();
-    let total_columns = grid.visible_columns().len();
-    let named: Vec<usize> = grid.visible_columns().into_iter().filter(|&c| needle.is_empty() || model.column_name(c).to_lowercase().contains(&needle)).collect();
-    let (all_values, fresh) = row_values(model, &rows, &named);
-    if !fresh {
-        ui.ctx().request_repaint_after(std::time::Duration::from_millis(10));
-    }
-    // Columns whose values differ between the rows: marked, or the only ones shown.
-    let value_at = |j: usize, i: usize| all_values.get(j).and_then(|vs| vs.get(i)).map(|(v, d, _)| (v, d));
-    let differs_all: Vec<bool> = (0..named.len()).map(|i| (1..rows.len()).any(|j| value_at(j, i) != value_at(0, i))).collect();
-    let differing = differs_all.iter().filter(|d| **d).count();
-    let key_cols: Vec<usize> = model.editability().as_ref().map(|t| t.key_columns.clone()).unwrap_or_default();
-    let differences_only = state.differences_only.unwrap_or(options.record_differences_only);
-    let hide_empty = state.hide_empty.unwrap_or(options.record_hide_empty);
-    let all_empty = |i: usize| (0..rows.len()).all(|j| value_at(j, i).is_some_and(|(v, d)| !*d && is_empty_value(v)));
-    let shown = |i: usize| (!differences_only || differs_all[i]) && (!hide_empty || key_cols.contains(&named[i]) || !all_empty(i));
-    let keep: Vec<usize> = (0..named.len()).filter(|&i| shown(i)).collect();
-    state.hidden_empty = if hide_empty { (0..named.len()).filter(|&i| (!differences_only || differs_all[i]) && !shown(i)).count() } else { 0 };
-    let columns: Vec<usize> = keep.iter().map(|&i| named[i]).collect();
-    let differs: Vec<bool> = keep.iter().map(|&i| differs_all[i]).collect();
-    let values: Vec<Vec<Shown>> = all_values.iter().map(|vs| keep.iter().filter_map(|&i| vs.get(i).cloned()).collect()).collect();
-    let text_of = |r: usize, i: usize| values.get(r).and_then(|vs| vs.get(i)).map(|(v, ..)| if v.is_null() { String::new() } else { v.to_text().into_owned() });
-    // Keyboard: Tab back to the grid, ⌘C copies the picked value.
+    // Keyboard: Tab back to the grid (⌘C: see the table).
     let focus = ui.interact(ui.max_rect(), ui.id().with("record_focus"), egui::Sense::click());
     if std::mem::take(&mut state.focus_request) || focus.clicked() {
         focus.request_focus();
@@ -515,6 +300,68 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
         if ui.input(|i| i.key_pressed(Key::Tab)) {
             actions.push(GridAction::SwitchView(ResultViewKind::Grid));
         }
+    }
+    let total_columns = grid.visible_columns().len();
+    egui::Frame::new().inner_margin(egui::Margin::symmetric(4, 4)).show(ui, |ui| {
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(format!("{}  {}", icon::ROWS, trf("{} selected rows", &[&rows.len()]))).strong());
+            if more {
+                ui.label(RichText::new(trf("(the first {})", &[&MAX_ROWS])).weak());
+            }
+            ui.add_space(12.0);
+            ui.add(TextEdit::singleline(&mut state.column_filter).hint_text(format!("{}  {}", icon::MAGNIFYING_GLASS, tr("Filter columns"))).desired_width(220.0));
+            ui.add_space(8.0);
+            if hide_empty_toggle(ui, state, options, tr("Hide the columns that are NULL or empty in every row")) {
+                actions.push(state.prefs(options));
+            }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(RichText::new(format!("{}  {}", icon::KEYBOARD, tr("Tab: grid · ⌘C: copy"))).small().weak()).on_hover_text(tr("Select one row to see it as a record"));
+                let needle = state.column_filter.trim().to_lowercase();
+                if !needle.is_empty() {
+                    let shown = grid.visible_columns().into_iter().filter(|&c| model.column_name(c).to_lowercase().contains(&needle)).count();
+                    ui.label(RichText::new(trf("{} of {} columns", &[&shown, &total_columns])).small().weak());
+                }
+            });
+        });
+    });
+    rows_table(model, grid, options, state, ui, &rows, &focus, &mut actions);
+    actions
+}
+
+/// The columns of `rows` as a table: the column names down the left (the
+/// type on hover, key columns pinned at the top), one value column per row
+/// ("Row #6" …) whose borders are dragged to resize and double-clicked to
+/// fit. A click picks a value (⌘C copies it), a double-click edits it,
+/// booleans have a check box. One row (the record view) or several side by side.
+#[allow(clippy::too_many_arguments)]
+fn rows_table(
+    model: &mut ResultModel,
+    grid: &mut DataGridState,
+    options: &GridOptions,
+    state: &mut RecordViewState,
+    ui: &mut Ui,
+    rows: &[usize],
+    focus: &egui::Response,
+    actions: &mut Vec<GridAction>,
+) {
+    let theme = GridTheme::from_visuals(ui.visuals());
+    let single = rows.len() == 1;
+    let needle = state.column_filter.to_lowercase();
+    let named: Vec<usize> = grid.visible_columns().into_iter().filter(|&c| needle.is_empty() || model.column_name(c).to_lowercase().contains(&needle)).collect();
+    let (all_values, fresh) = row_values(model, rows, &named);
+    if !fresh {
+        ui.ctx().request_repaint_after(std::time::Duration::from_millis(10));
+    }
+    // "Hide empty": columns NULL or empty in every row go (key columns stay).
+    let key_cols: Vec<usize> = model.editability().as_ref().map(|t| t.key_columns.clone()).unwrap_or_default();
+    let hide_empty = state.hide_empty.unwrap_or(options.record_hide_empty);
+    let all_empty = |i: usize| all_values.iter().all(|vs| vs.get(i).is_some_and(|(v, d, _)| !*d && is_empty_value(v)));
+    let keep: Vec<usize> = (0..named.len()).filter(|&i| !hide_empty || key_cols.contains(&named[i]) || !all_empty(i)).collect();
+    state.hidden_empty = named.len() - keep.len();
+    let columns: Vec<usize> = keep.iter().map(|&i| named[i]).collect();
+    let values: Vec<Vec<Shown>> = all_values.iter().map(|vs| keep.iter().filter_map(|&i| vs.get(i).cloned()).collect()).collect();
+    let text_of = |r: usize, i: usize| values.get(r).and_then(|vs| vs.get(i)).map(|(v, ..)| if v.is_null() { String::new() } else { v.to_text().into_owned() });
+    if focus.has_focus() && state.editing.is_none() {
         let copy = ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Copy)));
         if copy
             && let Some((r, c)) = state.picked
@@ -525,41 +372,16 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
             actions.push(GridAction::Notify { message: tr("Value copied").to_string(), error: false });
         }
     }
-    egui::Frame::new().inner_margin(egui::Margin::symmetric(4, 4)).show(ui, |ui| {
-        ui.horizontal(|ui| {
-            ui.label(RichText::new(format!("{}  {}", icon::ROWS, trf("{} selected rows", &[&rows.len()]))).strong());
-            if more {
-                ui.label(RichText::new(trf("(the first {})", &[&MAX_ROWS])).weak());
-            }
-            ui.add_space(12.0);
-            ui.add(TextEdit::singleline(&mut state.column_filter).hint_text(format!("{}  {}", icon::MAGNIFYING_GLASS, tr("Filter columns"))).desired_width(220.0));
-            ui.add_space(8.0);
-            let mut only = differences_only;
-            if ui.checkbox(&mut only, tr("Differences only")).on_hover_text(tr("Show only the columns whose values differ between the rows")).changed() {
-                state.differences_only = Some(only);
-                actions.push(state.prefs(options));
-            }
-            ui.label(RichText::new(trf("{} columns differ", &[&differing])).small().color(if differing > 0 { theme.warn } else { theme.weak }));
-            ui.add_space(8.0);
-            if hide_empty_toggle(ui, state, options, tr("Hide the columns that are NULL or empty in every row")) {
-                actions.push(state.prefs(options));
-            }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(RichText::new(format!("{}  {}", icon::KEYBOARD, tr("Tab: grid · ⌘C: copy"))).small().weak()).on_hover_text(tr("Select one row to see it as a record"));
-                if !needle.is_empty() || differences_only || (hide_empty && state.hidden_empty > 0) {
-                    ui.label(RichText::new(trf("{} of {} columns", &[&columns.len(), &total_columns])).small().weak());
-                }
-            });
-        });
-    });
     let body = egui::TextStyle::Body.resolve(ui.style());
     let measure = |ui: &Ui, text: String, font: egui::FontId| ui.fonts_mut(|f| f.layout_no_wrap(text, font, egui::Color32::WHITE).rect.width());
     let name_w = columns.iter().map(|&c| measure(ui, model.column_name(c).to_string(), body.clone())).fold(0.0_f32, f32::max).clamp(100.0, 260.0) + 8.0;
     let type_of = |c: usize| model.column_meta(c).map_or_else(|| tr("virtual").to_string(), |m| m.type_name.to_lowercase());
     let fit_lead = 24.0 + name_w;
     let lead = state.lead_width.unwrap_or(fit_lead);
-    let default_w = ((ui.available_width() - lead - 16.0) / rows.len() as f32).clamp(150.0, 360.0);
-    let mut widths: Vec<f32> = rows.iter().map(|r| state.widths.get(r).copied().unwrap_or(default_w)).collect();
+    // One row: its value column takes the width; side by side: each a share.
+    let width_key = |r: usize| if single { SINGLE } else { r };
+    let default_w = if single { (ui.available_width() - lead - 16.0).max(200.0) } else { ((ui.available_width() - lead - 16.0) / rows.len() as f32).clamp(150.0, 360.0) };
+    let mut widths: Vec<f32> = rows.iter().map(|r| state.widths.get(&width_key(*r)).copied().unwrap_or(default_w)).collect();
     let mut lead_w = lead;
     // Width that shows the longest value of row `j` (double-click on the border).
     let fit_row = |ui: &Ui, j: usize, r: usize| -> f32 {
@@ -581,6 +403,7 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
     let mut open_value: Option<(usize, usize)> = None;
     let mut picked = state.picked;
     let mut toggled: Option<(usize, usize, bool)> = None;
+    let mut select: Option<(usize, usize)> = None;
     ScrollArea::horizontal().auto_shrink([false, false]).show(ui, |ui| {
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
@@ -595,12 +418,12 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
                 }
                 for (j, &r) in rows.iter().enumerate() {
                     let (rect, _) = ui.allocate_exact_size(egui::vec2(widths[j], row_h), egui::Sense::hover());
-                    let fill = if active_row == Some(r) { theme.header_selected_bg } else { theme.header_bg };
+                    let fill = if active_row == Some(r) && !single { theme.header_selected_bg } else { theme.header_bg };
                     ui.painter().rect_filled(rect, 0.0, fill);
                     ui.painter().vline(rect.left(), rect.y_range(), egui::Stroke::new(1.0, theme.line));
                     ui.painter().text(rect.left_center() + egui::vec2(8.0, 0.0), egui::Align2::LEFT_CENTER, trf("Row #{}", &[&(r + 1)]), body.clone(), theme.header_text);
-                    if resize_handle(ui, rect, ui.id().with(("record_col", r)), &trf("Row #{}", &[&(r + 1)]), focus.id, &mut widths[j], |ui| fit_row(ui, j, r)) {
-                        state.widths.insert(r, widths[j]);
+                    if resize_handle(ui, rect, ui.id().with(("record_col", width_key(r))), &trf("Row #{}", &[&(r + 1)]), focus.id, &mut widths[j], |ui| fit_row(ui, j, r)) {
+                        state.widths.insert(width_key(r), widths[j]);
                     }
                 }
             });
@@ -611,6 +434,8 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
                     let c = columns[i];
                     ui.horizontal(|ui| {
                         let (lead_rect, lead_resp) = ui.allocate_exact_size(egui::vec2(lead_w, row_h), egui::Sense::hover());
+                        let name = model.column_name(c).to_string();
+                        lead_resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, &name));
                         // The column's type, and why it has a marker, on hover.
                         let mut tip = type_of(c);
                         if key_cols.contains(&c) {
@@ -618,19 +443,11 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
                         } else if model.foreign_key_for_column(c).is_some() {
                             tip = format!("{tip}\n{}", tr("References another table"));
                         }
-                        if differs[i] {
-                            tip = format!("{tip}\n{}", tr("The rows have different values"));
-                        }
                         lead_resp.on_hover_text(tip);
                         let stripe = if i % 2 == 1 { theme.stripe } else { theme.bg };
                         let hovered = ui.input(|inp| inp.pointer.hover_pos()).is_some_and(|p| p.y >= lead_rect.top() && p.y < lead_rect.bottom() && ui.clip_rect().contains(p));
-                        let base = if differs[i] { crate::theme::mix(stripe, theme.warn, 0.10) } else { stripe };
-                        let row_fill = if hovered { crate::theme::mix(base, theme.text, 0.06) } else { base };
+                        let row_fill = if hovered { crate::theme::mix(stripe, theme.text, 0.06) } else { stripe };
                         ui.painter().rect_filled(lead_rect, 0.0, row_fill);
-                        if differs[i] {
-                            let bar = egui::Rect::from_min_size(lead_rect.left_top(), egui::vec2(3.0, lead_rect.height()));
-                            ui.painter().rect_filled(bar, 0.0, theme.warn);
-                        }
                         let p = ui.painter();
                         let mut x = lead_rect.left() + 6.0;
                         if key_cols.contains(&c) {
@@ -639,9 +456,12 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
                             p.text(egui::pos2(x, lead_rect.center().y), egui::Align2::LEFT_CENTER, icon::LINK_SIMPLE, body.clone(), theme.link);
                         }
                         x += 18.0;
-                        let name = model.column_name(c);
                         let name_rect = egui::Rect::from_min_max(egui::pos2(x, lead_rect.top()), egui::pos2(lead_rect.right() - 6.0, lead_rect.bottom()));
-                        paint_text(ui, name_rect, RichText::new(name).color(if differs[i] { theme.text } else { theme.weak }), theme.text);
+                        let mut name_text = RichText::new(&name).color(theme.weak);
+                        if model.is_virtual_column(c) {
+                            name_text = name_text.italics();
+                        }
+                        paint_text(ui, name_rect, name_text, theme.text);
                         for (j, &r) in rows.iter().enumerate() {
                             if state.editing.as_ref().is_some_and(|(er, ec, _)| *er == r && *ec == c) {
                                 if let Some((_, _, text)) = state.editing.as_mut() {
@@ -671,24 +491,45 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
                             let fmt = PreparedFormat::new(&options.format, grid.column_format(c));
                             let rt = value_text(v, *is_default, *modified, &fmt, options, &theme);
                             paint_text(ui, inner, rt, theme.text);
+                            let boolean = is_bool_column(model, c, v) && !*is_default;
+                            let can_edit = editable && model.can_edit_cell(r, c).is_ok();
+                            // Booleans: the box is a check box of its own (a click elsewhere picks the cell).
+                            if boolean {
+                                let on = v.as_bool().unwrap_or(false);
+                                let label = if v.is_null() {
+                                    options.format.null_text.clone()
+                                } else if on {
+                                    "true".into()
+                                } else {
+                                    "false".into()
+                                };
+                                let box_rect = egui::Rect::from_min_size(egui::pos2(inner.left() - 2.0, rect.top()), egui::vec2(24.0, rect.height()));
+                                let box_resp = ui.interact(box_rect, ui.id().with(("record_bool", r, c)), egui::Sense::click());
+                                box_resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Checkbox, can_edit, on, &label));
+                                let box_resp = if can_edit { box_resp.on_hover_text(tr("Click the box to change the value")) } else { box_resp };
+                                if box_resp.clicked() {
+                                    picked = Some((r, c));
+                                    select = Some((r, c));
+                                    focus.request_focus();
+                                    if can_edit {
+                                        toggled = Some((r, c, !on));
+                                    }
+                                }
+                            }
                             let full = if v.is_null() { None } else { Some(v.to_text().into_owned()) };
                             let resp = match full.filter(|t| t.chars().count() > 40 || t.contains('\n')) {
                                 Some(t) => resp.on_hover_text(clip(&t)),
                                 None => resp,
                             };
-                            let boolean = is_bool_column(model, c, v) && !*is_default;
-                            let resp = if boolean && editable { resp.on_hover_text(tr("Click the box to change the value")) } else { resp };
-                            let on_box = resp.interact_pointer_pos().is_some_and(|p| p.x < inner.left() + 24.0);
+                            let resp = if can_edit && !boolean { resp.on_hover_text(tr("Double-click to edit")) } else { resp };
                             if resp.clicked() {
                                 picked = Some((r, c));
+                                select = Some((r, c));
                                 focus.request_focus();
-                                if boolean && on_box && editable && model.can_edit_cell(r, c).is_ok() {
-                                    toggled = Some((r, c, !v.as_bool().unwrap_or(false)));
-                                }
                             }
                             if resp.double_clicked() && !boolean {
                                 let multi = matches!(v, Value::Text(s) if s.contains('\n')) || matches!(v, Value::Bytes(_));
-                                if editable && !multi && model.can_edit_cell(r, c).is_ok() {
+                                if can_edit && !multi {
                                     state.editing = Some((r, c, if v.is_null() { String::new() } else { v.to_text().into_owned() }));
                                     state.error = None;
                                 } else {
@@ -713,6 +554,10 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
         });
     });
     state.picked = picked;
+    // One row: the grid's active cell follows (side by side it would drop the other rows).
+    if let (true, Some((r, c))) = (single, select) {
+        grid.select_cell(r, c);
+    }
     if let Some((r, c, on)) = toggled {
         match model.set_value(r, c, Value::Bool(on)) {
             Ok(()) => state.error = None,
@@ -734,5 +579,4 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
     if let Some((r, c)) = open_value {
         actions.push(GridAction::OpenValuePanel { row: r, col: c });
     }
-    actions
 }

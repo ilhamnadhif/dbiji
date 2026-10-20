@@ -3,6 +3,12 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.6 — 2026-10-20
+
+### Changed
+- Record view of one row: the same table as rows side by side — column names down the left (the type on hover, key columns pinned), the value column with a draggable border (double-click fits it), a click picks a value (⌘C copies it), a double-click edits it, booleans have a check box; row navigation and Hide empty stay above it.
+- Rows side by side: the "Differences only" option and the difference marks were removed.
+
 ## 0.3.5 — 2026-10-20
 
 ### New

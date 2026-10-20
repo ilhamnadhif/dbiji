@@ -743,21 +743,7 @@ fn settings_grid_menu_and_editor_helpers() {
     frames(&mut h, 3);
     wait(&mut h, "rows side by side", |h| has(h, "Record view, 3 rows"));
     assert!(has(&h, "3 selected rows"), "{:?}", labels(&h));
-    // Columns whose values differ: counted, and on request the only ones shown.
-    let differ = h
-        .query_all_by_label_contains("columns differ")
-        .next()
-        .and_then(|n| n.accesskit_node().label().or_else(|| n.accesskit_node().value()))
-        .unwrap_or_else(|| panic!("{:?}", labels(&h)));
-    let n: usize = differ.split_whitespace().next().and_then(|n| n.parse().ok()).expect("a count");
-    assert!(n > 0, "{differ}");
-    click(&mut h, "Differences only");
-    assert!(has(&h, &format!("{n} of ")), "only the {n} differing columns: {:?}", labels(&h));
-    assert!(h.state().settings.results.record_differences_only, "the choice is remembered");
-    click(&mut h, "Differences only");
-    assert!(!has(&h, &format!("{n} of ")));
-    assert!(!h.state().settings.results.record_differences_only);
-    // "Hide empty" is remembered too.
+    // "Hide empty" is remembered.
     click(&mut h, "Hide empty");
     assert!(h.state().settings.results.record_hide_empty);
     click(&mut h, "Hide empty");

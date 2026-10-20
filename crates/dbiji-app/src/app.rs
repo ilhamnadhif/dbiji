@@ -69,6 +69,9 @@ pub struct DbijiApp {
     bench_workload: Option<Vec<String>>,
     /// "What's new" and update checks.
     pub updates: crate::updates::Updates,
+    /// The native application menu (About, Check for Updates…, Quit).
+    #[cfg(target_os = "macos")]
+    pub app_menu: Option<crate::macmenu::AppMenu>,
     /// Settings or connections existed before this start (not a first start).
     pub existing_install: bool,
     /// Tip of the day window.
@@ -113,6 +116,8 @@ impl DbijiApp {
             quit_confirmed: false,
             bench_workload: None,
             updates: Default::default(),
+            #[cfg(target_os = "macos")]
+            app_menu: None,
             existing_install: false,
             tip: None,
             pending_tx: Default::default(),
@@ -208,6 +213,10 @@ impl DbijiApp {
     }
 
     fn process_commands(&mut self, ctx: &egui::Context) {
+        #[cfg(target_os = "macos")]
+        if let Some(menu) = &self.app_menu {
+            self.commands.extend(menu.commands());
+        }
         let commands = std::mem::take(&mut self.commands);
         for cmd in commands {
             self.handle_command(ctx, cmd);
@@ -427,6 +436,7 @@ impl DbijiApp {
             AppCommand::ToggleNavigator => self.show_nav = !self.show_nav,
             AppCommand::ToggleOperations => self.ops.panel_open = !self.ops.panel_open,
             AppCommand::ShowAbout => self.dialogs.about_open = true,
+            AppCommand::CheckForUpdates => self.updates.check_now(&self.backend, true),
             AppCommand::ShowShortcuts => self.dialogs.shortcuts_open = true,
             AppCommand::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             AppCommand::RefreshMetadata { connection, object, schema } => {
@@ -1088,7 +1098,7 @@ impl DbijiApp {
                     ui.close();
                 }
                 if ui.add_enabled(!self.updates.checking(), egui::Button::new(format!("{} {}", icon::ARROW_CIRCLE_UP, tr("Check for updates…")))).clicked() {
-                    self.updates.check_now(&self.backend, true);
+                    self.commands.push(AppCommand::CheckForUpdates);
                     ui.close();
                 }
                 if ui.button(tr("About DBiji")).clicked() {

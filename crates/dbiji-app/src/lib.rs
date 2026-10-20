@@ -18,6 +18,8 @@ pub mod drivers;
 pub mod exec;
 pub mod headless;
 pub mod keys;
+#[cfg(target_os = "macos")]
+pub mod macmenu;
 pub mod nav;
 pub mod ops;
 pub mod palette;
@@ -201,6 +203,10 @@ pub fn run() -> ExitCode {
             backend.set_context(cc.egui_ctx.clone());
             let mut app = app::DbijiApp::new(backend, conns, services, settings);
             app.exit_after_first_frame = exit_after_first;
+            #[cfg(target_os = "macos")]
+            {
+                app.app_menu = macmenu::AppMenu::install(&cc.egui_ctx);
+            }
             match std::env::var("DBIJI_BENCH_SCENARIO").as_deref() {
                 Ok("workload") => app.start_bench_workload(),
                 Ok(_) => {}

@@ -224,6 +224,7 @@ pub enum AppCommand {
     ToggleOperations,
     ShowShortcuts,
     ShowAbout,
+    CheckForUpdates,
     Quit,
 }
 

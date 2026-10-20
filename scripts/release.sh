@@ -28,7 +28,8 @@ fail() { echo "Error: $*" >&2; exit 1; }
 command -v gh >/dev/null || fail "the GitHub CLI (gh) is needed: brew install gh"
 gh auth status >/dev/null 2>&1 || fail "log in first: gh auth login"
 [ "$(git symbolic-ref --quiet --short HEAD || true)" = "$BRANCH" ] || fail "releases are made from $BRANCH"
-[ -z "$(git status --porcelain)" ] || fail "commit or stash your changes first"
+# Untracked files (notes, crash reports …) are not part of the release.
+[ -z "$(git status --porcelain --untracked-files=no)" ] || fail "commit or stash your changes first"
 [ -z "$NOTES_FILE" ] || [ -f "$NOTES_FILE" ] || fail "no such notes file: $NOTES_FILE"
 grep -q "^## $VERSION " CHANGELOG.md || fail "CHANGELOG.md has no section for $VERSION"
 git fetch --quiet origin "$BRANCH"

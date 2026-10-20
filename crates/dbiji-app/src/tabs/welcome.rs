@@ -27,7 +27,7 @@ fn recent_scripts(ui: &Ui, cx: &AppContext) -> Vec<dbiji_config::project::Script
 }
 
 /// A clickable two-line row: icon, name, and a detail line (cut with "…").
-fn recent_row(ui: &mut Ui, icon: &str, icon_color: egui::Color32, name: &str, detail: &str) -> egui::Response {
+fn recent_row(ui: &mut Ui, icon: &str, logo: Option<dbiji_core::DbKind>, icon_color: egui::Color32, name: &str, detail: &str) -> egui::Response {
     let width = ui.available_width();
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, 42.0), egui::Sense::click());
     let v = ui.visuals();
@@ -37,7 +37,10 @@ fn recent_row(ui: &mut Ui, icon: &str, icon_color: egui::Color32, name: &str, de
     let text_color = v.text_color();
     let weak = v.weak_text_color();
     let painter = ui.painter_at(rect);
-    painter.text(egui::pos2(rect.left() + 10.0, rect.center().y), egui::Align2::LEFT_CENTER, icon, egui::TextStyle::Body.resolve(ui.style()), icon_color);
+    let logo_rect = egui::Rect::from_center_size(egui::pos2(rect.left() + 18.0, rect.center().y), egui::vec2(18.0, 18.0));
+    if !logo.is_some_and(|kind| crate::dblogo::paint(ui, kind, logo_rect, icon_color)) {
+        painter.text(egui::pos2(rect.left() + 10.0, rect.center().y), egui::Align2::LEFT_CENTER, icon, egui::TextStyle::Body.resolve(ui.style()), icon_color);
+    }
     let left = rect.left() + 34.0;
     let max_w = (rect.right() - left - 8.0).max(20.0);
     let line = |text: &str, style: egui::TextStyle, color: egui::Color32| {
@@ -139,7 +142,7 @@ impl TabView for WelcomeTab {
                 }
                 for c in recent.into_iter().take(6) {
                     let detail = crate::nav::connection_detail(&c);
-                    if recent_row(ui, crate::nav::db_icon(c.kind), crate::theme::brand_color(c.kind), &c.name, &detail)
+                    if recent_row(ui, crate::nav::db_icon(c.kind), Some(c.kind), crate::theme::logo_color(c.kind, ui.visuals().dark_mode), &c.name, &detail)
                         .on_hover_text(format!("{detail}\n{}", tr("Connect and open a SQL editor")))
                         .clicked()
                     {
@@ -153,7 +156,7 @@ impl TabView for WelcomeTab {
                     ui.label(RichText::new(tr("Recent scripts")).weak().small());
                     for s in scripts.into_iter().take(6) {
                         let dir = s.path.parent().map(|p| p.display().to_string()).unwrap_or_default();
-                        let r = recent_row(ui, icon::FILE_SQL, dbiji_icons::SKY, &s.relative, &dir);
+                        let r = recent_row(ui, icon::FILE_SQL, None, dbiji_icons::SKY, &s.relative, &dir);
                         if r.on_hover_text(s.path.display().to_string()).clicked() {
                             push(AppCommand::OpenScript(s.path.clone()));
                         }

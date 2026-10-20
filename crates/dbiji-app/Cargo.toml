@@ -47,6 +47,7 @@ egui_plot.workspace = true
 egui_extras.workspace = true
 rfd.workspace = true
 image.workspace = true
+resvg.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 futures.workspace = true

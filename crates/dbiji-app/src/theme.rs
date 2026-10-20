@@ -242,6 +242,18 @@ pub fn brand_color(kind: dbiji_core::DbKind) -> Color32 {
     }
 }
 
+/// A database logo's colour: the brand colour, lighter on dark backgrounds.
+pub fn logo_color(kind: dbiji_core::DbKind, dark_mode: bool) -> Color32 {
+    let c = brand_color(kind);
+    if dark_mode { crate::theme::lighten(c, 0.35) } else { c }
+}
+
+/// `c` mixed with white by `t` (0 … 1).
+pub fn lighten(c: Color32, t: f32) -> Color32 {
+    let mix = |a: u8| (a as f32 + (255.0 - a as f32) * t).round() as u8;
+    Color32::from_rgb(mix(c.r()), mix(c.g()), mix(c.b()))
+}
+
 pub fn success_color(dark_mode: bool) -> Color32 {
     if dark_mode { Color32::from_rgb(110, 200, 120) } else { Color32::from_rgb(30, 130, 50) }
 }

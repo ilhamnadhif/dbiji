@@ -12,6 +12,7 @@ pub mod bench_ui;
 pub mod command;
 pub mod conn;
 pub mod cx;
+pub mod dblogo;
 pub mod diagnostics;
 pub mod dialogs;
 pub mod drivers;

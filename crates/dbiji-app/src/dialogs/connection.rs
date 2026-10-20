@@ -188,9 +188,12 @@ impl ConnectionDialog {
                                     continue;
                                 }
                                 let sel = self.cfg.kind == kind;
-                                if ui.selectable_label(sel, (RichText::new(crate::nav::db_icon(kind)).color(crate::theme::brand_color(kind)), kind.display_name())).clicked()
-                                    && !sel
-                                {
+                                let color = crate::theme::logo_color(kind, ui.visuals().dark_mode);
+                                let r = match crate::dblogo::image(ui.ctx(), kind, 18.0, color) {
+                                    Some(logo) => ui.selectable_label(sel, (logo, kind.display_name())),
+                                    None => ui.selectable_label(sel, (RichText::new(crate::nav::db_icon(kind)).color(color), kind.display_name())),
+                                };
+                                if r.clicked() && !sel {
                                     let name = self.cfg.name.clone();
                                     let folder = self.cfg.folder.clone();
                                     let id = self.cfg.id.clone();

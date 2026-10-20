@@ -98,6 +98,10 @@ struct Row {
     icon_color: Option<Color32>,
     /// A dot on the icon (connection status).
     badge: Option<Color32>,
+    /// The database's logo instead of `icon` (connections).
+    logo: Option<DbKind>,
+    /// Background of the row: the connection type's colour (DBeaver-like).
+    tint: Option<Color32>,
     expandable: bool,
     expanded: bool,
     /// Placeholder rows: "Loading…", errors, empty markers.
@@ -323,6 +327,8 @@ impl Navigator {
                 icon: if expanded { icon::FOLDER_OPEN } else { icon::FOLDER },
                 icon_color: None,
                 badge: None,
+                logo: None,
+                tint: None,
                 expandable: true,
                 expanded,
                 kind: RowKind::Node,
@@ -356,8 +362,10 @@ impl Navigator {
             label: cfg.name.clone(),
             detail: self.prefs.show_connection_details.then(|| connection_detail(cfg)),
             icon: db_icon(cfg.kind),
-            icon_color: Some(marker.unwrap_or_else(|| crate::theme::brand_color(cfg.kind))),
+            icon_color: Some(crate::theme::logo_color(cfg.kind, dark)),
             badge: color,
+            logo: Some(cfg.kind),
+            tint: marker,
             expandable: true,
             expanded,
             kind: RowKind::Node,
@@ -428,6 +436,8 @@ impl Navigator {
             icon: icon::DATABASE,
             icon_color: None,
             badge: None,
+            logo: None,
+            tint: None,
             expandable: true,
             expanded,
             kind: RowKind::Node,
@@ -446,6 +456,8 @@ impl Navigator {
                     icon: icon::PUZZLE_PIECE,
                     icon_color: None,
                     badge: None,
+                    logo: None,
+                    tint: None,
                     expandable: true,
                     expanded: ext_expanded,
                     kind: RowKind::Node,
@@ -493,6 +505,8 @@ impl Navigator {
                 icon: group_icon,
                 icon_color: None,
                 badge: None,
+                logo: None,
+                tint: None,
                 expandable: true,
                 expanded,
                 kind: RowKind::Node,
@@ -516,6 +530,8 @@ impl Navigator {
                 icon: if f.table_only { icon::TABLE } else { catalog_icon(f.icon) },
                 icon_color: None,
                 badge: None,
+                logo: None,
+                tint: None,
                 expandable: !f.table_only,
                 expanded,
                 kind: RowKind::Node,
@@ -549,6 +565,8 @@ impl Navigator {
                     icon: catalog_icon(f.icon),
                     icon_color: None,
                     badge: None,
+                    logo: None,
+                    tint: None,
                     expandable: has_children,
                     expanded: item_expanded,
                     kind: RowKind::Node,
@@ -614,6 +632,8 @@ impl Navigator {
                 icon: if caps.schema_label == "Databases" { icon::DATABASE } else { icon::STACK },
                 icon_color: None,
                 badge: None,
+                logo: None,
+                tint: None,
                 expandable: true,
                 expanded,
                 kind: RowKind::Node,
@@ -653,6 +673,8 @@ impl Navigator {
                 icon: icon::FOLDER_SIMPLE,
                 icon_color: None,
                 badge: None,
+                logo: None,
+                tint: None,
                 expandable: true,
                 expanded,
                 kind: RowKind::Node,
@@ -711,6 +733,8 @@ impl Navigator {
                 icon: kind_icon(kind),
                 icon_color: None,
                 badge: None,
+                logo: None,
+                tint: None,
                 expandable: has_children,
                 expanded,
                 kind: RowKind::Node,
@@ -742,6 +766,8 @@ impl Navigator {
                 icon: icon::FOLDER_SIMPLE,
                 icon_color: None,
                 badge: None,
+                logo: None,
+                tint: None,
                 expandable: true,
                 expanded,
                 kind: RowKind::Node,
@@ -761,6 +787,8 @@ impl Navigator {
                                 icon: kind_icon(c.obj.kind),
                                 icon_color: None,
                                 badge: None,
+                                logo: None,
+                                tint: None,
                                 expandable: false,
                                 expanded: false,
                                 kind: RowKind::Node,
@@ -1046,6 +1074,8 @@ impl Navigator {
                     ui.painter().rect_filled(rect, 3.0, ui.visuals().selection.bg_fill);
                 } else if resp.hovered() {
                     ui.painter().rect_filled(rect, 3.0, ui.visuals().widgets.hovered.weak_bg_fill);
+                } else if let Some(t) = r.tint {
+                    ui.painter().rect_filled(rect, 3.0, t.gamma_multiply(0.22));
                 }
                 let mut x = rect.left() + 4.0 + r.depth as f32 * 14.0;
                 let y = rect.center().y;
@@ -1091,7 +1121,12 @@ impl Navigator {
                     RowKind::Node => {}
                 }
                 let icol = r.icon_color.or_else(|| dbiji_icons::color(r.icon)).unwrap_or_else(|| ui.visuals().weak_text_color());
-                let icon_rect = ui.painter().text(egui::pos2(x, y), egui::Align2::LEFT_CENTER, r.icon, dbiji_icons::fill_font(ui.ctx(), font.size), icol);
+                // A connection: its database's logo (the icon when there is none).
+                let logo_rect = egui::Rect::from_center_size(egui::pos2(x + 8.0, y), egui::vec2(font.size + 5.0, font.size + 5.0));
+                let icon_rect = match r.logo {
+                    Some(kind) if crate::dblogo::paint(ui, kind, logo_rect, icol) => logo_rect,
+                    _ => ui.painter().text(egui::pos2(x, y), egui::Align2::LEFT_CENTER, r.icon, dbiji_icons::fill_font(ui.ctx(), font.size), icol),
+                };
                 if let Some(badge) = r.badge {
                     let at = icon_rect.right_bottom() + egui::vec2(-1.0, -2.0);
                     let bg = if selected { ui.visuals().selection.bg_fill } else { ui.visuals().panel_fill };
@@ -1540,7 +1575,20 @@ pub fn catalog_icon(i: CatalogIcon) -> &'static str {
 }
 
 fn placeholder(depth: usize, kind: RowKind) -> Row {
-    Row { node: NavNode::Folder(String::new()), depth, label: String::new(), detail: None, icon: "", icon_color: None, badge: None, expandable: false, expanded: false, kind }
+    Row {
+        node: NavNode::Folder(String::new()),
+        depth,
+        label: String::new(),
+        detail: None,
+        icon: "",
+        icon_color: None,
+        badge: None,
+        logo: None,
+        tint: None,
+        expandable: false,
+        expanded: false,
+        kind,
+    }
 }
 
 /// "New database…" / "New schema…" of a connected server (what its

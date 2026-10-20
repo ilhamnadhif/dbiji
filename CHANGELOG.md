@@ -3,6 +3,12 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.7 — 2026-10-20
+
+### Changed
+- Connections show their database's logo — PostgreSQL's elephant, MySQL's dolphin, MariaDB's seal, SQLite's feather, CockroachDB, ClickHouse, DuckDB (from Simple Icons) — in its colour, in the navigator, the connection dialog and the start page; SQL Server keeps the database icon. A connection type's colour (e.g. production) now tints the connection's row, DBeaver-like.
+- New screenshots in the README.
+
 ## 0.3.6 — 2026-10-20
 
 ### Changed

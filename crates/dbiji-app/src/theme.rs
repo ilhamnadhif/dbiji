@@ -6,19 +6,22 @@ use std::sync::Arc;
 /// User theme choice (stored in `settings.json`).
 pub use dbiji_config::settings::Theme as ThemeChoice;
 
-/// Inter 4.1 Regular (SIL Open Font License, `assets/fonts/Inter-LICENSE.txt`):
+/// Inter 4.1 Regular and Medium (SIL Open Font License, `assets/fonts/Inter-LICENSE.txt`):
 /// a typeface designed for screens, crisp at UI sizes; egui's default UI font
 /// is a light weight that looks faint and blurry. Subset without the private
 /// use area, where the Phosphor icons live (`pyftsubset --unicodes=
 /// U+0000-DFFF,U+F900-FFFF,U+10000-10FFFF --layout-features='*'`).
 const INTER: &[u8] = include_bytes!("../assets/fonts/Inter-Regular.ttf");
+const INTER_MEDIUM: &[u8] = include_bytes!("../assets/fonts/Inter-Medium.ttf");
 
 /// Fonts: Inter for the UI, Hack for code, then egui's defaults (emoji and
 /// symbols) and the Phosphor icon font as fallbacks, so icons can be mixed
-/// into any label.
-pub fn setup_fonts(ctx: &Context) {
+/// into any label. Inter is the Medium weight in the light theme: dark text
+/// on a light background reads thinner than light text on a dark one.
+pub fn font_definitions(theme: Theme) -> FontDefinitions {
+    let inter = if theme == Theme::Light { INTER_MEDIUM } else { INTER };
     let mut fonts = FontDefinitions::default();
-    fonts.font_data.insert("Inter".into(), Arc::new(FontData::from_static(INTER)));
+    fonts.font_data.insert("Inter".into(), Arc::new(FontData::from_static(inter)));
     let proportional = fonts.families.entry(FontFamily::Proportional).or_default();
     proportional.retain(|f| f != "Ubuntu-Light");
     proportional.insert(0, "Inter".into());
@@ -26,7 +29,24 @@ pub fn setup_fonts(ctx: &Context) {
     fonts.families.entry(FontFamily::Monospace).or_default().push("Inter".into());
     egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
     dbiji_icons::add_fill_font(&mut fonts);
-    ctx.set_fonts(fonts);
+    fonts
+}
+
+pub fn setup_fonts(ctx: &Context) {
+    set_fonts(ctx, ctx.theme());
+}
+
+fn set_fonts(ctx: &Context, theme: Theme) {
+    ctx.set_fonts(font_definitions(theme));
+    ctx.data_mut(|d| d.insert_temp(egui::Id::new("dbiji-font-theme"), theme));
+}
+
+/// Every frame: the UI font follows the theme, also when it follows the system's.
+pub fn sync_fonts(ctx: &Context) {
+    let theme = ctx.theme();
+    if ctx.data(|d| d.get_temp::<Theme>(egui::Id::new("dbiji-font-theme"))) != Some(theme) {
+        set_fonts(ctx, theme);
+    }
 }
 
 /// Apply the appearance preferences: theme, contrast, zoom and UI font size.
@@ -156,7 +176,7 @@ pub fn visuals(theme: Theme) -> Visuals {
     } else {
         P {
             text: hex(0x1F2328),
-            weak: hex(0x59636E),
+            weak: hex(0x4A525C),
             strong: hex(0x000000),
             panel: hex(0xF3F4F6),
             window: hex(0xFFFFFF),
@@ -274,4 +294,26 @@ pub fn warning_color(dark_mode: bool) -> Color32 {
 
 pub fn error_color(dark_mode: bool) -> Color32 {
     if dark_mode { Color32::from_rgb(255, 120, 110) } else { Color32::from_rgb(190, 30, 30) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn inter(ctx: &Context) -> usize {
+        ctx.data(|d| d.get_temp::<Theme>(egui::Id::new("dbiji-font-theme"))).map_or(0, |t| font_definitions(t).font_data["Inter"].font.len())
+    }
+
+    #[test]
+    fn light_theme_uses_a_heavier_inter() {
+        assert_eq!(font_definitions(Theme::Light).font_data["Inter"].font.len(), INTER_MEDIUM.len());
+        assert_eq!(font_definitions(Theme::Dark).font_data["Inter"].font.len(), INTER.len());
+        let ctx = Context::default();
+        ctx.set_theme(Theme::Dark);
+        sync_fonts(&ctx);
+        assert_eq!(inter(&ctx), INTER.len());
+        ctx.set_theme(Theme::Light);
+        sync_fonts(&ctx);
+        assert_eq!(inter(&ctx), INTER_MEDIUM.len());
+    }
 }

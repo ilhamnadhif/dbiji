@@ -1260,6 +1260,7 @@ impl DbijiApp {
 impl eframe::App for DbijiApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        crate::theme::sync_fonts(&ctx);
         if self.first_frame {
             self.first_frame = false;
             crate::bench::report_first_frame(self.started);

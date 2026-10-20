@@ -2666,3 +2666,15 @@ Hide empty	Sembunyikan yang kosong
 Hide the columns that are NULL or empty in this row	Sembunyikan kolom yang NULL atau kosong di baris ini
 Hide the columns that are NULL or empty in every row	Sembunyikan kolom yang NULL atau kosong di semua baris
 Check for updates automatically (at start and every few hours)	Periksa pembaruan secara otomatis (saat dibuka dan setiap beberapa jam)
+A folder with this name already exists	Folder dengan nama ini sudah ada
+Delete folder…	Hapus folder…
+Delete the folder "{}"?	Hapus folder "{}"?
+In {}	Di {}
+Its connections move to the folder above; none is deleted	Koneksinya pindah ke folder di atasnya; tidak ada yang dihapus
+Its {} connection(s) and its subfolders move to {}. No connection is deleted.	{} koneksi dan subfoldernya pindah ke {}. Tidak ada koneksi yang dihapus.
+Move to folder	Pindahkan ke folder
+New folder…	Folder baru…
+Rename folder…	Ganti nama folder…
+The name cannot contain "/"	Nama tidak boleh berisi "/"
+Type a name	Ketik nama
+the top level	tingkat teratas

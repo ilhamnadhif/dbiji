@@ -26,6 +26,12 @@ impl AdminSession {
     /// The session once open; `None` while connecting (shows a spinner) or
     /// when the connection is closed (shows a connect button).
     pub fn get(&mut self, ui: &mut Ui, cx: &mut AppContext, conn: &str, label: &str) -> Option<SessionHandle> {
+        self.get_in(ui, cx, conn, label, None)
+    }
+
+    /// The session, connected to `database` (another database of the same
+    /// server, e.g. a table of a database shown in the navigator).
+    pub fn get_in(&mut self, ui: &mut Ui, cx: &mut AppContext, conn: &str, label: &str, database: Option<&str>) -> Option<SessionHandle> {
         self.session.poll();
         if let Loadable::Loaded(s) = &self.session {
             if !s.is_closed() {
@@ -46,7 +52,8 @@ impl AdminSession {
         match &self.session {
             Loadable::NotLoaded => {
                 self.runtime = Some(cx.backend.handle());
-                self.session = Loadable::Loading(live.open_session_job(cx.backend, format!("{} ({label})", live.config.name), None));
+                let database = database.filter(|_| live.multiple_databases()).map(str::to_string);
+                self.session = Loadable::Loading(live.open_session_job(cx.backend, format!("{} ({label})", live.config.name), database));
             }
             Loadable::Failed(e) => {
                 let text = e.full_text();

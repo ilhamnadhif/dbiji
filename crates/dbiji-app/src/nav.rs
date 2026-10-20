@@ -946,6 +946,14 @@ impl Navigator {
             if ui.button(dbiji_icons::ic(icon::PLUS)).on_hover_text(tr("New connection")).clicked() {
                 cx.push(AppCommand::NewConnection { kind: None, folder: None });
             }
+            // A new folder inside the selected folder, else at the top level.
+            if ui.button(dbiji_icons::ic(icon::FOLDER_PLUS)).on_hover_text(tr("New folder")).clicked() {
+                let parent = match &self.selected {
+                    Some(NavNode::Folder(f)) => Some(f.clone()),
+                    _ => None,
+                };
+                cx.push(AppCommand::NewFolder { parent });
+            }
             let sel_conn = self.selected.as_ref().and_then(|n| n.connection()).map(str::to_string);
             let connected = sel_conn.as_deref().is_some_and(|c| cx.conns.is_connected(c));
             if ui
@@ -1214,6 +1222,14 @@ impl Navigator {
                 i.key_pressed(Key::F5),
             )
         });
+        // Copy the name / drop: only with the pointer over the navigator.
+        let pointer_here = ui.ui_contains_pointer();
+        let (copy, delete) = ui.input(|i| {
+            (
+                pointer_here && i.events.iter().any(|e| matches!(e, egui::Event::Copy)),
+                pointer_here && (i.key_pressed(Key::Delete) || (i.modifiers.command && i.key_pressed(Key::Backspace))),
+            )
+        });
         if ui.memory(|m| m.focused().is_some()) {
             return; // a text field (filter) has focus
         }
@@ -1242,6 +1258,17 @@ impl Navigator {
             if f5 {
                 self.refresh_selected(cx);
             }
+            if copy {
+                let name = match &node {
+                    NavNode::Object { conn, obj } | NavNode::Child { conn, obj } => cx.conns.live(conn).map(|l| l.dialect.qualified_ref(obj)).unwrap_or_else(|| obj.display_path()),
+                    _ => self.rows[c].label.clone(),
+                };
+                ui.ctx().copy_text(name);
+            }
+            if delete && let NavNode::Object { conn, obj } | NavNode::Child { conn, obj } = &node {
+                // Opens the drop dialog (preview and confirmation).
+                cx.push(AppCommand::DropObjects { connection: conn.clone(), objects: vec![obj.clone()] });
+            }
         }
     }
 
@@ -1251,6 +1278,24 @@ impl Navigator {
             NavNode::Folder(f) => {
                 if ui.button((dbiji_icons::ic(icon::PLUS), tr("New connection here"))).clicked() {
                     cx.push(AppCommand::NewConnection { kind: None, folder: Some(f.clone()) });
+                    ui.close();
+                }
+                if ui.button((dbiji_icons::ic(icon::FOLDER_PLUS), tr("New folder…"))).clicked() {
+                    cx.push(AppCommand::NewFolder { parent: Some(f.clone()) });
+                    ui.close();
+                }
+                ui.separator();
+                if ui.button((dbiji_icons::ic(icon::PENCIL_SIMPLE), tr("Rename folder…"))).clicked() {
+                    cx.push(AppCommand::RenameFolder(f.clone()));
+                    ui.close();
+                }
+                let red = crate::theme::error_color(ui.visuals().dark_mode);
+                if ui
+                    .button(RichText::new(format!("{} {}", icon::TRASH, tr("Delete folder…"))).color(red))
+                    .on_hover_text(tr("Its connections move to the folder above; none is deleted"))
+                    .clicked()
+                {
+                    cx.push(AppCommand::DeleteFolder(f.clone()));
                     ui.close();
                 }
             }
@@ -1270,7 +1315,7 @@ impl Navigator {
                     ui.close();
                 }
                 ui.separator();
-                if ui.button((dbiji_icons::ic(icon::FILE_SQL), tr("New SQL editor"))).clicked() {
+                if item(ui, icon::FILE_SQL, tr("New SQL editor"), &crate::keys::label(cx.keymap, crate::keys::Action::NewSqlEditor)).clicked() {
                     cx.push(AppCommand::NewSqlEditor { connection: Some(id.clone()), schema: None, text: None });
                     ui.close();
                 }
@@ -1313,6 +1358,29 @@ impl Navigator {
                         }
                     }
                 });
+                let current = cx.conns.config(id).and_then(|c| c.folder.clone());
+                let folders = cx.conns.folders().to_vec();
+                ui.menu_button((dbiji_icons::ic(icon::FOLDER), tr("Move to folder")), |ui| {
+                    if ui.add_enabled(current.is_some(), egui::Button::new(tr("(top level)"))).clicked() {
+                        cx.push(AppCommand::MoveToFolder { id: id.clone(), folder: None });
+                        ui.close();
+                    }
+                    for f in &folders {
+                        // Subfolders indented under their parent.
+                        let depth = f.matches('/').count();
+                        let name = f.rsplit('/').next().unwrap_or(f);
+                        let label = (RichText::new(format!("{}{}", "    ".repeat(depth), icon::FOLDER)).color(dbiji_icons::ORANGE), name);
+                        if ui.add_enabled(current.as_deref() != Some(f.as_str()), egui::Button::new(label)).clicked() {
+                            cx.push(AppCommand::MoveToFolder { id: id.clone(), folder: Some(f.clone()) });
+                            ui.close();
+                        }
+                    }
+                    ui.separator();
+                    if ui.button((dbiji_icons::ic(icon::FOLDER_PLUS), tr("New folder…"))).clicked() {
+                        cx.push(AppCommand::NewFolder { parent: None });
+                        ui.close();
+                    }
+                });
                 if connected {
                     ui.separator();
                     ui.menu_button((dbiji_icons::ic(icon::WRENCH), tr("Tools")), |ui| {
@@ -1322,7 +1390,7 @@ impl Navigator {
             }
             NavNode::Database { conn, db } => {
                 let schema = SchemaRef { database: Some(db.clone()), schema: None };
-                if ui.button((dbiji_icons::ic(icon::FILE_SQL), tr("New SQL editor"))).clicked() {
+                if item(ui, icon::FILE_SQL, tr("New SQL editor"), &crate::keys::label(cx.keymap, crate::keys::Action::NewSqlEditor)).clicked() {
                     cx.push(AppCommand::NewSqlEditor { connection: Some(conn.clone()), schema: Some(schema), text: None });
                     ui.close();
                 }
@@ -1330,7 +1398,7 @@ impl Navigator {
                 ui.menu_button((dbiji_icons::ic(icon::WRENCH), tr("Tools")), |ui| tools_menu(ui, cx, conn, None));
             }
             NavNode::Schema { conn, schema } | NavNode::KindFolder { conn, schema, .. } => {
-                if ui.button((dbiji_icons::ic(icon::FILE_SQL), tr("New SQL editor"))).clicked() {
+                if item(ui, icon::FILE_SQL, tr("New SQL editor"), &crate::keys::label(cx.keymap, crate::keys::Action::NewSqlEditor)).clicked() {
                     cx.push(AppCommand::NewSqlEditor { connection: Some(conn.clone()), schema: Some(schema.clone()), text: None });
                     ui.close();
                 }
@@ -1373,30 +1441,30 @@ impl Navigator {
                     ui.close();
                 }
                 ui.separator();
-                if ui.button((dbiji_icons::ic(icon::ARROW_CLOCKWISE), tr("Refresh"))).clicked() {
+                if item(ui, icon::ARROW_CLOCKWISE, tr("Refresh"), &crate::keys::label(cx.keymap, crate::keys::Action::Refresh)).clicked() {
                     cx.push(AppCommand::RefreshMetadata { connection: conn.clone(), object: None, schema: Some(schema.clone()) });
                     ui.close();
                 }
             }
             NavNode::Object { conn, obj } | NavNode::Child { conn, obj } => {
-                object_menu(ui, cx, conn, obj);
+                object_menu(ui, cx, conn, obj, true);
             }
             NavNode::ChildFolder { conn, parent, .. } => {
-                if ui.button((dbiji_icons::ic(icon::ARROW_CLOCKWISE), tr("Refresh"))).clicked() {
+                if item(ui, icon::ARROW_CLOCKWISE, tr("Refresh"), &crate::keys::label(cx.keymap, crate::keys::Action::Refresh)).clicked() {
                     cx.push(AppCommand::RefreshMetadata { connection: conn.clone(), object: Some(parent.clone()), schema: None });
                     ui.close();
                 }
             }
             NavNode::Extensions { .. } => {
                 if let Some(c) = conn
-                    && ui.button((dbiji_icons::ic(icon::ARROW_CLOCKWISE), tr("Refresh"))).clicked()
+                    && item(ui, icon::ARROW_CLOCKWISE, tr("Refresh"), &crate::keys::label(cx.keymap, crate::keys::Action::Refresh)).clicked()
                 {
                     cx.push(AppCommand::RefreshMetadata { connection: c, object: None, schema: None });
                     ui.close();
                 }
             }
             NavNode::CatalogGroup { conn, .. } => {
-                if ui.button((dbiji_icons::ic(icon::ARROW_CLOCKWISE), tr("Refresh"))).clicked() {
+                if item(ui, icon::ARROW_CLOCKWISE, tr("Refresh"), &crate::keys::label(cx.keymap, crate::keys::Action::Refresh)).clicked() {
                     cx.push(AppCommand::RefreshCatalog { connection: conn.clone(), folder: None });
                     ui.close();
                 }
@@ -1406,21 +1474,21 @@ impl Navigator {
                     cx.push(AppCommand::OpenCatalogTable { connection: conn.clone(), folder, ctx: ctx.clone() });
                     ui.close();
                 }
-                if ui.button((dbiji_icons::ic(icon::ARROW_CLOCKWISE), tr("Refresh"))).clicked() {
+                if item(ui, icon::ARROW_CLOCKWISE, tr("Refresh"), &crate::keys::label(cx.keymap, crate::keys::Action::Refresh)).clicked() {
                     cx.push(AppCommand::RefreshCatalog { connection: conn.clone(), folder: Some(folder) });
                     ui.close();
                 }
             }
             NavNode::CatalogItem { conn, folder, ctx } => {
-                if ui.button((dbiji_icons::ic(icon::ARROW_SQUARE_OUT), tr("Open"))).clicked() {
+                if item(ui, icon::ARROW_SQUARE_OUT, tr("Open"), OPEN_KEYS).clicked() {
                     cx.push(AppCommand::OpenCatalogObject { connection: conn.clone(), folder, ctx: ctx.clone() });
                     ui.close();
                 }
-                if ui.button((dbiji_icons::ic(icon::COPY), tr("Copy name"))).clicked() {
+                if item(ui, icon::COPY, tr("Copy name"), COPY_KEYS).clicked() {
                     ui.ctx().copy_text(ctx.name.clone().unwrap_or_default());
                     ui.close();
                 }
-                if ui.button((dbiji_icons::ic(icon::ARROW_CLOCKWISE), tr("Refresh"))).clicked() {
+                if item(ui, icon::ARROW_CLOCKWISE, tr("Refresh"), &crate::keys::label(cx.keymap, crate::keys::Action::Refresh)).clicked() {
                     cx.push(AppCommand::RefreshCatalog { connection: conn.clone(), folder: Some(folder) });
                     ui.close();
                 }
@@ -1551,10 +1619,22 @@ pub fn tools_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, schema: Option<S
     }
 }
 
+/// A menu item with its shortcut on the right.
+fn item(ui: &mut Ui, glyph: &str, text: &str, keys: &str) -> egui::Response {
+    ui.add(egui::Button::new((dbiji_icons::ic(glyph), text)).shortcut_text(keys))
+}
+
+/// The navigator's own keys, as shown in its menus.
+const OPEN_KEYS: &str = if crate::keys::IS_MAC { "↩" } else { "Enter" };
+const COPY_KEYS: &str = if crate::keys::IS_MAC { "⌘C" } else { "Ctrl+C" };
+const DROP_KEYS: &str = if crate::keys::IS_MAC { "⌘⌫" } else { "Delete" };
+
 /// Context menu for a database object (navigator and object editors).
-pub fn object_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, obj: &ObjectRef) {
+/// `in_navigator`: show the navigator's keys next to the items.
+pub fn object_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, obj: &ObjectRef, in_navigator: bool) {
     let c = conn.to_string();
-    if ui.button((dbiji_icons::ic(icon::ARROW_SQUARE_OUT), tr("Open"))).clicked() {
+    let keys = |k: &str| if in_navigator { k.to_string() } else { String::new() };
+    if item(ui, icon::ARROW_SQUARE_OUT, tr("Open"), &keys(OPEN_KEYS)).clicked() {
         cx.push(AppCommand::OpenObject { connection: c.clone(), object: obj.clone(), page: ObjectPage::Properties });
         ui.close();
     }
@@ -1650,17 +1730,18 @@ pub fn object_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, obj: &ObjectRef
         cx.push(AppCommand::AddBookmark { connection: c.clone(), object: obj.clone() });
         ui.close();
     }
-    if ui.button((dbiji_icons::ic(icon::COPY), tr("Copy name"))).clicked() {
+    if item(ui, icon::COPY, tr("Copy name"), &keys(COPY_KEYS)).clicked() {
         let name = cx.conns.live(conn).map(|l| l.dialect.qualified_ref(obj)).unwrap_or_else(|| obj.display_path());
         ui.ctx().copy_text(name);
         ui.close();
     }
-    if ui.button((dbiji_icons::ic(icon::ARROW_CLOCKWISE), tr("Refresh"))).clicked() {
+    if item(ui, icon::ARROW_CLOCKWISE, tr("Refresh"), &keys(&crate::keys::label(cx.keymap, crate::keys::Action::Refresh))).clicked() {
         cx.push(AppCommand::RefreshMetadata { connection: c.clone(), object: Some(obj.clone()), schema: None });
         ui.close();
     }
     ui.separator();
-    if ui.button(RichText::new(format!("{} {}", icon::TRASH, tr("Drop…"))).color(crate::theme::error_color(ui.visuals().dark_mode))).clicked() {
+    let red = crate::theme::error_color(ui.visuals().dark_mode);
+    if ui.add(egui::Button::new(RichText::new(format!("{} {}", icon::TRASH, tr("Drop…"))).color(red)).shortcut_text(keys(DROP_KEYS))).clicked() {
         cx.push(AppCommand::DropObjects { connection: c, objects: vec![obj.clone()] });
         ui.close();
     }

@@ -514,7 +514,7 @@ impl TabView for ObjectEditorTab {
                     self.refresh();
                     cx.push(AppCommand::RefreshMetadata { connection: self.conn.clone(), object: Some(self.obj.clone()), schema: None });
                 }
-                ui.menu_button(icon::DOTS_THREE, |ui| crate::nav::object_menu(ui, cx, &self.conn.clone(), &self.obj.clone()));
+                ui.menu_button(icon::DOTS_THREE, |ui| crate::nav::object_menu(ui, cx, &self.conn.clone(), &self.obj.clone(), false));
             });
         });
         ui.separator();

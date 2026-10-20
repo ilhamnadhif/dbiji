@@ -149,6 +149,11 @@ impl LiveConnection {
         &self.params
     }
 
+    /// The server has several databases, each needing its own session (PostgreSQL).
+    pub fn multiple_databases(&self) -> bool {
+        self.driver.info().capabilities.multiple_databases
+    }
+
     /// Session for `database` (`None` or the current database → main session).
     pub fn session_for(&self, database: Option<&str>) -> Option<SessionHandle> {
         match database {

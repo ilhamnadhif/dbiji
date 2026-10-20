@@ -58,6 +58,19 @@ pub enum AppCommand {
     EditConnection(String),
     DuplicateConnection(String),
     DeleteConnection(String),
+    /// New navigator folder (inside `parent`; `None`: the top level).
+    NewFolder {
+        parent: Option<String>,
+    },
+    /// Rename a navigator folder (asks for the name).
+    RenameFolder(String),
+    /// Delete a navigator folder (asks; its connections move up).
+    DeleteFolder(String),
+    /// Put a connection in a folder (`None`: the top level).
+    MoveToFolder {
+        id: String,
+        folder: Option<String>,
+    },
     ImportConnections,
     SaveConnections,
     /// Create the SQLite sample database and a connection to it.

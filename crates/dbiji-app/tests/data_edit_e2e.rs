@@ -424,3 +424,30 @@ fn default_filter_per_table() {
         let _ = name;
     }
 }
+
+/// A table of another database of the server (PostgreSQL shows every
+/// database in the navigator): its data tab connects to that database
+/// instead of failing with "relation … does not exist".
+#[test]
+fn table_of_another_database() {
+    let Some(url) = std::env::var("DBIJI_TEST_PG").ok().filter(|u| !u.trim().is_empty()) else { return };
+    let mut h = H::new(&url);
+    let db = format!("dbiji_otherdb_{}", &uuid::Uuid::new_v4().simple().to_string()[..8]);
+    h.sql(&format!("CREATE DATABASE {db}"));
+    // The table exists only in the other database.
+    let (base, query) = url.split_once('?').map_or((url.as_str(), ""), |(b, q)| (b, q));
+    let other_url = format!("{}/{db}{}{query}", base.rsplit_once('/').unwrap().0, if query.is_empty() { "" } else { "?" });
+    {
+        let other = H::new(&other_url);
+        other.sql("CREATE TABLE api_calls (id INT PRIMARY KEY, path TEXT)");
+        other.sql("INSERT INTO api_calls VALUES (1, '/a'), (2, '/b')");
+    }
+    let obj = ObjectRef::table(Some("public".into()), "api_calls").with_database(Some(db.clone()));
+    let mut view = TableDataView::new(h.id.clone(), obj, None);
+    h.until(&mut view, "rows of the other database", |v| {
+        assert!(v.error().is_none(), "{:?}", v.error());
+        v.panel.as_ref().is_some_and(|p| p.model.row_count() == 2)
+    });
+    drop(view);
+    let _ = h.try_sql(&format!("DROP DATABASE {db} WITH (FORCE)"));
+}

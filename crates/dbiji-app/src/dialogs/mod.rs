@@ -31,8 +31,35 @@ struct DeleteConfirm {
     name: String,
 }
 
+/// What the folder dialog does.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FolderAction {
+    /// A new folder inside `parent` (`None`: the top level).
+    New { parent: Option<String> },
+    /// Rename this folder (a `/` separated path).
+    Rename(String),
+    /// Delete this folder; its connections and subfolders move up.
+    Delete(String),
+}
+
+struct FolderDialog {
+    action: FolderAction,
+    name: String,
+    error: Option<String>,
+    focused: bool,
+}
+
+/// The folder a path is in, and its own name.
+fn split_folder(path: &str) -> (Option<&str>, &str) {
+    match path.rsplit_once('/') {
+        Some((parent, name)) => (Some(parent), name),
+        None => (None, path),
+    }
+}
+
 #[derive(Default)]
 pub struct Dialogs {
+    folder: Option<FolderDialog>,
     connection: Vec<ConnectionDialog>,
     prompts: Vec<CredentialPrompt>,
     ready: Vec<(String, Credentials)>,
@@ -70,6 +97,15 @@ impl Dialogs {
         }
     }
 
+    /// New / rename / delete a navigator folder.
+    pub fn folder_dialog(&mut self, action: FolderAction) {
+        let name = match &action {
+            FolderAction::Rename(path) => split_folder(path).1.to_string(),
+            _ => String::new(),
+        };
+        self.folder = Some(FolderDialog { action, name, error: None, focused: false });
+    }
+
     pub fn open_credentials(&mut self, id: &str, fields: Vec<PromptField>, conns: &ConnectionManager) {
         if self.prompts.iter().any(|p| p.conn_id == id) {
             return;
@@ -89,7 +125,14 @@ impl Dialogs {
 
     /// A dialog that takes keyboard input is open (shortcuts are suspended).
     pub fn captures_keyboard(&self) -> bool {
-        self.palette_open || self.vault_open || self.delete.is_some() || self.drop.is_some() || !self.prompts.is_empty() || self.import.is_some() || !self.connection.is_empty()
+        self.palette_open
+            || self.vault_open
+            || self.delete.is_some()
+            || self.folder.is_some()
+            || self.drop.is_some()
+            || !self.prompts.is_empty()
+            || self.import.is_some()
+            || !self.connection.is_empty()
     }
 
     /// Credentials entered by the user since the last call.
@@ -104,6 +147,7 @@ impl Dialogs {
         self.connection.retain(|d| d.open);
         self.show_prompts(ctx, cx);
         self.show_delete(ctx, cx);
+        self.show_folder(ctx, cx);
         if self.vault_open {
             let mut open = true;
             self.vault.show(ctx, cx, &mut open);
@@ -270,6 +314,105 @@ impl Dialogs {
         done.dedup();
         for i in done.into_iter().rev() {
             self.prompts.remove(i);
+        }
+    }
+
+    fn show_folder(&mut self, ctx: &egui::Context, cx: &mut AppContext) {
+        let Some(d) = &mut self.folder else { return };
+        let mut close = false;
+        let red = |ui: &egui::Ui| crate::theme::error_color(ui.visuals().dark_mode);
+        let modal = egui::Modal::new(egui::Id::new("dbiji_folder")).show(ctx, |ui| {
+            ui.set_width(420.0);
+            match d.action.clone() {
+                FolderAction::Delete(path) => {
+                    crate::widgets::icon_heading(ui, icon::FOLDER, trf("Delete the folder \"{}\"?", &[&split_folder(&path).1]));
+                    let inside = |f: &Option<String>| f.as_deref().is_some_and(|f| f == path || f.starts_with(&format!("{path}/")));
+                    let n = cx.conns.configs().iter().filter(|c| inside(&c.folder)).count();
+                    let target = split_folder(&path).0.map(str::to_string).unwrap_or_else(|| tr("the top level").to_string());
+                    ui.label(trf("Its {} connection(s) and its subfolders move to {}. No connection is deleted.", &[&n, &target]));
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if ui.button(RichText::new(format!("{}  {}", icon::TRASH, tr("Delete folder"))).color(red(ui))).clicked() {
+                            match cx.conns.store.delete_folder(&path) {
+                                Ok(_) => {
+                                    cx.push(AppCommand::SaveConnections);
+                                    close = true;
+                                }
+                                Err(e) => d.error = Some(e.to_string()),
+                            }
+                        }
+                        if ui.button(tr("Cancel")).clicked() {
+                            close = true;
+                        }
+                    });
+                }
+                action => {
+                    let (title, parent) = match &action {
+                        FolderAction::New { parent } => (tr("New folder"), parent.clone()),
+                        FolderAction::Rename(path) => (tr("Rename folder"), split_folder(path).0.map(str::to_string)),
+                        FolderAction::Delete(_) => unreachable!(),
+                    };
+                    crate::widgets::icon_heading(ui, icon::FOLDER, title);
+                    if let Some(p) = &parent {
+                        ui.weak(trf("In {}", &[p]));
+                    }
+                    ui.add_space(4.0);
+                    let edit = ui.add(egui::TextEdit::singleline(&mut d.name).hint_text(tr("Folder name")).desired_width(f32::INFINITY));
+                    if !d.focused {
+                        edit.request_focus();
+                        d.focused = true;
+                    }
+                    let enter = edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                    let name = d.name.trim().to_string();
+                    let path = match &parent {
+                        Some(p) => format!("{p}/{name}"),
+                        None => name.clone(),
+                    };
+                    let problem = if name.is_empty() {
+                        Some(tr("Type a name"))
+                    } else if name.contains('/') {
+                        Some(tr("The name cannot contain \"/\""))
+                    } else if cx.conns.folders().iter().any(|f| f == &path) && action != FolderAction::Rename(path.clone()) {
+                        Some(tr("A folder with this name already exists"))
+                    } else {
+                        None
+                    };
+                    if let Some(p) = problem.filter(|_| !name.is_empty()) {
+                        ui.colored_label(red(ui), p);
+                    }
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        let label = if matches!(action, FolderAction::New { .. }) { tr("Create") } else { tr("Rename") };
+                        let ok = ui.add_enabled(problem.is_none(), crate::widgets::primary_button(ui, icon::CHECK, label)).clicked() || (enter && problem.is_none());
+                        if ok {
+                            let result = match &action {
+                                FolderAction::New { .. } => {
+                                    cx.conns.store.add_folder(&path);
+                                    Ok(())
+                                }
+                                FolderAction::Rename(old) => cx.conns.store.rename_folder(old, &path),
+                                FolderAction::Delete(_) => Ok(()),
+                            };
+                            match result {
+                                Ok(()) => {
+                                    cx.push(AppCommand::SaveConnections);
+                                    close = true;
+                                }
+                                Err(e) => d.error = Some(e.to_string()),
+                            }
+                        }
+                        if ui.button(tr("Cancel")).clicked() {
+                            close = true;
+                        }
+                    });
+                }
+            }
+            if let Some(e) = &d.error {
+                ui.colored_label(red(ui), e);
+            }
+        });
+        if close || modal.should_close() {
+            self.folder = None;
         }
     }
 

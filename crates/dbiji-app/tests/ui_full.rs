@@ -1687,3 +1687,37 @@ fn boolean_check_boxes_in_the_record_view() {
     assert!(has(&h, "Save (1)"), "one pending change: {:?}", labels(&h));
     assert!(h.query_all_by_role(egui::accesskit::Role::TextInput).all(|n| n.accesskit_node().value().as_deref() != Some("false")), "no text field for a boolean");
 }
+
+#[test]
+fn connection_folders() {
+    let (_dir, mut h, conn) = setup();
+    let folder_of = |h: &H| h.state().conns.config(&conn).and_then(|c| c.folder.clone());
+    // New folder: the name field has the focus, Enter creates it.
+    h.state_mut().push_command(AppCommand::NewFolder { parent: None });
+    frames(&mut h, 3);
+    h.event(egui::Event::Text("Servers".into()));
+    frames(&mut h, 2);
+    h.key_press(Key::Enter);
+    frames(&mut h, 3);
+    assert!(h.state().conns.folders().iter().any(|f| f == "Servers"), "{:?}", h.state().conns.folders());
+    // A connection moved into it.
+    h.state_mut().push_command(AppCommand::MoveToFolder { id: conn.clone(), folder: Some("Servers".into()) });
+    frames(&mut h, 2);
+    assert_eq!(folder_of(&h).as_deref(), Some("Servers"));
+    // Renamed: the connection follows.
+    h.state_mut().push_command(AppCommand::RenameFolder("Servers".into()));
+    frames(&mut h, 3);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    h.event(egui::Event::Text("Prod".into()));
+    frames(&mut h, 2);
+    h.key_press(Key::Enter);
+    frames(&mut h, 3);
+    assert_eq!(folder_of(&h).as_deref(), Some("Prod"));
+    // Deleted: the connection moves to the top level, nothing else is lost.
+    h.state_mut().push_command(AppCommand::DeleteFolder("Prod".into()));
+    frames(&mut h, 3);
+    click(&mut h, "Delete folder");
+    assert!(h.state().conns.folders().is_empty(), "{:?}", h.state().conns.folders());
+    assert_eq!(folder_of(&h), None);
+    assert!(h.state().conns.config(&conn).is_some(), "the connection is kept");
+}

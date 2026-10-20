@@ -4,7 +4,7 @@ use crate::backend::Backend;
 use crate::command::AppCommand;
 use crate::conn::{ConnectionManager, Credentials};
 use crate::cx::AppContext;
-use crate::dialogs::Dialogs;
+use crate::dialogs::{Dialogs, FolderAction};
 use crate::nav::Navigator;
 use crate::ops::Operations;
 use crate::services::{Services, Settings};
@@ -310,6 +310,14 @@ impl DbijiApp {
                 }
             }
             AppCommand::DeleteConnection(id) => self.dialogs.confirm_delete_connection(&id, &self.conns),
+            AppCommand::NewFolder { parent } => self.dialogs.folder_dialog(FolderAction::New { parent }),
+            AppCommand::RenameFolder(path) => self.dialogs.folder_dialog(FolderAction::Rename(path)),
+            AppCommand::DeleteFolder(path) => self.dialogs.folder_dialog(FolderAction::Delete(path)),
+            AppCommand::MoveToFolder { id, folder } => {
+                if let Some(c) = self.conns.config_mut(&id) {
+                    c.folder = folder;
+                }
+            }
             AppCommand::ShowPalette => {
                 crate::palette::reset(ctx);
                 self.dialogs.palette_open = true;

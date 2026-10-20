@@ -36,6 +36,11 @@ pub fn icon_heading(ui: &mut Ui, glyph: &str, text: impl Into<String>) -> egui::
 }
 
 pub fn simple_table(ui: &mut Ui, id_salt: impl std::hash::Hash + std::fmt::Debug, headers: &[&str], rows: &[Vec<String>], selected: Option<usize>) -> TableResponse {
+    // In its own ui: the column lines end at the last row, not at the bottom of the panel.
+    ui.scope(|ui| table_in(ui, id_salt, headers, rows, selected)).inner
+}
+
+fn table_in(ui: &mut Ui, id_salt: impl std::hash::Hash + std::fmt::Debug, headers: &[&str], rows: &[Vec<String>], selected: Option<usize>) -> TableResponse {
     let mut out = TableResponse::default();
     let row_h = ui.text_style_height(&egui::TextStyle::Body) + 8.0;
     // Every column at least as wide as its header (plus the cell padding).
@@ -47,7 +52,8 @@ pub fn simple_table(ui: &mut Ui, id_salt: impl std::hash::Hash + std::fmt::Debug
         .striped(true)
         .resizable(true)
         .sense(egui::Sense::click())
-        .auto_shrink([false, false])
+        // As tall as its rows: the column lines end at the last row.
+        .auto_shrink([false, true])
         .cell_layout(egui::Layout::left_to_right(egui::Align::Center));
     for (i, w) in header_w.iter().enumerate() {
         tb = if i + 1 == headers.len() {

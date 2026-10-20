@@ -30,6 +30,11 @@ impl TableDataView {
         TableDataView { conn, table, where_clause, order_by: None, session: AdminSession::default(), exec: None, panel: None, error: None, started: false }
     }
 
+    /// The error that stopped loading the data, if any.
+    pub fn error(&self) -> Option<&str> {
+        self.error.as_deref()
+    }
+
     fn start(&mut self, cx: &mut AppContext, session: crate::conn::session::SessionHandle) {
         let Some(live) = cx.conns.live(&self.conn) else { return };
         // The table's default filter / order (virtual model), unless opened with a condition.
@@ -75,7 +80,9 @@ impl TableDataView {
 
     pub fn ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
         let conn = self.conn.clone();
-        let Some(session) = self.session.get(ui, cx, &conn, "data") else { return };
+        // A table of another database of the server needs a session there.
+        let database = self.table.database.clone();
+        let Some(session) = self.session.get_in(ui, cx, &conn, "data", database.as_deref()) else { return };
         if !self.started {
             self.start(cx, session.clone());
         }

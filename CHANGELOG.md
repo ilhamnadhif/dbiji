@@ -14,10 +14,15 @@ notes of a new version once after it was updated (Help → What's new).
 - Navigator: long names and connection details are cut with "…" at the panel's edge.
 - Connection dialog: the database types in their colours; Settings: coloured section icons, and the update check text says "at start and every few hours".
 - ER diagram: one toolbar (the layout, edit mode and export buttons were shown twice).
-- Primary key columns in the properties' column list have a gold key.
+- Primary key columns in the properties' column list have a gold key; the column lines of property tables end at the last row.
+- Navigator menus show the keys: Open ↩, Copy name ⌘C, Refresh F5, Drop… ⌘⌫ (new: ⌘C copies the selected object's name, ⌘⌫ / Delete opens the drop dialog), New SQL editor ⌘].
+
+### New
+- Connection folders: New folder (navigator toolbar and folder menu), Rename folder…, Delete folder… (its connections and subfolders move up; no connection is deleted), and Move to folder in a connection's menu.
 
 ### Fixed
 - SQL editor: the completion popup no longer stays open after running a statement.
+- PostgreSQL: the data of a table in another database of the server (shown with "Show all databases") failed with "relation … does not exist"; the data tab now connects to that database.
 
 ## 0.3.3 — 2026-10-20
 

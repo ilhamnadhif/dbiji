@@ -87,6 +87,12 @@ pub trait TabView: Any {
         crate::keys::ActionContext::Global
     }
 
+    /// Opens in a pop-up window of this size instead of a tab: wizards and
+    /// one-off actions (export, import, backup …).
+    fn popup_size(&self) -> Option<egui::Vec2> {
+        None
+    }
+
     /// Called before closing; return false to keep the tab open (e.g. to ask
     /// about unsaved changes — the tab then shows its own confirmation).
     fn on_close(&mut self, cx: &mut AppContext) -> bool {

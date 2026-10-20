@@ -500,6 +500,10 @@ fn params_ui(ui: &mut Ui, g: &mut GeneratorKind) {
 }
 
 impl TabView for MockDataTab {
+    fn popup_size(&self) -> Option<egui::Vec2> {
+        Some(egui::vec2(760.0, 560.0))
+    }
+
     fn title(&self) -> String {
         trf("Mock data: {}", &[&self.table.name])
     }

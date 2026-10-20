@@ -304,6 +304,10 @@ fn settle(h: &mut H, step: &str) {
     h.state_mut().dialogs = Default::default();
     h.state_mut().tip = None;
     h.state_mut().pending_tx.open = false;
+    let popups: Vec<u64> = h.state().popups.iter().map(|t| t.id).collect();
+    for id in popups {
+        h.state_mut().close_tab(id);
+    }
     frames(h, 1);
 }
 
@@ -854,6 +858,20 @@ fn tool_tabs_run() {
 
     // Export the customer table to CSV (default format) in ~/Downloads.
     nav_menu(&mut h, "customer", &["Export data"]);
+    // A pop-up window, not a tab, that keeps its size and fits the window.
+    assert_eq!(h.state().popups.len(), 1);
+    assert!(!tab_titles(&h).iter().any(|t| t.starts_with("Export")), "{:?}", tab_titles(&h));
+    let popup_rect = |h: &H| h.ctx.memory(|m| m.area_rect(egui::Id::new(("dbiji_popup", h.state().popups[0].id)))).expect("pop-up drawn");
+    let r0 = popup_rect(&h);
+    frames(&mut h, 10);
+    assert_eq!(popup_rect(&h), r0, "the pop-up keeps its size");
+    let screen = h.ctx.content_rect();
+    assert!(screen.contains_rect(r0), "{r0:?} inside {screen:?}");
+    // The window's close button closes it; opening export again shows a new one.
+    click(&mut h, "Close window");
+    assert!(h.state().popups.is_empty());
+    nav_menu(&mut h, "customer", &["Export data"]);
+    assert_eq!(h.state().popups.len(), 1);
     click(&mut h, "Run export");
     // Named database (SQLite: the file) _ table _ date _ time.
     let date = chrono::Local::now().format("%Y%m%d").to_string();

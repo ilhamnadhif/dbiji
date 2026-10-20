@@ -1327,6 +1327,10 @@ fn common_ui(ui: &mut Ui, id: u64, o: &mut ExportOptions, format: ExportFormat) 
 }
 
 impl TabView for ExportTab {
+    fn popup_size(&self) -> Option<egui::Vec2> {
+        Some(egui::vec2(780.0, 560.0))
+    }
+
     fn title(&self) -> String {
         let subject = self.subject();
         if subject.is_empty() { tr("Export data").to_string() } else { trf("Export {}", &[&subject]) }

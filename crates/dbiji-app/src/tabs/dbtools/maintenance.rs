@@ -507,6 +507,10 @@ impl MaintenanceTab {
 }
 
 impl TabView for MaintenanceTab {
+    fn popup_size(&self) -> Option<egui::Vec2> {
+        Some(egui::vec2(700.0, 520.0))
+    }
+
     fn title(&self) -> String {
         match self.objects.as_slice() {
             [one] => trf("Maintenance: {}", &[&one.name]),

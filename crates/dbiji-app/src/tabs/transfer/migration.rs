@@ -797,6 +797,10 @@ fn describe(s: &MigrationSummary) -> String {
 }
 
 impl TabView for MigrationTab {
+    fn popup_size(&self) -> Option<egui::Vec2> {
+        Some(egui::vec2(820.0, 600.0))
+    }
+
     fn title(&self) -> String {
         let n = self.tables.iter().filter(|t| t.enabled).count();
         match self.tables.iter().filter(|t| t.enabled).collect::<Vec<_>>().as_slice() {

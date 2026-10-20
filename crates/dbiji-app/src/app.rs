@@ -69,6 +69,10 @@ pub struct DbijiApp {
     bench_workload: Option<Vec<String>>,
     /// "What's new" and update checks.
     pub updates: crate::updates::Updates,
+    /// Wizards and actions shown in pop-up windows instead of tabs.
+    pub popups: Vec<Tab>,
+    /// Bring this pop-up to the front (opened again while open).
+    raise_popup: Option<u64>,
     /// The native application menu (About, Check for Updates…, Quit).
     #[cfg(target_os = "macos")]
     pub app_menu: Option<crate::macmenu::AppMenu>,
@@ -116,6 +120,8 @@ impl DbijiApp {
             quit_confirmed: false,
             bench_workload: None,
             updates: Default::default(),
+            popups: Vec::new(),
+            raise_popup: None,
             #[cfg(target_os = "macos")]
             app_menu: None,
             existing_install: false,
@@ -136,6 +142,18 @@ impl DbijiApp {
 
     /// Open a tab, or focus an existing tab with the same dedupe key.
     pub fn open_tab(&mut self, view: Box<dyn TabView>) -> u64 {
+        if view.popup_size().is_some() {
+            if let Some(key) = view.dedupe_key()
+                && let Some(t) = self.popups.iter().find(|t| t.view.dedupe_key().as_deref() == Some(key.as_str()))
+            {
+                self.raise_popup = Some(t.id);
+                return t.id;
+            }
+            let id = self.next_tab_id;
+            self.next_tab_id += 1;
+            self.popups.push(Tab::new(id, view));
+            return id;
+        }
         if let Some(key) = view.dedupe_key()
             && let Some(path) = self.dock.find_tab_from(|t| t.view.dedupe_key().as_deref() == Some(key.as_str()))
         {
@@ -171,10 +189,14 @@ impl DbijiApp {
         }
     }
 
-    fn close_tab(&mut self, id: u64) {
-        if let Some(path) = self.dock.find_tab_from(|t| t.id == id)
-            && let Some(mut tab) = self.dock.remove_tab(path)
-        {
+    /// Close a tab or pop-up (it may veto, e.g. to ask about unsaved changes).
+    pub fn close_tab(&mut self, id: u64) {
+        let popup = self.popups.iter().position(|t| t.id == id);
+        let tab = match popup {
+            Some(i) => Some(self.popups.remove(i)),
+            None => self.dock.find_tab_from(|t| t.id == id).and_then(|path| self.dock.remove_tab(path)),
+        };
+        if let Some(mut tab) = tab {
             let mut cx = AppContext {
                 backend: &self.backend,
                 conns: &mut self.conns,
@@ -189,7 +211,10 @@ impl DbijiApp {
             };
             if !tab.view.on_close(&mut cx) {
                 // put it back
-                self.dock.push_to_focused_leaf(tab);
+                match popup {
+                    Some(i) => self.popups.insert(i.min(self.popups.len()), tab),
+                    None => self.dock.push_to_focused_leaf(tab),
+                }
             }
         }
     }
@@ -1382,6 +1407,36 @@ impl eframe::App for DbijiApp {
             let mut viewer = DockViewer { cx: &mut cx, close_vetoed: Vec::new(), active_tab: self.active_tab };
             DockArea::new(&mut self.dock).style(egui_dock::Style::from_egui(ui.style().as_ref())).show_leaf_collapse_buttons(false).show_inside(ui, &mut viewer);
         });
+        // Wizards and actions in pop-up windows over the tabs.
+        let center = ctx.content_rect().center();
+        let raise = self.raise_popup.take();
+        for tab in &mut self.popups {
+            let mut open = true;
+            let size = tab.view.popup_size().unwrap_or(egui::vec2(720.0, 520.0));
+            let shown = egui::Window::new(format!("{} {}", tab.view.icon(), tab.view.title()))
+                .id(egui::Id::new(("dbiji_popup", tab.id)))
+                .default_size(size)
+                .min_size(egui::vec2(360.0, 240.0))
+                .pivot(egui::Align2::CENTER_CENTER)
+                .default_pos(center)
+                .collapsible(false)
+                .resizable(true)
+                .open(&mut open)
+                .show(&ctx, |ui| {
+                    cx.tab_active = true;
+                    cx.current_tab = Some(tab.id);
+                    tab.view.ui(ui, &mut cx);
+                    cx.current_tab = None;
+                });
+            if let Some(shown) = shown
+                && raise == Some(tab.id)
+            {
+                ctx.move_to_top(shown.response.layer_id);
+            }
+            if !open {
+                cx.commands.push(AppCommand::CloseTab(tab.id));
+            }
+        }
 
         self.dialogs.show(&ctx, &mut cx);
         if self.ops.panel_open {

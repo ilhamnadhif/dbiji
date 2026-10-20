@@ -1346,6 +1346,10 @@ fn json_reader_ui(ui: &mut Ui, id: u64, o: &mut JsonReadOptions) {
 }
 
 impl TabView for ImportTab {
+    fn popup_size(&self) -> Option<egui::Vec2> {
+        Some(egui::vec2(820.0, 600.0))
+    }
+
     fn title(&self) -> String {
         match self.target_ref() {
             Some(t) => trf("Import into {}", &[&t.name]),

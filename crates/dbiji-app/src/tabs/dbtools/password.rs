@@ -148,6 +148,10 @@ impl ChangePasswordTab {
 }
 
 impl TabView for ChangePasswordTab {
+    fn popup_size(&self) -> Option<egui::Vec2> {
+        Some(egui::vec2(520.0, 380.0))
+    }
+
     fn title(&self) -> String {
         tr("Change password").to_string()
     }

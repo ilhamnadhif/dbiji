@@ -3,6 +3,11 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.2 — 2026-10-20
+
+### Changed
+- Export, import, data transfer, mock data, backup / restore, maintenance, change password and the foreign data wrapper configurator open in a pop-up window over the tabs instead of a new tab (movable and resizable; the close button cancels a running job as before).
+
 ## 0.3.1 — 2026-10-20
 
 ### New

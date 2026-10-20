@@ -1004,6 +1004,10 @@ fn warning_box(ui: &mut Ui, text: &str) {
 }
 
 impl TabView for BackupTab {
+    fn popup_size(&self) -> Option<egui::Vec2> {
+        Some(egui::vec2(760.0, 600.0))
+    }
+
     fn title(&self) -> String {
         if self.restore { tr("Restore").to_string() } else { tr("Backup").to_string() }
     }

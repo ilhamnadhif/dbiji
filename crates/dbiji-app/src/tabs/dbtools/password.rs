@@ -23,6 +23,8 @@ struct Changed {
 
 /// Change-password tool of a connection.
 pub struct ChangePasswordTab {
+    /// Finished successfully: the pop-up closes.
+    done: bool,
     conn: String,
     new_password: String,
     confirm: String,
@@ -51,7 +53,7 @@ fn scrub(text: &str, secrets: &[&str]) -> String {
 
 impl ChangePasswordTab {
     pub fn new(conn: String) -> Self {
-        ChangePasswordTab { conn, new_password: String::new(), confirm: String::new(), show: false, update_saved: true, job: None, outcome: None }
+        ChangePasswordTab { done: false, conn, new_password: String::new(), confirm: String::new(), show: false, update_saved: true, job: None, outcome: None }
     }
 
     /// Enter the new password (both fields), as typed by the user.
@@ -148,6 +150,10 @@ impl ChangePasswordTab {
 }
 
 impl TabView for ChangePasswordTab {
+    fn take_done(&mut self) -> bool {
+        std::mem::take(&mut self.done)
+    }
+
     fn popup_size(&self) -> Option<egui::Vec2> {
         Some(egui::vec2(520.0, 380.0))
     }
@@ -166,7 +172,16 @@ impl TabView for ChangePasswordTab {
     }
 
     fn ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
+        let was_running = self.job.is_some();
         self.poll();
+        // Changed (and the saved password updated): the pop-up closes.
+        if was_running
+            && let Some(Ok(c)) = &self.outcome
+            && c.saved_error.is_none()
+        {
+            cx.toasts.push(crate::toasts::ToastKind::Success, tr("The password was changed."), Some(tr("Reconnect so that new sessions use the new password.").to_string()));
+            self.done = true;
+        }
         let Some(cfg) = cx.conns.config(&self.conn).cloned() else {
             crate::widgets::error_box(ui, tr("The connection does not exist."));
             return;

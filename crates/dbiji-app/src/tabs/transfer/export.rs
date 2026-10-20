@@ -89,6 +89,8 @@ pub fn name_context(cx: &AppContext, conn: &str) -> NameContext {
 
 /// The export wizard tab.
 pub struct ExportTab {
+    /// Finished successfully: the pop-up closes.
+    done: bool,
     uid: u64,
     conn: String,
     page: usize,
@@ -141,6 +143,7 @@ impl ExportTab {
         }
         let settings = ExportJob { output_folder: default_output_folder(), ..Default::default() };
         ExportTab {
+            done: false,
             uid: next_uid(),
             conn,
             page: PAGE_SOURCE,
@@ -448,7 +451,13 @@ impl ExportTab {
                     if summary.failed() > 0 {
                         cx.toasts.warning(trf("Export finished, {} object(s) failed", &[&summary.failed()]), summary.first_error().map(str::to_string));
                     } else {
-                        cx.toasts.success(describe(&summary));
+                        // One file: its name and "Show in Finder" (the pop-up closes).
+                        let files: Vec<&std::path::PathBuf> = summary.items.iter().filter_map(|i| i.file.as_ref()).collect();
+                        match files.as_slice() {
+                            [one] => cx.toasts.success_file(describe(&summary), (*one).clone()),
+                            _ => cx.toasts.success(describe(&summary)),
+                        }
+                        self.done = true;
                     }
                     self.result = Some(Ok(summary));
                 }
@@ -1327,6 +1336,10 @@ fn common_ui(ui: &mut Ui, id: u64, o: &mut ExportOptions, format: ExportFormat) 
 }
 
 impl TabView for ExportTab {
+    fn take_done(&mut self) -> bool {
+        std::mem::take(&mut self.done)
+    }
+
     fn popup_size(&self) -> Option<egui::Vec2> {
         Some(egui::vec2(780.0, 560.0))
     }

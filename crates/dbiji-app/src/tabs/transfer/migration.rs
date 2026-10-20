@@ -56,6 +56,8 @@ struct TableRun {
 
 /// The migration tab.
 pub struct MigrationTab {
+    /// Finished successfully: the pop-up closes.
+    done: bool,
     uid: u64,
     conn: String,
     page: usize,
@@ -99,6 +101,7 @@ impl MigrationTab {
             }
         }
         MigrationTab {
+            done: false,
             uid: next_uid(),
             conn,
             page: PAGE_SOURCE,
@@ -353,6 +356,7 @@ impl MigrationTab {
                         cx.toasts.warning(trf("Migration finished, {} table(s) failed", &[&failed]), None);
                     } else {
                         cx.toasts.success(describe(&summary));
+                        self.done = true;
                     }
                     if let Some(target) = &self.target_conn {
                         let schema = self.target_schema.clone().or_else(|| current_schema(cx, target));
@@ -797,6 +801,10 @@ fn describe(s: &MigrationSummary) -> String {
 }
 
 impl TabView for MigrationTab {
+    fn take_done(&mut self) -> bool {
+        std::mem::take(&mut self.done)
+    }
+
     fn popup_size(&self) -> Option<egui::Vec2> {
         Some(egui::vec2(820.0, 600.0))
     }

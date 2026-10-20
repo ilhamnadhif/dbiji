@@ -66,6 +66,8 @@ struct MaintRun {
 
 /// Maintenance of tables, indexes, materialized views or a whole database.
 pub struct MaintenanceTab {
+    /// Finished successfully: the pop-up closes.
+    done: bool,
     conn: String,
     objects: Vec<ObjectRef>,
     op: Option<String>,
@@ -202,7 +204,7 @@ async fn run_all(
 impl MaintenanceTab {
     pub fn new(conn: String, objects: Vec<ObjectRef>) -> Self {
         let database = objects.iter().find_map(|o| o.database.clone());
-        MaintenanceTab { conn, objects, op: None, options: BTreeMap::new(), session: ToolSession::new(database), run: None, pending: false, error: None }
+        MaintenanceTab { done: false, conn, objects, op: None, options: BTreeMap::new(), session: ToolSession::new(database), run: None, pending: false, error: None }
     }
 
     /// Dialect of the connection (also when it is not connected).
@@ -337,6 +339,8 @@ impl MaintenanceTab {
 
     fn poll(&mut self, cx: &mut AppContext) {
         self.try_start(cx);
+        // All statements ran and nothing to read (no status tables): the pop-up closes.
+        let mut quiet_success: Option<usize> = None;
         if let Some(run) = self.run.as_mut()
             && run.job.as_mut().and_then(|j| j.poll()).is_some()
         {
@@ -349,10 +353,17 @@ impl MaintenanceTab {
             } else if failed > 0 || shared.results.is_empty() {
                 OpState::Failed(trf("{} statement(s) failed", &[&failed]))
             } else {
+                if shared.results.iter().all(|r| r.rows.is_none()) {
+                    quiet_success = Some(shared.results.len());
+                }
                 OpState::Succeeded(trf("{} statement(s) executed", &[&shared.results.len()]))
             };
             drop(shared);
             cx.ops.finish(run.op.id, state);
+        }
+        if let Some(n) = quiet_success {
+            cx.toasts.success(trf("{} statement(s) executed", &[&n]));
+            self.done = true;
         }
     }
 
@@ -509,6 +520,10 @@ impl MaintenanceTab {
 }
 
 impl TabView for MaintenanceTab {
+    fn take_done(&mut self) -> bool {
+        std::mem::take(&mut self.done)
+    }
+
     fn popup_size(&self) -> Option<egui::Vec2> {
         Some(egui::vec2(700.0, 520.0))
     }

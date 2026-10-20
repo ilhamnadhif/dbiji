@@ -8,6 +8,7 @@ notes of a new version once after it was updated (Help → What's new).
 ### Changed
 - Record view of one row: the same table as rows side by side — column names down the left (the type on hover, key columns pinned), the value column with a draggable border (double-click fits it), a click picks a value (⌘C copies it), a double-click edits it, booleans have a check box; row navigation and Hide empty stay above it.
 - Rows side by side: the "Differences only" option and the difference marks were removed.
+- Pop-ups close by themselves once their job succeeded, and a notification tells the result: export (with the file's name and **Show in Finder**), import, data transfer, mock data, backup (Show in Finder) / restore, maintenance without output to read, change password. A failure, a partial failure or warnings keep the pop-up open.
 
 ## 0.3.5 — 2026-10-20
 

@@ -19,6 +19,8 @@ pub struct Toast {
     pub kind: ToastKind,
     pub title: String,
     pub detail: Option<String>,
+    /// A file the toast offers to show in the Finder.
+    pub reveal: Option<std::path::PathBuf>,
     created: Instant,
     duration: Duration,
 }
@@ -37,7 +39,7 @@ impl Toasts {
             ToastKind::Warning => Duration::from_secs(7),
             _ => Duration::from_secs(4),
         };
-        let toast = Toast { kind, title: title.into(), detail, created: Instant::now(), duration };
+        let toast = Toast { kind, title: title.into(), detail, reveal: None, created: Instant::now(), duration };
         if self.log.len() < 500 {
             self.log.push(toast.clone());
         }
@@ -57,6 +59,15 @@ impl Toasts {
     }
     pub fn success(&mut self, title: impl Into<String>) {
         self.push(ToastKind::Success, title, None);
+    }
+    /// Success with a file (an export, a backup): its name and "Show in Finder".
+    pub fn success_file(&mut self, title: impl Into<String>, path: std::path::PathBuf) {
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned());
+        self.push(ToastKind::Success, title, name);
+        for t in [self.items.last_mut(), self.log.last_mut()].into_iter().flatten() {
+            t.reveal = Some(path.clone());
+            t.duration = Duration::from_secs(8);
+        }
     }
     pub fn warning(&mut self, title: impl Into<String>, detail: Option<String>) {
         let title = title.into();
@@ -96,6 +107,11 @@ impl Toasts {
                                 let short: String = d.chars().take(600).collect();
                                 ui.label(RichText::new(short).small());
                             }
+                            if let Some(p) = &t.reveal
+                                && ui.link(if cfg!(target_os = "macos") { tr("Show in Finder") } else { tr("Show in folder") }).clicked()
+                            {
+                                reveal(p);
+                            }
                         });
                         if ui.add(egui::Button::new(dbiji_icons::ic(icon::X)).frame(false)).on_hover_text(tr("Dismiss")).clicked() {
                             close = Some(i);
@@ -113,6 +129,14 @@ impl Toasts {
             ctx.request_repaint_after(next + Duration::from_millis(20));
         }
     }
+}
+
+/// Show `path` selected in the Finder (its folder elsewhere).
+fn reveal(path: &std::path::Path) {
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("/usr/bin/open").arg("-R").arg(path).spawn();
+    #[cfg(not(target_os = "macos"))]
+    let _ = open::that_detached(path.parent().unwrap_or(path));
 }
 
 /// Toast text for the application log.

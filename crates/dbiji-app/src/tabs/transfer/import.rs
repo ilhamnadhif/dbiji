@@ -95,6 +95,8 @@ enum MappingKey {
 
 /// The import wizard tab.
 pub struct ImportTab {
+    /// Finished successfully: the pop-up closes.
+    done: bool,
     uid: u64,
     conn: String,
     page: usize,
@@ -143,6 +145,7 @@ impl ImportTab {
         let table = table.filter(|t| t.kind.is_table_like());
         let schema = schema.or_else(|| table.as_ref().map(ObjectRef::schema_ref)).filter(|s| s.schema.is_some() || s.database.is_some());
         ImportTab {
+            done: false,
             uid: next_uid(),
             conn,
             page: PAGE_FILE,
@@ -520,6 +523,7 @@ impl ImportTab {
                         cx.toasts.warning(describe(&summary), summary.errors.first().map(|e| e.message.clone()));
                     } else {
                         cx.toasts.success(describe(&summary));
+                        self.done = true;
                     }
                     self.refresh_metadata(cx, summary.created_table);
                     self.result = Some(Ok(summary));
@@ -1346,6 +1350,10 @@ fn json_reader_ui(ui: &mut Ui, id: u64, o: &mut JsonReadOptions) {
 }
 
 impl TabView for ImportTab {
+    fn take_done(&mut self) -> bool {
+        std::mem::take(&mut self.done)
+    }
+
     fn popup_size(&self) -> Option<egui::Vec2> {
         Some(egui::vec2(820.0, 600.0))
     }

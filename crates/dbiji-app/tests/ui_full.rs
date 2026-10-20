@@ -883,6 +883,10 @@ fn tool_tabs_run() {
     let csv = wait_file(&mut h, &downloads, "export file", |n| n.starts_with(&format!("dbiji-sample_customer_{date}_")) && n.ends_with(".csv"));
     let lines = std::fs::read_to_string(&csv).unwrap().lines().count();
     assert!(lines > 10, "{} has {lines} lines", csv.display());
+    // Done: the pop-up closes by itself; the toast names the file and offers the Finder.
+    wait(&mut h, "export pop-up closed", |h| h.state().popups.is_empty());
+    let toasts = h.state_mut().toasts.take_log();
+    assert!(toasts.iter().any(|t| t.reveal.as_deref() == Some(csv.as_path())), "{:?}", toasts.iter().map(|t| &t.title).collect::<Vec<_>>());
     settle(&mut h, "export");
 
     // Backup of the SQLite database.
@@ -891,6 +895,7 @@ fn tool_tabs_run() {
     let backup = wait_file(&mut h, &dir.0, "backup file", |n| n.starts_with("dbiji-sample") && n.ends_with(".sql"));
     let dump = std::fs::read_to_string(&backup).unwrap();
     assert!(dump.contains("CREATE TABLE customer") && dump.contains("INSERT INTO"), "{}", &dump[..dump.len().min(400)]);
+    wait(&mut h, "backup pop-up closed", |h| h.state().popups.is_empty());
     settle(&mut h, "backup");
 
     // Maintenance (the default operation) on customer.

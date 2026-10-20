@@ -517,6 +517,8 @@ enum ToolVersion {
 
 /// Backup (`restore = false`) or restore tab of a connection.
 pub struct BackupTab {
+    /// Finished successfully: the pop-up closes.
+    done: bool,
     conn: String,
     schema: Option<SchemaRef>,
     restore: bool,
@@ -536,6 +538,7 @@ pub struct BackupTab {
 impl BackupTab {
     pub fn new(conn: String, schema: Option<SchemaRef>, restore: bool) -> Self {
         BackupTab {
+            done: false,
             conn,
             schema,
             restore,
@@ -738,6 +741,8 @@ impl BackupTab {
     }
 
     fn poll(&mut self, cx: &mut AppContext) {
+        // Done without warnings: the output file (a backup) for the toast.
+        let mut finished_ok: Option<Option<PathBuf>> = None;
         if let Some(run) = self.run.as_mut()
             && let Some(result) = run.job.as_mut().and_then(|j| j.poll())
         {
@@ -752,7 +757,18 @@ impl BackupTab {
                 ToolOutcome::Cancelled => OpState::Cancelled,
             };
             cx.ops.finish(run.op.id, state);
+            if matches!(outcome, ToolOutcome::Succeeded) {
+                finished_ok = Some(run.output.clone());
+            }
             run.outcome = Some(outcome);
+        }
+        if let Some(output) = finished_ok {
+            let title = if self.restore { tr("Restore completed") } else { tr("Backup completed") };
+            match output.filter(|p| p.is_file() && !self.restore) {
+                Some(p) => cx.toasts.success_file(title, p),
+                None => cx.toasts.success(title),
+            }
+            self.done = true;
         }
         if let Some(j) = self.save_job.as_mut()
             && let Some(r) = j.poll()
@@ -1006,6 +1022,10 @@ fn warning_box(ui: &mut Ui, text: &str) {
 }
 
 impl TabView for BackupTab {
+    fn take_done(&mut self) -> bool {
+        std::mem::take(&mut self.done)
+    }
+
     fn popup_size(&self) -> Option<egui::Vec2> {
         Some(egui::vec2(760.0, 600.0))
     }

@@ -25,6 +25,8 @@ const DATETIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
 
 /// The mock data tab.
 pub struct MockDataTab {
+    /// Finished successfully: the pop-up closes.
+    done: bool,
     uid: u64,
     conn: String,
     table: ObjectRef,
@@ -44,6 +46,7 @@ impl MockDataTab {
     /// Generate rows for `table` of `conn`.
     pub fn new(conn: String, table: ObjectRef) -> Self {
         MockDataTab {
+            done: false,
             uid: next_uid(),
             conn,
             table,
@@ -178,6 +181,7 @@ impl MockDataTab {
                         cx.toasts.warning(describe(&summary), summary.errors.first().map(|e| e.message.clone()));
                     } else {
                         cx.toasts.success(describe(&summary));
+                        self.done = true;
                     }
                     cx.push(AppCommand::RefreshMetadata { connection: self.conn.clone(), object: Some(self.table.clone()), schema: None });
                     self.result = Some(Ok(summary));
@@ -500,6 +504,10 @@ fn params_ui(ui: &mut Ui, g: &mut GeneratorKind) {
 }
 
 impl TabView for MockDataTab {
+    fn take_done(&mut self) -> bool {
+        std::mem::take(&mut self.done)
+    }
+
     fn popup_size(&self) -> Option<egui::Vec2> {
         Some(egui::vec2(760.0, 560.0))
     }

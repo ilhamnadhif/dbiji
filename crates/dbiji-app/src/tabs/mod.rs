@@ -93,6 +93,12 @@ pub trait TabView: Any {
         None
     }
 
+    /// True once after its job finished successfully: a pop-up then closes
+    /// (the result was reported by a toast). Failures keep it open.
+    fn take_done(&mut self) -> bool {
+        false
+    }
+
     /// Called before closing; return false to keep the tab open (e.g. to ask
     /// about unsaved changes — the tab then shows its own confirmation).
     fn on_close(&mut self, cx: &mut AppContext) -> bool {

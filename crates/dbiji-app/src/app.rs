@@ -1455,7 +1455,8 @@ impl eframe::App for DbijiApp {
             {
                 ctx.move_to_top(shown.response.layer_id);
             }
-            if !open {
+            // Closed by its button, or done (the toast told the result).
+            if !open || tab.view.take_done() {
                 cx.commands.push(AppCommand::CloseTab(tab.id));
             }
         }

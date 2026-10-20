@@ -249,6 +249,19 @@ impl TableDef {
         self.unique_keys.iter().find(|k| k.columns.iter().all(|c| self.column(c).is_some_and(|c| !c.nullable))).or_else(|| self.unique_keys.first())
     }
 
+    /// Columns that identify a row for editing: [`Self::row_key`], else a
+    /// unique index on plain columns without a predicate (`CREATE UNIQUE
+    /// INDEX` without a constraint), NOT NULL columns first.
+    pub fn row_key_columns(&self) -> Option<Vec<String>> {
+        if let Some(k) = self.row_key().filter(|k| !k.columns.is_empty()) {
+            return Some(k.columns.clone());
+        }
+        let usable = || self.indexes.iter().filter(|i| i.unique && i.predicate.is_none() && !i.columns.is_empty() && i.columns.iter().all(|c| !c.is_expression));
+        let not_null = |i: &&IndexDef| i.columns.iter().all(|c| self.column(&c.name).is_some_and(|c| !c.nullable));
+        let index = usable().find(not_null).or_else(|| usable().next())?;
+        Some(index.columns.iter().map(|c| c.name.clone()).collect())
+    }
+
     pub fn is_pk_column(&self, column: &str) -> bool {
         self.primary_key.as_ref().is_some_and(|pk| pk.columns.iter().any(|c| c == column))
     }
@@ -468,4 +481,34 @@ pub trait DdlGenerator: Send + Sync {
 
     /// Type used for a logical kind when nothing better is known (CSV import).
     fn default_type_for(&self, kind: DataKind) -> String;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn col(name: &str, nullable: bool) -> ColumnDef {
+        ColumnDef { name: name.into(), nullable, ..Default::default() }
+    }
+
+    fn unique(name: &str, cols: &[&str]) -> IndexDef {
+        IndexDef { name: name.into(), columns: cols.iter().map(|c| IndexColumn::column(*c)).collect(), unique: true, ..Default::default() }
+    }
+
+    #[test]
+    fn a_unique_index_identifies_rows_without_a_key() {
+        let mut t = TableDef { name: "incomings".into(), columns: vec![col("id", false), col("code", true)], ..Default::default() };
+        assert_eq!(t.row_key_columns(), None);
+        let mut partial = unique("recent", &["code"]);
+        partial.predicate = Some("code IS NOT NULL".into());
+        let mut expression = unique("lower_code", &["lower(code)"]);
+        expression.columns[0].is_expression = true;
+        t.indexes = vec![partial, expression, unique("code_idx", &["code"]), unique("id_idx", &["id"])];
+        assert_eq!(t.row_key_columns(), Some(vec!["id".to_string()]), "NOT NULL columns first; no partial or expression index");
+        t.indexes.pop();
+        assert_eq!(t.row_key_columns(), Some(vec!["code".to_string()]));
+        t.unique_keys = vec![KeyDef { name: None, columns: vec!["code".into()] }];
+        t.primary_key = Some(KeyDef { name: None, columns: vec!["id".into()] });
+        assert_eq!(t.row_key_columns(), Some(vec!["id".to_string()]), "the primary key wins");
+    }
 }

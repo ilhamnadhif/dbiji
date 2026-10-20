@@ -451,3 +451,33 @@ fn table_of_another_database() {
     drop(view);
     let _ = h.try_sql(&format!("DROP DATABASE {db} WITH (FORCE)"));
 }
+
+/// A table without a primary key or unique constraint, but with a unique
+/// index (`CREATE UNIQUE INDEX`): the index identifies rows, so the data tab
+/// is editable (as in DBeaver). Without any of them it stays read-only.
+#[test]
+fn unique_index_makes_a_table_editable() {
+    let Some(url) = std::env::var("DBIJI_TEST_PG").ok().filter(|u| !u.trim().is_empty()) else { return };
+    let mut h = H::new(&url);
+    let table = format!("dbiji_noindex_{}", &uuid::Uuid::new_v4().simple().to_string()[..8]);
+    h.sql(&format!("CREATE TABLE {table} (id INT NOT NULL, method TEXT)"));
+    h.sql(&format!("INSERT INTO {table} VALUES (1, 'GET'), (2, 'POST')"));
+    let obj = ObjectRef::table(Some("public".into()), table.clone());
+    let mut view = TableDataView::new(h.id.clone(), obj.clone(), None);
+    h.until(&mut view, "read-only rows", |v| v.panel.as_ref().is_some_and(|p| p.model.row_count() == 2 && p.model.read_only_reason() == Some(&dbiji_grid::ReadOnlyReason::NoKey)));
+    drop(view);
+
+    h.sql(&format!("CREATE UNIQUE INDEX {table}_id ON {table} (id)"));
+    h.cm.live_mut(&h.id).unwrap().meta.table_defs.clear();
+    let mut view = TableDataView::new(h.id.clone(), obj, None);
+    h.until(&mut view, "editable rows", |v| v.panel.as_ref().is_some_and(|p| p.model.row_count() == 2 && p.model.is_editable()));
+    {
+        let p = view.panel.as_mut().unwrap();
+        let row = (0..2).find(|&r| p.model.cell(r, 0) == Some(dbiji_core::Value::Int(2))).unwrap();
+        p.model.set_cell(row, 1, "PUT").unwrap();
+    }
+    save_and_wait(&mut h, &mut view);
+    assert_eq!(h.query(&format!("SELECT method FROM {table} ORDER BY id")), vec![vec!["GET".to_string()], vec!["PUT".to_string()]]);
+    drop(view);
+    h.sql(&format!("DROP TABLE {table}"));
+}

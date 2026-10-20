@@ -304,12 +304,13 @@ pub struct DataGrid<'a> {
     state: &'a mut DataGridState,
     options: &'a GridOptions,
     id_salt: egui::Id,
+    notices_elsewhere: bool,
 }
 
 impl<'a> DataGrid<'a> {
     /// Grid over `model` with layout `state`.
     pub fn new(model: &'a mut ResultModel, state: &'a mut DataGridState, options: &'a GridOptions) -> Self {
-        DataGrid { model, state, options, id_salt: egui::Id::new("dbiji_data_grid") }
+        DataGrid { model, state, options, id_salt: egui::Id::new("dbiji_data_grid"), notices_elsewhere: false }
     }
 
     /// Distinguish several grids in the same `Ui`.
@@ -318,8 +319,16 @@ impl<'a> DataGrid<'a> {
         self
     }
 
+    /// The host shows [`GridAction::Notify`] messages (in a status bar): the
+    /// grid does not repeat them over the data.
+    pub fn notices_elsewhere(mut self) -> Self {
+        self.notices_elsewhere = true;
+        self
+    }
+
     /// Show the grid in all available space.
     pub fn show(self, ui: &mut egui::Ui) -> GridResponse {
+        self.state.rt.notices_elsewhere = self.notices_elsewhere;
         frame::show(self.model, self.state, self.options, self.id_salt, ui)
     }
 

@@ -286,11 +286,7 @@ impl ResultPanel {
             if let Some(vk) = virtual_model.as_ref().and_then(|m| vm_lookup(m, obj)).and_then(|v| v.virtual_key.clone()).filter(|k| !k.is_empty()) {
                 return Some(vk);
             }
-            let d = find(obj)?;
-            if let Some(pk) = &d.primary_key {
-                return Some(pk.columns.clone());
-            }
-            d.unique_keys.first().map(|k| k.columns.clone())
+            find(obj)?.row_key_columns()
         };
         let e = determine_editability(self.model.columns(), key_lookup, read_only);
         // Foreign keys of the (first) source table, mapped to result columns.

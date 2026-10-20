@@ -213,6 +213,22 @@ fn open_value_panel_action_opens_panel() {
 }
 
 #[test]
+fn a_refused_edit_is_told_once_in_the_status_bar() {
+    let mut m = editable_model(5);
+    m.set_editability(Err(crate::model::ReadOnlyReason::NoKey));
+    let mut v = Viewer::new(m);
+    let cell = v.find("Data grid").expect("grid");
+    v.click(cell);
+    v.state.grid.select_cell(1, 1);
+    v.frame(vec![]);
+    v.frame(vec![crate::test_support::key(egui::Key::Enter, Modifiers::NONE)]);
+    assert!(!v.state.grid.is_editing());
+    let (message, error) = v.state.toolbar.notice.clone().expect("status bar message");
+    assert!(error && message.contains("no primary or unique key"), "{message}");
+    assert!(v.state.grid.rt.message.is_none(), "not repeated over the grid");
+}
+
+#[test]
 fn grouping_panel_groups_in_background() {
     let mut ui = Ui::new();
     let mut model = editable_model(300);

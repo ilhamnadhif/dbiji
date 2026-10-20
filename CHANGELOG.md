@@ -7,6 +7,10 @@ notes of a new version once after it was updated (Help → What's new).
 
 ### Changed
 - Light theme: the UI text is a little heavier (Inter Medium instead of Regular) and the secondary text (column names, details) is darker, so it reads more easily; the dark theme keeps Inter Regular. The font follows the theme, also when the theme follows the system.
+- Grid messages (e.g. why a cell cannot be edited) appear once, in the status bar under the grid, instead of also over the data.
+
+### Fixed
+- A table without a primary key or unique constraint but with a unique index (`CREATE UNIQUE INDEX`) is editable: the index identifies the rows, as in DBeaver (NOT NULL columns preferred; partial and expression indexes are not used).
 
 ## 0.3.8 — 2026-10-20
 

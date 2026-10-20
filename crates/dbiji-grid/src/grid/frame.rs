@@ -339,11 +339,14 @@ impl GridFrame<'_> {
         }
     }
 
-    /// Notify the user (status overlay + action).
+    /// Notify the user: an action for the host, and a status overlay unless
+    /// the host shows the message itself.
     pub fn notify(&mut self, message: impl Into<String>, error: bool) {
         let m = message.into();
-        let now = self.ctx.input(|i| i.time);
-        self.state.rt.message = Some((m.clone(), error, now));
+        if !self.state.rt.notices_elsewhere {
+            let now = self.ctx.input(|i| i.time);
+            self.state.rt.message = Some((m.clone(), error, now));
+        }
         self.actions.push(super::GridAction::Notify { message: m, error });
     }
 

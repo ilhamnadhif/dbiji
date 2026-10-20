@@ -157,7 +157,7 @@ impl<'a> ResultViewer<'a> {
         }
         egui::CentralPanel::no_frame().show(ui, |ui| match state.toolbar.view {
             ResultViewKind::Grid => {
-                let r = DataGrid::new(model, &mut state.grid, options).id_salt(id.with("grid")).show(ui);
+                let r = DataGrid::new(model, &mut state.grid, options).id_salt(id.with("grid")).notices_elsewhere().show(ui);
                 actions.extend(r.actions.iter().cloned());
                 grid_response = Some(r);
             }
@@ -192,6 +192,8 @@ impl<'a> ResultViewer<'a> {
         // Internal handling of some actions (they are still reported).
         for a in &actions {
             match a {
+                // Messages appear once, in the status bar.
+                GridAction::Notify { message, error } => state.toolbar.notice = Some((message.clone(), *error)),
                 GridAction::OpenValuePanel { row, col } => {
                     state.grid.select_cell(*row, *col);
                     state.open_panel(PanelKind::Value);

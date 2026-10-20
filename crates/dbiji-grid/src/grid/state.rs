@@ -106,6 +106,8 @@ pub struct DataGridState {
 pub(crate) struct Runtime {
     /// Commands to run on the next frame (see [`DataGridState::request`]).
     pub pending: Vec<GridCommand>,
+    /// Notify messages are shown by the host, not over the grid.
+    pub notices_elsewhere: bool,
     pub selection: Selection,
     pub scroll_x: f32,
     pub scroll_y: f64,

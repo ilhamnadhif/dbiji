@@ -2657,3 +2657,7 @@ Hide DBiji	Sembunyikan DBiji
 Hide Others	Sembunyikan Lainnya
 Show All	Tampilkan Semua
 Quit DBiji	Keluar dari DBiji
+Differences only	Hanya yang berbeda
+Show only the columns whose values differ between the rows	Tampilkan hanya kolom yang nilainya berbeda antarbaris
+{} columns differ	{} kolom berbeda
+The rows have different values	Nilai antarbaris berbeda

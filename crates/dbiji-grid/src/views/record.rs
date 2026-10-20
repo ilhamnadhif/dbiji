@@ -87,6 +87,8 @@ pub struct RecordViewState {
     /// column-name column.
     widths: std::collections::BTreeMap<usize, f32>,
     lead_width: Option<f32>,
+    /// Side by side: only the columns whose values differ between the rows.
+    pub only_differences: bool,
 }
 
 impl RecordViewState {
@@ -248,15 +250,12 @@ impl<'a> RecordView<'a> {
         let editable = model.is_editable() && options.allow_editing;
         let mut commit: Option<(usize, usize, String)> = None;
         let mut open_value: Option<usize> = None;
-        // One line per column: key / link icon, name (secondary), type
-        // (small), the value wrapped over the rest of the width, copy.
+        // One line per column: key / link icon, name (secondary; its type
+        // on hover), the value wrapped over the rest of the width, copy.
         let body = egui::TextStyle::Body.resolve(ui.style());
-        let small = egui::TextStyle::Small.resolve(ui.style());
         let measure = |ui: &Ui, text: String, font: egui::FontId| ui.fonts_mut(|f| f.layout_no_wrap(text, font, egui::Color32::WHITE).rect.width());
         let name_w = columns.iter().map(|&c| measure(ui, model.column_name(c).to_string(), body.clone())).fold(0.0_f32, f32::max).clamp(100.0, 300.0) + 8.0;
         let type_of = |c: usize| model.column_meta(c).map_or_else(|| tr("virtual").to_string(), |m| m.type_name.to_lowercase());
-        let mono_small = egui::FontId::monospace(small.size);
-        let type_w = columns.iter().map(|&c| measure(ui, type_of(c), mono_small.clone())).fold(0.0_f32, f32::max).clamp(40.0, 160.0) + 24.0;
         let key_cols: Vec<usize> = model.editability().as_ref().map(|t| t.key_columns.clone()).unwrap_or_default();
         let row_h = ui.text_style_height(&egui::TextStyle::Body) + 2.0;
         let mut copied: Option<String> = None;
@@ -290,13 +289,9 @@ impl<'a> RecordView<'a> {
                         }
                         ui.allocate_ui_with_layout(egui::vec2(name_w, row_h), egui::Layout::left_to_right(egui::Align::Center), |ui| {
                             ui.set_min_width(name_w);
-                            if ui.add(egui::Label::new(name).truncate().sense(egui::Sense::click())).clicked() {
+                            if ui.add(egui::Label::new(name).truncate().sense(egui::Sense::click())).on_hover_text(type_of(c)).clicked() {
                                 grid.select_cell(row, c);
                             }
-                        });
-                        ui.allocate_ui_with_layout(egui::vec2(type_w, row_h), egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                            ui.set_min_width(type_w);
-                            ui.add(egui::Label::new(RichText::new(type_of(c)).small().monospace().color(theme.weak.gamma_multiply(0.8))).truncate());
                         });
                         let value_w = (ui.available_width() - 30.0).max(80.0);
                         ui.allocate_ui_with_layout(egui::vec2(value_w, row_h), egui::Layout::top_down(egui::Align::Min), |ui| {
@@ -437,11 +432,19 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
     let theme = GridTheme::from_visuals(ui.visuals());
     let needle = state.column_filter.to_lowercase();
     let total_columns = grid.visible_columns().len();
-    let columns: Vec<usize> = grid.visible_columns().into_iter().filter(|&c| needle.is_empty() || model.column_name(c).to_lowercase().contains(&needle)).collect();
-    let (values, fresh) = row_values(model, &rows, &columns);
+    let named: Vec<usize> = grid.visible_columns().into_iter().filter(|&c| needle.is_empty() || model.column_name(c).to_lowercase().contains(&needle)).collect();
+    let (all_values, fresh) = row_values(model, &rows, &named);
     if !fresh {
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(10));
     }
+    // Columns whose values differ between the rows: marked, or the only ones shown.
+    let value_at = |j: usize, i: usize| all_values.get(j).and_then(|vs| vs.get(i)).map(|(v, d, _)| (v, d));
+    let differs_all: Vec<bool> = (0..named.len()).map(|i| (1..rows.len()).any(|j| value_at(j, i) != value_at(0, i))).collect();
+    let differing = differs_all.iter().filter(|d| **d).count();
+    let keep: Vec<usize> = (0..named.len()).filter(|&i| !state.only_differences || differs_all[i]).collect();
+    let columns: Vec<usize> = keep.iter().map(|&i| named[i]).collect();
+    let differs: Vec<bool> = keep.iter().map(|&i| differs_all[i]).collect();
+    let values: Vec<Vec<Shown>> = all_values.iter().map(|vs| keep.iter().filter_map(|&i| vs.get(i).cloned()).collect()).collect();
     let text_of = |r: usize, i: usize| values.get(r).and_then(|vs| vs.get(i)).map(|(v, ..)| if v.is_null() { String::new() } else { v.to_text().into_owned() });
     // Keyboard: Tab back to the grid, ⌘C copies the picked value.
     let focus = ui.interact(ui.max_rect(), ui.id().with("record_focus"), egui::Sense::click());
@@ -472,21 +475,22 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
             }
             ui.add_space(12.0);
             ui.add(TextEdit::singleline(&mut state.column_filter).hint_text(format!("{}  {}", icon::MAGNIFYING_GLASS, tr("Filter columns"))).desired_width(220.0));
+            ui.add_space(8.0);
+            ui.checkbox(&mut state.only_differences, tr("Differences only")).on_hover_text(tr("Show only the columns whose values differ between the rows"));
+            ui.label(RichText::new(trf("{} columns differ", &[&differing])).small().color(if differing > 0 { theme.warn } else { theme.weak }));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(RichText::new(format!("{}  {}", icon::KEYBOARD, tr("Tab: grid · ⌘C: copy"))).small().weak()).on_hover_text(tr("Select one row to see it as a record"));
-                if !needle.is_empty() {
+                if !needle.is_empty() || state.only_differences {
                     ui.label(RichText::new(trf("{} of {} columns", &[&columns.len(), &total_columns])).small().weak());
                 }
             });
         });
     });
     let body = egui::TextStyle::Body.resolve(ui.style());
-    let small = egui::FontId::monospace(egui::TextStyle::Small.resolve(ui.style()).size);
     let measure = |ui: &Ui, text: String, font: egui::FontId| ui.fonts_mut(|f| f.layout_no_wrap(text, font, egui::Color32::WHITE).rect.width());
     let name_w = columns.iter().map(|&c| measure(ui, model.column_name(c).to_string(), body.clone())).fold(0.0_f32, f32::max).clamp(100.0, 260.0) + 8.0;
     let type_of = |c: usize| model.column_meta(c).map_or_else(|| tr("virtual").to_string(), |m| m.type_name.to_lowercase());
-    let type_w = columns.iter().map(|&c| measure(ui, type_of(c), small.clone())).fold(0.0_f32, f32::max).clamp(40.0, 140.0) + 16.0;
-    let fit_lead = 24.0 + name_w + type_w;
+    let fit_lead = 24.0 + name_w;
     let lead = state.lead_width.unwrap_or(fit_lead);
     let default_w = ((ui.available_width() - lead - 16.0) / rows.len() as f32).clamp(150.0, 360.0);
     let mut widths: Vec<f32> = rows.iter().map(|r| state.widths.get(r).copied().unwrap_or(default_w)).collect();
@@ -538,11 +542,27 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
             ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                 for (i, &c) in columns.iter().enumerate() {
                     ui.horizontal(|ui| {
-                        let (lead_rect, _) = ui.allocate_exact_size(egui::vec2(lead_w, row_h), egui::Sense::hover());
+                        let (lead_rect, lead_resp) = ui.allocate_exact_size(egui::vec2(lead_w, row_h), egui::Sense::hover());
+                        // The column's type, and why it has a marker, on hover.
+                        let mut tip = type_of(c);
+                        if key_cols.contains(&c) {
+                            tip = format!("{tip}\n{}", tr("Key column"));
+                        } else if model.foreign_key_for_column(c).is_some() {
+                            tip = format!("{tip}\n{}", tr("References another table"));
+                        }
+                        if differs[i] {
+                            tip = format!("{tip}\n{}", tr("The rows have different values"));
+                        }
+                        lead_resp.on_hover_text(tip);
                         let stripe = if i % 2 == 1 { theme.stripe } else { theme.bg };
                         let hovered = ui.input(|inp| inp.pointer.hover_pos()).is_some_and(|p| p.y >= lead_rect.top() && p.y < lead_rect.bottom() && ui.clip_rect().contains(p));
-                        let row_fill = if hovered { crate::theme::mix(theme.bg, theme.text, 0.06) } else { stripe };
+                        let base = if differs[i] { crate::theme::mix(stripe, theme.warn, 0.10) } else { stripe };
+                        let row_fill = if hovered { crate::theme::mix(base, theme.text, 0.06) } else { base };
                         ui.painter().rect_filled(lead_rect, 0.0, row_fill);
+                        if differs[i] {
+                            let bar = egui::Rect::from_min_size(lead_rect.left_top(), egui::vec2(3.0, lead_rect.height()));
+                            ui.painter().rect_filled(bar, 0.0, theme.warn);
+                        }
                         let p = ui.painter();
                         let mut x = lead_rect.left() + 6.0;
                         if key_cols.contains(&c) {
@@ -552,12 +572,8 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
                         }
                         x += 18.0;
                         let name = model.column_name(c);
-                        // The type sits at the right of the column-name column.
-                        let type_left = (lead_rect.right() - type_w).max(x + 40.0);
-                        let name_rect = egui::Rect::from_min_max(egui::pos2(x, lead_rect.top()), egui::pos2(type_left - 4.0, lead_rect.bottom()));
-                        paint_text(ui, name_rect, RichText::new(name).color(theme.weak), theme.text);
-                        let type_rect = egui::Rect::from_min_max(egui::pos2(type_left, lead_rect.top()), egui::pos2(lead_rect.right() - 6.0, lead_rect.bottom()));
-                        paint_text(ui, type_rect, RichText::new(type_of(c)).font(small.clone()).color(theme.weak.gamma_multiply(0.8)), theme.text);
+                        let name_rect = egui::Rect::from_min_max(egui::pos2(x, lead_rect.top()), egui::pos2(lead_rect.right() - 6.0, lead_rect.bottom()));
+                        paint_text(ui, name_rect, RichText::new(name).color(if differs[i] { theme.text } else { theme.weak }), theme.text);
                         for (j, &r) in rows.iter().enumerate() {
                             if state.editing.as_ref().is_some_and(|(er, ec, _)| *er == r && *ec == c) {
                                 if let Some((_, _, text)) = state.editing.as_mut() {

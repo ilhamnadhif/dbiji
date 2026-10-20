@@ -3,6 +3,12 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.4 — 2026-10-20
+
+### Changed
+- Record view: no type column any more (more room for the values); the type shows when the pointer is on a column name.
+- Rows side by side: the columns whose values differ between the selected rows are marked (an amber bar and background, the name in full colour) and counted; **Differences only** shows just those.
+
 ## 0.3.3 — 2026-10-20
 
 ### Changed

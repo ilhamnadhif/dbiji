@@ -743,6 +743,18 @@ fn settings_grid_menu_and_editor_helpers() {
     frames(&mut h, 3);
     wait(&mut h, "rows side by side", |h| has(h, "Record view, 3 rows"));
     assert!(has(&h, "3 selected rows"), "{:?}", labels(&h));
+    // Columns whose values differ: counted, and on request the only ones shown.
+    let differ = h
+        .query_all_by_label_contains("columns differ")
+        .next()
+        .and_then(|n| n.accesskit_node().label().or_else(|| n.accesskit_node().value()))
+        .unwrap_or_else(|| panic!("{:?}", labels(&h)));
+    let n: usize = differ.split_whitespace().next().and_then(|n| n.parse().ok()).expect("a count");
+    assert!(n > 0, "{differ}");
+    click(&mut h, "Differences only");
+    assert!(has(&h, &format!("{n} of ")), "only the {n} differing columns: {:?}", labels(&h));
+    click(&mut h, "Differences only");
+    assert!(!has(&h, &format!("{n} of ")));
     // Drag a column border: wider; double-click it: fitted to the values.
     let handle = |h: &H| h.query_all_by_label_contains("Resize Row #").next().map(|n| n.rect()).unwrap_or_else(|| panic!("{:?}", labels(h)));
     let start = handle(&h).center();

@@ -35,8 +35,15 @@ pub struct ToolbarState {
     /// Open side panels.
     pub open_panels: Vec<PanelKind>,
     /// Message of the application shown next to the status: (text, error).
+    /// Errors open a pop-up instead (see [`ToolbarState::error_popup`]).
     #[serde(skip)]
     pub notice: Option<(String, bool)>,
+    /// The error shown in a pop-up over the result.
+    #[serde(skip)]
+    pub error_popup: Option<String>,
+    /// The fetch error that already popped up (once each).
+    #[serde(skip)]
+    pub(crate) seen_fetch_error: Option<String>,
     #[serde(skip)]
     rt: ToolbarRuntime,
 }
@@ -534,10 +541,16 @@ impl<'a> ResultToolbar<'a> {
                     status.push_str(tr("auto refresh paused"));
                 }
                 ui.add(egui::Label::new(RichText::new(status).color(ui.visuals().weak_text_color())).truncate());
+                // A failed fetch popped up once; a click shows it again.
                 if let Some(e) = &model.fetch.error {
-                    ui.add(egui::Label::new(RichText::new(format!("{} {}", icon::WARNING, e)).color(ui.visuals().error_fg_color)).truncate());
+                    let label =
+                        egui::Label::new(RichText::new(format!("{} {}", icon::WARNING_CIRCLE, e)).color(ui.visuals().error_fg_color)).truncate().sense(egui::Sense::click());
+                    if ui.add(label).on_hover_text(tr("Show the error")).clicked() {
+                        state.error_popup = Some(e.clone());
+                    }
                 }
-                if let Some((message, error)) = state.notice.clone() {
+                // Errors open a pop-up (the result viewer).
+                if let Some((message, error)) = state.notice.clone().filter(|(_, error)| !error) {
                     if ui.small_button(dbiji_icons::ic(icon::X)).on_hover_text(tr("Dismiss")).clicked() {
                         state.notice = None;
                     }

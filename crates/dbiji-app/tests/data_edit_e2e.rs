@@ -448,6 +448,8 @@ fn table_of_another_database() {
         assert!(v.error().is_none(), "{:?}", v.error());
         v.panel.as_ref().is_some_and(|p| p.model.row_count() == 2)
     });
+    // Its primary key is read in that database too: the rows can be edited.
+    h.until(&mut view, "editable rows", |v| v.panel.as_ref().is_some_and(|p| p.model.is_editable()));
     drop(view);
     let _ = h.try_sql(&format!("DROP DATABASE {db} WITH (FORCE)"));
 }

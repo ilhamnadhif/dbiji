@@ -2682,3 +2682,7 @@ Tab: back to the grid · ← →: previous / next row · ⌘C: copy the picked v
 Tab: grid · ← →: rows · ⌘C: copy	Tab: grid · ← →: baris · ⌘C: salin
 Show in folder	Tampilkan di folder
 Show in the navigator	Tampilkan di navigator
+This table is read-only	Tabel ini hanya-baca
+Show the error	Tampilkan error
+DBiji saves a change with UPDATE … WHERE <key> = …, so it needs a primary key, a unique key or a unique index to find exactly that row. This table has none in the result.	DBiji menyimpan perubahan dengan UPDATE … WHERE <key> = …, jadi butuh primary key, unique key, atau unique index untuk menemukan tepat baris itu. Tabel ini tidak punya satu pun di hasilnya.
+Define a virtual key (columns whose values identify a row) to edit it here, or add a primary key to the table.	Tentukan virtual key (kolom yang nilainya mengidentifikasi satu baris) untuk mengeditnya di sini, atau tambahkan primary key ke tabel.

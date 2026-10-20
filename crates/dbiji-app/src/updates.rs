@@ -151,9 +151,9 @@ pub enum CheckResult {
     UpToDate,
 }
 
-/// Ask GitHub for the latest release (blocking; run on a worker).
-fn fetch_latest() -> Result<CheckResult, String> {
-    let url = std::env::var("DBIJI_UPDATE_URL").unwrap_or_else(|_| RELEASES_API.to_string());
+/// Ask GitHub (or `url`) for the latest release (blocking; run on a worker).
+fn fetch_latest(url: Option<String>) -> Result<CheckResult, String> {
+    let url = url.or_else(|| std::env::var("DBIJI_UPDATE_URL").ok()).unwrap_or_else(|| RELEASES_API.to_string());
     if url == "off" {
         return Ok(CheckResult::UpToDate);
     }
@@ -208,6 +208,11 @@ pub struct Updates {
     announced: Option<String>,
     /// Next automatic check while DBiji stays open.
     next_check: Option<std::time::Instant>,
+    /// The Update button was clicked: ask again, so the offer on screen is
+    /// the newest release, not the one found hours ago.
+    refresh: bool,
+    /// Where the latest release is read (tests); default `DBIJI_UPDATE_URL`, else GitHub.
+    api_url: Option<String>,
     /// The outcome of the previous run's update was reported.
     #[cfg(target_os = "macos")]
     reported: bool,
@@ -296,18 +301,35 @@ impl Updates {
         self.whats_new = Some(notes.into_iter().take(1).collect());
     }
 
-    /// Check now; `manual` reports "up to date" and errors too, and shows a
-    /// release already found.
+    /// Check now, always asking for the latest release (one found earlier
+    /// may have been followed by newer ones); `manual` shows the result,
+    /// "up to date" and errors included.
     pub fn check_now(&mut self, backend: &Backend, manual: bool) {
-        if manual && let Some(r) = self.found.clone() {
-            self.show_found(r);
+        if let Some((_, running_manual)) = &mut self.check {
+            *running_manual |= manual;
             return;
         }
-        if self.check.is_some() {
-            return;
-        }
-        let job = backend.spawn(async move { tokio::task::spawn_blocking(fetch_latest).await.unwrap_or_else(|e| Err(e.to_string())) });
+        let url = self.api_url.clone();
+        let job = backend.spawn(async move { tokio::task::spawn_blocking(move || fetch_latest(url)).await.unwrap_or_else(|e| Err(e.to_string())) });
         self.check = Some((job, manual));
+    }
+
+    /// A release newer than the update being installed replaces it: the
+    /// install starts over from the offer. True when one was dropped.
+    #[cfg(target_os = "macos")]
+    fn drop_outdated_install(&mut self, newest: &Release) -> bool {
+        let outdated = match &self.install {
+            Install::Downloading { release, .. } | Install::Ready { release, .. } => is_newer(&newest.version, &release.version),
+            Install::Failed(_) => true,
+            Install::Idle => false,
+        };
+        if outdated {
+            if let Install::Ready { prepared, .. } = std::mem::take(&mut self.install) {
+                let _ = std::fs::remove_dir_all(&prepared.dir);
+            }
+            self.install_visible = false;
+        }
+        outdated
     }
 
     /// A check is running.
@@ -349,6 +371,7 @@ impl Updates {
             && let Some(r) = self.found.clone()
         {
             self.show_found(r);
+            self.refresh = true;
         }
     }
 
@@ -358,6 +381,9 @@ impl Updates {
         let mut changed = false;
         #[cfg(target_os = "macos")]
         self.report_previous_update(toasts);
+        if std::mem::take(&mut self.refresh) {
+            self.check_now(backend, false);
+        }
         if let Some((job, manual)) = &mut self.check {
             let manual = *manual;
             if let Some(result) = job.poll() {
@@ -366,8 +392,15 @@ impl Updates {
                 match result {
                     Ok(CheckResult::Available(r)) if manual || settings.updates.skipped_version.as_deref() != Some(r.version.as_str()) => {
                         self.found = Some(r.clone());
-                        if manual || at_launch {
+                        #[cfg(target_os = "macos")]
+                        let dropped = self.drop_outdated_install(&r);
+                        #[cfg(not(target_os = "macos"))]
+                        let dropped = false;
+                        if manual || at_launch || dropped {
                             self.show_found(r);
+                        } else if self.available.is_some() {
+                            // The offer on screen shows the newest release.
+                            self.available = Some(r);
                         } else if self.announced.as_deref() != Some(r.version.as_str()) {
                             toasts.info(trf("DBiji {} is available: use the Update button to install it.", &[&r.version]));
                         }
@@ -733,6 +766,65 @@ mod tests {
         assert!(parse_release(&other).unwrap().archive.is_none());
         assert!(parse_release(r#"{"tag_name":"v9","prerelease":true}"#).is_none());
         assert!(parse_release("not json").is_none());
+    }
+
+    /// An HTTP server answering every request with the release `latest` names.
+    fn release_server(latest: std::sync::Arc<parking_lot::Mutex<String>>) -> String {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/releases/latest", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            for mut stream in listener.incoming().flatten() {
+                let _ = stream.read(&mut [0u8; 4096]);
+                let body = format!(r#"{{"tag_name":"v{}","draft":false,"prerelease":false,"assets":[]}}"#, latest.lock());
+                let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+            }
+        });
+        url
+    }
+
+    /// Frames until the running check answered.
+    fn settle(u: &mut Updates, ctx: &Context, backend: &Backend, settings: &mut Settings, toasts: &mut Toasts) {
+        for _ in 0..1000 {
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                u.ui(ui.ctx(), backend, settings, toasts);
+            });
+            out.textures_delta.clear();
+            if !u.checking() && !u.refresh {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("the update check did not answer");
+    }
+
+    /// A release found earlier is not offered once a newer one is out:
+    /// Check for Updates… and the Update button ask again (0.3.8 was
+    /// offered 0.3.9 although 0.3.10 had been published).
+    #[test]
+    fn the_newest_release_is_offered() {
+        let backend = Backend::new().unwrap();
+        let latest = std::sync::Arc::new(parking_lot::Mutex::new("90.0.0".to_string()));
+        let mut u = Updates { api_url: Some(release_server(latest.clone())), ..Default::default() };
+        let (ctx, mut settings, mut toasts) = (Context::default(), Settings::default(), Toasts::default());
+        let version = |r: &Option<Release>| r.as_ref().map(|r| r.version.clone());
+        // A background check finds 90.0.0: the toolbar's Update button.
+        u.check_now(&backend, false);
+        settle(&mut u, &ctx, &backend, &mut settings, &mut toasts);
+        assert_eq!(version(&u.found).as_deref(), Some("90.0.0"));
+        assert!(u.available.is_none());
+        // 90.1.0 is published: Check for Updates… asks again.
+        *latest.lock() = "90.1.0".into();
+        u.check_now(&backend, true);
+        settle(&mut u, &ctx, &backend, &mut settings, &mut toasts);
+        assert_eq!(version(&u.available).as_deref(), Some("90.1.0"));
+        assert_eq!(version(&u.found).as_deref(), Some("90.1.0"));
+        // 90.2.0 while the offer is on screen: a click on Update asks again and the offer follows.
+        *latest.lock() = "90.2.0".into();
+        u.refresh = true;
+        settle(&mut u, &ctx, &backend, &mut settings, &mut toasts);
+        assert_eq!(version(&u.available).as_deref(), Some("90.2.0"));
+        assert_eq!(version(&u.found).as_deref(), Some("90.2.0"));
     }
 
     #[test]

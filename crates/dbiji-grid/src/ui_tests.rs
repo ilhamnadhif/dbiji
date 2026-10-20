@@ -213,7 +213,7 @@ fn open_value_panel_action_opens_panel() {
 }
 
 #[test]
-fn a_refused_edit_is_told_once_in_the_status_bar() {
+fn a_refused_edit_pops_up_once() {
     let mut m = editable_model(5);
     m.set_editability(Err(crate::model::ReadOnlyReason::NoKey));
     let mut v = Viewer::new(m);
@@ -222,10 +222,27 @@ fn a_refused_edit_is_told_once_in_the_status_bar() {
     v.state.grid.select_cell(1, 1);
     v.frame(vec![]);
     v.frame(vec![crate::test_support::key(egui::Key::Enter, Modifiers::NONE)]);
+    // The pop-up opens, then settles in the middle (sized on its first frames).
+    for _ in 0..4 {
+        v.frame(vec![]);
+    }
     assert!(!v.state.grid.is_editing());
-    let (message, error) = v.state.toolbar.notice.clone().expect("status bar message");
-    assert!(error && message.contains("no primary or unique key"), "{message}");
-    assert!(v.state.grid.rt.message.is_none(), "not repeated over the grid");
+    assert!(v.state.grid.rt.message.is_none(), "no overlay on the grid");
+    // Once, in full, in a pop-up with its remedy.
+    let count = |v: &Viewer, text: &str| {
+        v.output
+            .accesskit_update
+            .as_ref()
+            .map_or(0, |u| u.nodes.iter().filter(|(_, n)| n.role() != egui::accesskit::Role::TextRun && n.label().or(n.value()).is_some_and(|l| l.contains(text))).count())
+    };
+    assert_eq!(count(&v, "Define a virtual key (columns whose values identify a row)"), 1);
+    assert_eq!(v.state.toolbar.error_popup.as_deref().map(|m| m.contains("no primary or unique key")), Some(true));
+    assert!(v.state.toolbar.notice.is_none(), "not in the status bar");
+    let button = v.find("Define virtual key").expect("Define virtual key… in the pop-up");
+    v.click(button);
+    assert!(v.actions.iter().any(|a| matches!(a, GridAction::DefineVirtualKey { .. })));
+    v.frame(vec![]);
+    assert_eq!(count(&v, "Define a virtual key (columns whose values identify a row)"), 0, "taken care of");
 }
 
 #[test]

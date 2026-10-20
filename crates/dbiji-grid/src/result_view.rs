@@ -83,6 +83,58 @@ pub struct ResultViewer<'a> {
     id_salt: Id,
 }
 
+/// An error in a pop-up, in full (selectable, scrolls when long), with what
+/// can be done about it: define a virtual key for a table without a key.
+fn error_popup(ui: &Ui, id: Id, message: &str, model: &ResultModel, state: &mut ResultViewState, actions: &mut Vec<GridAction>) {
+    use egui::{Button, RichText};
+    use egui_phosphor::regular as icon;
+    let no_key = model.read_only_reason().is_some_and(|r| r.virtual_key_helps() && r.message() == message);
+    let mut close = false;
+    let modal = egui::Modal::new(id.with("error_popup")).show(ui.ctx(), |ui| {
+        ui.set_width(480.0);
+        let error = ui.visuals().error_fg_color;
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(if no_key { icon::LOCK_SIMPLE } else { icon::WARNING_CIRCLE }).color(error).size(24.0));
+            ui.heading(if no_key { tr("This table is read-only") } else { tr("Error") });
+        });
+        ui.add_space(6.0);
+        if no_key {
+            ui.label(tr("DBiji saves a change with UPDATE … WHERE <key> = …, so it needs a primary key, a unique key or a unique index to find exactly that row. This table has none in the result."));
+            ui.add_space(4.0);
+            ui.label(tr("Define a virtual key (columns whose values identify a row) to edit it here, or add a primary key to the table."));
+        } else {
+            egui::ScrollArea::vertical().max_height(260.0).show(ui, |ui| {
+                ui.add(egui::Label::new(message).wrap().selectable(true));
+            });
+        }
+        ui.add_space(10.0);
+        ui.horizontal(|ui| {
+            if ui.button(format!("{} {}", icon::COPY, tr("Copy"))).clicked() {
+                ui.ctx().copy_text(message.to_string());
+            }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let accent = ui.visuals().selection.stroke.color;
+                let on_accent = if ui.visuals().dark_mode { egui::Color32::BLACK } else { egui::Color32::WHITE };
+                let primary = |text: String| Button::new(RichText::new(text).color(on_accent).strong()).fill(accent);
+                if no_key {
+                    if ui.add(primary(format!("{} {}", icon::KEY, tr("Define virtual key…")))).clicked() {
+                        actions.push(GridAction::DefineVirtualKey { table: crate::model::source_table(model.columns()).ok() });
+                        close = true;
+                    }
+                    if ui.button(tr("Close")).clicked() {
+                        close = true;
+                    }
+                } else if ui.add(primary(tr("OK").to_string())).clicked() {
+                    close = true;
+                }
+            });
+        });
+    });
+    if close || modal.should_close() {
+        state.toolbar.error_popup = None;
+    }
+}
+
 fn panel_label(p: PanelKind) -> String {
     use egui_phosphor::regular as icon;
     match p {
@@ -119,6 +171,20 @@ impl<'a> ResultViewer<'a> {
         Panel::bottom(id.with("toolbar")).frame(bar_frame).show(ui, |ui| {
             actions.extend(ResultToolbar::new(model, &mut state.grid, &mut state.toolbar).show(ui));
         });
+        // Errors in a pop-up: a refused edit or a failed save each time, a failed fetch once.
+        if let Some((message, true)) = state.toolbar.notice.clone() {
+            state.toolbar.notice = None;
+            state.toolbar.error_popup = Some(message);
+        }
+        if model.fetch.error != state.toolbar.seen_fetch_error {
+            state.toolbar.seen_fetch_error = model.fetch.error.clone();
+            if let Some(e) = &model.fetch.error {
+                state.toolbar.error_popup = Some(e.clone());
+            }
+        }
+        if let Some(message) = state.toolbar.error_popup.clone() {
+            error_popup(ui, id, &message, model, state, &mut actions);
+        }
         if !state.toolbar.open_panels.is_empty() {
             if state.active_panel.is_none_or(|p| !state.toolbar.is_panel_open(p)) {
                 state.active_panel = state.toolbar.open_panels.last().copied();

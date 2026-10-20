@@ -3,6 +3,15 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.11 — 2026-10-20
+
+### Changed
+- Errors of a result open a pop-up, in full (selectable, scrolls when long) with **Copy**: a refused edit, a failed save or paste, a failed query (once; the ⚠ in the status bar shows it again). A table without a key explains why it is read-only and offers **Define virtual key…**.
+
+### Fixed
+- Updates always offer the newest release: Check for Updates… and the Update button ask GitHub again instead of offering a version found earlier (0.3.8 offered 0.3.9 although 0.3.10 was out). An update being installed is replaced by a newer one.
+- A table of another database of the server (PostgreSQL, SQL Server) was read-only ("no primary or unique key") although it has a key: its keys are now read in its own database.
+
 ## 0.3.10 — 2026-10-20
 
 ### New

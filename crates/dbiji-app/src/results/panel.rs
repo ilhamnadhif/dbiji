@@ -244,12 +244,15 @@ impl ResultPanel {
             return;
         }
         let read_only = cx.conns.config(&self.conn).is_some_and(|c| c.read_only);
+        // Columns without a database come from the result's one (a table of
+        // another database of the server).
+        let result_database = self.table.as_ref().and_then(|t| t.database.clone());
         let mut tables: Vec<ObjectRef> = Vec::new();
         for c in self.model.columns() {
             if let Some(s) = &c.source
                 && !tables.iter().any(|t| same_table(t, s.schema.as_deref(), &s.table))
             {
-                tables.push(ObjectRef::table(s.schema.clone(), s.table.clone()).with_database(s.database.clone()));
+                tables.push(ObjectRef::table(s.schema.clone(), s.table.clone()).with_database(s.database.clone().or(result_database.clone())));
             }
         }
         if tables.is_empty() {
@@ -260,11 +263,16 @@ impl ResultPanel {
         }
         let backend = cx.backend;
         let Some(live) = cx.conns.live_mut(&self.conn) else { return };
-        let main = live.main.clone();
         let mut defs: HashMap<(Option<String>, String), Arc<TableDef>> = HashMap::new();
         let mut waiting = false;
         for t in tables.iter().take(4) {
-            live.meta.request_table_def(backend, &main, t);
+            // Keys are read in the table's own database: another one does not see them.
+            let Some(session) = live.ensure_session(backend, t.database.as_deref()) else {
+                let failed = t.database.as_ref().is_some_and(|d| matches!(live.db_sessions.get(d), Some(crate::backend::Loadable::Failed(_))));
+                waiting |= !failed;
+                continue;
+            };
+            live.meta.request_table_def(backend, &session, t);
             match live.meta.table_defs.get(t) {
                 Some(crate::backend::Loadable::Loaded(d)) => {
                     defs.insert((t.schema.clone(), t.name.to_lowercase()), d.clone());

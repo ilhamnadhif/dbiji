@@ -29,6 +29,7 @@ dbiji-compare = { path = "crates/dbiji-compare" }
 dbiji-tasks = { path = "crates/dbiji-tasks" }
 dbiji-ai = { path = "crates/dbiji-ai" }
 dbiji-grid = { path = "crates/dbiji-grid" }
+dbiji-icons = { path = "crates/dbiji-icons" }
 dbiji-editor = { path = "crates/dbiji-editor" }
 dbiji-visual = { path = "crates/dbiji-visual" }
 
@@ -102,7 +103,7 @@ egui = "0.36"
 egui_extras = { version = "0.36", default-features = false }
 egui_plot = "0.37"
 egui_dock = "0.21"
-egui-phosphor = "0.14"
+egui-phosphor = { version = "0.14", features = ["regular", "fill"] }
 rfd = "0.17"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp"] }
 resvg = "0.48"

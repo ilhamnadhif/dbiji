@@ -147,7 +147,7 @@ impl ObjectEditorTab {
                 ui.selectable_value(&mut self.table_page, p, label);
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if self.obj.kind.is_table_like() && ui.button(format!("{} {}", icon::PENCIL, tr("Edit table"))).clicked() {
+                if self.obj.kind.is_table_like() && ui.button((dbiji_icons::ic(icon::PENCIL), tr("Edit table"))).clicked() {
                     cx.push(AppCommand::EditTable { connection: self.conn.clone(), table: self.obj.clone() });
                 }
             });
@@ -328,14 +328,14 @@ impl ObjectEditorTab {
                     for (i, c) in vt.virtual_columns.iter_mut().enumerate() {
                         ui.add(egui::TextEdit::singleline(&mut c.name).desired_width(140.0));
                         ui.add(egui::TextEdit::singleline(&mut c.expression).desired_width(320.0).code_editor());
-                        if ui.small_button(icon::TRASH).clicked() {
+                        if ui.small_button(dbiji_icons::ic(icon::TRASH)).clicked() {
                             remove = Some(i);
                         }
                         ui.end_row();
                     }
                     ui.add(egui::TextEdit::singleline(&mut self.new_vcol.0).hint_text(tr("name")).desired_width(140.0));
                     ui.add(egui::TextEdit::singleline(&mut self.new_vcol.1).hint_text(tr("expression, e.g. price * quantity")).desired_width(320.0).code_editor());
-                    if ui.add_enabled(!self.new_vcol.0.trim().is_empty() && !self.new_vcol.1.trim().is_empty(), egui::Button::new(icon::PLUS)).clicked() {
+                    if ui.add_enabled(!self.new_vcol.0.trim().is_empty() && !self.new_vcol.1.trim().is_empty(), egui::Button::new(dbiji_icons::ic(icon::PLUS))).clicked() {
                         vt.virtual_columns.push(dbiji_config::project::VirtualColumn {
                             name: self.new_vcol.0.trim().to_string(),
                             expression: self.new_vcol.1.trim().to_string(),
@@ -386,7 +386,7 @@ impl ObjectEditorTab {
         if widgets::load_state(ui, &self.ddl, &mut retry) {
             let text = self.ddl.get().cloned().unwrap_or_default();
             ui.horizontal(|ui| {
-                if ui.button(format!("{} {}", icon::FILE_SQL, tr("Open in SQL editor"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::FILE_SQL), tr("Open in SQL editor"))).clicked() {
                     cx.push(AppCommand::NewSqlEditor { connection: Some(self.conn.clone()), schema: Some(self.obj.schema_ref()), text: Some(text.clone()) });
                 }
             });
@@ -510,7 +510,7 @@ impl TabView for ObjectEditorTab {
                 ui.selectable_value(&mut self.page, p, label);
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button(icon::ARROW_CLOCKWISE).on_hover_text(tr("Refresh")).clicked() {
+                if ui.button(dbiji_icons::ic(icon::ARROW_CLOCKWISE)).on_hover_text(tr("Refresh")).clicked() {
                     self.refresh();
                     cx.push(AppCommand::RefreshMetadata { connection: self.conn.clone(), object: Some(self.obj.clone()), schema: None });
                 }

@@ -97,7 +97,7 @@ impl Toasts {
                                 ui.label(RichText::new(short).small());
                             }
                         });
-                        if ui.add(egui::Button::new(icon::X).frame(false)).on_hover_text(tr("Dismiss")).clicked() {
+                        if ui.add(egui::Button::new(dbiji_icons::ic(icon::X)).frame(false)).on_hover_text(tr("Dismiss")).clicked() {
                             close = Some(i);
                         }
                     });

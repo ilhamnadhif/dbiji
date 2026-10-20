@@ -1542,6 +1542,7 @@ dependencies = [
  "dbiji-driver-sqlite",
  "dbiji-editor",
  "dbiji-grid",
+ "dbiji-icons",
  "dbiji-net",
  "dbiji-sql",
  "dbiji-tasks",
@@ -1773,6 +1774,7 @@ version = "0.3.2"
 dependencies = [
  "chrono",
  "dbiji-core",
+ "dbiji-icons",
  "eframe",
  "egui",
  "egui-phosphor",
@@ -1784,6 +1786,14 @@ dependencies = [
  "serde_json",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "dbiji-icons"
+version = "0.3.2"
+dependencies = [
+ "egui",
+ "egui-phosphor",
 ]
 
 [[package]]
@@ -1868,6 +1878,7 @@ version = "0.3.2"
 dependencies = [
  "chrono",
  "dbiji-core",
+ "dbiji-icons",
  "eframe",
  "egui",
  "egui-phosphor",

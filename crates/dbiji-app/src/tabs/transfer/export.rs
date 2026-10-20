@@ -534,7 +534,7 @@ impl ExportTab {
                         });
                     }
                 }
-                if ui.small_button(icon::TRASH).on_hover_text(tr("Remove")).clicked() {
+                if ui.small_button(dbiji_icons::ic(icon::TRASH)).on_hover_text(tr("Remove")).clicked() {
                     remove = Some(i);
                 }
                 ui.end_row();
@@ -553,7 +553,7 @@ impl ExportTab {
             ui.add(egui::TextEdit::multiline(sql).code_editor().desired_rows(6).desired_width(f32::INFINITY).hint_text(tr("SELECT … (one statement returning rows)")));
         }
         ui.horizontal(|ui| {
-            if ui.button(format!("{} {}", icon::PLUS, tr("Add query"))).clicked() {
+            if ui.button((dbiji_icons::ic(icon::PLUS), tr("Add query"))).clicked() {
                 self.items.push(SourceItem { enabled: true, item: ExportItem::Query { sql: String::new(), name: None } });
                 self.expanded = Some(self.items.len() - 1);
             }
@@ -572,7 +572,7 @@ impl ExportTab {
         if cx.conns.live(&conn).is_none() {
             ui.horizontal(|ui| {
                 ui.weak(tr("Connect to list the tables."));
-                if ui.button(format!("{} {}", icon::PLUGS_CONNECTED, tr("Connect"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::PLUGS_CONNECTED), tr("Connect"))).clicked() {
                     cx.push(crate::command::AppCommand::Connect(conn.clone()));
                 }
             });
@@ -611,7 +611,7 @@ impl ExportTab {
                     for o in &shown {
                         let already = added(&self.items, o);
                         ui.horizontal(|ui| {
-                            if ui.add_enabled(!already, egui::Button::new(icon::PLUS).small()).clicked() {
+                            if ui.add_enabled(!already, egui::Button::new(dbiji_icons::ic(icon::PLUS)).small()).clicked() {
                                 self.add_table(o.clone());
                             }
                             let glyph = if o.kind == ObjectKind::View { icon::EYE } else { icon::TABLE };
@@ -674,7 +674,7 @@ impl ExportTab {
                 if ui.add(egui::TextEdit::singleline(&mut folder).desired_width(360.0)).changed() {
                     self.settings.output_folder = folder.into();
                 }
-                if ui.button(format!("{} {}", icon::FOLDER_OPEN, tr("Browse…"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::FOLDER_OPEN), tr("Browse…"))).clicked() {
                     let mut dialog = rfd::FileDialog::new().set_title(tr("Output folder"));
                     if self.settings.output_folder.is_dir() {
                         dialog = dialog.set_directory(&self.settings.output_folder);
@@ -823,12 +823,12 @@ impl ExportTab {
             }
         });
         ui.horizontal(|ui| {
-            if ui.button(format!("{} {}", icon::FOLDER_OPEN, tr("Open folder"))).clicked()
+            if ui.button((dbiji_icons::ic(icon::FOLDER_OPEN), tr("Open folder"))).clicked()
                 && let Err(e) = open::that_detached(&self.settings.output_folder)
             {
                 self.error = Some(e.to_string());
             }
-            if ui.button(format!("{} {}", icon::ARROW_COUNTER_CLOCKWISE, tr("Change settings"))).clicked() {
+            if ui.button((dbiji_icons::ic(icon::ARROW_COUNTER_CLOCKWISE), tr("Change settings"))).clicked() {
                 self.result = None;
                 self.page = PAGE_SOURCE;
             }
@@ -842,7 +842,7 @@ impl ExportTab {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             let running = self.run.is_some();
-            if ui.add_enabled(self.page > PAGE_SOURCE && !running, egui::Button::new(format!("{} {}", icon::CARET_LEFT, tr("Back")))).clicked() {
+            if ui.add_enabled(self.page > PAGE_SOURCE && !running, egui::Button::new((dbiji_icons::ic(icon::CARET_LEFT), tr("Back")))).clicked() {
                 self.page -= 1;
             }
             let reachable = self.reachable();
@@ -851,12 +851,12 @@ impl ExportTab {
             }
             ui.separator();
             let ok = self.validate().is_ok() && !running;
-            if ui.add_enabled(ok, egui::Button::new(format!("{} {}", icon::PLAY, tr("Run export")))).clicked() {
+            if ui.add_enabled(ok, egui::Button::new((dbiji_icons::ic(icon::PLAY), tr("Run export")))).clicked() {
                 self.start(cx);
             }
             let savable = ok && !self.saver.is_saving() && !self.fetched_mode();
             if ui
-                .add_enabled(savable, egui::Button::new(format!("{} {}", icon::FLOPPY_DISK, tr("Save as task…"))))
+                .add_enabled(savable, egui::Button::new((dbiji_icons::ic(icon::FLOPPY_DISK), tr("Save as task…"))))
                 .on_disabled_hover_text(tr("Exports of fetched rows cannot be saved as tasks."))
                 .clicked()
             {
@@ -1351,7 +1351,7 @@ impl TabView for ExportTab {
         egui::Panel::top(egui::Id::new(("exp_top", uid))).show(ui, |ui| {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
-                ui.heading(format!("{} {}", icon::EXPORT, tr("Export data")));
+                crate::widgets::icon_heading(ui, icon::EXPORT, tr("Export data"));
                 ui.weak(connection_name(cx, &self.conn));
             });
             let steps = [tr("Source"), tr("Format"), tr("Output"), tr("Run")];

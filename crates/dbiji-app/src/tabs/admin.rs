@@ -37,7 +37,7 @@ impl AdminSession {
             ui.vertical_centered(|ui| {
                 ui.add_space(40.0);
                 ui.label(tr("The connection is closed."));
-                if ui.button(format!("{} {}", icon::PLUGS_CONNECTED, tr("Connect"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::PLUGS_CONNECTED), tr("Connect"))).clicked() {
                     cx.commands.push(AppCommand::Connect(conn.to_string()));
                 }
             });
@@ -87,7 +87,7 @@ struct Refresh {
 
 impl Refresh {
     fn ui(&mut self, ui: &mut Ui) -> bool {
-        let mut now = ui.button(format!("{} {}", icon::ARROW_CLOCKWISE, tr("Refresh"))).clicked();
+        let mut now = ui.button((dbiji_icons::ic(icon::ARROW_CLOCKWISE), tr("Refresh"))).clicked();
         egui::ComboBox::from_id_salt(ui.next_auto_id())
             .selected_text(if self.interval == 0 { tr("Auto-refresh off").to_string() } else { trf("Every {} s", &[&self.interval]) })
             .show_ui(ui, |ui| {
@@ -181,10 +181,10 @@ impl TabView for SessionManagerTab {
                 _ => None,
             };
             ui.add_enabled_ui(sel_id.is_some(), |ui| {
-                if ui.button(format!("{} {}", icon::STOP, tr("Cancel query"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::STOP), tr("Cancel query"))).clicked() {
                     self.kill = sel_id.clone().map(|i| (i, KillMode::CancelQuery));
                 }
-                if ui.button(format!("{} {}", icon::X_CIRCLE, tr("Terminate session"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::X_CIRCLE), tr("Terminate session"))).clicked() {
                     self.kill = sel_id.clone().map(|i| (i, KillMode::Terminate));
                 }
             });
@@ -295,7 +295,7 @@ impl TabView for LockManagerTab {
                 self.data = Loadable::Loading(cx.backend.spawn(async move { s.lock().await.list_locks().await }));
             }
             ui.checkbox(&mut self.only_waiting, tr("Only waiting locks"));
-            if ui.button(format!("{} {}", icon::USERS, tr("Sessions"))).clicked() {
+            if ui.button((dbiji_icons::ic(icon::USERS), tr("Sessions"))).clicked() {
                 cx.push(AppCommand::OpenSessionManager { connection: self.conn.clone() });
             }
         });

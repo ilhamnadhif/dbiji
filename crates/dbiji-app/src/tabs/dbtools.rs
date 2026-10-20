@@ -124,7 +124,7 @@ impl ToolSession {
             SessionState::Closed => {
                 ui.horizontal(|ui| {
                     ui.label(tr("The connection is closed."));
-                    if ui.button(format!("{} {}", icon::PLUGS_CONNECTED, tr("Connect"))).clicked() {
+                    if ui.button((dbiji_icons::ic(icon::PLUGS_CONNECTED), tr("Connect"))).clicked() {
                         cx.push(AppCommand::Connect(conn.to_string()));
                     }
                 });
@@ -132,7 +132,7 @@ impl ToolSession {
             }
             SessionState::Failed(e) => {
                 crate::widgets::error_box(ui, &e);
-                if ui.button(format!("{} {}", icon::ARROW_CLOCKWISE, tr("Retry"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::ARROW_CLOCKWISE), tr("Retry"))).clicked() {
                     self.session = Loadable::NotLoaded;
                 }
                 None

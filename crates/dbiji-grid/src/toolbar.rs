@@ -227,20 +227,20 @@ impl<'a> FilterBar<'a> {
                 apply = true;
             }
             history_button(ui, "order_history", &state.order_history.clone(), &mut state.order_text, &mut apply);
-            if ui.button(icon::PLAY).on_hover_text(tr("Apply filter and order (Enter)")).clicked() {
+            if ui.button(dbiji_icons::ic(icon::PLAY)).on_hover_text(tr("Apply filter and order (Enter)")).clicked() {
                 apply = true;
             }
-            if ui.button(icon::X).on_hover_text(tr("Clear filter and order")).clicked() {
+            if ui.button(dbiji_icons::ic(icon::X)).on_hover_text(tr("Clear filter and order")).clicked() {
                 clear = true;
             }
             if crate::model::source_table(model.columns()).is_ok() {
                 ui.menu_button(icon::DOTS_THREE, |ui| {
                     let some = |s: &str| Some(s.trim().to_string()).filter(|s| !s.is_empty());
-                    if ui.button(format!("{} {}", icon::PUSH_PIN, tr("Save as default filter"))).on_hover_text(tr("Applied whenever this table's data is opened")).clicked() {
+                    if ui.button((dbiji_icons::ic(icon::PUSH_PIN), tr("Save as default filter"))).on_hover_text(tr("Applied whenever this table's data is opened")).clicked() {
                         actions.push(GridAction::DefaultFilter { where_clause: some(&state.filter_text), order_by: some(&state.order_text) });
                         ui.close();
                     }
-                    if ui.button(format!("{} {}", icon::PUSH_PIN_SLASH, tr("Reset default filter"))).clicked() {
+                    if ui.button((dbiji_icons::ic(icon::PUSH_PIN_SLASH), tr("Reset default filter"))).clicked() {
                         actions.push(GridAction::DefaultFilter { where_clause: None, order_by: None });
                         ui.close();
                     }
@@ -296,7 +296,7 @@ impl<'a> FilterBar<'a> {
 }
 
 fn history_button(ui: &mut Ui, salt: &str, history: &[String], target: &mut String, apply: &mut bool) {
-    let resp = ui.add_enabled(!history.is_empty(), Button::new(icon::CARET_DOWN).small()).on_hover_text(tr("History"));
+    let resp = ui.add_enabled(!history.is_empty(), Button::new(dbiji_icons::ic(icon::CARET_DOWN)).small()).on_hover_text(tr("History"));
     Popup::menu(&resp).id(ui.id().with(salt)).close_behavior(PopupCloseBehavior::CloseOnClick).show(|ui| {
         ui.set_min_width(240.0);
         for h in history {
@@ -335,7 +335,7 @@ impl<'a> ResultToolbar<'a> {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
             // --- refresh
-            if ui.button(icon::ARROWS_CLOCKWISE).on_hover_text(tr("Refresh (Cmd+R)")).clicked() {
+            if ui.button(dbiji_icons::ic(icon::ARROWS_CLOCKWISE)).on_hover_text(tr("Refresh (Cmd+R)")).clicked() {
                 actions.push(GridAction::Refresh);
             }
             let label = match state.auto_refresh_secs {
@@ -377,13 +377,13 @@ impl<'a> ResultToolbar<'a> {
                     actions.push(GridAction::Notify { message: e, error: true });
                 }
             };
-            if ui.add_enabled(editable, Button::new(icon::ROWS_PLUS_BOTTOM)).on_hover_text(tr("Add row")).clicked() {
+            if ui.add_enabled(editable, Button::new(dbiji_icons::ic(icon::ROWS_PLUS_BOTTOM))).on_hover_text(tr("Add row")).clicked() {
                 notify(grid::add_row(model, grid), &mut actions);
             }
-            if ui.add_enabled(editable, Button::new(icon::COPY_SIMPLE)).on_hover_text(tr("Duplicate selected rows")).clicked() {
+            if ui.add_enabled(editable, Button::new(dbiji_icons::ic(icon::COPY_SIMPLE))).on_hover_text(tr("Duplicate selected rows")).clicked() {
                 notify(grid::duplicate_selected(model, grid), &mut actions);
             }
-            if ui.add_enabled(editable, Button::new(icon::TRASH)).on_hover_text(tr("Delete selected rows")).clicked() {
+            if ui.add_enabled(editable, Button::new(dbiji_icons::ic(icon::TRASH))).on_hover_text(tr("Delete selected rows")).clicked() {
                 notify(grid::delete_selected(model, grid), &mut actions);
             }
             // Save stands out while there is something to save.
@@ -392,12 +392,12 @@ impl<'a> ResultToolbar<'a> {
                 let text = if ui.visuals().dark_mode { egui::Color32::BLACK } else { egui::Color32::WHITE };
                 Button::new(RichText::new(format!("{} {} ({pending})", icon::FLOPPY_DISK, tr("Save"))).color(text)).fill(accent)
             } else {
-                Button::new(icon::FLOPPY_DISK)
+                Button::new(dbiji_icons::ic(icon::FLOPPY_DISK))
             };
             if ui.add_enabled(pending > 0, save).on_hover_text(trf("Save {} pending change(s) (Cmd+S)", &[&pending])).clicked() {
                 actions.push(GridAction::SaveChanges);
             }
-            let cancel = ui.add_enabled(pending > 0, Button::new(icon::X_CIRCLE)).on_hover_text(tr("Discard pending changes"));
+            let cancel = ui.add_enabled(pending > 0, Button::new(dbiji_icons::ic(icon::X_CIRCLE))).on_hover_text(tr("Discard pending changes"));
             if cancel.clicked() {
                 state.rt.confirm_discard = true;
             }
@@ -425,7 +425,7 @@ impl<'a> ResultToolbar<'a> {
             }
             group_separator(ui);
             // --- export
-            if ui.button(format!("{} {}", icon::EXPORT, tr("Export"))).on_hover_text(tr("Export…")).clicked() {
+            if ui.button((dbiji_icons::ic(icon::EXPORT), tr("Export"))).on_hover_text(tr("Export…")).clicked() {
                 actions.push(GridAction::Export { rows: None, columns: grid.visible_columns() });
             }
             group_separator(ui);
@@ -476,14 +476,14 @@ impl<'a> ResultToolbar<'a> {
             // --- right: fetch buttons, status, messages (right to left)
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let fetching = model.fetch.fetching;
-                if ui.add_enabled(!model.fetch.counting, Button::new(icon::HASH)).on_hover_text(tr("Calculate total row count")).clicked() {
+                if ui.add_enabled(!model.fetch.counting, Button::new(dbiji_icons::ic(icon::HASH))).on_hover_text(tr("Calculate total row count")).clicked() {
                     actions.push(GridAction::CountTotal);
                 }
                 if model.fetch.has_more {
-                    if ui.add_enabled(!fetching, Button::new(icon::ARROW_LINE_DOWN)).on_hover_text(tr("Fetch all rows")).clicked() {
+                    if ui.add_enabled(!fetching, Button::new(dbiji_icons::ic(icon::ARROW_LINE_DOWN))).on_hover_text(tr("Fetch all rows")).clicked() {
                         actions.push(GridAction::FetchAll);
                     }
-                    if ui.add_enabled(!fetching, Button::new(icon::CARET_DOUBLE_DOWN)).on_hover_text(tr("Fetch next page")).clicked() {
+                    if ui.add_enabled(!fetching, Button::new(dbiji_icons::ic(icon::CARET_DOUBLE_DOWN))).on_hover_text(tr("Fetch next page")).clicked() {
                         actions.push(GridAction::FetchMore);
                     }
                 }
@@ -497,7 +497,7 @@ impl<'a> ResultToolbar<'a> {
                     ui.add(egui::Label::new(RichText::new(format!("{} {}", icon::WARNING, e)).color(ui.visuals().error_fg_color)).truncate());
                 }
                 if let Some((message, error)) = state.notice.clone() {
-                    if ui.small_button(icon::X).on_hover_text(tr("Dismiss")).clicked() {
+                    if ui.small_button(dbiji_icons::ic(icon::X)).on_hover_text(tr("Dismiss")).clicked() {
                         state.notice = None;
                     }
                     let color = if error { ui.visuals().error_fg_color } else { ui.visuals().text_color() };

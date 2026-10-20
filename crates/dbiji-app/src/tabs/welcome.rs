@@ -27,7 +27,7 @@ fn recent_scripts(ui: &Ui, cx: &AppContext) -> Vec<dbiji_config::project::Script
 }
 
 /// A clickable two-line row: icon, name, and a detail line (cut with "…").
-fn recent_row(ui: &mut Ui, icon: &str, name: &str, detail: &str) -> egui::Response {
+fn recent_row(ui: &mut Ui, icon: &str, icon_color: egui::Color32, name: &str, detail: &str) -> egui::Response {
     let width = ui.available_width();
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, 42.0), egui::Sense::click());
     let v = ui.visuals();
@@ -37,7 +37,7 @@ fn recent_row(ui: &mut Ui, icon: &str, name: &str, detail: &str) -> egui::Respon
     let text_color = v.text_color();
     let weak = v.weak_text_color();
     let painter = ui.painter_at(rect);
-    painter.text(egui::pos2(rect.left() + 10.0, rect.center().y), egui::Align2::LEFT_CENTER, icon, egui::TextStyle::Body.resolve(ui.style()), weak);
+    painter.text(egui::pos2(rect.left() + 10.0, rect.center().y), egui::Align2::LEFT_CENTER, icon, egui::TextStyle::Body.resolve(ui.style()), icon_color);
     let left = rect.left() + 34.0;
     let max_w = (rect.right() - left - 8.0).max(20.0);
     let line = |text: &str, style: egui::TextStyle, color: egui::Color32| {
@@ -100,8 +100,8 @@ impl TabView for WelcomeTab {
             let mut start = |ui: &mut Ui| {
                 ui.spacing_mut().button_padding = egui::vec2(10.0, 6.0);
                 let full = egui::vec2(ui.available_width(), 32.0);
-                let accent = ui.visuals().selection.stroke.color;
-                let on_accent = if ui.visuals().dark_mode { egui::Color32::BLACK } else { egui::Color32::WHITE };
+                let accent = crate::theme::accent(ui.visuals().dark_mode);
+                let on_accent = egui::Color32::WHITE;
                 let primary = egui::Button::new(RichText::new(format!("{}  {}", icon::PLUS, tr("New connection"))).color(on_accent).strong()).fill(accent).min_size(full);
                 if ui.add(primary).clicked() {
                     push(AppCommand::NewConnection { kind: None, folder: None });
@@ -114,7 +114,7 @@ impl TabView for WelcomeTab {
                     (icon::DATABASE, tr("Create sample database"), None, Some(tr("A small SQLite shop database to try every feature")), AppCommand::CreateSampleDatabase),
                 ];
                 for (ic, label, action, tip, cmd) in items {
-                    let mut b = egui::Button::new(format!("{ic}  {label}")).min_size(full);
+                    let mut b = egui::Button::new((dbiji_icons::ic(ic), label)).min_size(full);
                     if let Some(a) = action {
                         let keys = shortcut(a);
                         if !keys.is_empty() {
@@ -139,7 +139,10 @@ impl TabView for WelcomeTab {
                 }
                 for c in recent.into_iter().take(6) {
                     let detail = crate::nav::connection_detail(&c);
-                    if recent_row(ui, crate::nav::db_icon(c.kind), &c.name, &detail).on_hover_text(format!("{detail}\n{}", tr("Connect and open a SQL editor"))).clicked() {
+                    if recent_row(ui, crate::nav::db_icon(c.kind), crate::theme::brand_color(c.kind), &c.name, &detail)
+                        .on_hover_text(format!("{detail}\n{}", tr("Connect and open a SQL editor")))
+                        .clicked()
+                    {
                         push(AppCommand::Connect(c.id.clone()));
                         push(AppCommand::NewSqlEditor { connection: Some(c.id.clone()), schema: None, text: None });
                     }
@@ -150,7 +153,7 @@ impl TabView for WelcomeTab {
                     ui.label(RichText::new(tr("Recent scripts")).weak().small());
                     for s in scripts.into_iter().take(6) {
                         let dir = s.path.parent().map(|p| p.display().to_string()).unwrap_or_default();
-                        let r = recent_row(ui, icon::FILE_SQL, &s.relative, &dir);
+                        let r = recent_row(ui, icon::FILE_SQL, dbiji_icons::SKY, &s.relative, &dir);
                         if r.on_hover_text(s.path.display().to_string()).clicked() {
                             push(AppCommand::OpenScript(s.path.clone()));
                         }

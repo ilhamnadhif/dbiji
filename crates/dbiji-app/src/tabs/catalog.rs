@@ -125,7 +125,7 @@ impl TabView for CatalogObjectTab {
             ui.heading(format!("{} {}", self.icon(), self.name()));
             ui.weak(label);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button(icon::ARROW_CLOCKWISE).on_hover_text(tr("Refresh")).clicked() {
+                if ui.button(dbiji_icons::ic(icon::ARROW_CLOCKWISE)).on_hover_text(tr("Refresh")).clicked() {
                     self.started = false;
                 }
             });
@@ -187,10 +187,10 @@ impl TabView for CatalogObjectTab {
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
                         ui.strong("DDL");
-                        if ui.small_button(format!("{} {}", icon::COPY, tr("Copy"))).clicked() {
+                        if ui.small_button((dbiji_icons::ic(icon::COPY), tr("Copy"))).clicked() {
                             ui.ctx().copy_text(ddl.clone());
                         }
-                        if ui.small_button(format!("{} {}", icon::FILE_SQL, tr("Open in SQL editor"))).clicked() {
+                        if ui.small_button((dbiji_icons::ic(icon::FILE_SQL), tr("Open in SQL editor"))).clicked() {
                             let schema = self.ctx.database.clone().map(|d| SchemaRef { database: Some(d), schema: None });
                             cx.push(AppCommand::NewSqlEditor { connection: Some(self.conn.clone()), schema, text: Some(ddl.clone()) });
                         }

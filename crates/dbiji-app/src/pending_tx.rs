@@ -117,10 +117,10 @@ impl PendingTxDialog {
                         ui.label(p.since.map(|t| t.format("%H:%M:%S").to_string()).unwrap_or_else(|| "—".into()));
                         ui.horizontal(|ui| {
                             ui.add_enabled_ui(!self.busy(), |ui| {
-                                if ui.button(format!("{} {}", icon::CHECK_CIRCLE, tr("Commit"))).clicked() {
+                                if ui.button((dbiji_icons::ic(icon::CHECK_CIRCLE), tr("Commit"))).clicked() {
                                     action = Some((Some(i), true));
                                 }
-                                if ui.button(format!("{} {}", icon::ARROW_U_UP_LEFT, tr("Rollback"))).clicked() {
+                                if ui.button((dbiji_icons::ic(icon::ARROW_U_UP_LEFT), tr("Rollback"))).clicked() {
                                     action = Some((Some(i), false));
                                 }
                             });

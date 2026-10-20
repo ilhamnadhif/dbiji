@@ -127,6 +127,8 @@ pub struct DockViewer<'a, 'b> {
     /// Tab ids that the user asked to close but which vetoed (dirty).
     pub close_vetoed: Vec<u64>,
     pub active_tab: Option<u64>,
+    /// For the tab titles (a coloured icon and the title).
+    pub style: std::sync::Arc<egui::Style>,
 }
 
 impl egui_dock::TabViewer for DockViewer<'_, '_> {
@@ -138,15 +140,19 @@ impl egui_dock::TabViewer for DockViewer<'_, '_> {
 
     fn title(&mut self, tab: &mut Tab) -> WidgetText {
         let dirty = if tab.view.is_dirty() { "● " } else { "" };
-        let mut title = format!("{} {dirty}{}", tab.view.icon(), tab.view.title());
-        if title.chars().count() > 48 {
-            title = title.chars().take(46).collect::<String>() + "…";
+        let mut title = format!(" {dirty}{}", tab.view.title());
+        if title.chars().count() > 46 {
+            title = title.chars().take(44).collect::<String>() + "…";
         }
-        let text = egui::RichText::new(title);
-        match tab.view.connection_id().and_then(|c| self.cx.conns.color_of(c)).and_then(crate::theme::connection_marker) {
-            Some(color) => text.color(color).into(),
-            None => text.into(),
+        let mut text = egui::RichText::new(title);
+        if let Some(color) = tab.view.connection_id().and_then(|c| self.cx.conns.color_of(c)).and_then(crate::theme::connection_marker) {
+            text = text.color(color);
         }
+        let mut job = egui::text::LayoutJob::default();
+        let font = egui::FontSelection::Default;
+        dbiji_icons::ic(tab.view.icon()).append_to(&mut job, &self.style, font.clone(), egui::Align::Center);
+        text.append_to(&mut job, &self.style, font, egui::Align::Center);
+        job.into()
     }
 
     fn ui(&mut self, ui: &mut Ui, tab: &mut Tab) {

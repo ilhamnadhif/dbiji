@@ -833,7 +833,7 @@ fn toolbar(
             Pos2::ZERO
         };
         if ui
-            .button(icon::MAGNIFYING_GLASS_MINUS)
+            .button(dbiji_icons::ic(icon::MAGNIFYING_GLASS_MINUS))
             .on_hover_text(tr("Zoom out"))
             .clicked()
         {
@@ -857,7 +857,7 @@ fn toolbar(
             state.set_view(v);
         }
         if ui
-            .button(icon::MAGNIFYING_GLASS_PLUS)
+            .button(dbiji_icons::ic(icon::MAGNIFYING_GLASS_PLUS))
             .on_hover_text(tr("Zoom in"))
             .clicked()
         {
@@ -866,7 +866,7 @@ fn toolbar(
             state.set_view(v);
         }
         if ui
-            .button(icon::CORNERS_OUT)
+            .button(dbiji_icons::ic(icon::CORNERS_OUT))
             .on_hover_text(tr("Zoom to fit"))
             .clicked()
         {
@@ -899,7 +899,7 @@ fn toolbar(
         }
         ui.separator();
         if ui
-            .button(format!("{} {}", icon::TREE_STRUCTURE, tr("Auto layout")))
+            .button((dbiji_icons::ic(icon::TREE_STRUCTURE), tr("Auto layout")))
             .on_hover_text(tr("Arrange all tables automatically"))
             .clicked()
         {
@@ -909,17 +909,17 @@ fn toolbar(
                 diagram.model.tables.iter().map(|t| t.key.clone()).collect(),
             ));
         }
-        ui.toggle_value(&mut state.show_minimap, icon::MAP_TRIFOLD)
+        ui.toggle_value(&mut state.show_minimap, dbiji_icons::ic(icon::MAP_TRIFOLD))
             .on_hover_text(tr("Show overview map"));
         ui.toggle_value(
             &mut state.edit_mode,
-            format!("{} {}", icon::PENCIL_SIMPLE, tr("Edit mode")),
+            (dbiji_icons::ic(icon::PENCIL_SIMPLE), tr("Edit mode")),
         )
         .on_hover_text(tr(
             "Edit the schema from the diagram: create and change tables and foreign keys",
         ));
         if ui
-            .button(icon::EXPORT)
+            .button(dbiji_icons::ic(icon::EXPORT))
             .on_hover_text(tr("Export image"))
             .clicked()
         {

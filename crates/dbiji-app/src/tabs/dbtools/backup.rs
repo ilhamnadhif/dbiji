@@ -81,7 +81,7 @@ fn browse_row(ui: &mut Ui, value: &mut String, hint: &str, pick: impl FnOnce(&st
     let mut changed = false;
     ui.horizontal(|ui| {
         changed |= ui.add(egui::TextEdit::singleline(value).desired_width(340.0).hint_text(hint)).changed();
-        if ui.button(format!("{} {}", icon::FOLDER_OPEN, tr("Browse…"))).clicked()
+        if ui.button((dbiji_icons::ic(icon::FOLDER_OPEN), tr("Browse…"))).clicked()
             && let Some(p) = pick(value.as_str())
         {
             *value = p.display().to_string();
@@ -781,7 +781,7 @@ impl BackupTab {
             ui.horizontal(|ui| {
                 ui.label(RichText::new(icon::INFO).color(crate::theme::warning_color(ui.visuals().dark_mode)));
                 ui.label(tr("Connect to build the command: the tools use the connection's host, user and password."));
-                if ui.button(format!("{} {}", icon::PLUGS_CONNECTED, tr("Connect"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::PLUGS_CONNECTED), tr("Connect"))).clicked() {
                     cx.push(AppCommand::Connect(self.conn.clone()));
                 }
             });
@@ -800,7 +800,7 @@ impl BackupTab {
         match self.preview.as_ref().map(|p| p.result.clone()) {
             Some(Ok((_, display))) => {
                 ui.horizontal(|ui| {
-                    if ui.small_button(icon::COPY).on_hover_text(tr("Copy")).clicked() {
+                    if ui.small_button(dbiji_icons::ic(icon::COPY)).on_hover_text(tr("Copy")).clicked() {
                         ui.ctx().copy_text(display.clone());
                     }
                     ui.add(egui::Label::new(RichText::new(&display).monospace()).wrap().selectable(true));
@@ -849,10 +849,10 @@ impl BackupTab {
                     self.start(cx);
                 }
             }
-            if running && ui.button(format!("{} {}", icon::STOP, tr("Cancel"))).clicked() {
+            if running && ui.button((dbiji_icons::ic(icon::STOP), tr("Cancel"))).clicked() {
                 self.cancel();
             }
-            if ui.add_enabled(!running, egui::Button::new(format!("{} {}", icon::FLOPPY_DISK, tr("Save as task…")))).clicked() {
+            if ui.add_enabled(!running, egui::Button::new((dbiji_icons::ic(icon::FLOPPY_DISK), tr("Save as task…")))).clicked() {
                 let name = cx.conns.config(&self.conn).map(|c| c.name.clone()).unwrap_or_default();
                 let default = if self.restore { trf("Restore into {}", &[&name]) } else { trf("Backup of {}", &[&name]) };
                 self.save_prompt = Some((default, String::new()));
@@ -900,7 +900,7 @@ impl BackupTab {
             if let (Some(ToolOutcome::Succeeded | ToolOutcome::Warnings { .. }), Some(p)) = (&run.outcome, &run.output) {
                 let dir = if p.is_dir() { Some(p.clone()) } else { p.parent().map(|d| d.to_path_buf()) };
                 if let Some(dir) = dir
-                    && ui.button(format!("{} {}", icon::FOLDER_OPEN, tr("Open folder"))).clicked()
+                    && ui.button((dbiji_icons::ic(icon::FOLDER_OPEN), tr("Open folder"))).clicked()
                 {
                     cx.backend.spawn_detached(async move {
                         let _ = open::that_detached(dir);

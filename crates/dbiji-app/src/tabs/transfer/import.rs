@@ -635,7 +635,7 @@ impl ImportTab {
             {
                 self.format = f;
             }
-            if ui.button(format!("{} {}", icon::FOLDER_OPEN, tr("Browse…"))).clicked()
+            if ui.button((dbiji_icons::ic(icon::FOLDER_OPEN), tr("Browse…"))).clicked()
                 && let Some(p) = rfd::FileDialog::new()
                     .set_title(tr("File to import"))
                     .add_filter(tr("Data files"), &["csv", "tsv", "txt", "tab", "xlsx", "xlsm", "xls", "ods", "xml", "json", "jsonl", "ndjson"])
@@ -678,7 +678,7 @@ impl ImportTab {
             && *config == self.source_config()
         {
             crate::widgets::error_box(ui, e);
-            if ui.button(format!("{} {}", icon::ARROW_CLOCKWISE, tr("Retry"))).clicked() {
+            if ui.button((dbiji_icons::ic(icon::ARROW_CLOCKWISE), tr("Retry"))).clicked() {
                 self.preview_error = None;
             }
             return;
@@ -708,7 +708,7 @@ impl ImportTab {
         if cx.conns.live(&conn).is_none() {
             ui.horizontal(|ui| {
                 ui.weak(tr("Connect to choose the target table."));
-                if ui.button(format!("{} {}", icon::PLUGS_CONNECTED, tr("Connect"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::PLUGS_CONNECTED), tr("Connect"))).clicked() {
                     cx.push(AppCommand::Connect(conn.clone()));
                 }
             });
@@ -739,7 +739,7 @@ impl ImportTab {
         });
         if let Some(e) = &self.mapping_error {
             crate::widgets::error_box(ui, e);
-            if ui.button(format!("{} {}", icon::ARROW_CLOCKWISE, tr("Retry"))).clicked()
+            if ui.button((dbiji_icons::ic(icon::ARROW_CLOCKWISE), tr("Retry"))).clicked()
                 && let Some(t) = self.table.clone()
             {
                 reload_table_def(cx, &conn, &t);
@@ -802,7 +802,7 @@ impl ImportTab {
         let dialect = cx.conns.live(&self.conn).map(|l| l.dialect.clone());
         let names = self.preview_columns();
         ui.horizontal(|ui| {
-            if ui.button(format!("{} {}", icon::MAGIC_WAND, tr("Guess types again"))).clicked() {
+            if ui.button((dbiji_icons::ic(icon::MAGIC_WAND), tr("Guess types again"))).clicked() {
                 self.columns_edited = false;
                 self.mapping_for = None;
             }
@@ -882,7 +882,7 @@ impl ImportTab {
         let Some(Ok(def)) = table_def_of(cx, &conn, &table) else { return };
         let names = self.preview_columns();
         ui.horizontal(|ui| {
-            if ui.button(format!("{} {}", icon::ARROWS_CLOCKWISE, tr("Match by name again"))).clicked() {
+            if ui.button((dbiji_icons::ic(icon::ARROWS_CLOCKWISE), tr("Match by name again"))).clicked() {
                 self.mapping_for = None;
             }
             if !self.key_columns.is_empty() {
@@ -1048,7 +1048,7 @@ impl ImportTab {
             Some(Err(e)) => {
                 section(ui, tr("The import failed"));
                 crate::widgets::error_box(ui, e);
-                if ui.button(format!("{} {}", icon::ARROW_COUNTER_CLOCKWISE, tr("Change settings"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::ARROW_COUNTER_CLOCKWISE), tr("Change settings"))).clicked() {
                     self.result = None;
                     self.page = PAGE_FILE;
                 }
@@ -1125,7 +1125,7 @@ impl ImportTab {
             let headers = vec![tr("Row").to_string(), tr("Column").to_string(), tr("Error").to_string()];
             let rows: Vec<Vec<String>> = s.errors.iter().map(|e| vec![e.row.to_string(), e.column.clone().unwrap_or_default(), e.message.clone()]).collect();
             text_table(ui, ("imp_errors", self.uid), &headers, &rows, 240.0);
-            if ui.add_enabled(self.report_job.is_none(), egui::Button::new(format!("{} {}", icon::FLOPPY_DISK, tr("Save report…")))).clicked()
+            if ui.add_enabled(self.report_job.is_none(), egui::Button::new((dbiji_icons::ic(icon::FLOPPY_DISK), tr("Save report…")))).clicked()
                 && let Some(path) = rfd::FileDialog::new().set_file_name("import-errors.csv").save_file()
             {
                 let text = error_report(s);
@@ -1134,11 +1134,11 @@ impl ImportTab {
         }
         ui.horizontal(|ui| {
             if let Some(target) = self.target_ref()
-                && ui.button(format!("{} {}", icon::TABLE, tr("Open the table"))).clicked()
+                && ui.button((dbiji_icons::ic(icon::TABLE), tr("Open the table"))).clicked()
             {
                 cx.push(AppCommand::OpenObject { connection: self.conn.clone(), object: target, page: crate::command::ObjectPage::Data });
             }
-            if ui.button(format!("{} {}", icon::ARROW_COUNTER_CLOCKWISE, tr("Change settings"))).clicked() {
+            if ui.button((dbiji_icons::ic(icon::ARROW_COUNTER_CLOCKWISE), tr("Change settings"))).clicked() {
                 self.result = None;
                 self.page = PAGE_FILE;
                 // A created table exists now: import into it next time.
@@ -1157,7 +1157,7 @@ impl ImportTab {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             let running = self.run.is_some();
-            if ui.add_enabled(self.page > PAGE_FILE && !running, egui::Button::new(format!("{} {}", icon::CARET_LEFT, tr("Back")))).clicked() {
+            if ui.add_enabled(self.page > PAGE_FILE && !running, egui::Button::new((dbiji_icons::ic(icon::CARET_LEFT), tr("Back")))).clicked() {
                 self.page -= 1;
             }
             let reachable = self.reachable();
@@ -1166,10 +1166,10 @@ impl ImportTab {
             }
             ui.separator();
             let ok = reachable == PAGE_RUN && !running;
-            if ui.add_enabled(ok, egui::Button::new(format!("{} {}", icon::PLAY, tr("Run import")))).clicked() {
+            if ui.add_enabled(ok, egui::Button::new((dbiji_icons::ic(icon::PLAY), tr("Run import")))).clicked() {
                 self.start(cx);
             }
-            if ui.add_enabled(ok && !self.saver.is_saving(), egui::Button::new(format!("{} {}", icon::FLOPPY_DISK, tr("Save as task…")))).clicked() {
+            if ui.add_enabled(ok && !self.saver.is_saving(), egui::Button::new((dbiji_icons::ic(icon::FLOPPY_DISK), tr("Save as task…")))).clicked() {
                 let target = self.target_ref().map(|t| t.name).unwrap_or_default();
                 self.saver.open(trf("Import {}", &[&target]));
             }
@@ -1371,7 +1371,7 @@ impl TabView for ImportTab {
         egui::Panel::top(egui::Id::new(("imp_top", uid))).show(ui, |ui| {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
-                ui.heading(format!("{} {}", icon::DOWNLOAD, tr("Import data")));
+                crate::widgets::icon_heading(ui, icon::DOWNLOAD, tr("Import data"));
                 ui.weak(connection_name(cx, &self.conn));
             });
             let steps = [tr("File"), tr("Target"), tr("Options"), tr("Run")];

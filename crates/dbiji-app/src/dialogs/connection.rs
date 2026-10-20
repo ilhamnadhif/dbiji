@@ -246,7 +246,7 @@ impl ConnectionDialog {
                 }
                 ui.horizontal(|ui| {
                     let testing = self.test.is_some();
-                    if ui.add_enabled(!testing, egui::Button::new(format!("{} {}", icon::PLUGS_CONNECTED, tr("Test connection")))).clicked() {
+                    if ui.add_enabled(!testing, egui::Button::new((dbiji_icons::ic(icon::PLUGS_CONNECTED), tr("Test connection")))).clicked() {
                         self.sync_auto_commit();
                         self.test_result = None;
                         match self.validate() {
@@ -290,7 +290,7 @@ impl ConnectionDialog {
                     if ui.add(egui::TextEdit::singleline(&mut path).desired_width(260.0)).changed() {
                         self.cfg.file_path = Some(path);
                     }
-                    if ui.button(icon::FOLDER_OPEN).on_hover_text(tr("Open existing file")).clicked()
+                    if ui.button(dbiji_icons::ic(icon::FOLDER_OPEN)).on_hover_text(tr("Open existing file")).clicked()
                         && let Some(p) = rfd::FileDialog::new().pick_file()
                     {
                         self.cfg.file_path = Some(p.display().to_string());
@@ -298,7 +298,7 @@ impl ConnectionDialog {
                             self.cfg.name = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
                         }
                     }
-                    if ui.button(icon::FILE_PLUS).on_hover_text(tr("Create new database file")).clicked()
+                    if ui.button(dbiji_icons::ic(icon::FILE_PLUS)).on_hover_text(tr("Create new database file")).clicked()
                         && let Some(p) = rfd::FileDialog::new().set_file_name("database.db").save_file()
                     {
                         self.cfg.file_path = Some(p.display().to_string());
@@ -502,7 +502,7 @@ impl ConnectionDialog {
                     if ui.add(egui::TextEdit::singleline(&mut v).desired_width(260.0)).changed() {
                         *field = if v.is_empty() { None } else { Some(v) };
                     }
-                    if ui.button(icon::FOLDER_OPEN).clicked()
+                    if ui.button(dbiji_icons::ic(icon::FOLDER_OPEN)).clicked()
                         && let Some(p) = rfd::FileDialog::new().add_filter("PEM", &["pem", "crt", "cer", "key"]).pick_file()
                     {
                         *field = Some(p.display().to_string());
@@ -570,14 +570,14 @@ impl ConnectionDialog {
             for (k, v) in self.cfg.properties.iter_mut() {
                 ui.label(k);
                 ui.add(egui::TextEdit::singleline(v).desired_width(260.0));
-                if ui.small_button(icon::TRASH).clicked() {
+                if ui.small_button(dbiji_icons::ic(icon::TRASH)).clicked() {
                     remove = Some(k.clone());
                 }
                 ui.end_row();
             }
             ui.add(egui::TextEdit::singleline(&mut self.new_prop.0).hint_text(tr("name")).desired_width(140.0));
             ui.add(egui::TextEdit::singleline(&mut self.new_prop.1).hint_text(tr("value")).desired_width(260.0));
-            if ui.small_button(icon::PLUS).clicked() && !self.new_prop.0.trim().is_empty() {
+            if ui.small_button(dbiji_icons::ic(icon::PLUS)).clicked() && !self.new_prop.0.trim().is_empty() {
                 let (k, v) = std::mem::take(&mut self.new_prop);
                 self.cfg.properties.insert(k.trim().to_string(), v);
             }
@@ -732,7 +732,7 @@ pub fn ssh_form(ui: &mut Ui, id: &str, ssh: &mut SshConfig, password: &mut Strin
                     ui.label(tr("Private key file"));
                     ui.horizontal(|ui| {
                         ui.add(egui::TextEdit::singleline(key_path).desired_width(260.0));
-                        if ui.button(icon::FOLDER_OPEN).clicked()
+                        if ui.button(dbiji_icons::ic(icon::FOLDER_OPEN)).clicked()
                             && let Some(p) = rfd::FileDialog::new().pick_file()
                         {
                             *key_path = p.display().to_string();

@@ -383,7 +383,7 @@ impl MigrationTab {
             for (i, t) in self.tables.iter_mut().enumerate() {
                 ui.checkbox(&mut t.enabled, "");
                 ui.label(format!("{} {}", icon::TABLE, t.source.display_path()));
-                if ui.small_button(icon::TRASH).on_hover_text(tr("Remove")).clicked() {
+                if ui.small_button(dbiji_icons::ic(icon::TRASH)).on_hover_text(tr("Remove")).clicked() {
                     remove = Some(i);
                 }
                 ui.end_row();
@@ -397,7 +397,7 @@ impl MigrationTab {
         if cx.conns.live(&conn).is_none() {
             ui.horizontal(|ui| {
                 ui.weak(tr("Connect to list the tables."));
-                if ui.button(format!("{} {}", icon::PLUGS_CONNECTED, tr("Connect"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::PLUGS_CONNECTED), tr("Connect"))).clicked() {
                     cx.push(crate::command::AppCommand::Connect(conn.clone()));
                 }
             });
@@ -434,7 +434,7 @@ impl MigrationTab {
                     for o in &shown {
                         let already = self.tables.iter().any(|t| t.source == *o);
                         ui.horizontal(|ui| {
-                            if ui.add_enabled(!already, egui::Button::new(icon::PLUS).small()).clicked() {
+                            if ui.add_enabled(!already, egui::Button::new(dbiji_icons::ic(icon::PLUS)).small()).clicked() {
                                 self.add_table(o.clone());
                             }
                             let text = RichText::new(format!("{} {}", icon::TABLE, o.name));
@@ -457,7 +457,7 @@ impl MigrationTab {
                 }
                 if let Some(t) = self.target_conn.clone()
                     && !cx.conns.is_connected(&t)
-                    && ui.button(format!("{} {}", icon::PLUGS_CONNECTED, tr("Connect"))).clicked()
+                    && ui.button((dbiji_icons::ic(icon::PLUGS_CONNECTED), tr("Connect"))).clicked()
                 {
                     cx.push(crate::command::AppCommand::Connect(t));
                 }
@@ -632,7 +632,7 @@ impl MigrationTab {
             Some(Err(e)) => {
                 section(ui, tr("The migration failed"));
                 crate::widgets::error_box(ui, e);
-                if ui.button(format!("{} {}", icon::ARROW_COUNTER_CLOCKWISE, tr("Change settings"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::ARROW_COUNTER_CLOCKWISE), tr("Change settings"))).clicked() {
                     self.result = None;
                     self.page = PAGE_SOURCE;
                 }
@@ -720,7 +720,7 @@ impl MigrationTab {
                 ui.label(RichText::new(f).small());
             }
         }
-        if ui.button(format!("{} {}", icon::ARROW_COUNTER_CLOCKWISE, tr("Change settings"))).clicked() {
+        if ui.button((dbiji_icons::ic(icon::ARROW_COUNTER_CLOCKWISE), tr("Change settings"))).clicked() {
             self.result = None;
             self.page = PAGE_SOURCE;
         }
@@ -730,7 +730,7 @@ impl MigrationTab {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             let running = self.run.is_some();
-            if ui.add_enabled(self.page > PAGE_SOURCE && !running, egui::Button::new(format!("{} {}", icon::CARET_LEFT, tr("Back")))).clicked() {
+            if ui.add_enabled(self.page > PAGE_SOURCE && !running, egui::Button::new((dbiji_icons::ic(icon::CARET_LEFT), tr("Back")))).clicked() {
                 self.page -= 1;
             }
             let reachable = self.reachable(cx);
@@ -739,14 +739,14 @@ impl MigrationTab {
             }
             ui.separator();
             let ok = reachable == PAGE_RUN && !running;
-            if ui.add_enabled(ok, egui::Button::new(format!("{} {}", icon::PLAY, tr("Run migration")))).clicked() {
+            if ui.add_enabled(ok, egui::Button::new((dbiji_icons::ic(icon::PLAY), tr("Run migration")))).clicked() {
                 if self.destructive() {
                     self.confirm = true;
                 } else {
                     self.start(cx);
                 }
             }
-            if ui.add_enabled(ok && !self.saver.is_saving(), egui::Button::new(format!("{} {}", icon::FLOPPY_DISK, tr("Save as task…")))).clicked() {
+            if ui.add_enabled(ok && !self.saver.is_saving(), egui::Button::new((dbiji_icons::ic(icon::FLOPPY_DISK), tr("Save as task…")))).clicked() {
                 let target = self.target_conn.as_ref().map(|t| connection_name(cx, t)).unwrap_or_default();
                 self.saver.open(trf("Migrate to {}", &[&target]));
             }
@@ -824,7 +824,7 @@ impl TabView for MigrationTab {
         egui::Panel::top(egui::Id::new(("mig_top", uid))).show(ui, |ui| {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
-                ui.heading(format!("{} {}", icon::ARROWS_LEFT_RIGHT, tr("Migrate tables")));
+                crate::widgets::icon_heading(ui, icon::ARROWS_LEFT_RIGHT, tr("Migrate tables"));
                 ui.weak(connection_name(cx, &self.conn));
             });
             let steps = [tr("Source"), tr("Target"), tr("Mapping"), tr("Options"), tr("Run")];

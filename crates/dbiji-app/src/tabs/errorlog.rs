@@ -85,15 +85,15 @@ impl TabView for ErrorLogTab {
                 }
             });
             ui.add(egui::TextEdit::singleline(&mut self.search).hint_text(format!("{} {}", icon::MAGNIFYING_GLASS, tr("Search"))).desired_width(220.0));
-            if ui.button(format!("{} {}", icon::COPY, tr("Copy"))).on_hover_text(tr("Copy the shown entries")).clicked() {
+            if ui.button((dbiji_icons::ic(icon::COPY), tr("Copy"))).on_hover_text(tr("Copy the shown entries")).clicked() {
                 let text: Vec<String> = self.visible().iter().rev().map(|e| e.line()).collect();
                 ui.ctx().copy_text(text.join("\n"));
             }
-            if ui.button(format!("{} {}", icon::TRASH, tr("Clear"))).clicked() {
+            if ui.button((dbiji_icons::ic(icon::TRASH), tr("Clear"))).clicked() {
                 applog::clear();
             }
             if let Some(file) = applog::log_file()
-                && ui.button(format!("{} {}", icon::FOLDER_OPEN, tr("Show log file"))).on_hover_text(file.display().to_string()).clicked()
+                && ui.button((dbiji_icons::ic(icon::FOLDER_OPEN), tr("Show log file"))).on_hover_text(file.display().to_string()).clicked()
             {
                 let _ = open::that_detached(file.parent().unwrap_or(&file));
             }

@@ -598,10 +598,10 @@ impl ResultPanel {
             ChartView { data: dbiji_visual::chart::ChartData::default(), config, state: Default::default(), generation: u64::MAX }
         });
         ui.horizontal(|ui| {
-            if ui.button(format!("{} {}", icon::TABLE, tr("Back to grid"))).clicked() {
+            if ui.button((dbiji_icons::ic(icon::TABLE), tr("Back to grid"))).clicked() {
                 self.mode = Mode::Grid;
             }
-            if ui.button(format!("{} {}", icon::EXPORT, tr("Export chart…"))).clicked()
+            if ui.button((dbiji_icons::ic(icon::EXPORT), tr("Export chart…"))).clicked()
                 && let Some(path) = rfd::FileDialog::new().set_file_name("chart.png").add_filter("PNG", &["png"]).add_filter("SVG", &["svg"]).save_file()
             {
                 let size = egui::vec2(1200.0, 700.0);
@@ -647,7 +647,7 @@ impl ResultPanel {
         let sv = self.spatial.as_mut().expect("set above");
         let mut rebuild = need || sv.layers.is_empty();
         ui.horizontal(|ui| {
-            if ui.button(format!("{} {}", icon::TABLE, tr("Back to grid"))).clicked() {
+            if ui.button((dbiji_icons::ic(icon::TABLE), tr("Back to grid"))).clicked() {
                 self.mode = Mode::Grid;
             }
             egui::ComboBox::from_id_salt("spatial_col").selected_text(names.get(sv.column).cloned().unwrap_or_default()).show_ui(ui, |ui| {
@@ -657,7 +657,7 @@ impl ResultPanel {
                     }
                 }
             });
-            if ui.button(icon::ARROW_CLOCKWISE).clicked() {
+            if ui.button(dbiji_icons::ic(icon::ARROW_CLOCKWISE)).clicked() {
                 rebuild = true;
             }
         });
@@ -795,7 +795,7 @@ impl ResultPanel {
         self.resolve_editability(cx);
         if self.table.is_some() && (!self.back.is_empty() || !self.forward.is_empty()) {
             ui.horizontal(|ui| {
-                if ui.add_enabled(!self.back.is_empty(), egui::Button::new(icon::ARROW_LEFT)).on_hover_text(tr("Back")).clicked()
+                if ui.add_enabled(!self.back.is_empty(), egui::Button::new(dbiji_icons::ic(icon::ARROW_LEFT))).on_hover_text(tr("Back")).clicked()
                     && let Some(loc) = self.back.pop()
                 {
                     if let Some(t) = &self.table {
@@ -803,7 +803,7 @@ impl ResultPanel {
                     }
                     self.navigate(cx, loc, false);
                 }
-                if ui.add_enabled(!self.forward.is_empty(), egui::Button::new(icon::ARROW_RIGHT)).on_hover_text(tr("Forward")).clicked()
+                if ui.add_enabled(!self.forward.is_empty(), egui::Button::new(dbiji_icons::ic(icon::ARROW_RIGHT))).on_hover_text(tr("Forward")).clicked()
                     && let Some(loc) = self.forward.pop()
                 {
                     if let Some(t) = &self.table {

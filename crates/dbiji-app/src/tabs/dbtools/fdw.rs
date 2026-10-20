@@ -198,7 +198,7 @@ impl TabView for FdwConfigTab {
     }
 
     fn ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
-        ui.heading(format!("{} {}", icon::PLUGS_CONNECTED, tr("Foreign data wrapper")));
+        crate::widgets::icon_heading(ui, icon::PLUGS_CONNECTED, tr("Foreign data wrapper"));
         ui.weak(tr("Make the tables of another connection available in this database as foreign tables."));
         ui.add_space(6.0);
         let sources: Vec<ConnectionConfig> = cx.conns.configs().iter().filter(|c| c.id != self.conn && wrapper_of(c.kind).is_some()).cloned().collect();
@@ -233,11 +233,11 @@ impl TabView for FdwConfigTab {
         match self.script() {
             Ok(script) => {
                 ui.horizontal(|ui| {
-                    if ui.button(format!("{} {}", icon::FILE_SQL, tr("Open in SQL editor"))).clicked() {
+                    if ui.button((dbiji_icons::ic(icon::FILE_SQL), tr("Open in SQL editor"))).clicked() {
                         let schema = cx.conns.config(&self.conn).and_then(|c| c.database.clone()).map(|d| SchemaRef { database: Some(d), schema: None });
                         cx.push(AppCommand::NewSqlEditor { connection: Some(self.conn.clone()), schema, text: Some(script.clone()) });
                     }
-                    if ui.button(format!("{} {}", icon::COPY, tr("Copy"))).clicked() {
+                    if ui.button((dbiji_icons::ic(icon::COPY), tr("Copy"))).clicked() {
                         ui.ctx().copy_text(script.clone());
                     }
                 });

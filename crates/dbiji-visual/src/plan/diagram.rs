@@ -474,14 +474,17 @@ fn plan_toolbar(ui: &mut Ui, plan: &QueryPlan, state: &mut PlanViewState) {
                 }
             });
         if ui
-            .button(icon::CORNERS_OUT)
+            .button(dbiji_icons::ic(icon::CORNERS_OUT))
             .on_hover_text(tr("Zoom to fit"))
             .clicked()
         {
             state.fit_pending = true;
         }
-        ui.toggle_value(&mut state.show_details, icon::SIDEBAR_SIMPLE)
-            .on_hover_text(tr("Show node details"));
+        ui.toggle_value(
+            &mut state.show_details,
+            dbiji_icons::ic(icon::SIDEBAR_SIMPLE),
+        )
+        .on_hover_text(tr("Show node details"));
         ui.separator();
         ui.weak(summary_line(&plan_summary(plan)));
     });
@@ -621,7 +624,7 @@ fn details_panel(ui: &mut Ui, f: &FlatPlanNode<'_>, metric: PlanMetric, state: &
         ui.strong(f.node.node_type.as_str());
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui
-                .small_button(icon::X)
+                .small_button(dbiji_icons::ic(icon::X))
                 .on_hover_text(tr("Close"))
                 .clicked()
             {

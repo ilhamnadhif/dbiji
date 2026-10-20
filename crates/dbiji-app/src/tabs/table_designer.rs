@@ -967,14 +967,14 @@ impl TableDesignerTab {
             if ui.add_enabled(can, egui::Button::new(RichText::new(format!("{} {label}", icon::PLAY)).strong())).clicked() {
                 self.confirm = true;
             }
-            if ui.add_enabled(!stmts.is_empty(), egui::Button::new(format!("{} {}", icon::FILE_SQL, tr("Open in SQL editor")))).clicked() {
+            if ui.add_enabled(!stmts.is_empty(), egui::Button::new((dbiji_icons::ic(icon::FILE_SQL), tr("Open in SQL editor")))).clicked() {
                 cx.push(AppCommand::NewSqlEditor { connection: Some(self.conn.clone()), schema: Some(self.schema.clone()), text: Some(script_text(&stmts)) });
             }
             if !self.is_create() {
-                if ui.add_enabled(self.model != self.baseline, egui::Button::new(format!("{} {}", icon::ARROW_COUNTER_CLOCKWISE, tr("Revert")))).clicked() {
+                if ui.add_enabled(self.model != self.baseline, egui::Button::new((dbiji_icons::ic(icon::ARROW_COUNTER_CLOCKWISE), tr("Revert")))).clicked() {
                     self.model = self.baseline.clone();
                 }
-                if ui.button(icon::ARROW_CLOCKWISE).on_hover_text(tr("Reload the table")).clicked() {
+                if ui.button(dbiji_icons::ic(icon::ARROW_CLOCKWISE)).on_hover_text(tr("Reload the table")).clicked() {
                     self.original = None;
                     self.load_error = None;
                 }
@@ -1016,7 +1016,7 @@ impl TableDesignerTab {
 
     fn columns_page(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
-            if ui.button(format!("{} {}", icon::PLUS, tr("Add column"))).clicked() {
+            if ui.button((dbiji_icons::ic(icon::PLUS), tr("Add column"))).clicked() {
                 let n = self.model.columns.len() + 1;
                 let mut name = format!("column{n}");
                 let mut k = n;
@@ -1031,20 +1031,20 @@ impl TableDesignerTab {
                 self.selected = Some(at);
             }
             let sel = self.selected.filter(|s| *s < self.model.columns.len());
-            if ui.add_enabled(sel.is_some(), egui::Button::new(format!("{} {}", icon::MINUS, tr("Remove")))).clicked()
+            if ui.add_enabled(sel.is_some(), egui::Button::new((dbiji_icons::ic(icon::MINUS), tr("Remove")))).clicked()
                 && let Some(i) = sel
             {
                 let uid = self.model.columns[i].uid;
                 self.model.remove_column(uid);
                 self.selected = if self.model.columns.is_empty() { None } else { Some(i.min(self.model.columns.len() - 1)) };
             }
-            if ui.add_enabled(sel.is_some_and(|i| i > 0), egui::Button::new(icon::ARROW_UP)).on_hover_text(tr("Move up")).clicked()
+            if ui.add_enabled(sel.is_some_and(|i| i > 0), egui::Button::new(dbiji_icons::ic(icon::ARROW_UP))).on_hover_text(tr("Move up")).clicked()
                 && let Some(i) = sel
             {
                 self.model.columns.swap(i, i - 1);
                 self.selected = Some(i - 1);
             }
-            if ui.add_enabled(sel.is_some_and(|i| i + 1 < self.model.columns.len()), egui::Button::new(icon::ARROW_DOWN)).on_hover_text(tr("Move down")).clicked()
+            if ui.add_enabled(sel.is_some_and(|i| i + 1 < self.model.columns.len()), egui::Button::new(dbiji_icons::ic(icon::ARROW_DOWN))).on_hover_text(tr("Move down")).clicked()
                 && let Some(i) = sel
             {
                 self.model.columns.swap(i, i + 1);
@@ -1215,13 +1215,13 @@ impl TableDesignerTab {
             let name = self.model.name_of(*u).unwrap_or_default();
             ui.horizontal(|ui| {
                 ui.label(format!("{}. {name}", i + 1));
-                if ui.add_enabled(i > 0, egui::Button::new(icon::ARROW_UP).small()).clicked() {
+                if ui.add_enabled(i > 0, egui::Button::new(dbiji_icons::ic(icon::ARROW_UP)).small()).clicked() {
                     swap = Some((i, i - 1));
                 }
-                if ui.add_enabled(i + 1 < n, egui::Button::new(icon::ARROW_DOWN).small()).clicked() {
+                if ui.add_enabled(i + 1 < n, egui::Button::new(dbiji_icons::ic(icon::ARROW_DOWN)).small()).clicked() {
                     swap = Some((i, i + 1));
                 }
-                if ui.small_button(icon::X).on_hover_text(tr("Remove from the primary key")).clicked() {
+                if ui.small_button(dbiji_icons::ic(icon::X)).on_hover_text(tr("Remove from the primary key")).clicked() {
                     remove = Some(i);
                 }
             });
@@ -1235,7 +1235,7 @@ impl TableDesignerTab {
         ui.add_space(8.0);
         ui.horizontal(|ui| {
             ui.strong(tr("Unique keys"));
-            if ui.button(format!("{} {}", icon::PLUS, tr("Add unique key"))).clicked() {
+            if ui.button((dbiji_icons::ic(icon::PLUS), tr("Add unique key"))).clicked() {
                 let id = self.next();
                 self.model.uniques.push(KeyRow { uid: id, name: String::new(), cols: Vec::new() });
             }
@@ -1247,7 +1247,7 @@ impl TableDesignerTab {
             ui.horizontal(|ui| {
                 ui.add(egui::TextEdit::singleline(&mut k.name).hint_text(tr("name (optional)")).desired_width(180.0).id_salt(("td_uk", uid, k.uid)));
                 Self::columns_picker(ui, &columns, &snapshot, &mut k.cols);
-                if ui.small_button(icon::TRASH).on_hover_text(tr("Remove")).clicked() {
+                if ui.small_button(dbiji_icons::ic(icon::TRASH)).on_hover_text(tr("Remove")).clicked() {
                     remove = Some(i);
                 }
             });
@@ -1259,7 +1259,7 @@ impl TableDesignerTab {
 
     fn indexes_page(&mut self, ui: &mut Ui) {
         let uid = self.uid;
-        if ui.button(format!("{} {}", icon::PLUS, tr("Add index"))).clicked() {
+        if ui.button((dbiji_icons::ic(icon::PLUS), tr("Add index"))).clicked() {
             let id = self.next();
             let name = format!("{}_idx{}", self.model.name.trim(), self.model.indexes.len() + 1).trim_start_matches('_').to_string();
             self.model.indexes.push(IndexRow { uid: id, name, parts: Vec::new(), unique: false, method: String::new(), predicate: String::new(), edited: true, orig: None });
@@ -1300,7 +1300,7 @@ impl TableDesignerTab {
                 } else {
                     ui.label("");
                 }
-                if ui.small_button(icon::TRASH).on_hover_text(tr("Remove")).clicked() {
+                if ui.small_button(dbiji_icons::ic(icon::TRASH)).on_hover_text(tr("Remove")).clicked() {
                     remove = Some(i);
                 }
                 if changed {
@@ -1320,7 +1320,7 @@ impl TableDesignerTab {
     fn fk_page(&mut self, ui: &mut Ui, cx: &mut AppContext) {
         let uid = self.uid;
         let own_schema = self.schema.schema.clone().unwrap_or_default();
-        if ui.button(format!("{} {}", icon::PLUS, tr("Add foreign key"))).clicked() {
+        if ui.button((dbiji_icons::ic(icon::PLUS), tr("Add foreign key"))).clicked() {
             let id = self.next();
             self.model.fks.push(FkRow {
                 uid: id,
@@ -1408,7 +1408,7 @@ impl TableDesignerTab {
                     if snap.is_none() && !f.ref_schema.is_empty() {
                         ui.spinner();
                     }
-                    if ui.small_button(icon::TRASH).on_hover_text(tr("Remove")).clicked() {
+                    if ui.small_button(dbiji_icons::ic(icon::TRASH)).on_hover_text(tr("Remove")).clicked() {
                         remove = Some(i);
                     }
                 });
@@ -1463,7 +1463,7 @@ impl TableDesignerTab {
 
     fn checks_page(&mut self, ui: &mut Ui) {
         let uid = self.uid;
-        if ui.button(format!("{} {}", icon::PLUS, tr("Add check"))).clicked() {
+        if ui.button((dbiji_icons::ic(icon::PLUS), tr("Add check"))).clicked() {
             let id = self.next();
             self.model.checks.push(CheckRow { uid: id, name: String::new(), expression: String::new() });
         }
@@ -1478,7 +1478,7 @@ impl TableDesignerTab {
                         .desired_width((ui.available_width() - 40.0).max(120.0))
                         .id_salt(("td_che", uid, c.uid)),
                 );
-                if ui.small_button(icon::TRASH).on_hover_text(tr("Remove")).clicked() {
+                if ui.small_button(dbiji_icons::ic(icon::TRASH)).on_hover_text(tr("Remove")).clicked() {
                     remove = Some(i);
                 }
             });
@@ -1494,7 +1494,7 @@ impl TableDesignerTab {
     fn triggers_page(&mut self, ui: &mut Ui) {
         let uid = self.uid;
         let pg = self.kind.is_postgres_family();
-        if ui.button(format!("{} {}", icon::PLUS, tr("Add trigger"))).clicked() {
+        if ui.button((dbiji_icons::ic(icon::PLUS), tr("Add trigger"))).clicked() {
             let id = self.next();
             let name = format!("{}_trg{}", self.model.name.trim(), self.model.triggers.len() + 1).trim_start_matches('_').to_string();
             self.model.triggers.push(TriggerRow {
@@ -1558,7 +1558,7 @@ impl TableDesignerTab {
                         }
                         ui.checkbox(&mut t.enabled, tr("Enabled"));
                     }
-                    if ui.small_button(icon::TRASH).on_hover_text(tr("Remove")).clicked() {
+                    if ui.small_button(dbiji_icons::ic(icon::TRASH)).on_hover_text(tr("Remove")).clicked() {
                         remove = Some(i);
                     }
                 });
@@ -1589,7 +1589,7 @@ impl TableDesignerTab {
         ui.add_space(8.0);
         ui.horizontal(|ui| {
             ui.strong(tr("Table options"));
-            if ui.button(format!("{} {}", icon::PLUS, tr("Add option"))).clicked() {
+            if ui.button((dbiji_icons::ic(icon::PLUS), tr("Add option"))).clicked() {
                 self.model.options.push(OptionRow::default());
             }
             let suggestions = option_suggestions(self.kind);
@@ -1611,7 +1611,7 @@ impl TableDesignerTab {
             for (i, o) in self.model.options.iter_mut().enumerate() {
                 ui.add(egui::TextEdit::singleline(&mut o.key).hint_text(tr("option")).desired_width(160.0).id_salt(("td_ok", uid, i)));
                 ui.add(egui::TextEdit::singleline(&mut o.value).hint_text(tr("value")).desired_width(260.0).id_salt(("td_ov", uid, i)));
-                if ui.small_button(icon::TRASH).on_hover_text(tr("Remove")).clicked() {
+                if ui.small_button(dbiji_icons::ic(icon::TRASH)).on_hover_text(tr("Remove")).clicked() {
                     remove = Some(i);
                 }
                 ui.end_row();
@@ -1631,7 +1631,7 @@ impl TableDesignerTab {
         ui.horizontal(|ui| {
             ui.strong(tr("DDL preview"));
             ui.weak(trf("{} statement(s)", &[&stmts.len()]));
-            if ui.add_enabled(!stmts.is_empty(), egui::Button::new(format!("{} {}", icon::COPY, tr("Copy")))).clicked() {
+            if ui.add_enabled(!stmts.is_empty(), egui::Button::new((dbiji_icons::ic(icon::COPY), tr("Copy")))).clicked() {
                 ui.ctx().copy_text(text.clone());
             }
         });
@@ -1875,7 +1875,7 @@ impl TabView for TableDesignerTab {
             ui.vertical_centered(|ui| {
                 ui.add_space(30.0);
                 ui.label(tr("The connection is closed."));
-                if ui.button(format!("{} {}", icon::PLUGS_CONNECTED, tr("Connect"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::PLUGS_CONNECTED), tr("Connect"))).clicked() {
                     cx.push(AppCommand::Connect(self.conn.clone()));
                 }
             });
@@ -1902,7 +1902,7 @@ impl TabView for TableDesignerTab {
         if let Some(table) = self.table.clone().filter(|_| self.original.is_none()) {
             if let Some(e) = self.load_error.clone() {
                 crate::widgets::error_box(ui, &e);
-                if ui.button(format!("{} {}", icon::ARROW_CLOCKWISE, tr("Retry"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::ARROW_CLOCKWISE), tr("Retry"))).clicked() {
                     self.load_error = None;
                 }
                 return;

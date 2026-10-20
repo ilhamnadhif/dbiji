@@ -966,18 +966,18 @@ impl DbijiApp {
     fn menu_bar(&mut self, ui: &mut Ui) {
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button(tr("File"), |ui| {
-                if ui.button(format!("{} {}", icon::FILE_SQL, tr("New SQL editor"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::FILE_SQL), tr("New SQL editor"))).clicked() {
                     self.commands.push(AppCommand::NewSqlEditor { connection: None, schema: None, text: None });
                     ui.close();
                 }
-                if ui.button(format!("{} {}", icon::FOLDER_OPEN, tr("Open script…"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::FOLDER_OPEN), tr("Open script…"))).clicked() {
                     if let Some(path) = rfd::FileDialog::new().add_filter("SQL", &["sql"]).pick_file() {
                         self.commands.push(AppCommand::OpenScript(path));
                     }
                     ui.close();
                 }
                 ui.separator();
-                if ui.button(format!("{} {}", icon::GEAR, tr("Settings…"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::GEAR), tr("Settings…"))).clicked() {
                     self.commands.push(AppCommand::OpenSettings);
                     ui.close();
                 }
@@ -988,11 +988,11 @@ impl DbijiApp {
                 }
             });
             ui.menu_button(tr("Database"), |ui| {
-                if ui.button(format!("{} {}", icon::PLUS, tr("New connection…"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::PLUS), tr("New connection…"))).clicked() {
                     self.commands.push(AppCommand::NewConnection { kind: None, folder: None });
                     ui.close();
                 }
-                if ui.button(format!("{} {}", icon::DOWNLOAD_SIMPLE, tr("Import connections…"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::DOWNLOAD_SIMPLE), tr("Import connections…"))).clicked() {
                     self.commands.push(AppCommand::ImportConnections);
                     ui.close();
                 }
@@ -1010,14 +1010,14 @@ impl DbijiApp {
                 } else {
                     tr("Not supported by this database type.")
                 };
-                let resp = ui.add_enabled(db_ok, egui::Button::new(format!("{} {}", icon::DATABASE, tr("New database…")))).on_disabled_hover_text(why);
+                let resp = ui.add_enabled(db_ok, egui::Button::new((dbiji_icons::ic(icon::DATABASE), tr("New database…")))).on_disabled_hover_text(why);
                 if resp.clicked()
                     && let Some(c) = conn.clone()
                 {
                     self.commands.push(AppCommand::NewDatabase { connection: c });
                     ui.close();
                 }
-                if ui.add_enabled(schema_ok, egui::Button::new(format!("{} {}", icon::STACK, tr("New schema…")))).on_disabled_hover_text(why).clicked()
+                if ui.add_enabled(schema_ok, egui::Button::new((dbiji_icons::ic(icon::STACK), tr("New schema…")))).on_disabled_hover_text(why).clicked()
                     && let Some(c) = conn
                 {
                     let database = self.nav.selected_schema().and_then(|s| s.database);
@@ -1025,43 +1025,43 @@ impl DbijiApp {
                     ui.close();
                 }
                 ui.separator();
-                if ui.button(format!("{} {}", icon::PLUGS, tr("Disconnect all"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::PLUGS), tr("Disconnect all"))).clicked() {
                     self.commands.push(AppCommand::DisconnectAll);
                     ui.close();
                 }
-                if ui.button(format!("{} {}", icon::QUEUE, tr("Pending transactions…"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::QUEUE), tr("Pending transactions…"))).clicked() {
                     self.pending_tx.open = true;
                     ui.close();
                 }
                 ui.separator();
-                if ui.button(format!("{} {}", icon::GIT_DIFF, tr("Compare schemas…"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::GIT_DIFF), tr("Compare schemas…"))).clicked() {
                     self.commands.push(AppCommand::OpenSchemaCompare { connection: None, schema: None });
                     ui.close();
                 }
-                if ui.button(format!("{} {}", icon::ARROWS_LEFT_RIGHT, tr("Compare data…"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::ARROWS_LEFT_RIGHT), tr("Compare data…"))).clicked() {
                     self.commands.push(AppCommand::OpenDataCompare { connection: None, table: None });
                     ui.close();
                 }
-                if ui.button(format!("{} {}", icon::MAGNIFYING_GLASS, tr("Search…"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::MAGNIFYING_GLASS), tr("Search…"))).clicked() {
                     self.commands.push(AppCommand::OpenSearch { connection: None, data: false });
                     ui.close();
                 }
             });
             ui.menu_button(tr("Tools"), |ui| {
-                if ui.button(format!("{} {}", icon::CLOCK_COUNTER_CLOCKWISE, tr("Query history"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::CLOCK_COUNTER_CLOCKWISE), tr("Query history"))).clicked() {
                     self.commands.push(AppCommand::OpenHistory);
                     ui.close();
                 }
-                if ui.button(format!("{} {}", icon::LIST_CHECKS, tr("Tasks"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::LIST_CHECKS), tr("Tasks"))).clicked() {
                     self.commands.push(AppCommand::OpenTasks);
                     ui.close();
                 }
-                if ui.button(format!("{} {}", icon::SPARKLE, tr("AI assistant"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::SPARKLE), tr("AI assistant"))).clicked() {
                     let conn = self.nav.selected.as_ref().and_then(|n| n.connection()).map(str::to_string);
                     self.commands.push(AppCommand::OpenAiAssistant { connection: conn });
                     ui.close();
                 }
-                if ui.button(format!("{} {}", icon::HOURGLASS, tr("Background operations"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::HOURGLASS), tr("Background operations"))).clicked() {
                     self.commands.push(AppCommand::ToggleOperations);
                     ui.close();
                 }
@@ -1077,7 +1077,7 @@ impl DbijiApp {
                     self.save_settings();
                     ui.close();
                 }
-                ui.menu_button(format!("{} {}", icon::CIRCLE_HALF, tr("Theme")), |ui| {
+                ui.menu_button((dbiji_icons::ic(icon::CIRCLE_HALF), tr("Theme")), |ui| {
                     use dbiji_config::settings::Theme;
                     for (t, label) in [(Theme::System, tr("System")), (Theme::Light, tr("Light")), (Theme::Dark, tr("Dark"))] {
                         if ui.radio(self.settings.general.theme == t, label).clicked() {
@@ -1104,25 +1104,25 @@ impl DbijiApp {
                     self.commands.push(AppCommand::CreateSampleDatabase);
                     ui.close();
                 }
-                if ui.button(format!("{} {}", icon::LIGHTBULB, tr("Tip of the day"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::LIGHTBULB), tr("Tip of the day"))).clicked() {
                     self.show_tip();
                     ui.close();
                 }
                 ui.separator();
-                if ui.button(format!("{} {}", icon::WARNING_OCTAGON, tr("Error log"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::WARNING_OCTAGON), tr("Error log"))).clicked() {
                     self.open_tab(Box::new(crate::tabs::errorlog::ErrorLogTab::new()));
                     ui.close();
                 }
-                if ui.add_enabled(self.diagnostics.is_none(), egui::Button::new(format!("{} {}", icon::FILE_ZIP, tr("Collect diagnostic info")))).clicked() {
+                if ui.add_enabled(self.diagnostics.is_none(), egui::Button::new((dbiji_icons::ic(icon::FILE_ZIP), tr("Collect diagnostic info")))).clicked() {
                     self.collect_diagnostics(None);
                     ui.close();
                 }
                 ui.separator();
-                if ui.button(format!("{} {}", icon::SPARKLE, tr("What's new"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::SPARKLE), tr("What's new"))).clicked() {
                     self.updates.show_whats_new();
                     ui.close();
                 }
-                if ui.add_enabled(!self.updates.checking(), egui::Button::new(format!("{} {}", icon::ARROW_CIRCLE_UP, tr("Check for updates…")))).clicked() {
+                if ui.add_enabled(!self.updates.checking(), egui::Button::new((dbiji_icons::ic(icon::ARROW_CIRCLE_UP), tr("Check for updates…")))).clicked() {
                     self.commands.push(AppCommand::CheckForUpdates);
                     ui.close();
                 }
@@ -1381,10 +1381,10 @@ impl eframe::App for DbijiApp {
         if self.show_nav {
             egui::Panel::left("dbiji_navigator").resizable(true).default_size(280.0).size_range(160.0..=600.0).show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    if ui.selectable_label(!self.show_project, format!("{} {}", icon::DATABASE, tr("Database"))).clicked() {
+                    if ui.selectable_label(!self.show_project, (dbiji_icons::ic(icon::DATABASE), tr("Database"))).clicked() {
                         self.show_project = false;
                     }
-                    if ui.selectable_label(self.show_project, format!("{} {}", icon::FOLDER_SIMPLE, tr("Project"))).clicked() {
+                    if ui.selectable_label(self.show_project, (dbiji_icons::ic(icon::FOLDER_SIMPLE), tr("Project"))).clicked() {
                         self.show_project = true;
                     }
                 });
@@ -1404,7 +1404,7 @@ impl eframe::App for DbijiApp {
             }
         }
         egui::CentralPanel::default().frame(egui::Frame::new()).show(ui, |ui| {
-            let mut viewer = DockViewer { cx: &mut cx, close_vetoed: Vec::new(), active_tab: self.active_tab };
+            let mut viewer = DockViewer { cx: &mut cx, close_vetoed: Vec::new(), active_tab: self.active_tab, style: ui.style().clone() };
             DockArea::new(&mut self.dock).style(egui_dock::Style::from_egui(ui.style().as_ref())).show_leaf_collapse_buttons(false).show_inside(ui, &mut viewer);
         });
         // Wizards and actions in pop-up windows over the tabs.

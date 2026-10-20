@@ -153,7 +153,7 @@ impl TabView for HistoryTab {
                     changed = true;
                 }
             }
-            if ui.button(icon::ARROW_CLOCKWISE).on_hover_text(tr("Refresh")).clicked() {
+            if ui.button(dbiji_icons::ic(icon::ARROW_CLOCKWISE)).on_hover_text(tr("Refresh")).clicked() {
                 self.reload(cx);
             }
         });
@@ -202,13 +202,13 @@ impl TabView for HistoryTab {
         if let Some(e) = sel_entry {
             ui.separator();
             ui.horizontal(|ui| {
-                if ui.button(format!("{} {}", icon::FILE_SQL, tr("Open in SQL editor"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::FILE_SQL), tr("Open in SQL editor"))).clicked() {
                     self.open_in_editor(cx, &e);
                 }
-                if ui.button(format!("{} {}", icon::COPY, tr("Copy"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::COPY), tr("Copy"))).clicked() {
                     ui.ctx().copy_text(e.sql.clone());
                 }
-                if ui.button(format!("{} {}", icon::TRASH, tr("Delete"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::TRASH), tr("Delete"))).clicked() {
                     if let Some(store) = cx.services.history.clone() {
                         let _ = store.lock().delete(&[e.id]);
                     }

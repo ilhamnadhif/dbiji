@@ -416,7 +416,7 @@ impl SearchTab {
             ui.horizontal(|ui| {
                 ui.weak(if n >= self.limit { trf("{} objects (limit reached)", &[&n]) } else { trf("{} objects", &[&n]) });
                 if let Some(i) = self.meta_selected
-                    && ui.button(format!("{} {}", icon::ARROW_SQUARE_OUT, tr("Open"))).clicked()
+                    && ui.button((dbiji_icons::ic(icon::ARROW_SQUARE_OUT), tr("Open"))).clicked()
                     && let Some(h) = self.meta_hits.get(i).cloned()
                 {
                     Self::open_hit(cx, &h);
@@ -752,7 +752,7 @@ impl SearchTab {
                         }
                         None => {
                             ui.label(if h.limited { trf("{} or more", &[&h.count]) } else { h.count.to_string() });
-                            if ui.button(format!("{} {}", icon::TABLE, tr("Show rows"))).clicked() {
+                            if ui.button((dbiji_icons::ic(icon::TABLE), tr("Show rows"))).clicked() {
                                 let tab = crate::results::data_tab::TableDataTab::new(conn.clone(), h.table.clone(), Some(h.where_clause.clone()));
                                 cx.push(AppCommand::OpenTab(Box::new(tab)));
                             }

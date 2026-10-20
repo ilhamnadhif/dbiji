@@ -476,7 +476,7 @@ impl DataCompareTab {
                 }
             } else if cx.conns.is_connecting() {
                 ui.spinner();
-            } else if ui.button(format!("{} {}", icon::PLUGS_CONNECTED, tr("Connect"))).clicked() {
+            } else if ui.button((dbiji_icons::ic(icon::PLUGS_CONNECTED), tr("Connect"))).clicked() {
                 cx.push(AppCommand::Connect(c));
             }
         }
@@ -871,13 +871,13 @@ impl DataCompareTab {
         let dark = ui.visuals().dark_mode;
         let n = o.diff.sync_statements.len();
         ui.horizontal(|ui| {
-            if ui.add_enabled(n > 0, egui::Button::new(format!("{} {}", icon::FILE_SQL, tr("Open in SQL editor")))).clicked() {
+            if ui.add_enabled(n > 0, egui::Button::new((dbiji_icons::ic(icon::FILE_SQL), tr("Open in SQL editor")))).clicked() {
                 cx.push(AppCommand::NewSqlEditor { connection: Some(o.target_conn.clone()), schema: o.target_schema.clone(), text: Some(o.script.clone()) });
             }
-            if ui.add_enabled(n > 0 && self.apply_job.is_none() && self.run.is_none(), egui::Button::new(format!("{} {}", icon::PLAY, tr("Apply to target…")))).clicked() {
+            if ui.add_enabled(n > 0 && self.apply_job.is_none() && self.run.is_none(), egui::Button::new((dbiji_icons::ic(icon::PLAY), tr("Apply to target…")))).clicked() {
                 self.confirm_apply = true;
             }
-            if ui.add_enabled(n > 0, egui::Button::new(format!("{} {}", icon::COPY, tr("Copy")))).clicked() {
+            if ui.add_enabled(n > 0, egui::Button::new((dbiji_icons::ic(icon::COPY), tr("Copy")))).clicked() {
                 ui.ctx().copy_text(o.script.clone());
             }
             if self.apply_job.is_some() {
@@ -1038,7 +1038,7 @@ impl TabView for DataCompareTab {
             if ui.add_enabled(ready && !busy && !self.start_requested, egui::Button::new(RichText::new(format!("{} {}", icon::GIT_DIFF, tr("Compare"))).strong())).clicked() {
                 self.start_requested = true;
             }
-            if ui.add_enabled(!busy, egui::Button::new(format!("{} {}", icon::ARROWS_LEFT_RIGHT, tr("Swap")))).clicked() {
+            if ui.add_enabled(!busy, egui::Button::new((dbiji_icons::ic(icon::ARROWS_LEFT_RIGHT), tr("Swap")))).clicked() {
                 std::mem::swap(&mut self.source, &mut self.target);
                 self.result = None;
                 self.chosen_for = None;

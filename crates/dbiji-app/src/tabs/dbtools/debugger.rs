@@ -551,16 +551,16 @@ impl DebuggerTab {
             if ui.add_enabled(can_start, egui::Button::new(format!("{} {start_label}", icon::PLAY))).clicked() {
                 self.start(cx);
             }
-            if ui.add_enabled(stopped, egui::Button::new(format!("{} {}", icon::ARROW_ELBOW_DOWN_RIGHT, tr("Step into")))).on_hover_text("F11").clicked() {
+            if ui.add_enabled(stopped, egui::Button::new((dbiji_icons::ic(icon::ARROW_ELBOW_DOWN_RIGHT), tr("Step into")))).on_hover_text("F11").clicked() {
                 self.command(cx, Command::StepInto);
             }
-            if ui.add_enabled(stopped, egui::Button::new(format!("{} {}", icon::ARROW_ARC_RIGHT, tr("Step over")))).on_hover_text("F10").clicked() {
+            if ui.add_enabled(stopped, egui::Button::new((dbiji_icons::ic(icon::ARROW_ARC_RIGHT), tr("Step over")))).on_hover_text("F10").clicked() {
                 self.command(cx, Command::StepOver);
             }
-            if ui.add_enabled(stopped, egui::Button::new(format!("{} {}", icon::FAST_FORWARD, tr("Resume")))).on_hover_text("F8").clicked() {
+            if ui.add_enabled(stopped, egui::Button::new((dbiji_icons::ic(icon::FAST_FORWARD), tr("Resume")))).on_hover_text("F8").clicked() {
                 self.command(cx, Command::Resume);
             }
-            if ui.add_enabled(self.dbg.is_some(), egui::Button::new(format!("{} {}", icon::STOP, tr("Abort")))).clicked() {
+            if ui.add_enabled(self.dbg.is_some(), egui::Button::new((dbiji_icons::ic(icon::STOP), tr("Abort")))).clicked() {
                 self.abort(cx);
             }
             ui.separator();

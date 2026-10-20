@@ -1,0 +1,12 @@
+[package]
+name = "dbiji-icons"
+description = "Icon colours for DBiji"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+egui.workspace = true
+egui-phosphor.workspace = true

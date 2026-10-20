@@ -221,7 +221,7 @@ impl MessageLog {
             if self.dropped > 0 {
                 ui.weak(trf("({} older messages not shown)", &[&self.dropped]));
             }
-            if ui.small_button(format!("{} {}", icon::COPY, tr("Copy"))).clicked() {
+            if ui.small_button((dbiji_icons::ic(icon::COPY), tr("Copy"))).clicked() {
                 ui.ctx().copy_text(self.text());
             }
         });
@@ -297,7 +297,7 @@ impl TaskSaver {
             }
             ui.horizontal(|ui| {
                 let ok = !self.name.trim().is_empty();
-                if ui.add_enabled(ok, egui::Button::new(format!("{} {}", icon::FLOPPY_DISK, tr("Save")))).clicked() {
+                if ui.add_enabled(ok, egui::Button::new((dbiji_icons::ic(icon::FLOPPY_DISK), tr("Save")))).clicked() {
                     let folder = Some(self.folder.trim().to_string()).filter(|f| !f.is_empty());
                     confirmed = Some((self.name.trim().to_string(), folder));
                 }

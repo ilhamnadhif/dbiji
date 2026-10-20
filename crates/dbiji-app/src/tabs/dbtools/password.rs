@@ -184,7 +184,7 @@ impl TabView for ChangePasswordTab {
         if !cx.conns.is_connected(&self.conn) {
             ui.horizontal(|ui| {
                 ui.label(tr("Connect first: the password is changed by the server."));
-                if ui.button(format!("{} {}", icon::PLUGS_CONNECTED, tr("Connect"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::PLUGS_CONNECTED), tr("Connect"))).clicked() {
                     cx.push(AppCommand::Connect(self.conn.clone()));
                 }
             });
@@ -211,7 +211,7 @@ impl TabView for ChangePasswordTab {
         });
         let problem = self.problem(cx);
         ui.horizontal(|ui| {
-            if ui.add_enabled(!busy && problem.is_none(), egui::Button::new(format!("{} {}", icon::KEY, tr("Change password")))).clicked() {
+            if ui.add_enabled(!busy && problem.is_none(), egui::Button::new((dbiji_icons::ic(icon::KEY), tr("Change password")))).clicked() {
                 self.start(cx);
             }
             if busy {
@@ -235,7 +235,7 @@ impl TabView for ChangePasswordTab {
                 }
                 ui.horizontal(|ui| {
                     ui.label(tr("Reconnect so that new sessions use the new password."));
-                    if ui.button(format!("{} {}", icon::ARROW_CLOCKWISE, tr("Reconnect"))).clicked() {
+                    if ui.button((dbiji_icons::ic(icon::ARROW_CLOCKWISE), tr("Reconnect"))).clicked() {
                         cx.push(AppCommand::Reconnect(self.conn.clone()));
                     }
                 });

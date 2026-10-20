@@ -340,8 +340,8 @@ impl Updates {
             Install::Ready { .. } => format!("{} {}", icon::ARROW_CIRCLE_UP, tr("Restart to update")),
             _ => label,
         };
-        let accent = ui.visuals().selection.stroke.color;
-        let text = if ui.visuals().dark_mode { egui::Color32::BLACK } else { egui::Color32::WHITE };
+        let accent = crate::theme::accent(ui.visuals().dark_mode);
+        let text = egui::Color32::WHITE;
         let b = egui::Button::new(RichText::new(label).color(text).strong()).fill(accent);
         if ui.add(b).on_hover_text(tr("A new version of DBiji is available")).clicked()
             && let Some(r) = self.found.clone()
@@ -397,7 +397,7 @@ impl Updates {
             let mut close = false;
             let modal = egui::Modal::new(egui::Id::new("dbiji_whats_new")).show(ctx, |ui| {
                 ui.set_width(560.0);
-                ui.heading(format!("{} {}", icon::SPARKLE, trf("What's new in DBiji {}", &[&current_version()])));
+                crate::widgets::icon_heading(ui, icon::SPARKLE, trf("What's new in DBiji {}", &[&current_version()]));
                 ui.add_space(6.0);
                 egui::ScrollArea::vertical().max_height(ctx.content_rect().height() * 0.6).show(ui, |ui| {
                     for n in notes {
@@ -434,7 +434,7 @@ impl Updates {
             let can_install = installable(&r);
             let modal = egui::Modal::new(egui::Id::new("dbiji_update_available")).show(ctx, |ui| {
                 ui.set_width(560.0);
-                ui.heading(format!("{} {}", icon::ARROW_CIRCLE_UP, tr("A new version of DBiji is available")));
+                crate::widgets::icon_heading(ui, icon::ARROW_CIRCLE_UP, tr("A new version of DBiji is available"));
                 ui.add_space(4.0);
                 egui::Grid::new("dbiji_update_versions").num_columns(2).spacing([16.0, 4.0]).show(ui, |ui| {
                     ui.label(tr("Current version:"));
@@ -467,8 +467,8 @@ impl Updates {
                         close = true;
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let accent = ui.visuals().selection.stroke.color;
-                        let on_accent = if ui.visuals().dark_mode { egui::Color32::BLACK } else { egui::Color32::WHITE };
+                        let accent = crate::theme::accent(ui.visuals().dark_mode);
+                        let on_accent = egui::Color32::WHITE;
                         if can_install {
                             let b = egui::Button::new(RichText::new(format!("{} {}", icon::ARROW_CIRCLE_UP, tr("Install update"))).color(on_accent).strong()).fill(accent);
                             if ui.add(b).clicked() {
@@ -606,8 +606,8 @@ impl Updates {
                     ui.label(tr("DBiji will quit, install the new version and open again. You are asked about unsaved scripts first."));
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        let accent = ui.visuals().selection.stroke.color;
-                        let on_accent = if ui.visuals().dark_mode { egui::Color32::BLACK } else { egui::Color32::WHITE };
+                        let accent = crate::theme::accent(ui.visuals().dark_mode);
+                        let on_accent = egui::Color32::WHITE;
                         if ui.add(egui::Button::new(RichText::new(tr("Restart now")).color(on_accent).strong()).fill(accent)).clicked() {
                             restart = true;
                         }

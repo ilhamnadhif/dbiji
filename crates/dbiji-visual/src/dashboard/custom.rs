@@ -214,7 +214,7 @@ pub fn show_custom_dashboard(
                 .desired_width(220.0),
         );
         if ui
-            .button(format!("{} {}", icon::PLUS, tr("Add chart")))
+            .button((dbiji_icons::ic(icon::PLUS), tr("Add chart")))
             .clicked()
         {
             let id = dashboard.add_item(DashboardItem {
@@ -224,7 +224,7 @@ pub fn show_custom_dashboard(
             state.editing = Some(id);
         }
         if ui
-            .button(format!("{} {}", icon::ARROWS_CLOCKWISE, tr("Refresh all")))
+            .button((dbiji_icons::ic(icon::ARROWS_CLOCKWISE), tr("Refresh all")))
             .clicked()
         {
             for item in &dashboard.items {
@@ -323,21 +323,21 @@ fn card(
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui
-                .small_button(icon::TRASH)
+                .small_button(dbiji_icons::ic(icon::TRASH))
                 .on_hover_text(tr("Delete chart"))
                 .clicked()
             {
                 *delete = Some(id);
             }
             if ui
-                .small_button(icon::ARROW_LEFT)
+                .small_button(dbiji_icons::ic(icon::ARROW_LEFT))
                 .on_hover_text(tr("Move earlier"))
                 .clicked()
             {
                 *move_up = Some(id);
             }
             if ui
-                .selectable_label(editing, icon::PENCIL_SIMPLE)
+                .selectable_label(editing, dbiji_icons::ic(icon::PENCIL_SIMPLE))
                 .on_hover_text(tr("Edit chart"))
                 .clicked()
             {
@@ -347,7 +347,7 @@ fn card(
             if pending {
                 ui.spinner();
             } else if ui
-                .small_button(icon::ARROWS_CLOCKWISE)
+                .small_button(dbiji_icons::ic(icon::ARROWS_CLOCKWISE))
                 .on_hover_text(tr("Refresh"))
                 .clicked()
                 && !item.sql.trim().is_empty()
@@ -398,7 +398,9 @@ fn card(
             state.rebuild(item);
         }
         ui.horizontal(|ui| {
-            if ui.button(format!("{} {}", icon::PLAY, tr("Run"))).clicked()
+            if ui
+                .button((dbiji_icons::ic(icon::PLAY), tr("Run")))
+                .clicked()
                 && !item.sql.trim().is_empty()
             {
                 state.request(id, now);

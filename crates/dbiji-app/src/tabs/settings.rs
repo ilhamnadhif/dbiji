@@ -402,7 +402,7 @@ impl SettingsTab {
         });
         ui.add_space(8.0);
         if let Some(store) = cx.services.history.clone()
-            && ui.button(format!("{} {}", icon::TRASH, tr("Clear the whole history"))).clicked()
+            && ui.button((dbiji_icons::ic(icon::TRASH), tr("Clear the whole history"))).clicked()
         {
             match store.lock().clear(None) {
                 Ok(n) => cx.toasts.success(trf("Deleted {} history entries", &[&n])),
@@ -497,14 +497,14 @@ impl SettingsTab {
                         ui.monospace(if keys.is_empty() { "—".to_string() } else { keys.join("   ") });
                     }
                     ui.horizontal(|ui| {
-                        if ui.small_button(icon::RECORD).on_hover_text(tr("Record a shortcut")).clicked() {
+                        if ui.small_button(dbiji_icons::ic(icon::RECORD)).on_hover_text(tr("Record a shortcut")).clicked() {
                             self.recording = Some(*a);
                         }
-                        if ui.small_button(icon::ARROW_COUNTER_CLOCKWISE).on_hover_text(tr("Reset to default")).clicked() {
+                        if ui.small_button(dbiji_icons::ic(icon::ARROW_COUNTER_CLOCKWISE)).on_hover_text(tr("Reset to default")).clicked() {
                             km.reset(*a);
                             changed = true;
                         }
-                        if ui.small_button(icon::X).on_hover_text(tr("Remove the shortcut")).clicked() {
+                        if ui.small_button(dbiji_icons::ic(icon::X)).on_hover_text(tr("Remove the shortcut")).clicked() {
                             km.unbind(*a);
                             changed = true;
                         }
@@ -540,13 +540,13 @@ impl SettingsTab {
                     changed = true;
                 }
                 ui.horizontal(|ui| {
-                    if ui.add_enabled(i > 0, egui::Button::new(icon::ARROW_UP).small()).clicked() {
+                    if ui.add_enabled(i > 0, egui::Button::new(dbiji_icons::ic(icon::ARROW_UP)).small()).clicked() {
                         swap = Some((i, i - 1));
                     }
-                    if ui.add_enabled(i + 1 < t.items.len(), egui::Button::new(icon::ARROW_DOWN).small()).clicked() {
+                    if ui.add_enabled(i + 1 < t.items.len(), egui::Button::new(dbiji_icons::ic(icon::ARROW_DOWN)).small()).clicked() {
                         swap = Some((i, i + 1));
                     }
-                    if ui.small_button(icon::TRASH).clicked() {
+                    if ui.small_button(dbiji_icons::ic(icon::TRASH)).clicked() {
                         remove = Some(i);
                     }
                 });
@@ -600,7 +600,7 @@ impl SettingsTab {
                         }
                     });
                 }
-                if ui.button(format!("{} {}", icon::PLUS, tr("New type"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::PLUS), tr("New type"))).clicked() {
                     let mut t = ConnectionType::development();
                     t.id = format!("custom-{}", uuid::Uuid::new_v4().simple());
                     t.name = tr("Custom").to_string();
@@ -667,7 +667,7 @@ impl SettingsTab {
                         self.profile_proxy_password.clear();
                     }
                 }
-                if ui.button(format!("{} {}", icon::PLUS, tr("New profile"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::PLUS), tr("New profile"))).clicked() {
                     self.profile = Some(NetworkProfile {
                         id: uuid::Uuid::new_v4().to_string(),
                         name: tr("New profile").to_string(),
@@ -908,7 +908,7 @@ impl SettingsTab {
                 }
                 self.message = Some(r);
             }
-            if ui.button(format!("{} {}", icon::LOCK, tr("Lock now"))).clicked()
+            if ui.button((dbiji_icons::ic(icon::LOCK), tr("Lock now"))).clicked()
                 && let Some(v) = cx.services.secrets.read().vault()
             {
                 v.lock();
@@ -967,7 +967,7 @@ impl TabView for SettingsTab {
             }
             ui.add_space(12.0);
             let dir = cx.services.paths.config_dir().to_path_buf();
-            if ui.add(egui::Button::new(format!("{} {}", icon::FOLDER_OPEN, tr("Open settings folder"))).frame(false)).on_hover_text(dir.display().to_string()).clicked() {
+            if ui.add(egui::Button::new((dbiji_icons::ic(icon::FOLDER_OPEN), tr("Open settings folder"))).frame(false)).on_hover_text(dir.display().to_string()).clicked() {
                 let _ = open::that_detached(&dir);
             }
             if self.confirm_reset {
@@ -984,7 +984,7 @@ impl TabView for SettingsTab {
                         self.confirm_reset = false;
                     }
                 });
-            } else if ui.button(format!("{} {}", icon::ARROW_COUNTER_CLOCKWISE, tr("Reset all settings…"))).clicked() {
+            } else if ui.button((dbiji_icons::ic(icon::ARROW_COUNTER_CLOCKWISE), tr("Reset all settings…"))).clicked() {
                 self.confirm_reset = true;
             }
         });

@@ -67,7 +67,7 @@ fn warn(ui: &mut Ui, text: &str) {
 fn path_row(ui: &mut Ui, value: &mut String, hint: &str, save: bool) {
     ui.horizontal(|ui| {
         ui.add(egui::TextEdit::singleline(value).desired_width(300.0).hint_text(hint));
-        if ui.button(format!("{} {}", icon::FOLDER_OPEN, tr("Browse…"))).clicked() {
+        if ui.button((dbiji_icons::ic(icon::FOLDER_OPEN), tr("Browse…"))).clicked() {
             let d = dialog_near(value);
             let picked = if save { d.save_file() } else { d.pick_file() };
             if let Some(p) = picked {
@@ -226,7 +226,7 @@ impl TaskEditor {
             }
             ui.horizontal(|ui| {
                 let can_save = problem.is_none() && !self.saving;
-                if ui.add_enabled(can_save, egui::Button::new(format!("{} {}", icon::FLOPPY_DISK, tr("Save")))).clicked()
+                if ui.add_enabled(can_save, egui::Button::new((dbiji_icons::ic(icon::FLOPPY_DISK), tr("Save")))).clicked()
                     && let Ok(t) = &built
                 {
                     action = EditorAction::Save(Box::new(t.clone()));
@@ -390,13 +390,13 @@ impl TaskEditor {
                             Some((g, n)) => ui.label(format!("{g} {n}")),
                             None => ui.label(RichText::new(tr("(missing task)")).color(crate::theme::error_color(ui.visuals().dark_mode))),
                         };
-                        if ui.add_enabled(i > 0, egui::Button::new(icon::ARROW_UP).small()).on_hover_text(tr("Move up")).clicked() {
+                        if ui.add_enabled(i > 0, egui::Button::new(dbiji_icons::ic(icon::ARROW_UP)).small()).on_hover_text(tr("Move up")).clicked() {
                             action = Some((i, -1));
                         }
-                        if ui.add_enabled(i + 1 < steps.len(), egui::Button::new(icon::ARROW_DOWN).small()).on_hover_text(tr("Move down")).clicked() {
+                        if ui.add_enabled(i + 1 < steps.len(), egui::Button::new(dbiji_icons::ic(icon::ARROW_DOWN)).small()).on_hover_text(tr("Move down")).clicked() {
                             action = Some((i, 1));
                         }
-                        if ui.small_button(icon::X).on_hover_text(tr("Remove")).clicked() {
+                        if ui.small_button(dbiji_icons::ic(icon::X)).on_hover_text(tr("Remove")).clicked() {
                             action = Some((i, 0));
                         }
                     });
@@ -419,7 +419,7 @@ impl TaskEditor {
                             ui.selectable_value(&mut self.add_step, Some(t.id.clone()), format!("{} {}", kind_icon(&t.kind), t.path()));
                         }
                     });
-                    if ui.add_enabled(self.add_step.is_some(), egui::Button::new(format!("{} {}", icon::PLUS, tr("Add step")))).clicked()
+                    if ui.add_enabled(self.add_step.is_some(), egui::Button::new((dbiji_icons::ic(icon::PLUS), tr("Add step")))).clicked()
                         && let Some(id) = self.add_step.take()
                     {
                         steps.push(id);

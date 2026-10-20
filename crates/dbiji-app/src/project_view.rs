@@ -50,7 +50,7 @@ impl ProjectView {
                         }
                     }
                     ui.separator();
-                    if ui.button(format!("{} {}", icon::PLUS, tr("New project…"))).clicked() {
+                    if ui.button((dbiji_icons::ic(icon::PLUS), tr("New project…"))).clicked() {
                         self.new_project = Some(String::new());
                     }
                 });
@@ -70,7 +70,7 @@ impl ProjectView {
                             Err(e) => cx.toasts.error(tr("Cannot create the project"), Some(e.to_string())),
                         }
                     }
-                    if ui.button(icon::X).clicked() {
+                    if ui.button(dbiji_icons::ic(icon::X)).clicked() {
                         done = true;
                     }
                 });
@@ -80,14 +80,14 @@ impl ProjectView {
             }
         }
         ui.horizontal(|ui| {
-            if ui.button(icon::FILE_PLUS).on_hover_text(tr("New SQL editor")).clicked() {
+            if ui.button(dbiji_icons::ic(icon::FILE_PLUS)).on_hover_text(tr("New SQL editor")).clicked() {
                 cx.push(AppCommand::NewSqlEditor { connection: None, schema: None, text: None });
             }
-            if ui.button(icon::ARROW_CLOCKWISE).on_hover_text(tr("Refresh")).clicked() {
+            if ui.button(dbiji_icons::ic(icon::ARROW_CLOCKWISE)).on_hover_text(tr("Refresh")).clicked() {
                 self.reload(cx);
             }
             if let Some(p) = cx.services.projects.as_ref().and_then(|m| m.default_project().ok())
-                && ui.button(icon::FOLDER_OPEN).on_hover_text(tr("Show in Finder")).clicked()
+                && ui.button(dbiji_icons::ic(icon::FOLDER_OPEN)).on_hover_text(tr("Show in Finder")).clicked()
             {
                 let _ = open::that(p.path());
             }
@@ -163,7 +163,7 @@ fn folder(ui: &mut Ui, cx: &mut AppContext, f: &ScriptFolder, filter: &str) {
         if !filter.is_empty() && !s.name.to_lowercase().contains(filter) {
             continue;
         }
-        let r = ui.selectable_label(false, format!("{} {}", icon::FILE_SQL, s.name)).on_hover_text(s.path.display().to_string());
+        let r = ui.selectable_label(false, (dbiji_icons::ic(icon::FILE_SQL), s.name.as_str())).on_hover_text(s.path.display().to_string());
         if r.double_clicked() {
             cx.push(AppCommand::OpenScript(s.path.clone()));
         }

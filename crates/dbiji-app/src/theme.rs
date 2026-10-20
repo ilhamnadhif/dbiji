@@ -25,6 +25,7 @@ pub fn setup_fonts(ctx: &Context) {
     // Labels in monospace still find letters Hack lacks.
     fonts.families.entry(FontFamily::Monospace).or_default().push("Inter".into());
     egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+    dbiji_icons::add_fill_font(&mut fonts);
     ctx.set_fonts(fonts);
 }
 
@@ -219,6 +220,26 @@ pub fn connection_marker(c: [u8; 3]) -> Option<Color32> {
 pub fn tint(c: Color32, dark_mode: bool) -> Color32 {
     let alpha = if dark_mode { 70 } else { 90 };
     Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), alpha)
+}
+
+/// Fill of primary buttons (white text on it), blue in both themes.
+pub fn accent(dark_mode: bool) -> Color32 {
+    if dark_mode { hex(0x2F7BEA) } else { hex(0x0B6BDB) }
+}
+
+/// A database type's brand colour (connection icons), readable in both themes.
+pub fn brand_color(kind: dbiji_core::DbKind) -> Color32 {
+    use dbiji_core::DbKind as K;
+    match kind {
+        K::Postgres => hex(0x4479A1),
+        K::CockroachDb => hex(0x7C5CFF),
+        K::MySql => hex(0x0A84A0),
+        K::MariaDb => hex(0xC0765A),
+        K::Sqlite => hex(0x0F80CC),
+        K::SqlServer => hex(0xCC2927),
+        K::ClickHouse | K::DuckDb => dbiji_icons::GOLD,
+        _ => dbiji_icons::SLATE,
+    }
 }
 
 pub fn success_color(dark_mode: bool) -> Color32 {

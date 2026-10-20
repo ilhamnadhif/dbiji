@@ -1073,13 +1073,13 @@ impl SqlEditorTab {
             if ui.add_enabled(!running, egui::Button::new(RichText::new(icon::PLAY).color(go))).on_hover_text(tip(Action::ExecuteStatement)).clicked() {
                 self.run(cx, Request { scope: self.scope_for(true), new_tab: false, explain: None, confirmed: false, sql: None });
             }
-            if ui.add_enabled(!running, egui::Button::new(icon::PLUS_SQUARE)).on_hover_text(tip(Action::ExecuteInNewTab)).clicked() {
+            if ui.add_enabled(!running, egui::Button::new(dbiji_icons::ic(icon::PLUS_SQUARE))).on_hover_text(tip(Action::ExecuteInNewTab)).clicked() {
                 self.run(cx, Request { scope: self.scope_for(true), new_tab: true, explain: None, confirmed: false, sql: None });
             }
             if ui.add_enabled(!running, egui::Button::new(RichText::new(icon::FAST_FORWARD).color(go))).on_hover_text(tip(Action::ExecuteScript)).clicked() {
                 self.run(cx, Request { scope: self.scope_for(false), new_tab: false, explain: None, confirmed: false, sql: None });
             }
-            if ui.add_enabled(!running, egui::Button::new(icon::TREE_VIEW)).on_hover_text(tip(Action::ExplainPlan)).clicked() {
+            if ui.add_enabled(!running, egui::Button::new(dbiji_icons::ic(icon::TREE_VIEW))).on_hover_text(tip(Action::ExplainPlan)).clicked() {
                 self.run(cx, Request { scope: self.scope_for(true), new_tab: true, explain: Some(false), confirmed: false, sql: None });
             }
             if ui
@@ -1089,7 +1089,7 @@ impl SqlEditorTab {
             {
                 self.cancel(cx);
             }
-            if ui.button(icon::TEXT_INDENT).on_hover_text(tip(Action::FormatSql)).clicked() {
+            if ui.button(dbiji_icons::ic(icon::TEXT_INDENT)).on_hover_text(tip(Action::FormatSql)).clicked() {
                 self.format(cx);
             }
             ui.menu_button(icon::DOTS_THREE_VERTICAL, |ui| {
@@ -1135,10 +1135,10 @@ impl SqlEditorTab {
                 self.set_tx_mode(cx, if manual { TransactionMode::Auto } else { TransactionMode::Manual });
             }
             if manual {
-                if ui.button(format!("{} {}", icon::CHECK_CIRCLE, tr("Commit"))).on_hover_text(tip(Action::Commit)).clicked() {
+                if ui.button((dbiji_icons::ic(icon::CHECK_CIRCLE), tr("Commit"))).on_hover_text(tip(Action::Commit)).clicked() {
                     self.commit(cx, true);
                 }
-                if ui.button(format!("{} {}", icon::ARROW_U_UP_LEFT, tr("Rollback"))).on_hover_text(tip(Action::Rollback)).clicked() {
+                if ui.button((dbiji_icons::ic(icon::ARROW_U_UP_LEFT), tr("Rollback"))).on_hover_text(tip(Action::Rollback)).clicked() {
                     self.commit(cx, false);
                 }
                 if pending > 0 && ui.small_button(trf("{} pending", &[&pending])).clicked() {
@@ -1147,9 +1147,9 @@ impl SqlEditorTab {
                 }
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.toggle_value(&mut self.show_outline, icon::LIST_BULLETS).on_hover_text(tr("Outline"));
-                ui.toggle_value(&mut self.terminal, icon::TERMINAL).on_hover_text(tr("Terminal mode: print results as text"));
-                if ui.selectable_label(self.show_results, icon::ROWS).on_hover_text(tip(Action::ToggleResultsPanel)).clicked() {
+                ui.toggle_value(&mut self.show_outline, dbiji_icons::ic(icon::LIST_BULLETS)).on_hover_text(tr("Outline"));
+                ui.toggle_value(&mut self.terminal, dbiji_icons::ic(icon::TERMINAL)).on_hover_text(tr("Terminal mode: print results as text"));
+                if ui.selectable_label(self.show_results, dbiji_icons::ic(icon::ROWS)).on_hover_text(tip(Action::ToggleResultsPanel)).clicked() {
                     self.show_results = !self.show_results;
                 }
                 if running {
@@ -1186,13 +1186,13 @@ impl SqlEditorTab {
                     }
                 });
             }
-            if !self.stats.is_empty() && ui.selectable_label(self.bottom == Bottom::Statistics, format!("{} {}", icon::LIST_NUMBERS, tr("Statistics"))).clicked() {
+            if !self.stats.is_empty() && ui.selectable_label(self.bottom == Bottom::Statistics, (dbiji_icons::ic(icon::LIST_NUMBERS), tr("Statistics"))).clicked() {
                 self.bottom = Bottom::Statistics;
             }
-            if ui.selectable_label(self.bottom == Bottom::Output, format!("{} {}", icon::TERMINAL_WINDOW, tr("Output"))).clicked() {
+            if ui.selectable_label(self.bottom == Bottom::Output, (dbiji_icons::ic(icon::TERMINAL_WINDOW), tr("Output"))).clicked() {
                 self.bottom = Bottom::Output;
             }
-            if ui.selectable_label(self.bottom == Bottom::Transaction, format!("{} {}", icon::CLOCK, tr("Transaction log"))).clicked() {
+            if ui.selectable_label(self.bottom == Bottom::Transaction, (dbiji_icons::ic(icon::CLOCK), tr("Transaction log"))).clicked() {
                 self.bottom = Bottom::Transaction;
             }
             let vars = if self.variables.is_empty() { tr("Variables").to_string() } else { format!("{} ({})", tr("Variables"), self.variables.len()) };
@@ -1229,7 +1229,7 @@ impl SqlEditorTab {
                         if let Some(c) = s.total_cost {
                             ui.weak(trf("Cost {}", &[&format!("{c:.1}")]));
                         }
-                        if ui.small_button(format!("{} {}", icon::FLOPPY_DISK, tr("Save plan…"))).clicked()
+                        if ui.small_button((dbiji_icons::ic(icon::FLOPPY_DISK), tr("Save plan…"))).clicked()
                             && let Some(path) = rfd::FileDialog::new().add_filter(tr("Execution plan"), &["json"]).set_file_name("plan.json").save_file()
                         {
                             match std::fs::write(&path, plan_file_json(sql, plan)) {
@@ -1278,11 +1278,11 @@ impl SqlEditorTab {
             }
             Bottom::Output => {
                 ui.horizontal(|ui| {
-                    if ui.small_button(format!("{} {}", icon::COPY, tr("Copy"))).clicked() {
+                    if ui.small_button((dbiji_icons::ic(icon::COPY), tr("Copy"))).clicked() {
                         let all: String = self.output.iter().map(|l| format!("{} {} {}\n", l.at.format("%H:%M:%S"), l.severity, l.text)).collect();
                         ui.ctx().copy_text(all);
                     }
-                    if ui.small_button(format!("{} {}", icon::TRASH, tr("Clear"))).clicked() {
+                    if ui.small_button((dbiji_icons::ic(icon::TRASH), tr("Clear"))).clicked() {
                         self.output.clear();
                     }
                 });
@@ -1308,7 +1308,7 @@ impl SqlEditorTab {
                     for (k, v) in self.variables.iter_mut() {
                         ui.monospace(k);
                         ui.add(egui::TextEdit::singleline(v).desired_width(320.0).code_editor());
-                        if ui.small_button(icon::TRASH).on_hover_text(tr("Remove")).clicked() {
+                        if ui.small_button(dbiji_icons::ic(icon::TRASH)).on_hover_text(tr("Remove")).clicked() {
                             remove = Some(k.clone());
                         }
                         ui.end_row();
@@ -1321,7 +1321,7 @@ impl SqlEditorTab {
                     let id = ui.id().with("new_var");
                     let mut name: String = ui.data_mut(|d| d.get_temp(id)).unwrap_or_default();
                     ui.add(egui::TextEdit::singleline(&mut name).hint_text(tr("name")).desired_width(140.0));
-                    if ui.add_enabled(!name.trim().is_empty(), egui::Button::new(format!("{} {}", icon::PLUS, tr("Add variable")))).clicked() {
+                    if ui.add_enabled(!name.trim().is_empty(), egui::Button::new((dbiji_icons::ic(icon::PLUS), tr("Add variable")))).clicked() {
                         self.variables.entry(name.trim().to_string()).or_default();
                         name.clear();
                     }
@@ -1425,7 +1425,7 @@ impl SqlEditorTab {
             let mut close = false;
             let modal = egui::Modal::new(egui::Id::new(("confirm_exec", self.editor.id()))).show(ui.ctx(), |ui| {
                 ui.set_width(520.0);
-                ui.heading(format!("{} {}", icon::WARNING, tr("Confirm execution")));
+                crate::widgets::icon_heading(ui, icon::WARNING, tr("Confirm execution"));
                 for r in &c.reasons {
                     ui.label(r);
                 }

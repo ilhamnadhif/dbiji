@@ -856,10 +856,10 @@ impl AiAssistantTab {
             }
             self.context_status(ui, cx);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button(icon::GEAR).on_hover_text(tr("AI settings")).clicked() {
+                if ui.button(dbiji_icons::ic(icon::GEAR)).on_hover_text(tr("AI settings")).clicked() {
                     cx.push(AppCommand::OpenSettings);
                 }
-                if ui.add_enabled(!self.turns.is_empty(), egui::Button::new(format!("{} {}", icon::PLUS, tr("New conversation")))).clicked() {
+                if ui.add_enabled(!self.turns.is_empty(), egui::Button::new((dbiji_icons::ic(icon::PLUS), tr("New conversation")))).clicked() {
                     self.reset();
                 }
                 ui.weak(cx.settings.ai.model.clone());
@@ -906,7 +906,7 @@ impl AiAssistantTab {
     fn setup_ui(ui: &mut Ui, cx: &mut AppContext, status: &AiStatus) {
         ui.vertical_centered(|ui| {
             ui.add_space(40.0);
-            ui.heading(format!("{} {}", icon::SPARKLE, tr("AI assistant")));
+            crate::widgets::icon_heading(ui, icon::SPARKLE, tr("AI assistant"));
             ui.add_space(8.0);
             match status {
                 AiStatus::Disabled => {
@@ -924,7 +924,7 @@ impl AiAssistantTab {
                 AiStatus::Ready => {}
             }
             ui.add_space(8.0);
-            if ui.button(format!("{} {}", icon::GEAR, tr("Open settings"))).clicked() {
+            if ui.button((dbiji_icons::ic(icon::GEAR), tr("Open settings"))).clicked() {
                 cx.push(AppCommand::OpenSettings);
             }
         });
@@ -944,10 +944,10 @@ impl AiAssistantTab {
                     lang_tag.to_string()
                 });
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if sql && ui.small_button(format!("{} {}", icon::FILE_SQL, tr("Open in SQL editor"))).clicked() {
+                    if sql && ui.small_button((dbiji_icons::ic(icon::FILE_SQL), tr("Open in SQL editor"))).clicked() {
                         self.open_in_editor(cx, code);
                     }
-                    if ui.small_button(format!("{} {}", icon::COPY, tr("Copy"))).clicked() {
+                    if ui.small_button((dbiji_icons::ic(icon::COPY), tr("Copy"))).clicked() {
                         ui.ctx().copy_text(code.to_string());
                     }
                 });

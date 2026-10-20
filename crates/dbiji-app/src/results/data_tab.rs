@@ -82,7 +82,7 @@ impl TableDataView {
         self.poll(cx);
         if let Some(e) = self.error.clone() {
             crate::widgets::error_box(ui, &e);
-            if ui.button(format!("{} {}", icon::ARROW_CLOCKWISE, tr("Retry"))).clicked() {
+            if ui.button((dbiji_icons::ic(icon::ARROW_CLOCKWISE), tr("Retry"))).clicked() {
                 self.error = None;
                 self.started = false;
             }

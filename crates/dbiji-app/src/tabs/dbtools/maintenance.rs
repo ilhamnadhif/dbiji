@@ -422,7 +422,7 @@ impl MaintenanceTab {
         let sql = self.preview_sql(cx);
         ui.horizontal(|ui| {
             ui.strong(tr("SQL"));
-            if !sql.is_empty() && ui.small_button(format!("{} {}", icon::FILE_SQL, tr("Open in SQL editor"))).clicked() {
+            if !sql.is_empty() && ui.small_button((dbiji_icons::ic(icon::FILE_SQL), tr("Open in SQL editor"))).clicked() {
                 let text = sql.iter().map(|s| format!("{s};\n")).collect::<String>();
                 cx.push(AppCommand::NewSqlEditor { connection: Some(self.conn.clone()), schema: None, text: Some(text) });
             }
@@ -434,10 +434,10 @@ impl MaintenanceTab {
         });
         let running = self.is_running();
         ui.horizontal(|ui| {
-            if ui.add_enabled(!running && !sql.is_empty(), egui::Button::new(format!("{} {}", icon::PLAY, tr("Run")))).clicked() {
+            if ui.add_enabled(!running && !sql.is_empty(), egui::Button::new((dbiji_icons::ic(icon::PLAY), tr("Run")))).clicked() {
                 self.start(cx);
             }
-            if running && ui.button(format!("{} {}", icon::STOP, tr("Cancel"))).clicked() {
+            if running && ui.button((dbiji_icons::ic(icon::STOP), tr("Cancel"))).clicked() {
                 self.cancel(cx);
             }
             if self.pending {
@@ -449,7 +449,7 @@ impl MaintenanceTab {
         if !cx.conns.is_connected(&self.conn) {
             ui.horizontal(|ui| {
                 ui.label(tr("The connection is closed."));
-                if ui.button(format!("{} {}", icon::PLUGS_CONNECTED, tr("Connect"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::PLUGS_CONNECTED), tr("Connect"))).clicked() {
                     cx.push(AppCommand::Connect(self.conn.clone()));
                 }
             });

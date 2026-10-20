@@ -3,6 +3,12 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.3 — 2026-10-20
+
+### Changed
+- Coloured icons, DBeaver-style, so things can be told apart at a glance: in the navigator solid orange folders, blue tables, teal views, gold keys and indexes, magenta functions, and connections in their database's colour (PostgreSQL blue, MySQL teal, MariaDB brown …) with a green / orange / red dot for connected / connecting / failed; in menus, buttons, toolbars and tab titles green for new and run, red for delete and stop, gold for edit, blue for refresh, teal for export and import. One palette readable in the light and the dark theme.
+- Primary buttons (New connection, Install update, Restart now) are blue in the dark theme too.
+
 ## 0.3.2 — 2026-10-20
 
 ### Changed

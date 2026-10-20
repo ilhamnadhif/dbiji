@@ -532,15 +532,15 @@ fn hit_test(
 fn toolbar(ui: &mut Ui, layers: &[SpatialLayer], state: &mut SpatialState, srid: Option<i32>) {
     ui.horizontal(|ui| {
         if ui
-            .button(icon::CORNERS_OUT)
+            .button(dbiji_icons::ic(icon::CORNERS_OUT))
             .on_hover_text(tr("Zoom to fit"))
             .clicked()
         {
             state.fit_pending = true;
         }
-        ui.toggle_value(&mut state.show_grid, icon::GRID_FOUR)
+        ui.toggle_value(&mut state.show_grid, dbiji_icons::ic(icon::GRID_FOUR))
             .on_hover_text(tr("Show grid"));
-        ui.toggle_value(&mut state.color_by_row, icon::PALETTE)
+        ui.toggle_value(&mut state.color_by_row, dbiji_icons::ic(icon::PALETTE))
             .on_hover_text(tr("One color per row"));
         ui.separator();
         let items: usize = layers.iter().map(|l| l.items.len()).sum();

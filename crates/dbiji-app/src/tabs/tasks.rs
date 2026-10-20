@@ -819,7 +819,7 @@ impl TasksTab {
             ui.horizontal_wrapped(|ui| {
                 ui.label(RichText::new(icon::WARNING).color(color));
                 ui.label(tr("Scheduled runs are turned off: tasks run only when you start them (or through the system scheduler). Turn on \"Run scheduled tasks while DBiji is open\" in the settings."));
-                if ui.button(format!("{} {}", icon::GEAR, tr("Open settings"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::GEAR), tr("Open settings"))).clicked() {
                     cx.push(AppCommand::OpenSettings);
                 }
             });
@@ -833,7 +833,7 @@ impl TasksTab {
         let any = !sel.is_empty();
         let can_run = cx.services.scheduler.is_some();
         ui.horizontal_wrapped(|ui| {
-            ui.menu_button(format!("{} {}", icon::PLUS, tr("New task")), |ui| {
+            ui.menu_button((dbiji_icons::ic(icon::PLUS), tr("New task")), |ui| {
                 for k in NewTaskKind::ALL {
                     if ui.button(format!("{} {}", k.icon(), k.label())).clicked() {
                         self.open_new_task(cx, k);
@@ -845,13 +845,13 @@ impl TasksTab {
                     ui.add_enabled(false, egui::Button::new(format!("{glyph} {label}"))).on_disabled_hover_text(tr("Created with \"Save as task\" in the transfer wizards"));
                 }
             });
-            if ui.add_enabled(one, egui::Button::new(format!("{} {}", icon::PENCIL_SIMPLE, tr("Edit")))).clicked() {
+            if ui.add_enabled(one, egui::Button::new((dbiji_icons::ic(icon::PENCIL_SIMPLE), tr("Edit")))).clicked() {
                 self.edit_task(&sel[0]);
             }
-            if ui.add_enabled(any, egui::Button::new(format!("{} {}", icon::COPY, tr("Duplicate")))).clicked() {
+            if ui.add_enabled(any, egui::Button::new((dbiji_icons::ic(icon::COPY), tr("Duplicate")))).clicked() {
                 self.duplicate(cx, sel.clone());
             }
-            if ui.add_enabled(any, egui::Button::new(format!("{} {}", icon::TRASH, tr("Delete")))).clicked() {
+            if ui.add_enabled(any, egui::Button::new((dbiji_icons::ic(icon::TRASH), tr("Delete")))).clicked() {
                 self.confirm_delete = Some(sel.clone());
             }
             let all_enabled = any && sel.iter().all(|id| self.task(id).is_some_and(|t| t.enabled));
@@ -860,7 +860,7 @@ impl TasksTab {
                 self.set_enabled(cx, sel.clone(), !all_enabled);
             }
             ui.separator();
-            let r = ui.add_enabled(any && can_run, egui::Button::new(format!("{} {}", icon::PLAY, tr("Run now"))));
+            let r = ui.add_enabled(any && can_run, egui::Button::new((dbiji_icons::ic(icon::PLAY), tr("Run now"))));
             if !can_run {
                 r.clone().on_disabled_hover_text(tr("Tasks cannot be run: the task scheduler is not available."));
             }
@@ -868,7 +868,7 @@ impl TasksTab {
                 self.run_tasks(cx, sel.clone());
             }
             let any_running = sel.iter().any(|id| running.contains(id));
-            if ui.add_enabled(any_running, egui::Button::new(format!("{} {}", icon::STOP, tr("Cancel run")))).clicked() {
+            if ui.add_enabled(any_running, egui::Button::new((dbiji_icons::ic(icon::STOP), tr("Cancel run")))).clicked() {
                 self.cancel_runs(cx, &sel);
             }
             ui.separator();
@@ -876,11 +876,11 @@ impl TasksTab {
             if ui.add_enabled(!self.tasks.is_empty(), egui::Button::new(format!("{} {export_label}", icon::UPLOAD_SIMPLE))).clicked() {
                 self.export(cx, sel.clone());
             }
-            if ui.button(format!("{} {}", icon::DOWNLOAD_SIMPLE, tr("Import…"))).clicked() {
+            if ui.button((dbiji_icons::ic(icon::DOWNLOAD_SIMPLE), tr("Import…"))).clicked() {
                 self.import(cx);
             }
             ui.separator();
-            if ui.button(icon::ARROW_CLOCKWISE).on_hover_text(tr("Refresh")).clicked() {
+            if ui.button(dbiji_icons::ic(icon::ARROW_CLOCKWISE)).on_hover_text(tr("Refresh")).clicked() {
                 self.reload_all(cx);
             }
             ui.add(egui::TextEdit::singleline(&mut self.filter).hint_text(tr("Filter…")).desired_width(160.0));
@@ -905,7 +905,7 @@ impl TasksTab {
     fn folders_ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
         ui.horizontal(|ui| {
             ui.strong(tr("Folders"));
-            if ui.small_button(icon::FOLDER_PLUS).on_hover_text(tr("New folder")).clicked() {
+            if ui.small_button(dbiji_icons::ic(icon::FOLDER_PLUS)).on_hover_text(tr("New folder")).clicked() {
                 self.folder_prompt = Some(FolderPrompt { rename: None, parent: self.folder.clone(), name: String::new() });
             }
         });
@@ -944,15 +944,15 @@ impl TasksTab {
                         self.folder = Some(f.clone());
                     }
                     r.context_menu(|ui| {
-                        if ui.button(format!("{} {}", icon::FOLDER_PLUS, tr("New sub-folder…"))).clicked() {
+                        if ui.button((dbiji_icons::ic(icon::FOLDER_PLUS), tr("New sub-folder…"))).clicked() {
                             self.folder_prompt = Some(FolderPrompt { rename: None, parent: Some(f.clone()), name: String::new() });
                             ui.close();
                         }
-                        if ui.button(format!("{} {}", icon::PENCIL_SIMPLE, tr("Rename…"))).clicked() {
+                        if ui.button((dbiji_icons::ic(icon::PENCIL_SIMPLE), tr("Rename…"))).clicked() {
                             self.folder_prompt = Some(FolderPrompt { rename: Some(f.clone()), parent: None, name: name.clone() });
                             ui.close();
                         }
-                        if ui.button(format!("{} {}", icon::TRASH, tr("Delete folder"))).on_hover_text(tr("Its tasks move to the parent folder")).clicked() {
+                        if ui.button((dbiji_icons::ic(icon::TRASH), tr("Delete folder"))).on_hover_text(tr("Its tasks move to the parent folder")).clicked() {
                             let path = f.clone();
                             self.folder_op(cx, move |s| s.delete_folder(&path));
                             ui.close();
@@ -1102,19 +1102,19 @@ impl TasksTab {
                     }
                     let targets = if self.selected.iter().any(|s| s == &t.id) { self.selected.clone() } else { vec![t.id.clone()] };
                     resp.context_menu(|ui| {
-                        if ui.button(format!("{} {}", icon::PENCIL_SIMPLE, tr("Edit…"))).clicked() {
+                        if ui.button((dbiji_icons::ic(icon::PENCIL_SIMPLE), tr("Edit…"))).clicked() {
                             actions.push(RowAction::Edit(t.id.clone()));
                             ui.close();
                         }
-                        if ui.button(format!("{} {}", icon::PLAY, tr("Run now"))).clicked() {
+                        if ui.button((dbiji_icons::ic(icon::PLAY), tr("Run now"))).clicked() {
                             actions.push(RowAction::Run(targets.clone()));
                             ui.close();
                         }
-                        if running.contains_key(&t.id) && ui.button(format!("{} {}", icon::STOP, tr("Cancel run"))).clicked() {
+                        if running.contains_key(&t.id) && ui.button((dbiji_icons::ic(icon::STOP), tr("Cancel run"))).clicked() {
                             actions.push(RowAction::Cancel(targets.clone()));
                             ui.close();
                         }
-                        if ui.button(format!("{} {}", icon::COPY, tr("Duplicate"))).clicked() {
+                        if ui.button((dbiji_icons::ic(icon::COPY), tr("Duplicate"))).clicked() {
                             actions.push(RowAction::Duplicate(targets.clone()));
                             ui.close();
                         }
@@ -1123,7 +1123,7 @@ impl TasksTab {
                             actions.push(RowAction::Enable(targets.clone(), !t.enabled));
                             ui.close();
                         }
-                        ui.menu_button(format!("{} {}", icon::FOLDER, tr("Move to")), |ui| {
+                        ui.menu_button((dbiji_icons::ic(icon::FOLDER), tr("Move to")), |ui| {
                             if ui.button(tr("(top level)")).clicked() {
                                 actions.push(RowAction::Move(targets.clone(), None));
                                 ui.close();
@@ -1135,12 +1135,12 @@ impl TasksTab {
                                 }
                             }
                         });
-                        if ui.button(format!("{} {}", icon::UPLOAD_SIMPLE, tr("Export…"))).clicked() {
+                        if ui.button((dbiji_icons::ic(icon::UPLOAD_SIMPLE), tr("Export…"))).clicked() {
                             actions.push(RowAction::Export(targets.clone()));
                             ui.close();
                         }
                         ui.separator();
-                        if ui.button(format!("{} {}", icon::TRASH, tr("Delete…"))).clicked() {
+                        if ui.button((dbiji_icons::ic(icon::TRASH), tr("Delete…"))).clicked() {
                             actions.push(RowAction::Delete(targets.clone()));
                             ui.close();
                         }
@@ -1193,7 +1193,7 @@ impl TasksTab {
             if self.runs_job.is_some() {
                 ui.spinner();
             }
-            if ui.small_button(icon::ARROW_CLOCKWISE).on_hover_text(tr("Refresh")).clicked() {
+            if ui.small_button(dbiji_icons::ic(icon::ARROW_CLOCKWISE)).on_hover_text(tr("Refresh")).clicked() {
                 self.reload_runs = true;
             }
         });
@@ -1283,7 +1283,7 @@ impl TasksTab {
                         }
                     }
                 }
-                if ui.small_button(format!("{} {}", icon::STOP, tr("Cancel run"))).clicked()
+                if ui.small_button((dbiji_icons::ic(icon::STOP), tr("Cancel run"))).clicked()
                     && let Some(s) = cx.services.scheduler.as_ref()
                 {
                     s.cancel(&run.run_id);
@@ -1298,14 +1298,14 @@ impl TasksTab {
             for f in &run.output_files {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(f.display().to_string()).monospace());
-                    if ui.small_button(icon::ARROW_SQUARE_OUT).on_hover_text(tr("Open")).clicked() {
+                    if ui.small_button(dbiji_icons::ic(icon::ARROW_SQUARE_OUT)).on_hover_text(tr("Open")).clicked() {
                         let p = f.clone();
                         cx.backend.spawn_detached(async move {
                             let _ = open::that_detached(p);
                         });
                     }
                     if let Some(dir) = f.parent().map(|d| d.to_path_buf())
-                        && ui.small_button(icon::FOLDER_OPEN).on_hover_text(tr("Open folder")).clicked()
+                        && ui.small_button(dbiji_icons::ic(icon::FOLDER_OPEN)).on_hover_text(tr("Open folder")).clicked()
                     {
                         cx.backend.spawn_detached(async move {
                             let _ = open::that_detached(dir);

@@ -139,7 +139,7 @@ impl ImportDialog {
                                 ui.selectable_value(&mut self.workspace, Some(w.clone()), w.display().to_string());
                             }
                         });
-                        if ui.button(format!("{} {}", icon::FOLDER_OPEN, tr("Browse…"))).clicked()
+                        if ui.button((dbiji_icons::ic(icon::FOLDER_OPEN), tr("Browse…"))).clicked()
                             && let Some(p) = rfd::FileDialog::new().pick_folder()
                         {
                             self.workspaces.push(p.clone());
@@ -152,7 +152,7 @@ impl ImportDialog {
                     ui.horizontal(|ui| {
                         ui.label(tr("File"));
                         ui.add(egui::TextEdit::singleline(&mut self.pgpass_path).desired_width(380.0));
-                        if ui.button(format!("{} {}", icon::FOLDER_OPEN, tr("Browse…"))).clicked()
+                        if ui.button((dbiji_icons::ic(icon::FOLDER_OPEN), tr("Browse…"))).clicked()
                             && let Some(p) = rfd::FileDialog::new().pick_file()
                         {
                             self.pgpass_path = p.display().to_string();
@@ -173,7 +173,7 @@ impl ImportDialog {
                 }
             }
             ui.horizontal(|ui| {
-                if ui.button(format!("{} {}", icon::MAGNIFYING_GLASS, tr("Find connections"))).clicked() {
+                if ui.button((dbiji_icons::ic(icon::MAGNIFYING_GLASS), tr("Find connections"))).clicked() {
                     self.load();
                 }
             });

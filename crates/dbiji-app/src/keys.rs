@@ -92,7 +92,7 @@ pub fn action_color(action: Action, dark: bool) -> Option<egui::Color32> {
     match action {
         Action::ExecuteStatement | Action::ExecuteScript | Action::ExecuteInNewTab => Some(crate::theme::success_color(dark)),
         Action::CancelQuery => Some(crate::theme::error_color(dark)),
-        _ => None,
+        _ => dbiji_icons::color(action_icon(action)),
     }
 }
 

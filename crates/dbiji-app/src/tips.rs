@@ -59,7 +59,7 @@ impl TipWindow {
                         if ui.button(format!("{} {}", tr("Next tip"), icon::CARET_RIGHT)).clicked() {
                             self.index = (self.index + 1) % n;
                         }
-                        if ui.button(icon::CARET_LEFT).on_hover_text(tr("Previous tip")).clicked() {
+                        if ui.button(dbiji_icons::ic(icon::CARET_LEFT)).on_hover_text(tr("Previous tip")).clicked() {
                             self.index = (self.index + n - 1) % n;
                         }
                         ui.weak(format!("{}/{n}", self.index % n + 1));

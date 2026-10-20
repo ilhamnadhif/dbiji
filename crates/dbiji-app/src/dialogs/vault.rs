@@ -44,7 +44,7 @@ impl VaultDialog {
         let mut skip = false;
         let modal = egui::Modal::new(egui::Id::new("vault_unlock")).show(ctx, |ui| {
             ui.set_width(380.0);
-            ui.heading(format!("{} {}", icon::LOCK_KEY, if create { tr("Create the password vault") } else { tr("Unlock saved passwords") }));
+            crate::widgets::icon_heading(ui, icon::LOCK_KEY, if create { tr("Create the password vault") } else { tr("Unlock saved passwords") });
             ui.label(tr("Saved passwords are kept in a file encrypted with your master password."));
             ui.add_space(6.0);
             egui::Grid::new("vault_grid").num_columns(2).spacing([10.0, 8.0]).show(ui, |ui| {

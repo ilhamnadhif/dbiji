@@ -191,7 +191,7 @@ pub fn show_query_builder(
 fn toolbar(ui: &mut Ui, model: &mut QueryModel, sql: &str, events: &mut Vec<QbEvent>) {
     ui.horizontal(|ui| {
         if ui
-            .button(format!("{} {}", icon::PLUS, tr("Add table")))
+            .button((dbiji_icons::ic(icon::PLUS), tr("Add table")))
             .clicked()
         {
             events.push(QbEvent::AddTableRequested);
@@ -200,7 +200,7 @@ fn toolbar(ui: &mut Ui, model: &mut QueryModel, sql: &str, events: &mut Vec<QbEv
         if ui
             .add_enabled(
                 has_sql,
-                egui::Button::new(format!("{} {}", icon::PLAY, tr("Run"))),
+                egui::Button::new((dbiji_icons::ic(icon::PLAY), tr("Run"))),
             )
             .clicked()
         {
@@ -236,13 +236,13 @@ fn sql_preview(ui: &mut Ui, sql: &str, events: &mut Vec<QbEvent>) {
         ui.strong(tr("SQL"));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui
-                .small_button(format!("{} {}", icon::COPY, tr("Copy")))
+                .small_button((dbiji_icons::ic(icon::COPY), tr("Copy")))
                 .clicked()
             {
                 ui.ctx().copy_text(sql.to_string());
             }
             if ui
-                .small_button(icon::ARROW_SQUARE_OUT)
+                .small_button(dbiji_icons::ic(icon::ARROW_SQUARE_OUT))
                 .on_hover_text(tr("Open in editor"))
                 .clicked()
                 && !sql.is_empty()
@@ -461,7 +461,7 @@ fn canvas(
                     }
                     ui.separator();
                     if ui
-                        .button(format!("{} {}", icon::TRASH, tr("Remove join")))
+                        .button((dbiji_icons::ic(icon::TRASH), tr("Remove join")))
                         .clicked()
                     {
                         model.joins.remove(*i);
@@ -490,7 +490,7 @@ fn canvas(
                     ui.close();
                 }
                 if ui
-                    .button(format!("{} {}", icon::SQUARE, tr("Clear selection")))
+                    .button((dbiji_icons::ic(icon::SQUARE), tr("Clear selection")))
                     .clicked()
                 {
                     let cols: Vec<String> = model
@@ -506,7 +506,7 @@ fn canvas(
                     ui.label(tr("Alias"));
                     let r = ui.add(egui::TextEdit::singleline(&mut alias_edit).desired_width(90.0));
                     let apply = ui
-                        .button(icon::CHECK)
+                        .button(dbiji_icons::ic(icon::CHECK))
                         .on_hover_text(tr("Rename alias"))
                         .clicked()
                         || (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
@@ -515,7 +515,7 @@ fn canvas(
                     }
                 });
                 if ui
-                    .button(format!("{} {}", icon::TRASH, tr("Remove table")))
+                    .button((dbiji_icons::ic(icon::TRASH), tr("Remove table")))
                     .clicked()
                 {
                     model.remove_table(a);
@@ -524,14 +524,14 @@ fn canvas(
             }
             QbContext::Background => {
                 if ui
-                    .button(format!("{} {}", icon::PLUS, tr("Add table…")))
+                    .button((dbiji_icons::ic(icon::PLUS), tr("Add table…")))
                     .clicked()
                 {
                     events.push(QbEvent::AddTableRequested);
                     ui.close();
                 }
                 if ui
-                    .button(format!("{} {}", icon::ARROWS_IN, tr("Reset view")))
+                    .button((dbiji_icons::ic(icon::ARROWS_IN), tr("Reset view")))
                     .clicked()
                 {
                     state.zoom = 1.0;
@@ -780,21 +780,21 @@ fn apply_row_action<T>(list: &mut Vec<T>, action: Option<RowAction>) {
 
 fn row_buttons(ui: &mut Ui, i: usize, action: &mut Option<RowAction>) {
     if ui
-        .small_button(icon::ARROW_UP)
+        .small_button(dbiji_icons::ic(icon::ARROW_UP))
         .on_hover_text(tr("Move up"))
         .clicked()
     {
         *action = Some(RowAction::Up(i));
     }
     if ui
-        .small_button(icon::ARROW_DOWN)
+        .small_button(dbiji_icons::ic(icon::ARROW_DOWN))
         .on_hover_text(tr("Move down"))
         .clicked()
     {
         *action = Some(RowAction::Down(i));
     }
     if ui
-        .small_button(icon::TRASH)
+        .small_button(dbiji_icons::ic(icon::TRASH))
         .on_hover_text(tr("Remove"))
         .clicked()
     {
@@ -896,7 +896,7 @@ fn columns_grid(ui: &mut Ui, model: &mut QueryModel, refs: &[String]) {
     }
     apply_row_action(&mut model.select, action);
     if ui
-        .button(format!("{} {}", icon::PLUS, tr("Add expression")))
+        .button((dbiji_icons::ic(icon::PLUS), tr("Add expression")))
         .clicked()
     {
         model.select.push(QbSelectItem::default());
@@ -962,7 +962,7 @@ fn conditions_grid(ui: &mut Ui, salt: &str, list: &mut Vec<QbCondition>, refs: &
         });
     apply_row_action(list, action);
     if ui
-        .button(format!("{} {}", icon::PLUS, tr("Add condition")))
+        .button((dbiji_icons::ic(icon::PLUS), tr("Add condition")))
         .clicked()
     {
         list.push(QbCondition::new(
@@ -989,7 +989,7 @@ fn grouping(ui: &mut Ui, model: &mut QueryModel, refs: &[String]) {
         });
     apply_row_action(&mut model.group_by, action);
     if ui
-        .button(format!("{} {}", icon::PLUS, tr("Add group by expression")))
+        .button((dbiji_icons::ic(icon::PLUS), tr("Add group by expression")))
         .clicked()
     {
         model
@@ -1035,7 +1035,7 @@ fn order_grid(ui: &mut Ui, model: &mut QueryModel, refs: &[String]) {
         });
     apply_row_action(&mut model.order_by, action);
     if ui
-        .button(format!("{} {}", icon::PLUS, tr("Add sort expression")))
+        .button((dbiji_icons::ic(icon::PLUS), tr("Add sort expression")))
         .clicked()
     {
         model

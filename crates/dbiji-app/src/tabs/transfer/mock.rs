@@ -226,7 +226,7 @@ impl MockDataTab {
         let Some(def) = self.def.clone() else { return };
         let id = self.uid;
         ui.horizontal(|ui| {
-            if ui.button(format!("{} {}", icon::MAGIC_WAND, tr("Choose automatically again"))).clicked() {
+            if ui.button((dbiji_icons::ic(icon::MAGIC_WAND), tr("Choose automatically again"))).clicked() {
                 self.config.generators = self.auto.clone();
             }
             ui.weak(tr("Columns left out get their default value (auto-increment, defaults)."));
@@ -526,7 +526,7 @@ impl TabView for MockDataTab {
         egui::Panel::top(egui::Id::new(("mock_top", uid))).show(ui, |ui| {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
-                ui.heading(format!("{} {}", icon::SHUFFLE, tr("Generate mock data")));
+                crate::widgets::icon_heading(ui, icon::SHUFFLE, tr("Generate mock data"));
                 ui.label(RichText::new(self.table.display_path()).strong());
                 ui.weak(connection_name(cx, &self.conn));
             });
@@ -537,7 +537,7 @@ impl TabView for MockDataTab {
             ui.horizontal(|ui| {
                 let running = self.run.is_some();
                 let ok = self.validate().is_ok() && !running;
-                if ui.add_enabled(ok, egui::Button::new(format!("{} {}", icon::PLAY, tr("Generate")))).clicked() {
+                if ui.add_enabled(ok, egui::Button::new((dbiji_icons::ic(icon::PLAY), tr("Generate")))).clicked() {
                     if self.config.mode == MockMode::TruncateFirst {
                         self.confirm = true;
                     } else {
@@ -555,7 +555,7 @@ impl TabView for MockDataTab {
                 if cx.conns.live(&self.conn).is_none() {
                     ui.horizontal(|ui| {
                         ui.weak(tr("The connection is closed."));
-                        if ui.button(format!("{} {}", icon::PLUGS_CONNECTED, tr("Connect"))).clicked() {
+                        if ui.button((dbiji_icons::ic(icon::PLUGS_CONNECTED), tr("Connect"))).clicked() {
                             cx.push(AppCommand::Connect(self.conn.clone()));
                         }
                     });
@@ -563,7 +563,7 @@ impl TabView for MockDataTab {
                 }
                 if let Some(e) = self.def_error.clone() {
                     crate::widgets::error_box(ui, &trf("Cannot read the table definition: {}", &[&e]));
-                    if ui.button(format!("{} {}", icon::ARROW_CLOCKWISE, tr("Retry"))).clicked() {
+                    if ui.button((dbiji_icons::ic(icon::ARROW_CLOCKWISE), tr("Retry"))).clicked() {
                         reload_table_def(cx, &self.conn, &self.table);
                         self.def_error = None;
                     }

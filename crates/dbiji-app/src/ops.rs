@@ -157,7 +157,7 @@ impl Operations {
                         }
                         ui.small(format!("{:.1}s", elapsed.as_secs_f32()));
                     });
-                    if matches!(op.state, OpState::Running) && ui.button(icon::STOP).on_hover_text(tr("Cancel")).clicked() {
+                    if matches!(op.state, OpState::Running) && ui.button(dbiji_icons::ic(icon::STOP)).on_hover_text(tr("Cancel")).clicked() {
                         op.cancel.cancel();
                     }
                 });

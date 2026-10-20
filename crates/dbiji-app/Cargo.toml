@@ -22,6 +22,7 @@ duckdb = ["dep:dbiji-driver-duckdb"]
 
 [dependencies]
 dbiji-core.workspace = true
+dbiji-icons.workspace = true
 dbiji-config.workspace = true
 dbiji-net.workspace = true
 dbiji-visual.workspace = true

@@ -90,7 +90,7 @@ impl DropDialog {
         let busy = self.job.is_some();
         let modal = egui::Modal::new(egui::Id::new(("drop_objects", &self.conn))).show(ctx, |ui| {
             ui.set_width(560.0);
-            ui.heading(format!("{} {}", icon::TRASH, tr("Drop objects")));
+            crate::widgets::icon_heading(ui, icon::TRASH, tr("Drop objects"));
             ui.label(trf("Drop {} object(s)? This cannot be undone.", &[&self.objects.len()]));
             ui.checkbox(&mut self.cascade, tr("Cascade (also drop dependent objects)"));
             egui::ScrollArea::vertical().max_height(260.0).show(ui, |ui| {

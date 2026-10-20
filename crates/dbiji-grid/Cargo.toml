@@ -10,6 +10,7 @@ authors.workspace = true
 [dependencies]
 uuid.workspace = true
 dbiji-core.workspace = true
+dbiji-icons.workspace = true
 egui.workspace = true
 egui-phosphor.workspace = true
 serde.workspace = true

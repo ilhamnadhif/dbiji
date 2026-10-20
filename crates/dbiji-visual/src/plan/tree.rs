@@ -50,13 +50,13 @@ pub fn show_plan_tree(ui: &mut Ui, plan: &QueryPlan, state: &mut PlanViewState) 
 
     ui.horizontal(|ui| {
         if ui
-            .small_button(format!("{} {}", icon::CARET_DOWN, tr("Expand all")))
+            .small_button((dbiji_icons::ic(icon::CARET_DOWN), tr("Expand all")))
             .clicked()
         {
             state.collapsed.clear();
         }
         if ui
-            .small_button(format!("{} {}", icon::CARET_RIGHT, tr("Collapse all")))
+            .small_button((dbiji_icons::ic(icon::CARET_RIGHT), tr("Collapse all")))
             .clicked()
         {
             state.collapsed = flat
@@ -295,7 +295,7 @@ pub fn show_plan_text(ui: &mut Ui, plan: &QueryPlan) {
     };
     ui.horizontal(|ui| {
         if ui
-            .button(format!("{} {}", icon::COPY, tr("Copy")))
+            .button((dbiji_icons::ic(icon::COPY), tr("Copy")))
             .clicked()
         {
             ui.ctx().copy_text(text.clone());

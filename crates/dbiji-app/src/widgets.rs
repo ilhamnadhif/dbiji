@@ -19,6 +19,16 @@ pub struct TableResponse {
 const CELL_PAD: f32 = 6.0;
 
 /// Virtualised, striped, resizable table of text cells.
+/// A heading with a coloured icon.
+pub fn icon_heading(ui: &mut Ui, glyph: &str, text: impl Into<String>) -> egui::Response {
+    let mut job = egui::text::LayoutJob::default();
+    let style = ui.style().clone();
+    let font = egui::FontSelection::Default;
+    dbiji_icons::ic(glyph).heading().append_to(&mut job, &style, font.clone(), egui::Align::Center);
+    RichText::new(format!(" {}", text.into())).heading().append_to(&mut job, &style, font, egui::Align::Center);
+    ui.label(job)
+}
+
 pub fn simple_table(ui: &mut Ui, id_salt: impl std::hash::Hash + std::fmt::Debug, headers: &[&str], rows: &[Vec<String>], selected: Option<usize>) -> TableResponse {
     let mut out = TableResponse::default();
     let row_h = ui.text_style_height(&egui::TextStyle::Body) + 8.0;
@@ -119,7 +129,7 @@ pub fn load_state<T>(ui: &mut Ui, value: &Loadable<T>, retry: &mut bool) -> bool
         }
         Loadable::Failed(e) => {
             error_box(ui, &e.full_text());
-            if ui.button(format!("{} {}", icon::ARROW_CLOCKWISE, tr("Retry"))).clicked() {
+            if ui.button((dbiji_icons::ic(icon::ARROW_CLOCKWISE), tr("Retry"))).clicked() {
                 *retry = true;
             }
             false
@@ -140,7 +150,7 @@ pub fn error_box(ui: &mut Ui, text: &str) {
 /// Read-only, selectable monospace text (DDL, logs) with a copy button.
 pub fn code_view(ui: &mut Ui, id: impl std::hash::Hash + std::fmt::Debug, text: &str) {
     ui.horizontal(|ui| {
-        if ui.small_button(format!("{} {}", icon::COPY, tr("Copy"))).clicked() {
+        if ui.small_button((dbiji_icons::ic(icon::COPY), tr("Copy"))).clicked() {
             ui.ctx().copy_text(text.to_string());
         }
     });

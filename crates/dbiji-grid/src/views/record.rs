@@ -157,10 +157,10 @@ impl<'a> RecordView<'a> {
         egui::Frame::new().inner_margin(egui::Margin::symmetric(4, 4)).show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
-                if ui.add_enabled(row > 0, Button::new(icon::CARET_DOUBLE_LEFT)).on_hover_text(tr("First row")).clicked() {
+                if ui.add_enabled(row > 0, Button::new(dbiji_icons::ic(icon::CARET_DOUBLE_LEFT))).on_hover_text(tr("First row")).clicked() {
                     go_to = Some(0);
                 }
-                if ui.add_enabled(row > 0, Button::new(icon::CARET_LEFT)).on_hover_text(tr("Previous row (←)")).clicked() {
+                if ui.add_enabled(row > 0, Button::new(dbiji_icons::ic(icon::CARET_LEFT))).on_hover_text(tr("Previous row (←)")).clicked() {
                     go_to = Some(row - 1);
                 }
                 ui.label(tr("Row"));
@@ -169,10 +169,10 @@ impl<'a> RecordView<'a> {
                     go_to = Some(n.clamp(1, nrows) - 1);
                 }
                 ui.label(RichText::new(trf("of {}", &[&crate::format::group_thousands(&nrows.to_string())])).weak());
-                if ui.add_enabled(row + 1 < nrows, Button::new(icon::CARET_RIGHT)).on_hover_text(tr("Next row (→)")).clicked() {
+                if ui.add_enabled(row + 1 < nrows, Button::new(dbiji_icons::ic(icon::CARET_RIGHT))).on_hover_text(tr("Next row (→)")).clicked() {
                     go_to = Some(row + 1);
                 }
-                if ui.add_enabled(row + 1 < nrows, Button::new(icon::CARET_DOUBLE_RIGHT)).on_hover_text(tr("Last row")).clicked() {
+                if ui.add_enabled(row + 1 < nrows, Button::new(dbiji_icons::ic(icon::CARET_DOUBLE_RIGHT))).on_hover_text(tr("Last row")).clicked() {
                     go_to = Some(nrows - 1);
                 }
                 let state_label = match model.row_state(row) {

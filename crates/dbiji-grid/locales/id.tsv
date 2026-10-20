@@ -368,3 +368,7 @@ Differences only	Hanya yang berbeda
 Show only the columns whose values differ between the rows	Tampilkan hanya kolom yang nilainya berbeda antarbaris
 {} columns differ	{} kolom berbeda
 The rows have different values	Nilai antarbaris berbeda
+Hide empty	Sembunyikan yang kosong
+{} hidden	{} disembunyikan
+Hide the columns that are NULL or empty in this row	Sembunyikan kolom yang NULL atau kosong di baris ini
+Hide the columns that are NULL or empty in every row	Sembunyikan kolom yang NULL atau kosong di semua baris

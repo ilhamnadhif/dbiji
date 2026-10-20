@@ -90,6 +90,10 @@ pub struct GridOptions {
     pub max_copy_cells: usize,
     /// Maximum characters shown in a cell tooltip.
     pub max_tooltip_chars: usize,
+    /// Record view, rows side by side: only the columns that differ.
+    pub record_differences_only: bool,
+    /// Record view: hide the columns that are NULL or empty.
+    pub record_hide_empty: bool,
 }
 
 impl std::fmt::Debug for GridOptions {
@@ -118,6 +122,8 @@ impl Default for GridOptions {
             show_descriptions: true,
             max_copy_cells: 1_000_000,
             max_tooltip_chars: 2_000,
+            record_differences_only: false,
+            record_hide_empty: false,
         }
     }
 }
@@ -159,6 +165,14 @@ pub enum PanelKind {
 /// dialogs it owns). Everything else is handled inside the grid.
 #[derive(Debug, Clone, PartialEq)]
 pub enum GridAction {
+    /// The record view's "Differences only" / "Hide empty" were changed
+    /// (for the application to remember them).
+    RecordPrefs {
+        /// Rows side by side: only the columns that differ.
+        differences_only: bool,
+        /// Hide the columns that are NULL or empty.
+        hide_empty: bool,
+    },
     /// Put this text at the end of the filter box and focus it (the user
     /// types the value); empty: just focus the filter box.
     EditFilter(String),

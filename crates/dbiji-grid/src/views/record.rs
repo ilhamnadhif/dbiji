@@ -87,8 +87,38 @@ pub struct RecordViewState {
     /// column-name column.
     widths: std::collections::BTreeMap<usize, f32>,
     lead_width: Option<f32>,
-    /// Side by side: only the columns whose values differ between the rows.
-    pub only_differences: bool,
+    /// "Differences only" / "Hide empty" set here (else the options').
+    differences_only: Option<bool>,
+    hide_empty: Option<bool>,
+    /// Columns hidden as empty at the last frame.
+    hidden_empty: usize,
+}
+
+/// NULL or empty text (hidden by "Hide empty").
+fn is_empty_value(v: &Value) -> bool {
+    v.is_null() || matches!(v, Value::Text(s) if s.is_empty())
+}
+
+/// The "Hide empty" toggle; true when it changed.
+fn hide_empty_toggle(ui: &mut Ui, state: &mut RecordViewState, options: &GridOptions, tip: &str) -> bool {
+    let mut hide = state.hide_empty.unwrap_or(options.record_hide_empty);
+    let changed = ui.checkbox(&mut hide, tr("Hide empty")).on_hover_text(tip).changed();
+    if changed {
+        state.hide_empty = Some(hide);
+    }
+    if hide && state.hidden_empty > 0 {
+        ui.label(RichText::new(trf("{} hidden", &[&state.hidden_empty])).small().weak());
+    }
+    changed
+}
+
+impl RecordViewState {
+    fn prefs(&self, options: &GridOptions) -> GridAction {
+        GridAction::RecordPrefs {
+            differences_only: self.differences_only.unwrap_or(options.record_differences_only),
+            hide_empty: self.hide_empty.unwrap_or(options.record_hide_empty),
+        }
+    }
 }
 
 impl RecordViewState {
@@ -191,6 +221,10 @@ impl<'a> RecordView<'a> {
                 }
                 ui.add_space(12.0);
                 ui.add(TextEdit::singleline(&mut state.column_filter).hint_text(format!("{}  {}", icon::MAGNIFYING_GLASS, tr("Filter columns"))).desired_width(220.0));
+                ui.add_space(8.0);
+                if hide_empty_toggle(ui, state, options, tr("Hide the columns that are NULL or empty in this row")) {
+                    actions.push(state.prefs(options));
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(RichText::new(format!("{}  {}", icon::KEYBOARD, tr("Tab: grid · ← →: rows"))).small().weak())
                         .on_hover_text(tr("Tab: back to the grid · ← →: previous / next row"));
@@ -247,6 +281,14 @@ impl<'a> RecordView<'a> {
             }
             ui.ctx().request_repaint_after(std::time::Duration::from_millis(10));
         }
+        let key_cols: Vec<usize> = model.editability().as_ref().map(|t| t.key_columns.clone()).unwrap_or_default();
+        // "Hide empty": NULL and empty values go (key columns stay).
+        let hide_empty = state.hide_empty.unwrap_or(options.record_hide_empty);
+        let keep: Vec<usize> =
+            (0..columns.len()).filter(|&i| !hide_empty || key_cols.contains(&columns[i]) || !values.get(i).is_some_and(|(v, d, _)| !*d && is_empty_value(v))).collect();
+        state.hidden_empty = columns.len() - keep.len();
+        let columns: Vec<usize> = keep.iter().map(|&i| columns[i]).collect();
+        let values: Vec<Shown> = keep.iter().filter_map(|&i| values.get(i).cloned()).collect();
         let editable = model.is_editable() && options.allow_editing;
         let mut commit: Option<(usize, usize, String)> = None;
         let mut open_value: Option<usize> = None;
@@ -256,13 +298,15 @@ impl<'a> RecordView<'a> {
         let measure = |ui: &Ui, text: String, font: egui::FontId| ui.fonts_mut(|f| f.layout_no_wrap(text, font, egui::Color32::WHITE).rect.width());
         let name_w = columns.iter().map(|&c| measure(ui, model.column_name(c).to_string(), body.clone())).fold(0.0_f32, f32::max).clamp(100.0, 300.0) + 8.0;
         let type_of = |c: usize| model.column_meta(c).map_or_else(|| tr("virtual").to_string(), |m| m.type_name.to_lowercase());
-        let key_cols: Vec<usize> = model.editability().as_ref().map(|t| t.key_columns.clone()).unwrap_or_default();
         let row_h = ui.text_style_height(&egui::TextStyle::Body) + 2.0;
         let mut copied: Option<String> = None;
         let mut toggled: Option<(usize, usize, bool)> = None;
-        ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+        // Key columns stay at the top while the others scroll.
+        let (pinned, rest): (Vec<usize>, Vec<usize>) = (0..columns.len()).partition(|&i| key_cols.contains(&columns[i]));
+        let mut draw = |ui: &mut Ui, list: &[usize]| {
             ui.spacing_mut().item_spacing.y = 0.0;
-            for (i, &c) in columns.iter().enumerate() {
+            for &i in list {
+                let c = columns[i];
                 let Some((v, is_default, modified)) = values.get(i) else { continue };
                 let active = active_col == c;
                 let bg = ui.painter().add(egui::Shape::Noop);
@@ -366,7 +410,15 @@ impl<'a> RecordView<'a> {
                 };
                 ui.painter().set(bg, egui::Shape::rect_filled(rect, 4.0, fill));
             }
-        });
+        };
+        if !pinned.is_empty() && !rest.is_empty() {
+            ui.vertical(|ui| draw(ui, &pinned));
+            ui.separator();
+            ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| draw(ui, &rest));
+        } else {
+            let all: Vec<usize> = (0..columns.len()).collect();
+            ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| draw(ui, &all));
+        }
         if let Some((r, c, on)) = toggled {
             match model.set_value(r, c, Value::Bool(on)) {
                 Ok(()) => state.error = None,
@@ -441,7 +493,13 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
     let value_at = |j: usize, i: usize| all_values.get(j).and_then(|vs| vs.get(i)).map(|(v, d, _)| (v, d));
     let differs_all: Vec<bool> = (0..named.len()).map(|i| (1..rows.len()).any(|j| value_at(j, i) != value_at(0, i))).collect();
     let differing = differs_all.iter().filter(|d| **d).count();
-    let keep: Vec<usize> = (0..named.len()).filter(|&i| !state.only_differences || differs_all[i]).collect();
+    let key_cols: Vec<usize> = model.editability().as_ref().map(|t| t.key_columns.clone()).unwrap_or_default();
+    let differences_only = state.differences_only.unwrap_or(options.record_differences_only);
+    let hide_empty = state.hide_empty.unwrap_or(options.record_hide_empty);
+    let all_empty = |i: usize| (0..rows.len()).all(|j| value_at(j, i).is_some_and(|(v, d)| !*d && is_empty_value(v)));
+    let shown = |i: usize| (!differences_only || differs_all[i]) && (!hide_empty || key_cols.contains(&named[i]) || !all_empty(i));
+    let keep: Vec<usize> = (0..named.len()).filter(|&i| shown(i)).collect();
+    state.hidden_empty = if hide_empty { (0..named.len()).filter(|&i| (!differences_only || differs_all[i]) && !shown(i)).count() } else { 0 };
     let columns: Vec<usize> = keep.iter().map(|&i| named[i]).collect();
     let differs: Vec<bool> = keep.iter().map(|&i| differs_all[i]).collect();
     let values: Vec<Vec<Shown>> = all_values.iter().map(|vs| keep.iter().filter_map(|&i| vs.get(i).cloned()).collect()).collect();
@@ -476,11 +534,19 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
             ui.add_space(12.0);
             ui.add(TextEdit::singleline(&mut state.column_filter).hint_text(format!("{}  {}", icon::MAGNIFYING_GLASS, tr("Filter columns"))).desired_width(220.0));
             ui.add_space(8.0);
-            ui.checkbox(&mut state.only_differences, tr("Differences only")).on_hover_text(tr("Show only the columns whose values differ between the rows"));
+            let mut only = differences_only;
+            if ui.checkbox(&mut only, tr("Differences only")).on_hover_text(tr("Show only the columns whose values differ between the rows")).changed() {
+                state.differences_only = Some(only);
+                actions.push(state.prefs(options));
+            }
             ui.label(RichText::new(trf("{} columns differ", &[&differing])).small().color(if differing > 0 { theme.warn } else { theme.weak }));
+            ui.add_space(8.0);
+            if hide_empty_toggle(ui, state, options, tr("Hide the columns that are NULL or empty in every row")) {
+                actions.push(state.prefs(options));
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(RichText::new(format!("{}  {}", icon::KEYBOARD, tr("Tab: grid · ⌘C: copy"))).small().weak()).on_hover_text(tr("Select one row to see it as a record"));
-                if !needle.is_empty() || state.only_differences {
+                if !needle.is_empty() || differences_only || (hide_empty && state.hidden_empty > 0) {
                     ui.label(RichText::new(trf("{} of {} columns", &[&columns.len(), &total_columns])).small().weak());
                 }
             });
@@ -509,7 +575,6 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
         w + 20.0
     };
     let row_h = ui.text_style_height(&egui::TextStyle::Body) + 10.0;
-    let key_cols: Vec<usize> = model.editability().as_ref().map(|t| t.key_columns.clone()).unwrap_or_default();
     let active_row = grid.active_cell().map(|(r, _)| r);
     let editable = model.is_editable() && options.allow_editing;
     let mut commit: Option<(usize, usize, String)> = None;
@@ -539,8 +604,11 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
                     }
                 }
             });
-            ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                for (i, &c) in columns.iter().enumerate() {
+            // Key columns stay at the top while the others scroll.
+            let (pinned, rest): (Vec<usize>, Vec<usize>) = (0..columns.len()).partition(|&i| key_cols.contains(&columns[i]));
+            let mut draw = |ui: &mut Ui, list: &[usize]| {
+                for &i in list {
+                    let c = columns[i];
                     ui.horizontal(|ui| {
                         let (lead_rect, lead_resp) = ui.allocate_exact_size(egui::vec2(lead_w, row_h), egui::Sense::hover());
                         // The column's type, and why it has a marker, on hover.
@@ -630,7 +698,16 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
                         }
                     });
                 }
-            });
+            };
+            if !pinned.is_empty() && !rest.is_empty() {
+                draw(ui, &pinned);
+                let y = ui.cursor().top();
+                ui.painter().hline(ui.max_rect().x_range(), y, egui::Stroke::new(1.0, theme.active_border));
+                ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| draw(ui, &rest));
+            } else {
+                let all: Vec<usize> = (0..columns.len()).collect();
+                ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| draw(ui, &all));
+            }
         });
     });
     state.picked = picked;

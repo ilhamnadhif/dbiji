@@ -548,6 +548,11 @@ impl ResultPanel {
                 }
             }
             GridAction::Notify { message, error } => self.status = Some((message, error)),
+            GridAction::RecordPrefs { differences_only, hide_empty } => {
+                cx.settings.results.record_differences_only = differences_only;
+                cx.settings.results.record_hide_empty = hide_empty;
+                cx.push(AppCommand::SettingsChanged);
+            }
             GridAction::SaveValueToFile { row, col, extension } => {
                 let Some(v) = self.model.cell(row, col) else { return };
                 let bytes: Vec<u8> = match &v {
@@ -831,6 +836,8 @@ impl ResultPanel {
                     sql_table_name: self.table.as_ref().map(|t| t.name.clone()),
                     dialect,
                     allow_editing: !cx.conns.config(&self.conn).is_some_and(|c| c.read_only),
+                    record_differences_only: cx.settings.results.record_differences_only,
+                    record_hide_empty: cx.settings.results.record_hide_empty,
                     ..Default::default()
                 };
                 // Messages appear in the toolbar next to the status.

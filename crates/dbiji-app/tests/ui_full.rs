@@ -753,8 +753,15 @@ fn settings_grid_menu_and_editor_helpers() {
     assert!(n > 0, "{differ}");
     click(&mut h, "Differences only");
     assert!(has(&h, &format!("{n} of ")), "only the {n} differing columns: {:?}", labels(&h));
+    assert!(h.state().settings.results.record_differences_only, "the choice is remembered");
     click(&mut h, "Differences only");
     assert!(!has(&h, &format!("{n} of ")));
+    assert!(!h.state().settings.results.record_differences_only);
+    // "Hide empty" is remembered too.
+    click(&mut h, "Hide empty");
+    assert!(h.state().settings.results.record_hide_empty);
+    click(&mut h, "Hide empty");
+    assert!(!h.state().settings.results.record_hide_empty);
     // Drag a column border: wider; double-click it: fitted to the values.
     let handle = |h: &H| h.query_all_by_label_contains("Resize Row #").next().map(|n| n.rect()).unwrap_or_else(|| panic!("{:?}", labels(h)));
     let start = handle(&h).center();

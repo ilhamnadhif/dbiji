@@ -415,6 +415,10 @@ pub struct ResultsSettings {
     pub global_memory_limit_mb: u32,
     /// Ask before "fetch all rows" when more than this many rows are expected.
     pub confirm_fetch_all_above: u64,
+    /// Record view, rows side by side: only the columns that differ.
+    pub record_differences_only: bool,
+    /// Record view: hide the columns that are NULL or empty.
+    pub record_hide_empty: bool,
 }
 
 impl Default for ResultsSettings {
@@ -432,6 +436,8 @@ impl Default for ResultsSettings {
             store_memory_limit_mb: 48,
             global_memory_limit_mb: 192,
             confirm_fetch_all_above: 100_000,
+            record_differences_only: false,
+            record_hide_empty: false,
         }
     }
 }

@@ -4,7 +4,7 @@
 #   brew tap dbiji/tap && brew install --cask dbiji
 cask "dbiji" do
   version "0.3.0"
-  sha256 "REPLACE_WITH_DMG_SHA256"
+  sha256 "15de3d77ed9763904dc323db90cd3ac5832a389ed55af3c4884c59eaecef35cd"
 
   url "https://github.com/ilhamnadhif/dbiji/releases/download/v#{version}/DBiji-#{version}.dmg"
   name "DBiji"

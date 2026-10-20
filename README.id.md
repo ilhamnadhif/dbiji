@@ -32,11 +32,21 @@ hasil query jutaan baris tidak perlu muat di memori.
   kunci API Anda sendiri.
 - Antarmuka Inggris dan Indonesia, tema terang dan gelap (View → Theme atau tombol matahari / bulan di
   status bar), pintasan dan toolbar yang bisa diubah, tanpa telemetri.
-- Catatan rilis setelah setiap pembaruan dan pemeriksaan versi baru sekali sehari (opsional).
+- **Pembaruan otomatis** dari rilis GitHub (opsional), pasang dengan satu klik, dan catatan rilis setelah setiap pembaruan.
 
 ## Instalasi
 
-Membutuhkan macOS 12 Monterey atau lebih baru.
+Membutuhkan macOS 12 Monterey atau lebih baru, di Apple Silicon maupun Intel.
+
+### Installer satu baris (disarankan)
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/ilhamnadhif/dbiji/master/scripts/install.sh | bash
+```
+
+Script ini mengunduh rilis terbaru, memeriksanya (SHA-256 yang diterbitkan GitHub, tanda tangan kode,
+bundle id dan versi), memasang `DBiji.app` ke `/Applications`, lalu membukanya. Jalankan lagi untuk
+memperbarui. Untuk memasang versi tertentu, berikan versinya: `… | bash -s -- v0.3.0`.
 
 ### Disk image
 
@@ -44,9 +54,13 @@ Unduh **`DBiji-<versi>.dmg`** dari
 [rilis terbaru](https://github.com/ilhamnadhif/dbiji/releases/latest), buka, lalu seret **DBiji** ke
 **Applications**.
 
-> **“DBiji” tidak bisa dibuka / “Apple could not verify…”?** Build rilis belum dinotarisasi Apple.
-> Buka **System Settings → Privacy & Security** lalu klik **Open Anyway** di samping “DBiji was
-> blocked…”, atau jalankan `xattr -dr com.apple.quarantine /Applications/DBiji.app` di Terminal.
+> **“DBiji” tidak bisa dibuka / “Apple could not verify…”?** Build rilis belum dinotarisasi Apple,
+> jadi macOS memblokir aplikasi yang diunduh lewat browser. Pilih salah satu:
+>
+> - **Pakai installer satu baris** di atas. File yang diunduh dengan `curl` tidak diblokir.
+> - **Izinkan sekali di Settings**: klik **Done** pada peringatan, buka **System Settings → Privacy &
+>   Security**, lalu klik **Open Anyway** di samping “DBiji was blocked…”.
+> - **Lewat Terminal**: `xattr -dr com.apple.quarantine /Applications/DBiji.app`
 
 ### Homebrew
 
@@ -59,7 +73,7 @@ brew install --cask ./packaging/homebrew/dbiji.rb
 ```sh
 cargo build --release -p dbiji-app                     # target/release/dbiji
 cargo build --release -p dbiji-app --features duckdb   # dengan engine DuckDB tertanam
-scripts/bundle-macos.sh                                # dist/DBiji.app dan dist/DBiji-<versi>.dmg
+scripts/bundle-macos.sh                                # dist/DBiji.app, DBiji-<versi>.dmg dan .zip
 ```
 
 ## Mulai
@@ -74,10 +88,25 @@ Bahasa antarmuka dan tema diatur di **Settings → General**.
 
 ## Pembaruan
 
-Setelah diperbarui, DBiji menampilkan apa saja yang berubah (juga di Help → What's new; semua catatan
-ada di [CHANGELOG.md](CHANGELOG.md)). Jika Anda mengizinkan, DBiji mencari rilis baru sekali sehari dan
-menawarkan **Download**, **Skip this version**, atau **Remind me later**; Help → Check for updates…
-langsung memeriksa. Pengguna Homebrew memperbarui dengan `brew upgrade --cask dbiji`.
+Jika Anda mengizinkan, DBiji mencari rilis baru setiap kali dibuka dan setiap 6 jam. Versi baru
+membuka dialog berisi versi saat ini, versi baru, dan apa saja yang baru (jika ditemukan belakangan,
+muncul tombol **Update** di toolbar tanpa mengganggu pekerjaan Anda). **Install update** lalu:
+
+1. mengunduh versi baru dan memverifikasinya (ukuran, SHA-256 yang diterbitkan GitHub, bundle id,
+   versi dan tanda tangan kode);
+2. setelah **Restart now**, menutup DBiji (skrip yang belum disimpan ditanyakan dulu), memasang
+   aplikasi baru, lalu membukanya lagi; salinan sebelumnya dikembalikan jika ada yang gagal.
+
+macOS meminta kata sandi administrator hanya jika user Anda tidak bisa mengganti aplikasinya.
+Help → Check for updates… langsung memeriksa; **Skip this version** dan **Remind me later** juga
+tersedia. Setelah diperbarui, DBiji menampilkan apa saja yang berubah (juga di Help → What's new;
+semua catatan ada di [CHANGELOG.md](CHANGELOG.md)). Installer satu baris di atas juga bisa
+memperbarui, dan pengguna Homebrew memperbarui dengan `brew upgrade --cask dbiji`. Pemeriksaan
+pembaruan hanya satu permintaan anonim ke GitHub; tidak ada data tentang Anda atau database Anda yang
+dikirim.
+
+Pembaruan langsung memerlukan DBiji di `/Applications` (atau folder lain yang bisa ditulisi); versi
+0.3.0 adalah versi pertama dengan updater.
 
 ## Baris perintah
 

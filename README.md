@@ -31,11 +31,21 @@ millions of rows never have to fit in memory.
   manager, server dashboard, PostgreSQL debugger and an optional AI assistant with your own API key.
 - English and Indonesian UI, light and dark themes (View → Theme or the sun / moon button in the status
   bar), customisable shortcuts and toolbar, no telemetry.
-- Release notes after every update and an optional, once-a-day check for new versions.
+- **Automatic updates** from GitHub releases (optional), with one click to install, and release notes after every update.
 
 ## Install
 
-Requires macOS 12 Monterey or later.
+Requires macOS 12 Monterey or later, on Apple Silicon or Intel.
+
+### One-line installer (recommended)
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/ilhamnadhif/dbiji/master/scripts/install.sh | bash
+```
+
+The script downloads the latest release, checks it (the SHA-256 GitHub publishes, the code
+signature, the bundle id and version), installs `DBiji.app` into `/Applications`, and opens it. Run
+it again to update. To install a specific version, pass it as an argument: `… | bash -s -- v0.3.0`.
 
 ### Disk image
 
@@ -43,9 +53,13 @@ Download **`DBiji-<version>.dmg`** from the
 [latest release](https://github.com/ilhamnadhif/dbiji/releases/latest), open it and drag **DBiji**
 onto **Applications**.
 
-> **“DBiji” Not Opened / “Apple could not verify…”?** Release builds are not notarized by Apple yet.
-> Open **System Settings → Privacy & Security** and click **Open Anyway** next to “DBiji was
-> blocked…”, or run `xattr -dr com.apple.quarantine /Applications/DBiji.app` in Terminal.
+> **“DBiji” Not Opened / “Apple could not verify…”?** Release builds are not notarized by Apple yet,
+> so macOS blocks apps downloaded with a browser. Do one of these:
+>
+> - **Use the one-line installer** above. Nothing downloaded with `curl` is blocked.
+> - **Allow it once in Settings**: click **Done** in the warning, open **System Settings → Privacy &
+>   Security**, and click **Open Anyway** next to “DBiji was blocked…”.
+> - **In Terminal**: `xattr -dr com.apple.quarantine /Applications/DBiji.app`
 
 ### Homebrew
 
@@ -58,7 +72,7 @@ brew install --cask ./packaging/homebrew/dbiji.rb
 ```sh
 cargo build --release -p dbiji-app                     # target/release/dbiji
 cargo build --release -p dbiji-app --features duckdb   # with the embedded DuckDB engine
-scripts/bundle-macos.sh                                # dist/DBiji.app and dist/DBiji-<version>.dmg
+scripts/bundle-macos.sh                                # dist/DBiji.app, DBiji-<version>.dmg and .zip
 ```
 
 ## Getting started
@@ -71,10 +85,24 @@ scripts/bundle-macos.sh                                # dist/DBiji.app and dist
 
 ## Updates
 
-After an update DBiji shows what changed (also in Help → What's new; all notes are in
-[CHANGELOG.md](CHANGELOG.md)). If you allow it, DBiji looks for a new release once a day and offers
-**Download**, **Skip this version** or **Remind me later**; Help → Check for updates… checks right away.
-Homebrew users update with `brew upgrade --cask dbiji`.
+If you allow it, DBiji looks for a new release when it starts and every 6 hours. A new version
+opens a dialog with the current and new version and what's new (found later, it lights up an
+**Update** button in the toolbar instead of interrupting you). **Install update** then:
+
+1. downloads the new version and verifies it (size, the SHA-256 GitHub publishes, bundle id,
+   version and code signature);
+2. after **Restart now**, quits DBiji (asking about unsaved scripts first), swaps in the new app and
+   opens it again; the previous copy is put back if anything goes wrong.
+
+macOS asks for an administrator password only when your user cannot replace the app. Help → Check
+for updates… checks right away; **Skip this version** and **Remind me later** are there too. After an
+update DBiji shows what changed (also in Help → What's new; all notes are in
+[CHANGELOG.md](CHANGELOG.md)). The one-line installer above also updates, and Homebrew users update
+with `brew upgrade --cask dbiji`. The update check is one anonymous request to GitHub; nothing about
+you or your databases is sent.
+
+Installing in place needs DBiji in `/Applications` (or another folder it can write to); version
+0.3.0 is the first with the updater.
 
 ## Command line
 

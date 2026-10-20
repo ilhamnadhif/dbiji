@@ -3,6 +3,11 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.9 — 2026-10-20
+
+### Changed
+- Light theme: the UI text is a little heavier (Inter Medium instead of Regular) and the secondary text (column names, details) is darker, so it reads more easily; the dark theme keeps Inter Regular. The font follows the theme, also when the theme follows the system.
+
 ## 0.3.8 — 2026-10-20
 
 ### Changed

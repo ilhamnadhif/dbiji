@@ -21,6 +21,7 @@ pub mod transfer;
 pub mod welcome;
 
 use crate::cx::AppContext;
+use dbiji_core::SchemaRef;
 use egui::{Id, Ui, WidgetText};
 use std::any::Any;
 
@@ -41,6 +42,12 @@ pub trait TabView: Any {
 
     /// Connection this tab belongs to (status bar, colour marker, palette).
     fn connection_id(&self) -> Option<&str> {
+        None
+    }
+
+    /// Database and schema the tab works in, as far as it knows them (the
+    /// connection's current ones fill the gaps, see [`tab_location`]).
+    fn schema_context(&self) -> Option<SchemaRef> {
         None
     }
 
@@ -137,6 +144,45 @@ pub struct DockViewer<'a, 'b> {
     pub style: std::sync::Arc<egui::Style>,
 }
 
+/// Where a tab works: its connection and database / schema (main toolbar,
+/// status bar, tab tooltip).
+pub struct TabLocation {
+    pub conn: String,
+    pub name: String,
+    pub kind: dbiji_core::DbKind,
+    /// `schema@database` (DBeaver's notation), or the one level the database has.
+    pub place: Option<String>,
+}
+
+pub fn tab_location(view: &dyn TabView, conns: &crate::conn::ConnectionManager) -> Option<TabLocation> {
+    let conn = view.connection_id()?;
+    let cfg = conns.config(conn)?;
+    let live = conns.live(conn);
+    // PostgreSQL, SQL Server: databases hold schemas. Elsewhere one level.
+    let two_levels = live.is_some_and(|l| l.multiple_databases());
+    let current = live.map(|l| SchemaRef::new(l.current_database.clone(), l.current_schema.clone())).unwrap_or_default();
+    let place = place_label(view.schema_context().unwrap_or_default(), &current, two_levels);
+    Some(TabLocation { conn: conn.to_string(), name: cfg.name.clone(), kind: cfg.kind, place })
+}
+
+/// `schema@database` of `at`, its gaps filled from the session's `current`
+/// database / schema; one name where the database has a single level.
+fn place_label(mut at: SchemaRef, current: &SchemaRef, two_levels: bool) -> Option<String> {
+    if two_levels && at.database.is_none() {
+        at.database = current.database.clone();
+    }
+    if at.schema.is_none() && (!two_levels || at.database == current.database) {
+        at.schema = current.schema.clone();
+    }
+    if !two_levels && at.schema.is_none() {
+        at.schema = current.database.clone();
+    }
+    match (at.schema, at.database) {
+        (Some(s), Some(d)) if two_levels && s != d => Some(format!("{s}@{d}")),
+        (s, d) => s.or(d),
+    }
+}
+
 impl egui_dock::TabViewer for DockViewer<'_, '_> {
     type Tab = Tab;
 
@@ -169,8 +215,14 @@ impl egui_dock::TabViewer for DockViewer<'_, '_> {
     }
 
     fn on_tab_button(&mut self, tab: &mut Tab, response: &egui::Response) {
-        if let Some(t) = tab.view.tooltip() {
-            response.clone().on_hover_text(t);
+        // The tab's own text, then its connection and schema@database.
+        let location = tab_location(tab.view.as_ref(), self.cx.conns).map(|l| match l.place {
+            Some(p) => format!("{} · {p}", l.name),
+            None => l.name,
+        });
+        let tip: Vec<String> = tab.view.tooltip().into_iter().chain(location).collect();
+        if !tip.is_empty() {
+            response.clone().on_hover_text(tip.join("\n"));
         }
         if response.middle_clicked() {
             self.cx.commands.push(crate::command::AppCommand::CloseTab(tab.id));
@@ -245,4 +297,29 @@ pub fn make_table_data_view(cx: &mut AppContext, conn: &str, obj: &dbiji_core::O
 pub fn code(ui: &mut Ui, cx: &mut AppContext, id: impl std::hash::Hash + std::fmt::Debug, text: &str) {
     let _ = cx;
     crate::widgets::code_view(ui, id, text);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::place_label;
+    use dbiji_core::SchemaRef;
+
+    fn at(database: Option<&str>, schema: Option<&str>) -> SchemaRef {
+        SchemaRef::new(database.map(Into::into), schema.map(Into::into))
+    }
+
+    #[test]
+    fn place_as_in_dbeaver() {
+        let pg = at(Some("zain_iq"), Some("public"));
+        // A table of the current database, of another one, an editor without a schema.
+        assert_eq!(place_label(at(None, Some("public")), &pg, true).as_deref(), Some("public@zain_iq"));
+        assert_eq!(place_label(at(Some("reports"), Some("sales")), &pg, true).as_deref(), Some("sales@reports"));
+        assert_eq!(place_label(at(Some("reports"), None), &pg, true).as_deref(), Some("reports"));
+        assert_eq!(place_label(SchemaRef::default(), &pg, true).as_deref(), Some("public@zain_iq"));
+        // MySQL: the database is the schema; SQLite: main.
+        let mysql = at(Some("shop"), Some("shop"));
+        assert_eq!(place_label(at(None, Some("crm")), &mysql, false).as_deref(), Some("crm"));
+        assert_eq!(place_label(SchemaRef::default(), &mysql, false).as_deref(), Some("shop"));
+        assert_eq!(place_label(at(None, Some("main")), &at(None, None), false).as_deref(), Some("main"));
+    }
 }

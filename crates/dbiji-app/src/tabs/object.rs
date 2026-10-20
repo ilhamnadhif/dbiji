@@ -472,6 +472,10 @@ impl TabView for ObjectEditorTab {
         Some(&self.conn)
     }
 
+    fn schema_context(&self) -> Option<dbiji_core::SchemaRef> {
+        Some(dbiji_core::SchemaRef::new(self.obj.database.clone(), self.obj.schema.clone()))
+    }
+
     fn dedupe_key(&self) -> Option<String> {
         Some(Self::key(&self.conn, &self.obj))
     }

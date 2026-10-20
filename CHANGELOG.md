@@ -3,6 +3,11 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.10 — 2026-10-20
+
+### New
+- The main toolbar shows where the focused tab works, as in DBeaver: its connection (logo, name, the connection type's colour) and `schema@database` (e.g. `public@zain_iq`; one name for MySQL or SQLite). A click shows it in the navigator. The tab's tooltip names them too, and the status bar now shows the tab's own database and schema (a table of another database included) instead of the connection's current ones.
+
 ## 0.3.9 — 2026-10-20
 
 ### Changed

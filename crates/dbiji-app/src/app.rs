@@ -1203,16 +1203,52 @@ impl DbijiApp {
                     self.commands.push(AppCommand::Action(action));
                 }
             }
+            self.toolbar_location(ui);
             // An update to install.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| self.updates.toolbar_button(ui));
         });
     }
 
+    /// Connection (logo, name, type colour) and schema@database of the
+    /// focused tab; a click shows it in the navigator.
+    fn toolbar_location(&mut self, ui: &mut Ui) {
+        let Some((_, tab)) = self.dock.find_active_focused() else { return };
+        let Some(loc) = crate::tabs::tab_location(tab.view.as_ref(), &self.conns) else { return };
+        let object = tab.view.navigator_object();
+        ui.separator();
+        ui.spacing_mut().item_spacing.x = 4.0;
+        let dark = ui.visuals().dark_mode;
+        let color = crate::theme::logo_color(loc.kind, dark);
+        let name = RichText::new(&loc.name).strong();
+        let mut button = match crate::dblogo::image(ui.ctx(), loc.kind, 16.0, color) {
+            Some(logo) => egui::Button::new((logo, name)),
+            None => egui::Button::new((RichText::new(crate::nav::db_icon(loc.kind)).color(color), name)),
+        };
+        let ty = self.conns.type_of(&loc.conn);
+        if let Some(c) = crate::theme::connection_marker(ty.color) {
+            button = button.fill(crate::theme::tint(c, dark));
+        }
+        let tip = format!("{}: {} ({})\n{}", tr("Connection"), loc.name, ty.name, tr("Show in the navigator"));
+        let mut reveal = ui.add(button).on_hover_text(&tip).clicked();
+        if let Some(place) = &loc.place {
+            let text = (dbiji_icons::ic(icon::STACK), place.as_str());
+            reveal |= ui.add(egui::Button::new(text)).on_hover_text(format!("{}\n{}", tr("Schema"), tr("Show in the navigator"))).clicked();
+        }
+        if reveal {
+            self.show_nav = true;
+            self.show_project = false;
+            match object {
+                Some((conn, obj)) => self.nav.reveal(&conn, &obj),
+                None => self.nav.select(crate::nav::NavNode::Connection(loc.conn)),
+            }
+        }
+    }
+
     fn status_bar(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
-            let active = self.dock.find_active_focused().map(|(_, t)| (t.view.connection_id().map(str::to_string), t.view.title()));
-            match active.as_ref().and_then(|(c, _)| c.clone()) {
-                Some(conn) => {
+            let location = self.dock.find_active_focused().and_then(|(_, t)| crate::tabs::tab_location(t.view.as_ref(), &self.conns));
+            match location {
+                Some(crate::tabs::TabLocation { conn, place, .. }) => {
                     let name = self.conns.config(&conn).map(|c| c.name.clone()).unwrap_or_default();
                     let ty = self.conns.type_of(&conn);
                     if let Some(color) = crate::theme::connection_marker(ty.color) {
@@ -1220,12 +1256,9 @@ impl DbijiApp {
                     }
                     ui.label(format!("{} {}", icon::DATABASE, name));
                     if let Some(live) = self.conns.live(&conn) {
-                        if let Some(db) = &live.current_database {
+                        if let Some(place) = place {
                             ui.separator();
-                            ui.label(db);
-                        }
-                        if let Some(s) = &live.current_schema {
-                            ui.label(format!("/ {s}"));
+                            ui.label(place);
                         }
                         ui.separator();
                         // `version()` texts repeat the product ("PostgreSQL 16.4 on …"): show the number.

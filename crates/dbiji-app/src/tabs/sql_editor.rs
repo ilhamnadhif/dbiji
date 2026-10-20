@@ -1569,6 +1569,10 @@ impl TabView for SqlEditorTab {
         self.conn.as_deref()
     }
 
+    fn schema_context(&self) -> Option<SchemaRef> {
+        self.schema.clone()
+    }
+
     fn action_enabled(&self, action: Action) -> Option<bool> {
         use Action as A;
         let running = self.exec.is_some() || self.explain_job.is_some();

@@ -3,6 +3,15 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.5 — 2026-10-20
+
+### New
+- Filter bar: the WHERE and ORDER BY boxes suggest the result's column names (and AND, OR, LIKE, IS NULL … / ASC, DESC) for the word being typed; ↑ ↓ to pick, Tab or Enter to take one, Escape to close. Column names are quoted when the database needs it.
+
+### Fixed
+- SQL editor: an editor opened on a database in the navigator (PostgreSQL) suggested only keywords after FROM — its schema snapshot had no schema; it now uses the database's current schema (partitioned tables included, partitions not), reads another database of the server through its own session, and no longer mixes in tables of other databases. The schema button shows the schema in use.
+- macOS: a crash on MacBooks with a Touch Bar (an AppKit exception in the Touch Bar's responder tracking); DBiji now keeps the Touch Bar machinery away (it has no Touch Bar items).
+
 ## 0.3.4 — 2026-10-20
 
 ### Changed

@@ -1721,3 +1721,29 @@ fn connection_folders() {
     assert_eq!(folder_of(&h), None);
     assert!(h.state().conns.config(&conn).is_some(), "the connection is kept");
 }
+
+#[test]
+fn filter_box_suggests_columns() {
+    let (_dir, mut h, _conn) = setup();
+    nav_double_click(&mut h, "Tables");
+    wait(&mut h, "tables", |h| nav_row(h, "customer").is_some());
+    nav_double_click(&mut h, "customer");
+    wait(&mut h, "customer data", |h| has(h, "Data grid,"));
+    // The only field with text (its hint is gone once something is typed).
+    let where_box = |h: &H| -> Option<String> { h.query_all_by_role(egui::accesskit::Role::TextInput).filter_map(|n| n.accesskit_node().value()).find(|v| !v.is_empty()) };
+    // "na" offers the column "name"; Tab takes it.
+    field_with_hint(&mut h, "WHERE condition", "na");
+    frames(&mut h, 2);
+    assert!(has(&h, " name"), "the column is offered: {:?}", labels(&h));
+    h.key_press(Key::Tab);
+    frames(&mut h, 2);
+    assert_eq!(where_box(&h).as_deref(), Some("name"), "Tab takes the suggestion");
+    // A condition, then a keyword: "name = 'x' an" offers AND.
+    h.event(egui::Event::Text(" = 'Ann' an".into()));
+    frames(&mut h, 2);
+    h.key_press(Key::Enter);
+    frames(&mut h, 2);
+    assert_eq!(where_box(&h).as_deref(), Some("name = 'Ann' AND"), "Enter takes the keyword, not the filter");
+    // Inside a string literal nothing is offered: Enter applies the filter.
+    no_errors(&mut h, "filter suggestions");
+}

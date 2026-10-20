@@ -114,7 +114,7 @@ impl<'a> ResultViewer<'a> {
         let mut grid_response = None;
         let bar_frame = Frame::new().inner_margin(egui::Margin::symmetric(4, 3)).fill(ui.visuals().panel_fill);
         Panel::top(id.with("filter_bar")).frame(bar_frame).show(ui, |ui| {
-            actions.extend(FilterBar::new(model, &mut state.grid, &mut state.toolbar).show(ui));
+            actions.extend(FilterBar::new(model, &mut state.grid, &mut state.toolbar).dialect(options.dialect.clone()).show(ui));
         });
         Panel::bottom(id.with("toolbar")).frame(bar_frame).show(ui, |ui| {
             actions.extend(ResultToolbar::new(model, &mut state.grid, &mut state.toolbar).show(ui));

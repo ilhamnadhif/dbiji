@@ -146,7 +146,7 @@ pub struct SqlEditorTab {
     last_version: u64,
     analysed_version: u64,
     changed_at: Option<Instant>,
-    catalog_generation: Option<(u64, Option<String>)>,
+    catalog_generation: Option<(u64, SchemaRef)>,
     user_words: HashSet<String>,
     close_prompt: bool,
     ddl_executed: bool,
@@ -350,21 +350,43 @@ impl SqlEditorTab {
         self.lang.completion.split = split_options(cx);
     }
 
+    /// Labels the autocomplete offers at the end of `text` (tests).
+    pub fn completion_labels(&self, text: &str) -> Vec<String> {
+        use dbiji_editor::EditorLanguage;
+        self.lang.complete(text, text.len()).map(|l| l.items.into_iter().map(|i| i.label).collect()).unwrap_or_default()
+    }
+
+    /// The schema statements run in: the chosen one, else the connection's.
+    /// An editor opened on a database (no schema) uses its current schema
+    /// (a schema snapshot needs one: autocomplete had no tables).
+    fn effective_schema(&self, live: &crate::conn::LiveConnection) -> SchemaRef {
+        let mut schema = self.schema.clone().unwrap_or_else(|| SchemaRef::new(None, live.current_schema.clone().or(live.current_database.clone())));
+        if schema.schema.is_none() {
+            schema.schema = live.current_schema.clone();
+        }
+        schema
+    }
+
     /// Autocomplete catalog from the metadata cache of the active schema.
     fn catalog_sync(&mut self, cx: &mut AppContext) {
         let Some(conn) = self.conn.clone() else { return };
         let backend = cx.backend;
         let Some(live) = cx.conns.live_mut(&conn) else { return };
-        let schema = self.schema.clone().unwrap_or_else(|| SchemaRef::new(None, live.current_schema.clone().or(live.current_database.clone())));
-        let main = live.main.clone();
-        live.meta.request_snapshot(backend, &main, &schema);
-        live.meta.request_schemas(backend, &main, schema.database.as_deref());
-        let key = (live.meta.generation, schema.schema.clone());
+        let schema = self.effective_schema(live);
+        // Another database of the server is read through its own session.
+        let Some(session) = live.ensure_session(backend, schema.database.as_deref()) else { return };
+        live.meta.request_snapshot(backend, &session, &schema);
+        live.meta.request_schemas(backend, &session, schema.database.as_deref());
+        let key = (live.meta.generation, schema.clone());
         if self.catalog_generation.as_ref() == Some(&key) {
             return;
         }
         self.catalog_generation = Some(key);
-        let snaps: Vec<dbiji_core::ddl::SchemaSnapshot> = live.meta.loaded_snapshots().iter().map(|s| (**s).clone()).collect();
+        // Only the snapshots of this database (others may have a "public" schema too).
+        let current_db = live.current_database.clone();
+        let db_of = |d: Option<&str>| d.or(current_db.as_deref()).map(str::to_string);
+        let snaps: Vec<dbiji_core::ddl::SchemaSnapshot> =
+            live.meta.loaded_snapshots().iter().filter(|s| db_of(s.database.as_deref()) == db_of(schema.database.as_deref())).map(|s| (**s).clone()).collect();
         let names: Vec<String> = live.meta.schemas_of(schema.database.as_deref()).get().map(|v| v.iter().map(|s| s.name.clone()).collect()).unwrap_or_default();
         let catalog = dbiji_sql::SnapshotCatalog::new(snaps, schema.schema.clone()).with_extra_schemas(names);
         self.lang.set_catalog(Some(Arc::new(catalog)));
@@ -1010,12 +1032,19 @@ impl SqlEditorTab {
                 self.set_connection(cx, c);
             }
             // Schema selector.
-            let schema_label = self
-                .schema
-                .as_ref()
-                .and_then(|s| s.schema.clone().or(s.database.clone()))
-                .or_else(|| self.conn.as_ref().and_then(|c| cx.conns.live(c)).and_then(|l| l.current_schema.clone().or(l.current_database.clone())))
-                .unwrap_or_else(|| "—".into());
+            // The schema in use; "database.schema" for another database of the server.
+            let schema_label = match self.conn.as_ref().and_then(|c| cx.conns.live(c)) {
+                Some(live) => {
+                    let s = self.effective_schema(live);
+                    match (s.database, s.schema) {
+                        (Some(db), Some(schema)) if Some(&db) != live.current_database.as_ref() => format!("{db}.{schema}"),
+                        (_, Some(schema)) => schema,
+                        (Some(db), None) => db,
+                        (None, None) => "—".into(),
+                    }
+                }
+                None => self.schema.as_ref().and_then(|s| s.schema.clone().or(s.database.clone())).unwrap_or_else(|| "—".into()),
+            };
             let r =
                 ui.button(format!("{} {schema_label}", icon::DATABASE)).on_hover_text(format!("{} ({})", tr("Active schema"), crate::keys::label(cx.keymap, Action::SelectSchema)));
             if r.clicked() {

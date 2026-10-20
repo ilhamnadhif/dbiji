@@ -4,7 +4,7 @@ use crate::grid::{self, DataGridState, DataMode, GridAction, PanelKind, ResultVi
 use crate::model::ResultModel;
 use crate::view::{ClientFilter, SortKey};
 use dbiji_core::{tr, trf};
-use egui::{Button, Key, Popup, PopupCloseBehavior, RichText, TextEdit, Ui};
+use egui::{Button, Key, Popup, PopupCloseBehavior, RichText, Ui};
 use egui_phosphor::regular as icon;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -43,6 +43,9 @@ pub struct ToolbarState {
 
 #[derive(Debug, Clone, PartialEq, Default)]
 struct ToolbarRuntime {
+    /// Column suggestions of the WHERE and ORDER BY boxes.
+    where_suggest: crate::suggest::Suggest,
+    order_suggest: crate::suggest::Suggest,
     filter_error: Option<String>,
     /// Focus the filter box (cursor at the end) on the next frame.
     focus_filter: bool,
@@ -158,17 +161,36 @@ pub struct FilterBar<'a> {
     model: &'a mut ResultModel,
     grid: &'a mut DataGridState,
     state: &'a mut ToolbarState,
+    /// Quotes suggested column names that need it (else plain, or "…").
+    dialect: Option<std::sync::Arc<dyn dbiji_core::Dialect>>,
 }
 
 impl<'a> FilterBar<'a> {
     /// New filter bar.
     pub fn new(model: &'a mut ResultModel, grid: &'a mut DataGridState, state: &'a mut ToolbarState) -> Self {
-        FilterBar { model, grid, state }
+        FilterBar { model, grid, state, dialect: None }
+    }
+
+    /// The database's dialect, for quoting suggested column names.
+    pub fn dialect(mut self, dialect: Option<std::sync::Arc<dyn dbiji_core::Dialect>>) -> Self {
+        self.dialect = dialect;
+        self
     }
 
     /// Show it. Returns actions for the application (server side filters).
     pub fn show(self, ui: &mut Ui) -> Vec<GridAction> {
-        let FilterBar { model, grid, state } = self;
+        let FilterBar { model, grid, state, dialect } = self;
+        // Column names for the suggestions, written as SQL (server) or as typed (client).
+        let columns: Vec<String> = model.columns().iter().map(|c| c.name.clone()).collect();
+        let simple = |n: &str| n.chars().next().is_some_and(|c| c.is_ascii_lowercase() || c == '_') && n.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
+        let server_mode = grid.mode == DataMode::Server;
+        let quote = move |n: &str| -> String {
+            match &dialect {
+                Some(d) if server_mode => d.quote_ident(n),
+                _ if simple(n) => n.to_string(),
+                _ => format!("\"{}\"", n.replace('"', "\"\"")),
+            }
+        };
         let mut actions = Vec::new();
         let mut apply = false;
         let mut clear = false;
@@ -203,7 +225,17 @@ impl<'a> FilterBar<'a> {
             let trailing = label_w + button * 6.0 + ui.spacing().item_spacing.x * 4.0;
             let flexible = (ui.available_width() - trailing).max(160.0);
             let hint = if server { tr("WHERE condition, e.g. status = 'open'") } else { tr("Filter, e.g. amount > 100 and city = 'Bandung'") };
-            let filter_resp = ui.add(TextEdit::singleline(&mut state.filter_text).hint_text(hint).desired_width(flexible * 0.62).font(egui::TextStyle::Monospace));
+            const WHERE_WORDS: [&str; 10] = ["AND", "OR", "NOT", "IS NULL", "IS NOT NULL", "LIKE", "ILIKE", "IN", "BETWEEN", "NULL"];
+            let filter_resp = crate::suggest::suggest_edit(
+                ui,
+                ui.id().with("filter_where"),
+                &mut state.filter_text,
+                |t| t.hint_text(hint).desired_width(flexible * 0.62).font(egui::TextStyle::Monospace),
+                &columns,
+                &WHERE_WORDS,
+                &quote,
+                &mut state.rt.where_suggest,
+            );
             if filter_resp.changed() {
                 state.rt.filter_error = None;
             }
@@ -222,7 +254,16 @@ impl<'a> FilterBar<'a> {
             }
             history_button(ui, "filter_history", &state.filter_history.clone(), &mut state.filter_text, &mut apply);
             ui.label(tr("ORDER BY"));
-            let order_resp = ui.add(TextEdit::singleline(&mut state.order_text).hint_text(tr("column [DESC], …")).desired_width(flexible * 0.38).font(egui::TextStyle::Monospace));
+            let order_resp = crate::suggest::suggest_edit(
+                ui,
+                ui.id().with("filter_order"),
+                &mut state.order_text,
+                |t| t.hint_text(tr("column [DESC], …")).desired_width(flexible * 0.38).font(egui::TextStyle::Monospace),
+                &columns,
+                &["ASC", "DESC", "NULLS FIRST", "NULLS LAST"],
+                &quote,
+                &mut state.rt.order_suggest,
+            );
             if order_resp.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
                 apply = true;
             }

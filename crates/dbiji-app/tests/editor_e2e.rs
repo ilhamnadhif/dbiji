@@ -13,6 +13,7 @@ use dbiji_app::tabs::TabView;
 use dbiji_app::tabs::sql_editor::SqlEditorTab;
 use dbiji_app::toasts::Toasts;
 use dbiji_core::config::{SecretSlot, secret_key};
+use dbiji_core::meta::SchemaRef;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -229,4 +230,47 @@ fn read_only_connections_block_writes() {
             let _ = std::fs::remove_file(p);
         }
     }
+}
+
+/// An editor opened on a database node (a database, no schema) completes
+/// the tables of its current schema, partitioned tables included (it
+/// offered only keywords).
+#[test]
+fn tables_complete_in_an_editor_opened_on_a_database() {
+    let Some(url) = std::env::var("DBIJI_TEST_PG").ok().filter(|u| !u.trim().is_empty()) else { return };
+    let mut h = H::new(&url);
+    let suffix = &uuid::Uuid::new_v4().simple().to_string()[..8];
+    let (charges, subs) = (format!("dbiji_charges_{suffix}"), format!("dbiji_subscriptions_{suffix}"));
+    let main = h.cm.live(&h.id).unwrap().main.clone();
+    let ddl = format!(
+        "CREATE TABLE {charges} (id bigint, created_at date NOT NULL) PARTITION BY RANGE (created_at);
+         CREATE TABLE {charges}_2025 PARTITION OF {charges} FOR VALUES FROM ('2025-01-01') TO ('2026-01-01');
+         CREATE TABLE {subs} (id bigint PRIMARY KEY, unsub_at timestamptz)"
+    );
+    for stmt in ddl.split(';') {
+        let stmt = stmt.trim().to_string();
+        h.backend
+            .block_on({
+                let s = main.clone();
+                async move { s.execute_update(&stmt, &[]).await }
+            })
+            .unwrap();
+    }
+    let db = h.cm.live(&h.id).unwrap().current_database.clone();
+    let mut tab = SqlEditorTab::new(Some(h.id.clone()), Some(SchemaRef::new(db, None)), String::new(), None, false, "e2e".into());
+    h.until(&mut tab, "session", |t| t.session_ready());
+    let typed = "SELECT * FROM dbiji_c".to_string();
+    h.until(&mut tab, "partitioned table offered", |t| t.completion_labels(&typed).contains(&charges));
+    assert!(!t_has_partitions(&tab.completion_labels(&typed), &charges), "partitions are not offered");
+    assert!(tab.completion_labels("SELECT * FROM dbiji_s").contains(&subs));
+    for t in [&charges, &subs] {
+        let drop = format!("DROP TABLE {t}");
+        let s = main.clone();
+        let _ = h.backend.block_on(async move { s.execute_update(&drop, &[]).await });
+    }
+}
+
+/// A partition (`<table>_2025`) among the offered labels.
+fn t_has_partitions(labels: &[String], table: &str) -> bool {
+    labels.iter().any(|l| l.starts_with(&format!("{table}_")))
 }

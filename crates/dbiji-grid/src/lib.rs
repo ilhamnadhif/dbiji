@@ -111,6 +111,7 @@ pub mod grouping;
 pub mod model;
 pub mod panels;
 pub mod result_view;
+mod suggest;
 pub mod task;
 pub mod theme;
 pub mod toolbar;

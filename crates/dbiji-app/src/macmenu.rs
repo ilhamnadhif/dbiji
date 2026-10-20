@@ -13,6 +13,22 @@ use muda::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem, Submenu};
 
 use crate::command::AppCommand;
 
+/// Keep AppKit's Touch Bar machinery away from DBiji (it has no Touch Bar
+/// items). On MacBooks with a Touch Bar it can raise a KVO exception
+/// ("Cannot remove an observer <_NSTouchBarFinderObservation> for the key
+/// path nextResponder") that AppKit turns into a crash. Registered (not
+/// saved) defaults: call before the application starts.
+pub fn disable_touch_bar() {
+    use objc2::runtime::AnyObject;
+    use objc2_foundation::{NSDictionary, NSNumber, NSString, NSUserDefaults};
+    let key = NSString::from_str("NSFunctionBarAPIEnabled");
+    let no = NSNumber::new_bool(false);
+    let value: &AnyObject = &no;
+    let defaults = NSDictionary::<NSString, AnyObject>::from_slices(&[&*key], &[value]);
+    // SAFETY: a dictionary of property-list values, as registerDefaults: expects.
+    unsafe { NSUserDefaults::standardUserDefaults().registerDefaults(&defaults) };
+}
+
 /// What a menu item does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Item {
@@ -86,5 +102,17 @@ impl AppMenu {
                 Item::Quit => AppCommand::Quit,
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn touch_bar_is_disabled() {
+        super::disable_touch_bar();
+        let key = objc2_foundation::NSString::from_str("NSFunctionBarAPIEnabled");
+        let defaults = objc2_foundation::NSUserDefaults::standardUserDefaults();
+        assert!(defaults.objectForKey(&key).is_some(), "registered");
+        assert!(!defaults.boolForKey(&key));
     }
 }

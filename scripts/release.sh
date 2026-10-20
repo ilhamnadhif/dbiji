@@ -57,6 +57,8 @@ for f in "${FILES[@]}"; do [ -f "$f" ] || fail "missing $f"; done
 echo "==> Tag $TAG"
 git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || git tag -a "$TAG" -m "DBiji $VERSION"
 git push --quiet origin "$BRANCH"
+# A tag alone shows users nothing: they are offered the published release.
+git push --quiet origin "$TAG"
 
 echo "==> Draft release"
 if [ "$STATE" = "none" ]; then
@@ -64,7 +66,6 @@ if [ "$STATE" = "none" ]; then
 else
     gh release upload "$TAG" --clobber "${FILES[@]}"
 fi
-git push --quiet origin "$TAG"
 
 echo "==> Publish"
 gh release edit "$TAG" --draft=false --latest

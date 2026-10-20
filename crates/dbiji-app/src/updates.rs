@@ -209,10 +209,12 @@ pub struct Updates {
     /// Next automatic check while DBiji stays open.
     next_check: Option<std::time::Instant>,
     /// The outcome of the previous run's update was reported.
+    #[cfg(target_os = "macos")]
     reported: bool,
     #[cfg(target_os = "macos")]
     install: Install,
     /// The install dialog (progress, ready, error) is on screen.
+    #[cfg(target_os = "macos")]
     install_visible: bool,
 }
 

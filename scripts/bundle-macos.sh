@@ -110,7 +110,9 @@ rm -f "$DMG"
 STAGE="$(mktemp -d)"
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
-hdiutil create -volname "DBiji ${VERSION}" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
+# An explicit size: hdiutil's own estimate is sometimes too small ("No space left on device").
+STAGE_MB=$(du -sm "$STAGE" | cut -f1)
+hdiutil create -volname "DBiji ${VERSION}" -srcfolder "$STAGE" -size "$((STAGE_MB + 64))m" -ov -format UDZO "$DMG" >/dev/null
 rm -rf "$STAGE"
 
 if [[ -n "${DBIJI_SIGN_IDENTITY:-}" ]]; then

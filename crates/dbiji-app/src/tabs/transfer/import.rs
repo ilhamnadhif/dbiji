@@ -1166,7 +1166,7 @@ impl ImportTab {
             }
             ui.separator();
             let ok = reachable == PAGE_RUN && !running;
-            if ui.add_enabled(ok, egui::Button::new((dbiji_icons::ic(icon::PLAY), tr("Run import")))).clicked() {
+            if ui.add_enabled(ok, crate::widgets::primary_button(ui, icon::PLAY, tr("Run import"))).clicked() {
                 self.start(cx);
             }
             if ui.add_enabled(ok && !self.saver.is_saving(), egui::Button::new((dbiji_icons::ic(icon::FLOPPY_DISK), tr("Save as task…")))).clicked() {
@@ -1370,10 +1370,13 @@ impl TabView for ImportTab {
         let uid = self.uid;
         egui::Panel::top(egui::Id::new(("imp_top", uid))).show(ui, |ui| {
             ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                crate::widgets::icon_heading(ui, icon::DOWNLOAD, tr("Import data"));
-                ui.weak(connection_name(cx, &self.conn));
-            });
+            // In a pop-up its title bar names the wizard and the connection.
+            if !cx.popup {
+                ui.horizontal(|ui| {
+                    crate::widgets::icon_heading(ui, icon::DOWNLOAD, tr("Import data"));
+                    ui.weak(connection_name(cx, &self.conn));
+                });
+            }
             let steps = [tr("File"), tr("Target"), tr("Options"), tr("Run")];
             let reachable = if self.run.is_some() { self.page } else { self.reachable() };
             if let Some(p) = steps_ui(ui, &steps, self.page, reachable.max(self.page))

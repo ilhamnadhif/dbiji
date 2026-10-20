@@ -305,17 +305,7 @@ impl TabView for ErTab {
                 }
                 self.refresh_pending = true;
             }
-            if ui.button((dbiji_icons::ic(icon::TREE_STRUCTURE), tr("Layout"))).clicked()
-                && let Some(d) = self.diagram.as_mut()
-            {
-                d.relayout();
-                self.dirty = true;
-            }
-            if ui.button((dbiji_icons::ic(icon::EXPORT), tr("Export…"))).clicked() {
-                self.export(cx);
-            }
-            ui.toggle_value(&mut self.state.edit_mode, (dbiji_icons::ic(icon::PENCIL_SIMPLE), tr("Edit mode")))
-                .on_hover_text(tr("Draw relations and create tables; changes open as SQL for review"));
+            // Layout, edit mode and export are in the diagram's own toolbar.
         });
         ui.separator();
         let events = match self.diagram.as_mut() {

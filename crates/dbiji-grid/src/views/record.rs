@@ -701,8 +701,10 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
             };
             if !pinned.is_empty() && !rest.is_empty() {
                 draw(ui, &pinned);
-                let y = ui.cursor().top();
-                ui.painter().hline(ui.max_rect().x_range(), y, egui::Stroke::new(1.0, theme.active_border));
+                // A line under the pinned key columns, as wide as the table.
+                let (y, left) = (ui.cursor().top(), ui.max_rect().left());
+                let right = left + lead_w + widths.iter().sum::<f32>();
+                ui.painter().hline(left..=right, y, egui::Stroke::new(1.5, theme.weak.gamma_multiply(0.6)));
                 ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| draw(ui, &rest));
             } else {
                 let all: Vec<usize> = (0..columns.len()).collect();

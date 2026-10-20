@@ -771,7 +771,9 @@ impl BackupTab {
     fn header(&mut self, ui: &mut Ui, cx: &mut AppContext) {
         let name = cx.conns.config(&self.conn).map(|c| c.name.clone()).unwrap_or_else(|| self.conn.clone());
         ui.horizontal(|ui| {
-            ui.heading(if self.restore { tr("Restore") } else { tr("Backup") });
+            if !cx.popup {
+                ui.heading(if self.restore { tr("Restore") } else { tr("Backup") });
+            }
             ui.label(RichText::new(name).strong());
             if let Some(live) = cx.conns.live(&self.conn) {
                 ui.weak(format!("{} {}", live.server.product, live.server.version.split_whitespace().next().unwrap_or("")));
@@ -840,9 +842,9 @@ impl BackupTab {
     fn run_ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
         let running = self.is_running();
         ui.horizontal(|ui| {
-            let label = if self.restore { format!("{} {}", icon::ARROW_COUNTER_CLOCKWISE, tr("Start restore")) } else { format!("{} {}", icon::PLAY, tr("Start backup")) };
+            let (glyph, label) = if self.restore { (icon::ARROW_COUNTER_CLOCKWISE, tr("Start restore")) } else { (icon::PLAY, tr("Start backup")) };
             let ready = cx.conns.is_connected(&self.conn) && matches!(self.preview.as_ref().map(|p| &p.result), Some(Ok(_)));
-            if ui.add_enabled(!running && ready, egui::Button::new(label)).clicked() {
+            if ui.add_enabled(!running && ready, crate::widgets::primary_button(ui, glyph, label)).clicked() {
                 if self.restore {
                     self.confirm = true;
                 } else {

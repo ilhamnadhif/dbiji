@@ -96,6 +96,7 @@ impl H {
                     keymap: &self.keymap,
                     tab_active: true,
                     current_tab: Some(1),
+                    popup: false,
                 };
                 egui::CentralPanel::default().show(ui, |ui| tab.ui(ui, &mut cx));
             });
@@ -189,6 +190,7 @@ fn connection_dialog_fits_the_screen() {
                 keymap: &h.keymap,
                 tab_active: true,
                 current_tab: None,
+                popup: false,
             };
             dialogs.show(ui.ctx(), &mut cx);
         });

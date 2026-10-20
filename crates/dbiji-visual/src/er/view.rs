@@ -919,7 +919,7 @@ fn toolbar(
             "Edit the schema from the diagram: create and change tables and foreign keys",
         ));
         if ui
-            .button(dbiji_icons::ic(icon::EXPORT))
+            .button((dbiji_icons::ic(icon::EXPORT), tr("Export…")))
             .on_hover_text(tr("Export image"))
             .clicked()
         {

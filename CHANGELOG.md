@@ -8,6 +8,16 @@ notes of a new version once after it was updated (Help → What's new).
 ### Changed
 - Record view: no type column any more (more room for the values); the type shows when the pointer is on a column name.
 - Rows side by side: the columns whose values differ between the selected rows are marked (an amber bar and background, the name in full colour) and counted; **Differences only** shows just those.
+- Record view: **Hide empty** hides the NULL and empty columns; key columns stay at the top while the others scroll; both choices (and Differences only) are remembered.
+- Command palette: full-width rows with coloured icons and each command's category and shortcut on the right; no more duplicate commands; a word typed in one piece ranks first ("set" → Settings).
+- Wizards in pop-ups (export, import, backup …): the title bar names the wizard and the connection (no second heading), and the main action (Run export, Start backup, Generate …) is a blue button; so is "Save and connect" in the connection dialog.
+- Navigator: long names and connection details are cut with "…" at the panel's edge.
+- Connection dialog: the database types in their colours; Settings: coloured section icons, and the update check text says "at start and every few hours".
+- ER diagram: one toolbar (the layout, edit mode and export buttons were shown twice).
+- Primary key columns in the properties' column list have a gold key.
+
+### Fixed
+- SQL editor: the completion popup no longer stays open after running a statement.
 
 ## 0.3.3 — 2026-10-20
 

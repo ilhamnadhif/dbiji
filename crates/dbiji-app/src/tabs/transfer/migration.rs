@@ -739,7 +739,7 @@ impl MigrationTab {
             }
             ui.separator();
             let ok = reachable == PAGE_RUN && !running;
-            if ui.add_enabled(ok, egui::Button::new((dbiji_icons::ic(icon::PLAY), tr("Run migration")))).clicked() {
+            if ui.add_enabled(ok, crate::widgets::primary_button(ui, icon::PLAY, tr("Run migration"))).clicked() {
                 if self.destructive() {
                     self.confirm = true;
                 } else {
@@ -823,10 +823,13 @@ impl TabView for MigrationTab {
         let uid = self.uid;
         egui::Panel::top(egui::Id::new(("mig_top", uid))).show(ui, |ui| {
             ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                crate::widgets::icon_heading(ui, icon::ARROWS_LEFT_RIGHT, tr("Migrate tables"));
-                ui.weak(connection_name(cx, &self.conn));
-            });
+            // In a pop-up its title bar names the wizard and the connection.
+            if !cx.popup {
+                ui.horizontal(|ui| {
+                    crate::widgets::icon_heading(ui, icon::ARROWS_LEFT_RIGHT, tr("Migrate tables"));
+                    ui.weak(connection_name(cx, &self.conn));
+                });
+            }
             let steps = [tr("Source"), tr("Target"), tr("Mapping"), tr("Options"), tr("Run")];
             let reachable = if self.run.is_some() { self.page } else { self.reachable(cx) };
             if let Some(p) = steps_ui(ui, &steps, self.page, reachable.max(self.page))

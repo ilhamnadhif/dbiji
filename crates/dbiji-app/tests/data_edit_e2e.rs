@@ -114,6 +114,7 @@ impl H {
                 keymap: &self.keymap,
                 tab_active: true,
                 current_tab: Some(1),
+                popup: false,
             };
             view.ui(ui, &mut cx);
         });
@@ -166,6 +167,7 @@ fn save_and_wait(h: &mut H, view: &mut TableDataView) {
             keymap: &h.keymap,
             tab_active: true,
             current_tab: Some(1),
+            popup: false,
         };
         view.panel.as_mut().unwrap().save(&mut cx);
     }
@@ -308,6 +310,7 @@ fn server_side_sort_asc_desc() {
                     keymap: &h.keymap,
                     tab_active: true,
                     current_tab: Some(1),
+                    popup: false,
                 };
                 let d = cx.conns.live(&h.id).unwrap().dialect.clone();
                 let order = format!("{}{dir}", d.quote_ident("id"));
@@ -352,6 +355,7 @@ fn manual_commit_reorder_while_loading() {
                     keymap: &h.keymap,
                     tab_active: true,
                     current_tab: Some(1),
+                    popup: false,
                 };
                 let order = format!("id{dir}");
                 view.panel.as_mut().unwrap().handle_for_tests(dbiji_grid::GridAction::ServerQueryChanged { where_clause: None, order_by: Some(order) }, &mut cx);
@@ -403,6 +407,7 @@ fn default_filter_per_table() {
                 keymap: &h.keymap,
                 tab_active: true,
                 current_tab: Some(1),
+                popup: false,
             };
             view.panel.as_mut().unwrap().handle_for_tests(a, &mut cx);
         };

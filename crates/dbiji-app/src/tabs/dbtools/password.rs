@@ -171,7 +171,9 @@ impl TabView for ChangePasswordTab {
             crate::widgets::error_box(ui, tr("The connection does not exist."));
             return;
         };
-        ui.heading(tr("Change password"));
+        if !cx.popup {
+            ui.heading(tr("Change password"));
+        }
         egui::Grid::new(("pw_info", &self.conn)).num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
             ui.label(tr("Connection"));
             ui.label(RichText::new(&cfg.name).strong());
@@ -211,7 +213,7 @@ impl TabView for ChangePasswordTab {
         });
         let problem = self.problem(cx);
         ui.horizontal(|ui| {
-            if ui.add_enabled(!busy && problem.is_none(), egui::Button::new((dbiji_icons::ic(icon::KEY), tr("Change password")))).clicked() {
+            if ui.add_enabled(!busy && problem.is_none(), crate::widgets::primary_button(ui, icon::KEY, tr("Change password"))).clicked() {
                 self.start(cx);
             }
             if busy {

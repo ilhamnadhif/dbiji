@@ -169,7 +169,7 @@ impl ObjectEditorTab {
                     .map(|c| {
                         vec![
                             c.ordinal.to_string(),
-                            format!("{}{}", if t.is_pk_column(&c.name) { "🔑 " } else { "" }, c.name),
+                            if t.is_pk_column(&c.name) { format!("{} {}", icon::KEY, c.name) } else { c.name.clone() },
                             c.data_type.clone(),
                             if c.nullable { String::new() } else { "NOT NULL".into() },
                             c.generated.as_ref().map(|g| format!("AS ({g})")).or_else(|| c.default.clone()).unwrap_or_default(),

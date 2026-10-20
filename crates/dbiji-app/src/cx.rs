@@ -20,6 +20,8 @@ pub struct AppContext<'a> {
     pub tab_active: bool,
     /// Dock id of the tab currently being drawn.
     pub current_tab: Option<u64>,
+    /// The tab is drawn in a pop-up window (its title bar names it).
+    pub popup: bool,
 }
 
 impl AppContext<'_> {

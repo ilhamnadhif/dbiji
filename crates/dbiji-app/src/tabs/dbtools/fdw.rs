@@ -198,7 +198,9 @@ impl TabView for FdwConfigTab {
     }
 
     fn ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
-        crate::widgets::icon_heading(ui, icon::PLUGS_CONNECTED, tr("Foreign data wrapper"));
+        if !cx.popup {
+            crate::widgets::icon_heading(ui, icon::PLUGS_CONNECTED, tr("Foreign data wrapper"));
+        }
         ui.weak(tr("Make the tables of another connection available in this database as foreign tables."));
         ui.add_space(6.0);
         let sources: Vec<ConnectionConfig> = cx.conns.configs().iter().filter(|c| c.id != self.conn && wrapper_of(c.kind).is_some()).cloned().collect();

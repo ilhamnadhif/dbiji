@@ -210,7 +210,7 @@ impl SettingsTab {
             ui.label("");
             let u = &mut cx.settings.updates;
             let mut auto = u.check_automatically == Some(true);
-            if check(ui, &mut auto, tr("Check for updates automatically (once a day)")) {
+            if check(ui, &mut auto, tr("Check for updates automatically (at start and every few hours)")) {
                 u.check_automatically = Some(auto);
                 c = true;
             }
@@ -959,7 +959,7 @@ impl TabView for SettingsTab {
         egui::Panel::left("settings_sections").resizable(false).exact_size(200.0).show(ui, |ui| {
             ui.add_space(6.0);
             for s in Section::ALL {
-                if ui.selectable_label(self.section == s, format!("{}  {}", s.icon(), s.label())).clicked() {
+                if ui.selectable_label(self.section == s, (dbiji_icons::ic(s.icon()), s.label())).clicked() {
                     self.section = s;
                     self.message = None;
                     self.recording = None;

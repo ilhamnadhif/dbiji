@@ -495,6 +495,8 @@ impl SqlEditorTab {
 
     /// Execute (or explain) according to `req`.
     fn run(&mut self, cx: &mut AppContext, req: Request) {
+        // A completion popup left open while typing is no longer wanted.
+        self.editor.close_completion();
         if self.exec.is_some() || self.explain_job.is_some() {
             cx.toasts.info(tr("A query is already running in this editor."));
             return;

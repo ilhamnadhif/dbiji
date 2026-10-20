@@ -359,7 +359,9 @@ impl MaintenanceTab {
     fn header(&self, ui: &mut Ui, cx: &AppContext) {
         let name = cx.conns.config(&self.conn).map(|c| c.name.clone()).unwrap_or_else(|| self.conn.clone());
         ui.horizontal(|ui| {
-            ui.heading(tr("Maintenance"));
+            if !cx.popup {
+                ui.heading(tr("Maintenance"));
+            }
             ui.label(RichText::new(name).strong());
         });
         let targets = self.targets(cx);
@@ -434,7 +436,7 @@ impl MaintenanceTab {
         });
         let running = self.is_running();
         ui.horizontal(|ui| {
-            if ui.add_enabled(!running && !sql.is_empty(), egui::Button::new((dbiji_icons::ic(icon::PLAY), tr("Run")))).clicked() {
+            if ui.add_enabled(!running && !sql.is_empty(), crate::widgets::primary_button(ui, icon::PLAY, tr("Run"))).clicked() {
                 self.start(cx);
             }
             if running && ui.button((dbiji_icons::ic(icon::STOP), tr("Cancel"))).clicked() {

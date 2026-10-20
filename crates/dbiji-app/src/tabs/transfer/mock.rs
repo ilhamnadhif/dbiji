@@ -525,11 +525,14 @@ impl TabView for MockDataTab {
         let uid = self.uid;
         egui::Panel::top(egui::Id::new(("mock_top", uid))).show(ui, |ui| {
             ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                crate::widgets::icon_heading(ui, icon::SHUFFLE, tr("Generate mock data"));
-                ui.label(RichText::new(self.table.display_path()).strong());
-                ui.weak(connection_name(cx, &self.conn));
-            });
+            // In a pop-up its title bar names the wizard and the connection.
+            if !cx.popup {
+                ui.horizontal(|ui| {
+                    crate::widgets::icon_heading(ui, icon::SHUFFLE, tr("Generate mock data"));
+                    ui.label(RichText::new(self.table.display_path()).strong());
+                    ui.weak(connection_name(cx, &self.conn));
+                });
+            }
             ui.add_space(2.0);
         });
         egui::Panel::bottom(egui::Id::new(("mock_bottom", uid))).show(ui, |ui| {
@@ -537,7 +540,7 @@ impl TabView for MockDataTab {
             ui.horizontal(|ui| {
                 let running = self.run.is_some();
                 let ok = self.validate().is_ok() && !running;
-                if ui.add_enabled(ok, egui::Button::new((dbiji_icons::ic(icon::PLAY), tr("Generate")))).clicked() {
+                if ui.add_enabled(ok, crate::widgets::primary_button(ui, icon::PLAY, tr("Generate"))).clicked() {
                     if self.config.mode == MockMode::TruncateFirst {
                         self.confirm = true;
                     } else {

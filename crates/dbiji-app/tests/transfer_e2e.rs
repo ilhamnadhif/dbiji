@@ -147,6 +147,7 @@ impl H {
             keymap: &self.keymap,
             tab_active: true,
             current_tab: Some(1),
+            popup: false,
         };
         f(&mut cx)
     }

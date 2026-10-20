@@ -851,7 +851,7 @@ impl ExportTab {
             }
             ui.separator();
             let ok = self.validate().is_ok() && !running;
-            if ui.add_enabled(ok, egui::Button::new((dbiji_icons::ic(icon::PLAY), tr("Run export")))).clicked() {
+            if ui.add_enabled(ok, crate::widgets::primary_button(ui, icon::PLAY, tr("Run export"))).clicked() {
                 self.start(cx);
             }
             let savable = ok && !self.saver.is_saving() && !self.fetched_mode();
@@ -1350,10 +1350,13 @@ impl TabView for ExportTab {
         let uid = self.uid;
         egui::Panel::top(egui::Id::new(("exp_top", uid))).show(ui, |ui| {
             ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                crate::widgets::icon_heading(ui, icon::EXPORT, tr("Export data"));
-                ui.weak(connection_name(cx, &self.conn));
-            });
+            // In a pop-up its title bar names the wizard and the connection.
+            if !cx.popup {
+                ui.horizontal(|ui| {
+                    crate::widgets::icon_heading(ui, icon::EXPORT, tr("Export data"));
+                    ui.weak(connection_name(cx, &self.conn));
+                });
+            }
             let steps = [tr("Source"), tr("Format"), tr("Output"), tr("Run")];
             let reachable = if self.run.is_some() { PAGE_RUN } else { self.reachable().max(PAGE_FORMAT.min(self.reachable())) };
             if let Some(p) = steps_ui(ui, &steps, self.page, reachable.max(self.page))

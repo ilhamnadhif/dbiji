@@ -598,6 +598,11 @@ impl EditorState {
         }
     }
 
+    /// Close the completion popup.
+    pub fn close_completion(&mut self) {
+        self.completion.close();
+    }
+
     /// Is the completion popup open?
     pub fn is_completion_open(&self) -> bool {
         self.completion.is_open()

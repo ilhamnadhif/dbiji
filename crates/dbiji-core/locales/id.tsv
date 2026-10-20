@@ -2665,3 +2665,4 @@ Hide empty	Sembunyikan yang kosong
 {} hidden	{} disembunyikan
 Hide the columns that are NULL or empty in this row	Sembunyikan kolom yang NULL atau kosong di baris ini
 Hide the columns that are NULL or empty in every row	Sembunyikan kolom yang NULL atau kosong di semua baris
+Check for updates automatically (at start and every few hours)	Periksa pembaruan secara otomatis (saat dibuka dan setiap beberapa jam)

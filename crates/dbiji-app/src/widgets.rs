@@ -19,6 +19,12 @@ pub struct TableResponse {
 const CELL_PAD: f32 = 6.0;
 
 /// Virtualised, striped, resizable table of text cells.
+/// The main action of a dialog or wizard: white text on the accent colour.
+pub fn primary_button(ui: &Ui, glyph: &str, text: impl Into<String>) -> egui::Button<'static> {
+    let fill = crate::theme::accent(ui.visuals().dark_mode);
+    egui::Button::new(RichText::new(format!("{glyph}  {}", text.into())).color(egui::Color32::WHITE).strong()).fill(fill)
+}
+
 /// A heading with a coloured icon.
 pub fn icon_heading(ui: &mut Ui, glyph: &str, text: impl Into<String>) -> egui::Response {
     let mut job = egui::text::LayoutJob::default();
@@ -68,7 +74,17 @@ pub fn simple_table(ui: &mut Ui, id_salt: impl std::hash::Hash + std::fmt::Debug
                         ui.add_space(CELL_PAD);
                         let short: String = c.chars().take(300).collect();
                         let first_line = short.lines().next().unwrap_or("");
-                        let resp = ui.add(egui::Label::new(first_line).truncate().selectable(false));
+                        // A leading icon (e.g. the key of primary key columns) in its colour.
+                        let mut chars = first_line.chars();
+                        let icon = chars.next().map(String::from).and_then(|g| dbiji_icons::color(&g).map(|c| (g, c)));
+                        let text = match icon {
+                            Some((g, color)) => {
+                                ui.label(RichText::new(g).color(color));
+                                chars.as_str().trim_start()
+                            }
+                            None => first_line,
+                        };
+                        let resp = ui.add(egui::Label::new(text).truncate().selectable(false));
                         if c.len() > first_line.len() {
                             resp.on_hover_text(c.chars().take(4000).collect::<String>());
                         }

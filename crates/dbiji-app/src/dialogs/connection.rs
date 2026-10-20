@@ -188,7 +188,9 @@ impl ConnectionDialog {
                                     continue;
                                 }
                                 let sel = self.cfg.kind == kind;
-                                if ui.selectable_label(sel, format!("{} {}", crate::nav::db_icon(kind), kind.display_name())).clicked() && !sel {
+                                if ui.selectable_label(sel, (RichText::new(crate::nav::db_icon(kind)).color(crate::theme::brand_color(kind)), kind.display_name())).clicked()
+                                    && !sel
+                                {
                                     let name = self.cfg.name.clone();
                                     let folder = self.cfg.folder.clone();
                                     let id = self.cfg.id.clone();
@@ -267,7 +269,7 @@ impl ConnectionDialog {
                         if ui.button(RichText::new(tr("Save")).strong()).clicked() && self.save(cx) {
                             close = true;
                         }
-                        if self.is_new && ui.button(tr("Save and connect")).clicked() && self.save(cx) {
+                        if self.is_new && ui.add(crate::widgets::primary_button(ui, icon::PLUGS_CONNECTED, tr("Save and connect"))).clicked() && self.save(cx) {
                             cx.push(crate::command::AppCommand::Connect(self.cfg.id.clone()));
                             close = true;
                         }

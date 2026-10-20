@@ -208,6 +208,7 @@ impl DbijiApp {
                 keymap: &self.keymap,
                 tab_active: false,
                 current_tab: None,
+                popup: false,
             };
             if !tab.view.on_close(&mut cx) {
                 // put it back
@@ -511,6 +512,7 @@ impl DbijiApp {
                     keymap: &self.keymap,
                     tab_active: true,
                     current_tab: self.active_tab,
+                    popup: false,
                 };
                 tab.view.on_action(action, &mut cx)
             }
@@ -1377,6 +1379,7 @@ impl eframe::App for DbijiApp {
             keymap: &self.keymap,
             tab_active: false,
             current_tab: None,
+            popup: false,
         };
         if self.show_nav {
             egui::Panel::left("dbiji_navigator").resizable(true).default_size(280.0).size_range(160.0..=600.0).show(ui, |ui| {
@@ -1413,7 +1416,16 @@ impl eframe::App for DbijiApp {
         for tab in &mut self.popups {
             let mut open = true;
             let size = tab.view.popup_size().unwrap_or(egui::vec2(720.0, 520.0));
-            let shown = egui::Window::new(format!("{} {}", tab.view.icon(), tab.view.title()))
+            // Title: coloured icon, the tab's title and its connection.
+            let mut title = egui::text::LayoutJob::default();
+            let style = ctx.global_style();
+            let font = egui::FontSelection::Default;
+            dbiji_icons::ic(tab.view.icon()).append_to(&mut title, &style, font.clone(), egui::Align::Center);
+            RichText::new(format!("  {}", tab.view.title())).append_to(&mut title, &style, font.clone(), egui::Align::Center);
+            if let Some(name) = tab.view.connection_id().and_then(|c| cx.conns.config(c)).map(|c| c.name.clone()) {
+                RichText::new(format!("  ·  {name}")).weak().append_to(&mut title, &style, font, egui::Align::Center);
+            }
+            let shown = egui::Window::new(title)
                 .id(egui::Id::new(("dbiji_popup", tab.id)))
                 .default_size(size)
                 .min_size(egui::vec2(360.0, 240.0))
@@ -1425,7 +1437,9 @@ impl eframe::App for DbijiApp {
                 .show(&ctx, |ui| {
                     cx.tab_active = true;
                     cx.current_tab = Some(tab.id);
+                    cx.popup = true;
                     tab.view.ui(ui, &mut cx);
+                    cx.popup = false;
                     cx.current_tab = None;
                 });
             if let Some(shown) = shown

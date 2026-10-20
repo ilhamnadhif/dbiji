@@ -1090,12 +1090,20 @@ impl Navigator {
                     ui.painter().circle(at, 3.5, badge, egui::Stroke::new(1.5, bg));
                 }
                 x += 20.0;
-                let galley = ui.painter().layout_no_wrap(r.label.clone(), font.clone(), text_color);
+                // Name and detail cut with "…" at the panel's edge.
+                let right = rect.right() - 6.0;
+                let fit = |ui: &Ui, text: egui::RichText, width: f32, style: egui::TextStyle| {
+                    egui::WidgetText::from(text).into_galley(ui, Some(egui::TextWrapMode::Truncate), width, style)
+                };
+                let galley = fit(ui, RichText::new(&r.label).color(text_color), (right - x).max(30.0), egui::TextStyle::Body);
                 let w = galley.size().x;
                 ui.painter().galley(egui::pos2(x, y - galley.size().y / 2.0), galley, text_color);
-                if let Some(d) = &r.detail {
-                    let small = egui::TextStyle::Small.resolve(ui.style());
-                    ui.painter().text(egui::pos2(x + w + 8.0, y), egui::Align2::LEFT_CENTER, d, small, ui.visuals().weak_text_color());
+                if let Some(d) = &r.detail
+                    && right - (x + w + 8.0) > 24.0
+                {
+                    let weak = ui.visuals().weak_text_color();
+                    let g = fit(ui, RichText::new(d).small().color(weak), right - (x + w + 8.0), egui::TextStyle::Small);
+                    ui.painter().galley(egui::pos2(x + w + 8.0, y - g.size().y / 2.0), g, weak);
                 }
                 if resp.double_clicked() {
                     clicked = Some((i, true));

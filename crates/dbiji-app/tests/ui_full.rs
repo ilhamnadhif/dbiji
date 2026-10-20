@@ -619,7 +619,7 @@ fn settings_grid_menu_and_editor_helpers() {
         "General",
     ] {
         pause(&mut h);
-        let key = format!("  {section}");
+        let key = format!(" {section}");
         let Some(n) = h.query_all_by_label_contains(&key).next() else {
             panic!("settings section {section:?}; labels: {:?}", labels(&h));
         };

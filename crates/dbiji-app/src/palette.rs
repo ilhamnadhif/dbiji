@@ -62,6 +62,13 @@ pub fn fuzzy(pattern: &str, text: &str) -> Option<i32> {
         }
         last = Some(i);
     }
+    // Typed as one piece: "set" ranks "Settings" above "Session Manager".
+    let (text, pattern) = (text.to_lowercase(), pattern.trim().to_lowercase());
+    if text.starts_with(&pattern) {
+        score += 30;
+    } else if text.contains(&pattern) {
+        score += 15;
+    }
     Some(score - t.len() as i32 / 4)
 }
 
@@ -122,12 +129,14 @@ fn collect(cx: &AppContext) -> Vec<Item> {
         Item { icon: icon::PLUGS, label: tr("Disconnect all").into(), detail: String::new(), target: Target::Command(|| AppCommand::DisconnectAll) },
     ];
     for a in crate::keys::Action::ALL {
-        items.push(Item {
-            icon: icon::LIGHTNING,
-            label: crate::keys::action_label(*a).to_string(),
-            detail: format!("{} {}", tr(a.category().label()), crate::keys::label(cx.keymap, *a)).trim().to_string(),
-            target: Target::Action(*a),
-        });
+        let label = crate::keys::action_label(*a).to_string();
+        let detail = format!("{} {}", tr(a.category().label()), crate::keys::label(cx.keymap, *a)).trim().to_string();
+        // The same command listed above: it gets the category and shortcut.
+        if let Some(it) = items.iter_mut().find(|it| it.label.to_lowercase() == label.to_lowercase()) {
+            it.detail = detail;
+            continue;
+        }
+        items.push(Item { icon: crate::keys::action_icon(*a), label, detail, target: Target::Action(*a) });
     }
     for c in cx.conns.configs() {
         let connected = cx.conns.is_connected(&c.id);
@@ -157,6 +166,32 @@ fn collect(cx: &AppContext) -> Vec<Item> {
 /// Forget the previous query and selection (the palette is being opened).
 pub fn reset(ctx: &egui::Context) {
     ctx.data_mut(|d| d.remove::<PaletteState>(egui::Id::new("dbiji_palette")));
+}
+
+/// One full-width row: the coloured icon, the label, and on the right the
+/// detail (category and shortcut, connection, script folder).
+fn row(ui: &mut egui::Ui, it: &Item, selected: bool) -> egui::Response {
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 28.0), egui::Sense::click());
+    let v = ui.visuals();
+    if selected {
+        ui.painter().rect_filled(rect, 4.0, v.selection.bg_fill);
+    } else if resp.hovered() {
+        ui.painter().rect_filled(rect, 4.0, v.widgets.hovered.weak_bg_fill);
+    }
+    let text = if selected { v.selection.stroke.color } else { v.text_color() };
+    let weak = v.weak_text_color();
+    let body = egui::TextStyle::Body.resolve(ui.style());
+    ui.painter().text(rect.left_center() + egui::vec2(10.0, 0.0), egui::Align2::LEFT_CENTER, it.icon, body, dbiji_icons::color(it.icon).unwrap_or(weak));
+    let fit = |text: RichText, width: f32, style: egui::TextStyle| egui::WidgetText::from(text).into_galley(ui, Some(egui::TextWrapMode::Truncate), width, style);
+    let detail = (!it.detail.is_empty()).then(|| fit(RichText::new(&it.detail).small().color(weak), rect.width() * 0.45, egui::TextStyle::Small));
+    let detail_w = detail.as_ref().map_or(0.0, |g| g.size().x + 16.0);
+    let label = fit(RichText::new(&it.label).color(text), (rect.width() - 44.0 - detail_w).max(40.0), egui::TextStyle::Body);
+    ui.painter().galley(egui::pos2(rect.left() + 34.0, rect.center().y - label.size().y / 2.0), label, text);
+    if let Some(g) = detail {
+        ui.painter().galley(egui::pos2(rect.right() - 10.0 - g.size().x, rect.center().y - g.size().y / 2.0), g, weak);
+    }
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, selected, &it.label));
+    resp
 }
 
 pub fn show(ctx: &egui::Context, cx: &mut AppContext, open: &mut bool) {
@@ -199,10 +234,7 @@ pub fn show(ctx: &egui::Context, cx: &mut AppContext, open: &mut bool) {
             egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
                 for (i, (_, it)) in scored.iter().enumerate() {
                     let sel = i == state.selected;
-                    let resp = ui.selectable_label(sel, RichText::new(format!("{}  {}", it.icon, it.label)));
-                    if !it.detail.is_empty() {
-                        ui.weak(RichText::new(&it.detail).small());
-                    }
+                    let resp = row(ui, it, sel);
                     if sel {
                         resp.scroll_to_me(None);
                     }
@@ -259,5 +291,8 @@ mod tests {
         let b = fuzzy("ne", "Open SQL editor: Neon").unwrap();
         assert!(a > b);
         assert!(fuzzy("xyz", "New connection").is_none());
+        // A word typed in one piece beats letters spread over several words.
+        assert!(fuzzy("set", "Settings Application ⌘,").unwrap() > fuzzy("set", "Session Manager Tools").unwrap());
+        assert!(fuzzy("export", "Export data Results").unwrap() > fuzzy("export", "Open recent export folder").unwrap());
     }
 }

@@ -3,7 +3,7 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
-## 0.3.0 — 2026-10-19
+## 0.3.0 — 2026-10-20
 
 ### New
 - Navigator: server-level objects like DBeaver's — roles, tablespaces, settings, foreign data wrappers, event triggers, extensions (PostgreSQL), users, status and variables, engines, charsets, plugins (MySQL / MariaDB), logins and configuration (SQL Server), and more — grouped under Security, Storage, Administer and System Info, each with properties, DDL and sub-objects.
@@ -12,6 +12,7 @@ notes of a new version once after it was updated (Help → What's new).
 - SQL editor: code folding, mark occurrences, open declaration (⌘ click / F3), next / previous statement, copy the statement, count its rows, evaluate an expression, morph to a delimited list, trim trailing spaces, search on the web, save / load execution plans, formatter choices (compact, external command, current statement only).
 - Data editor: add a row before the current one, copy a value from the row above / below, generate UUIDs, fit columns, hide empty columns, move columns, zoom, highlight rows by value, save the filter and order as the table default.
 - Database tools: PostgreSQL backup of all databases or only roles and tablespaces (pg_dumpall), enable / disable triggers, a foreign data wrapper configurator, InnoDB memory and key cache charts in the MySQL dashboard.
+- Software update (macOS): with automatic checks on, DBiji looks for a new release at every start and every 6 hours; a new version shows its notes and installs in place (download, signature check, quit, swap, reopen — an administrator password only when needed), or lights up an Update button in the toolbar. Help → Check for updates… does the same on demand.
 - Pending transactions (Database menu): every connection with uncommitted changes, commit or roll back one or all; quitting with open transactions asks first.
 - Help → Error log, Tip of the day, Collect diagnostic info (a zip without passwords, host names or other connection details); Settings → Reset all settings.
 - Clearer text and calmer colours: the Inter typeface, near-black (light) / near-white (dark) text instead of thin grey text, new light and dark themes.

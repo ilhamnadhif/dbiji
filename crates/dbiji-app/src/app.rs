@@ -119,6 +119,7 @@ impl DbijiApp {
             diagnostics: None,
         };
         app.existing_install = crate::updates::is_existing_install(&app.services.paths);
+        app.updates.data_dir = Some(app.services.paths.data_dir().to_path_buf());
         app.open_tab(Box::new(crate::tabs::welcome::WelcomeTab));
         app
     }
@@ -1157,6 +1158,8 @@ impl DbijiApp {
                     self.commands.push(AppCommand::Action(action));
                 }
             }
+            // An update to install.
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| self.updates.toolbar_button(ui));
         });
     }
 
@@ -1376,8 +1379,12 @@ impl eframe::App for DbijiApp {
             egui::Window::new(format!("{} {}", icon::HOURGLASS, tr("Background operations"))).open(&mut open).default_width(360.0).show(&ctx, |ui| self.ops.ui(ui));
             self.ops.panel_open = open;
         }
-        if self.updates.ui(&ctx, &mut self.settings, &mut self.toasts) {
+        if self.updates.ui(&ctx, &self.backend, &mut self.settings, &mut self.toasts) {
             self.save_settings();
+        }
+        // The update was handed to the installer: quit (unsaved scripts are asked about first).
+        if std::mem::take(&mut self.updates.restart) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
         if let Some(tip) = &mut self.tip {
             let mut show = self.settings.general.show_tips;

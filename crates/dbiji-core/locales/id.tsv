@@ -2625,3 +2625,29 @@ Confirm statements that change data or schema	Konfirmasi statement yang mengubah
 Connection type "{}" asks before statements that change data or schema.	Tipe koneksi "{}" meminta konfirmasi sebelum statement yang mengubah data atau skema.
 Resize {}	Ubah lebar {}
 Click the box to change the value	Klik kotaknya untuk mengubah nilai
+Current version:	Versi saat ini:
+DBiji can look for a new release when it starts and every few hours. Only the GitHub release page is contacted; nothing about you or your databases is sent.	DBiji dapat mencari rilis baru saat dibuka dan setiap beberapa jam. Hanya halaman rilis GitHub yang dihubungi; tidak ada data tentang Anda atau database Anda yang dikirim.
+DBiji is not installed as an app	DBiji tidak terpasang sebagai aplikasi
+DBiji was updated to version {}	DBiji diperbarui ke versi {}
+DBiji will quit, install the new version and open again. You are asked about unsaved scripts first.	DBiji akan ditutup, memasang versi baru, lalu dibuka lagi. Skrip yang belum disimpan akan ditanyakan terlebih dahulu.
+DBiji {} is available: use the Update button to install it.	DBiji {} tersedia: gunakan tombol Update untuk memasangnya.
+DBiji {} is ready to install	DBiji {} siap dipasang
+Downloading… {} of {}	Mengunduh… {} dari {}
+Hide	Sembunyikan
+Install update	Pasang pembaruan
+Installing it from here needs DBiji in the Applications folder; download the new version instead.	Memasang dari sini memerlukan DBiji di folder Applications; unduh versi baru sebagai gantinya.
+Later	Nanti
+New version:	Versi baru:
+Open the releases page	Buka halaman rilis
+Restart now	Mulai ulang sekarang
+Restart to update	Mulai ulang untuk memperbarui
+Software update	Pembaruan perangkat lunak
+Starting…	Memulai…
+The download goes on; the toolbar shows its progress	Unduhan berlanjut; toolbar menampilkan progresnya
+The update could not be installed: {}	Pembaruan tidak dapat dipasang: {}
+The update was not installed because no administrator password was entered.	Pembaruan tidak dipasang karena kata sandi administrator tidak dimasukkan.
+Updating to DBiji {}	Memperbarui ke DBiji {}
+Verifying…	Memverifikasi…
+View on GitHub	Lihat di GitHub
+What's new:	Yang baru:
+DBiji wants to install an update.	DBiji ingin memasang pembaruan.

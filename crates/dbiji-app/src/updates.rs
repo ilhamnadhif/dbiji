@@ -1,11 +1,12 @@
 //! "What's new" after an update and the optional check for newer releases.
 //!
 //! The release notes come from `CHANGELOG.md`, built into the binary. The
-//! update check is opt-in (DBiji asks once): at most once a day it reads the
-//! latest release of the GitHub repository — one anonymous HTTPS request,
-//! nothing about the user or their databases is sent. A newer release is
-//! offered with its notes: download it, skip that version or be reminded
-//! later. Installing stays with the user (the disk image or Homebrew).
+//! update check is opt-in (DBiji asks once): at every start and every few
+//! hours it reads the latest release of the GitHub repository — one
+//! anonymous HTTPS request, nothing about the user or their databases is
+//! sent. A newer release is offered with its notes: install it (macOS, see
+//! [`crate::selfupdate`]), download it, skip that version or be reminded
+//! later; the toolbar shows an Update button meanwhile.
 
 use crate::backend::{Backend, Job};
 use crate::services::Settings;
@@ -23,9 +24,6 @@ const RELEASES_API: &str = "https://api.github.com/repos/ilhamnadhif/dbiji/relea
 
 /// Where the releases are listed.
 pub const RELEASES_PAGE: &str = "https://github.com/ilhamnadhif/dbiji/releases";
-
-/// Automatic checks are at most this frequent.
-const CHECK_INTERVAL_SECS: i64 = 24 * 60 * 60;
 
 /// Version of this build.
 pub fn current_version() -> &'static str {
@@ -86,8 +84,23 @@ pub fn notes_since(changelog: &str, seen: Option<&str>, current: &str) -> Vec<No
     parse_changelog(changelog).into_iter().filter(|n| !is_newer(&n.version, current) && seen.is_none_or(|s| is_newer(&n.version, s))).collect()
 }
 
+/// The app archive of a release, installed by the updater (macOS).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Asset {
+    pub name: String,
+    pub url: String,
+    pub size: u64,
+    /// Hex SHA-256, when GitHub published one.
+    pub sha256: Option<String>,
+}
+
+/// Name of the archive the updater installs.
+pub fn archive_name(version: &str) -> String {
+    format!("DBiji-{version}.zip")
+}
+
 /// A published release.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Release {
     pub version: String,
     /// Release page.
@@ -95,6 +108,10 @@ pub struct Release {
     /// The macOS disk image, when the release has one.
     pub download_url: Option<String>,
     pub notes: String,
+    /// When it was published (`YYYY-MM-DD`).
+    pub date: Option<String>,
+    /// `DBiji-<version>.zip`, installed in place by the updater.
+    pub archive: Option<Asset>,
 }
 
 /// Parse the GitHub "latest release" response.
@@ -110,7 +127,19 @@ pub fn parse_release(json: &str) -> Option<Release> {
         .and_then(|a| a.as_array())
         .and_then(|assets| assets.iter().filter_map(|a| a.get("browser_download_url")?.as_str()).find(|u| u.ends_with(".dmg")).map(str::to_string));
     let notes = v.get("body").and_then(|b| b.as_str()).unwrap_or("").replace("\r\n", "\n").trim().to_string();
-    Some(Release { version: tag.trim_start_matches(['v', 'V']).to_string(), url, download_url, notes })
+    let version = tag.trim_start_matches(['v', 'V']).to_string();
+    let wanted = archive_name(&version);
+    let archive = v.get("assets").and_then(|a| a.as_array()).and_then(|assets| {
+        let a = assets.iter().find(|a| a.get("name").and_then(|n| n.as_str()) == Some(wanted.as_str()))?;
+        Some(Asset {
+            name: wanted.clone(),
+            url: a.get("browser_download_url")?.as_str()?.to_string(),
+            size: a.get("size")?.as_u64()?,
+            sha256: a.get("digest").and_then(|d| d.as_str()).and_then(|d| d.strip_prefix("sha256:")).map(str::to_ascii_lowercase),
+        })
+    });
+    let date = v.get("published_at").and_then(|d| d.as_str()).and_then(|d| d.get(..10)).map(str::to_string);
+    Some(Release { version, url, download_url, notes, date, archive })
 }
 
 /// Outcome of a check.
@@ -161,19 +190,73 @@ pub struct Updates {
     pub whats_new: Option<Vec<Notes>>,
     /// Asking whether to check automatically.
     pub ask: bool,
-    /// A newer release being offered.
+    /// A newer release being offered (the update dialog).
     pub available: Option<Release>,
+    /// A newer release found by a check (the toolbar's Update button).
+    pub found: Option<Release>,
+    /// Data folder: where the installer leaves the outcome of an update.
+    pub data_dir: Option<std::path::PathBuf>,
+    /// Quit now: the update was handed to the installer.
+    pub restart: bool,
     check: Option<(Job<Result<CheckResult, String>>, bool)>,
     /// Set by `start`: the next frame decides what to show.
     started: bool,
+    /// The check started at launch has not answered yet: a new version
+    /// opens the dialog (later checks only light up the toolbar button).
+    launch_check: bool,
+    /// The version already announced by a toast.
+    announced: Option<String>,
+    /// Next automatic check while DBiji stays open.
+    next_check: Option<std::time::Instant>,
+    /// The outcome of the previous run's update was reported.
+    reported: bool,
+    #[cfg(target_os = "macos")]
+    install: Install,
+    /// The install dialog (progress, ready, error) is on screen.
+    install_visible: bool,
 }
+
+/// Installing an update (macOS).
+#[cfg(target_os = "macos")]
+#[derive(Default)]
+enum Install {
+    #[default]
+    Idle,
+    Downloading {
+        release: Release,
+        stage: std::sync::Arc<parking_lot::Mutex<crate::selfupdate::Stage>>,
+        job: Job<Result<crate::selfupdate::Prepared, String>>,
+    },
+    Ready {
+        release: Release,
+        prepared: crate::selfupdate::Prepared,
+    },
+    Failed(String),
+}
+
+/// Automatic checks while DBiji stays open (one also runs at every start).
+const CHECK_EVERY: Duration = Duration::from_secs(6 * 60 * 60);
 
 fn now_secs() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
 }
 
+/// The update can be installed in place (macOS, DBiji running from an
+/// installed `DBiji.app`, the release has its archive).
+fn installable(r: &Release) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        r.archive.is_some() && crate::selfupdate::installed_bundle().is_some()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = r;
+        false
+    }
+}
+
 impl Updates {
-    /// At startup: notes of an update, the one-time question, the daily check.
+    /// At startup: notes of an update, the one-time question, the check.
     pub fn start(&mut self, backend: &Backend, settings: &mut Settings, existing_install: bool) -> bool {
         self.started = true;
         let current = current_version();
@@ -194,12 +277,13 @@ impl Updates {
         }
         match settings.updates.check_automatically {
             None => self.ask = existing_install,
-            Some(true) if settings.updates.last_check.is_none_or(|t| now_secs() - t >= CHECK_INTERVAL_SECS) => {
+            Some(true) => {
                 settings.updates.last_check = Some(now_secs());
                 changed = true;
+                self.launch_check = true;
                 self.check_now(backend, false);
             }
-            Some(_) => {}
+            Some(false) => {}
         }
         changed
     }
@@ -210,8 +294,13 @@ impl Updates {
         self.whats_new = Some(notes.into_iter().take(1).collect());
     }
 
-    /// Check now; `manual` reports "up to date" and errors too.
+    /// Check now; `manual` reports "up to date" and errors too, and shows a
+    /// release already found.
     pub fn check_now(&mut self, backend: &Backend, manual: bool) {
+        if manual && let Some(r) = self.found.clone() {
+            self.show_found(r);
+            return;
+        }
         if self.check.is_some() {
             return;
         }
@@ -224,15 +313,64 @@ impl Updates {
         self.check.is_some()
     }
 
-    /// Draw the popups; returns true when settings changed.
-    pub fn ui(&mut self, ctx: &Context, settings: &mut Settings, toasts: &mut Toasts) -> bool {
+    /// Show what there is to show about a found release: the install
+    /// progress / ready dialog when it is being installed, else the offer.
+    fn show_found(&mut self, r: Release) {
+        #[cfg(target_os = "macos")]
+        if !matches!(self.install, Install::Idle) {
+            self.install_visible = true;
+            return;
+        }
+        self.available = Some(r);
+    }
+
+    /// The toolbar button while an update is available, downloading or
+    /// ready to install.
+    pub fn toolbar_button(&mut self, ui: &mut egui::Ui) {
+        let label = match self.found.as_ref() {
+            None => return,
+            Some(r) => format!("{} {} {}", icon::ARROW_CIRCLE_UP, tr("Update"), r.version),
+        };
+        #[cfg(target_os = "macos")]
+        let label = match &self.install {
+            Install::Downloading { stage, .. } => match *stage.lock() {
+                crate::selfupdate::Stage::Downloading { done, total } if total > 0 => format!("{} {}%", icon::ARROW_CIRCLE_UP, done * 100 / total),
+                _ => format!("{} {}", icon::ARROW_CIRCLE_UP, tr("Update")),
+            },
+            Install::Ready { .. } => format!("{} {}", icon::ARROW_CIRCLE_UP, tr("Restart to update")),
+            _ => label,
+        };
+        let accent = ui.visuals().selection.stroke.color;
+        let text = if ui.visuals().dark_mode { egui::Color32::BLACK } else { egui::Color32::WHITE };
+        let b = egui::Button::new(RichText::new(label).color(text).strong()).fill(accent);
+        if ui.add(b).on_hover_text(tr("A new version of DBiji is available")).clicked()
+            && let Some(r) = self.found.clone()
+        {
+            self.show_found(r);
+        }
+    }
+
+    /// Draw the popups; returns true when settings changed. Sets
+    /// [`Updates::restart`] when DBiji must quit for the installer.
+    pub fn ui(&mut self, ctx: &Context, backend: &Backend, settings: &mut Settings, toasts: &mut Toasts) -> bool {
         let mut changed = false;
+        #[cfg(target_os = "macos")]
+        self.report_previous_update(toasts);
         if let Some((job, manual)) = &mut self.check {
             let manual = *manual;
             if let Some(result) = job.poll() {
                 self.check = None;
+                let at_launch = std::mem::take(&mut self.launch_check);
                 match result {
-                    Ok(CheckResult::Available(r)) if manual || settings.updates.skipped_version.as_deref() != Some(r.version.as_str()) => self.available = Some(r),
+                    Ok(CheckResult::Available(r)) if manual || settings.updates.skipped_version.as_deref() != Some(r.version.as_str()) => {
+                        self.found = Some(r.clone());
+                        if manual || at_launch {
+                            self.show_found(r);
+                        } else if self.announced.as_deref() != Some(r.version.as_str()) {
+                            toasts.info(trf("DBiji {} is available: use the Update button to install it.", &[&r.version]));
+                        }
+                        self.announced = self.found.as_ref().map(|r| r.version.clone());
+                    }
                     Ok(_) if manual => toasts.success(trf("DBiji {} is the latest version", &[&current_version()])),
                     Ok(_) => {}
                     Err(e) if manual => toasts.error(tr("Cannot check for updates"), Some(e)),
@@ -240,6 +378,19 @@ impl Updates {
                 }
             } else {
                 ctx.request_repaint_after(Duration::from_millis(200));
+            }
+        }
+        // Automatic checks while DBiji stays open.
+        if settings.updates.check_automatically == Some(true) && self.started {
+            let now = std::time::Instant::now();
+            let next = *self.next_check.get_or_insert(now + CHECK_EVERY);
+            if now >= next && self.check.is_none() {
+                self.next_check = Some(now + CHECK_EVERY);
+                settings.updates.last_check = Some(now_secs());
+                changed = true;
+                self.check_now(backend, false);
+            } else {
+                ctx.request_repaint_after((next.saturating_duration_since(now)).min(Duration::from_secs(600)));
             }
         }
         if let Some(notes) = &self.whats_new {
@@ -274,32 +425,66 @@ impl Updates {
             }
             return changed;
         }
+        #[cfg(target_os = "macos")]
+        if self.install_ui(ctx, backend) {
+            return changed;
+        }
         if let Some(r) = self.available.clone() {
             let mut close = false;
+            let can_install = installable(&r);
             let modal = egui::Modal::new(egui::Id::new("dbiji_update_available")).show(ctx, |ui| {
                 ui.set_width(560.0);
                 ui.heading(format!("{} {}", icon::ARROW_CIRCLE_UP, tr("A new version of DBiji is available")));
-                ui.label(trf("DBiji {} is available — you have {}.", &[&r.version, &current_version()]));
+                ui.add_space(4.0);
+                egui::Grid::new("dbiji_update_versions").num_columns(2).spacing([16.0, 4.0]).show(ui, |ui| {
+                    ui.label(tr("Current version:"));
+                    ui.label(current_version());
+                    ui.end_row();
+                    ui.label(tr("New version:"));
+                    let new = match &r.date {
+                        Some(d) => format!("{}   ({d})", r.version),
+                        None => r.version.clone(),
+                    };
+                    ui.label(RichText::new(new).strong());
+                    ui.end_row();
+                });
                 if !r.notes.is_empty() {
                     ui.add_space(6.0);
-                    egui::ScrollArea::vertical().max_height(ctx.content_rect().height() * 0.5).show(ui, |ui| markdown(ui, &r.notes));
+                    ui.label(RichText::new(tr("What's new:")).weak());
+                    egui::ScrollArea::vertical().max_height(ctx.content_rect().height() * 0.45).show(ui, |ui| markdown(ui, &r.notes));
                 }
-                ui.add_space(4.0);
+                if !can_install && cfg!(target_os = "macos") {
+                    ui.add_space(4.0);
+                    ui.label(RichText::new(tr("Installing it from here needs DBiji in the Applications folder; download the new version instead.")).weak().small());
+                }
                 ui.weak(tr("Homebrew: brew upgrade --cask dbiji"));
                 ui.separator();
                 ui.horizontal(|ui| {
                     if ui.button(tr("Skip this version")).clicked() {
                         settings.updates.skipped_version = Some(r.version.clone());
+                        self.found = None;
                         changed = true;
                         close = true;
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button(RichText::new(format!("{} {}", icon::DOWNLOAD_SIMPLE, tr("Download"))).strong()).clicked() {
+                        let accent = ui.visuals().selection.stroke.color;
+                        let on_accent = if ui.visuals().dark_mode { egui::Color32::BLACK } else { egui::Color32::WHITE };
+                        if can_install {
+                            let b = egui::Button::new(RichText::new(format!("{} {}", icon::ARROW_CIRCLE_UP, tr("Install update"))).color(on_accent).strong()).fill(accent);
+                            if ui.add(b).clicked() {
+                                #[cfg(target_os = "macos")]
+                                self.start_install(backend, r.clone());
+                                close = true;
+                            }
+                        } else if ui.button(RichText::new(format!("{} {}", icon::DOWNLOAD_SIMPLE, tr("Download"))).strong()).clicked() {
                             ctx.open_url(egui::OpenUrl::new_tab(r.download_url.clone().unwrap_or_else(|| r.url.clone())));
                             close = true;
                         }
                         if ui.button(tr("Remind me later")).clicked() {
                             close = true;
+                        }
+                        if ui.button(tr("View on GitHub")).clicked() {
+                            ctx.open_url(egui::OpenUrl::new_tab(r.url.clone()));
                         }
                     });
                 });
@@ -315,7 +500,7 @@ impl Updates {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.set_max_width(360.0);
                     ui.label(RichText::new(format!("{} {}", icon::ARROW_CIRCLE_UP, tr("Check for updates automatically?"))).strong());
-                    ui.label(tr("DBiji can look for a new release once a day. Only the GitHub release page is contacted; nothing about you or your databases is sent."));
+                    ui.label(tr("DBiji can look for a new release when it starts and every few hours. Only the GitHub release page is contacted; nothing about you or your databases is sent."));
                     ui.horizontal(|ui| {
                         if ui.button(RichText::new(tr("Check automatically")).strong()).clicked() {
                             answer = Some(true);
@@ -333,6 +518,143 @@ impl Updates {
             }
         }
         changed
+    }
+
+    /// The outcome the installer left for this launch (once), and the
+    /// leftovers of an interrupted update.
+    #[cfg(target_os = "macos")]
+    fn report_previous_update(&mut self, toasts: &mut Toasts) {
+        if std::mem::replace(&mut self.reported, true) || !self.started {
+            return;
+        }
+        std::thread::spawn(crate::selfupdate::remove_leftovers);
+        let Some(dir) = &self.data_dir else { return };
+        match crate::selfupdate::take_outcome(dir) {
+            Some(crate::selfupdate::Outcome::Installed(v)) if v == current_version() => toasts.success(trf("DBiji was updated to version {}", &[&v])),
+            Some(crate::selfupdate::Outcome::Installed(_)) | None => {}
+            Some(crate::selfupdate::Outcome::Cancelled) => {
+                self.install = Install::Failed(tr("The update was not installed because no administrator password was entered.").to_string());
+                self.install_visible = true;
+            }
+            Some(crate::selfupdate::Outcome::Failed(reason)) => {
+                self.install = Install::Failed(trf("The update could not be installed: {}", &[&reason]));
+                self.install_visible = true;
+            }
+        }
+    }
+
+    /// Download and check the release's archive in the background.
+    #[cfg(target_os = "macos")]
+    fn start_install(&mut self, backend: &Backend, release: Release) {
+        let Some(asset) = release.archive.clone() else { return };
+        let stage = std::sync::Arc::new(parking_lot::Mutex::new(crate::selfupdate::Stage::Starting));
+        let (st, version) = (stage.clone(), release.version.clone());
+        let job =
+            backend.spawn(async move { tokio::task::spawn_blocking(move || crate::selfupdate::download(&version, &asset, &st)).await.unwrap_or_else(|e| Err(e.to_string())) });
+        self.install = Install::Downloading { release, stage, job };
+        self.install_visible = true;
+    }
+
+    /// Progress, "ready to install" and errors of an update; true when a
+    /// dialog is on screen.
+    #[cfg(target_os = "macos")]
+    fn install_ui(&mut self, ctx: &Context, backend: &Backend) -> bool {
+        let _ = backend;
+        if let Install::Downloading { job, .. } = &mut self.install {
+            match job.poll() {
+                Some(Ok(prepared)) => {
+                    let Install::Downloading { release, .. } = std::mem::take(&mut self.install) else { unreachable!() };
+                    self.install = Install::Ready { release, prepared };
+                    self.install_visible = true;
+                }
+                Some(Err(e)) => {
+                    self.install = Install::Failed(trf("The update could not be installed: {}", &[&e]));
+                    self.install_visible = true;
+                }
+                None => ctx.request_repaint_after(Duration::from_millis(200)),
+            }
+        }
+        if !self.install_visible || matches!(self.install, Install::Idle) {
+            return false;
+        }
+        let mut hide = false;
+        let mut restart = false;
+        let mut dismiss = false;
+        let modal = egui::Modal::new(egui::Id::new("dbiji_update_install")).show(ctx, |ui| {
+            ui.set_width(460.0);
+            match &self.install {
+                Install::Downloading { release, stage, .. } => {
+                    ui.heading(trf("Updating to DBiji {}", &[&release.version]));
+                    ui.add_space(6.0);
+                    let (fraction, text) = match stage.lock().clone() {
+                        crate::selfupdate::Stage::Starting => (0.0, tr("Starting…").to_string()),
+                        crate::selfupdate::Stage::Downloading { done, total } => (
+                            if total > 0 { done as f32 / total as f32 } else { 0.0 },
+                            trf("Downloading… {} of {}", &[&crate::widgets::format_bytes(done as i64), &crate::widgets::format_bytes(total as i64)]),
+                        ),
+                        crate::selfupdate::Stage::Verifying => (1.0, tr("Verifying…").to_string()),
+                    };
+                    ui.add(egui::ProgressBar::new(fraction));
+                    ui.weak(text);
+                    ui.add_space(8.0);
+                    if ui.button(tr("Hide")).on_hover_text(tr("The download goes on; the toolbar shows its progress")).clicked() {
+                        hide = true;
+                    }
+                }
+                Install::Ready { release, .. } => {
+                    ui.heading(trf("DBiji {} is ready to install", &[&release.version]));
+                    ui.label(tr("DBiji will quit, install the new version and open again. You are asked about unsaved scripts first."));
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        let accent = ui.visuals().selection.stroke.color;
+                        let on_accent = if ui.visuals().dark_mode { egui::Color32::BLACK } else { egui::Color32::WHITE };
+                        if ui.add(egui::Button::new(RichText::new(tr("Restart now")).color(on_accent).strong()).fill(accent)).clicked() {
+                            restart = true;
+                        }
+                        if ui.button(tr("Later")).clicked() {
+                            hide = true;
+                        }
+                    });
+                }
+                Install::Failed(e) => {
+                    ui.heading(tr("Software update"));
+                    ui.colored_label(ui.visuals().error_fg_color, e.as_str());
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if ui.button(tr("OK")).clicked() {
+                            dismiss = true;
+                        }
+                        if ui.button(tr("Open the releases page")).clicked() {
+                            ctx.open_url(egui::OpenUrl::new_tab(RELEASES_PAGE));
+                        }
+                    });
+                }
+                Install::Idle => {}
+            }
+        });
+        if modal.should_close() {
+            hide = true;
+        }
+        if restart && let Install::Ready { prepared, .. } = &self.install {
+            let launched = match (crate::selfupdate::installed_bundle(), &self.data_dir) {
+                (Some(bundle), Some(dir)) => crate::selfupdate::launch_installer(prepared, &bundle, dir),
+                _ => Err(tr("DBiji is not installed as an app").to_string()),
+            };
+            match launched {
+                Ok(()) => {
+                    self.restart = true;
+                    hide = true;
+                }
+                Err(e) => self.install = Install::Failed(trf("The update could not be installed: {}", &[&e])),
+            }
+        }
+        if dismiss || (hide && matches!(self.install, Install::Failed(_))) {
+            self.install = Install::Idle;
+        }
+        if hide || dismiss {
+            self.install_visible = false;
+        }
+        true
     }
 }
 
@@ -394,11 +716,19 @@ mod tests {
     #[test]
     fn release_json() {
         let json = r####"{"tag_name":"v0.3.0","html_url":"https://github.com/ilhamnadhif/dbiji/releases/tag/v0.3.0","draft":false,"prerelease":false,
-            "body":"### Fixed\r\n- Things","assets":[{"browser_download_url":"https://x/DBiji-0.3.0.zip"},{"browser_download_url":"https://x/DBiji-0.3.0.dmg"}]}"####;
+            "published_at":"2026-12-01T08:00:00Z","body":"### Fixed\r\n- Things","assets":[
+            {"name":"DBiji-0.3.0.zip","size":1234,"digest":"sha256:ABCD","browser_download_url":"https://x/DBiji-0.3.0.zip"},
+            {"name":"DBiji-0.3.0.dmg","size":2345,"browser_download_url":"https://x/DBiji-0.3.0.dmg"}]}"####;
         let r = parse_release(json).unwrap();
         assert_eq!(r.version, "0.3.0");
         assert_eq!(r.download_url.as_deref(), Some("https://x/DBiji-0.3.0.dmg"));
         assert_eq!(r.notes, "### Fixed\n- Things");
+        assert_eq!(r.date.as_deref(), Some("2026-12-01"));
+        let a = r.archive.unwrap();
+        assert_eq!((a.name.as_str(), a.url.as_str(), a.size, a.sha256.as_deref()), ("DBiji-0.3.0.zip", "https://x/DBiji-0.3.0.zip", 1234, Some("abcd")));
+        // no archive for this version: download only
+        let other = json.replace("DBiji-0.3.0.zip", "DBiji-0.2.0.zip");
+        assert!(parse_release(&other).unwrap().archive.is_none());
         assert!(parse_release(r#"{"tag_name":"v9","prerelease":true}"#).is_none());
         assert!(parse_release("not json").is_none());
     }
@@ -423,5 +753,11 @@ mod tests {
         s.updates.check_automatically = Some(false);
         assert!(!u.start(&backend, &mut s, true));
         assert!(u.whats_new.is_none() && !u.ask && !u.checking());
+        // checking automatically: every start checks (the 6-hourly ones follow while open)
+        s.updates.check_automatically = Some(true);
+        s.updates.last_check = Some(now_secs());
+        let mut u = Updates::default();
+        u.start(&backend, &mut s, true);
+        assert!(u.checking() && u.launch_check);
     }
 }

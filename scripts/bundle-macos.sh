@@ -98,6 +98,12 @@ else
 fi
 codesign --verify --verbose=2 "$APP"
 
+echo "==> Creating the update archive"
+# The in-app updater downloads this (the release asset DBiji-<version>.zip).
+ZIP="$DIST/DBiji-${VERSION}.zip"
+rm -f "$ZIP"
+ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
+
 echo "==> Creating DMG"
 DMG="$DIST/DBiji-${VERSION}.dmg"
 rm -f "$DMG"
@@ -118,4 +124,4 @@ fi
 
 SIZE=$(du -h "$APP/Contents/MacOS/dbiji" | cut -f1)
 echo "==> Done: $DMG (binary size $SIZE)"
-shasum -a 256 "$DMG"
+shasum -a 256 "$DMG" "$ZIP"

@@ -998,6 +998,7 @@ fn themes_whats_new_and_updates() {
         url: "https://github.com/ilhamnadhif/dbiji/releases/tag/v99.0.0".into(),
         download_url: Some("https://github.com/ilhamnadhif/dbiji/releases/download/v99.0.0/DBiji-99.0.0.dmg".into()),
         notes: "### New\n- Everything".into(),
+        ..Default::default()
     };
     h.state_mut().updates.available = Some(release.clone());
     frames(&mut h, 2);
@@ -1024,6 +1025,15 @@ fn themes_whats_new_and_updates() {
     }
     assert!(!has(&h, "A new version of DBiji is available"));
     assert_eq!(opened.as_deref(), release.download_url.as_deref());
+    // A release found by a later check lights up the toolbar's Update button.
+    h.state_mut().updates.found = Some(release.clone());
+    frames(&mut h, 2);
+    click(&mut h, "Update 99.0.0");
+    assert!(has(&h, "Skip this version"), "{:?}", labels(&h));
+    // Not installed in /Applications (a test binary): offered as a download.
+    assert!(!has(&h, "Install update"));
+    click(&mut h, "Remind me later");
+    h.state_mut().updates.found = None;
     // Help › Check for updates… (offline in tests) reports the result.
     pause(&mut h);
     h.query_all_by_label("Help").next().unwrap().click();

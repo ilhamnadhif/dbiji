@@ -26,6 +26,8 @@ pub mod project_view;
 pub mod results;
 pub mod router;
 pub mod sample;
+#[cfg(target_os = "macos")]
+pub mod selfupdate;
 pub mod services;
 pub mod sqllang;
 pub mod sqlprep;

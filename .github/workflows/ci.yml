@@ -137,4 +137,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: dmg
-          path: dist/*.dmg
+          path: |
+            dist/*.dmg
+            dist/*.zip

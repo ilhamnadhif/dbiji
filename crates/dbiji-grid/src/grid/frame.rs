@@ -10,7 +10,7 @@ use egui::{FontId, Id, Pos2, Rect, Sense, TextStyle, Ui, Vec2, pos2, vec2};
 use std::ops::Range;
 
 /// Thickness of the scroll bars.
-pub(super) const BAR: f32 = 10.0;
+pub(super) const BAR: f32 = 12.0;
 /// Horizontal cell padding.
 pub(super) const PAD: f32 = 5.0;
 

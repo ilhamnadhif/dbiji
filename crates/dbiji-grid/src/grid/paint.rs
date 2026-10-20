@@ -587,21 +587,22 @@ impl GridFrame<'_> {
 
     fn paint_scrollbars(&mut self, ui: &Ui, geo: &Geo) {
         let painter = ui.painter_at(geo.rect);
-        let v = ui.visuals();
-        let track_c = mix(self.theme.bg, self.theme.text, 0.04);
+        // A thumb that stands out from the track in both themes, stronger when used.
+        let track_c = mix(self.theme.bg, self.theme.text, 0.05);
+        let (thumb_c, active_c) = (mix(self.theme.bg, self.theme.text, 0.32), mix(self.theme.bg, self.theme.text, 0.55));
         let hover_pos = ui.input(|i| i.pointer.hover_pos());
         if let Some(bar) = geo.vbar {
             painter.rect_filled(bar, 0.0, track_c);
             let (thumb, _) = self.v_thumb(bar);
             let active = matches!(self.state.rt.drag, Drag::VThumb { .. }) || hover_pos.is_some_and(|p| bar.contains(p));
-            let c = if active { v.widgets.hovered.bg_fill } else { v.widgets.inactive.bg_fill };
+            let c = if active { active_c } else { thumb_c };
             painter.rect_filled(thumb.shrink2(vec2(1.0, 0.0)), CornerRadius::same(4), c);
         }
         if let Some(bar) = geo.hbar {
             painter.rect_filled(bar, 0.0, track_c);
             let (thumb, _) = self.h_thumb(bar);
             let active = matches!(self.state.rt.drag, Drag::HThumb { .. }) || hover_pos.is_some_and(|p| bar.contains(p));
-            let c = if active { v.widgets.hovered.bg_fill } else { v.widgets.inactive.bg_fill };
+            let c = if active { active_c } else { thumb_c };
             painter.rect_filled(thumb.shrink2(vec2(0.0, 1.0)), CornerRadius::same(4), c);
         }
         if let (Some(v), Some(h)) = (geo.vbar, geo.hbar) {

@@ -187,8 +187,9 @@ fn cell_text(v: &Value, col: &CopyColumn, opts: &CopyOptions, fmt: &FormatOption
         full.binary_max_len = usize::MAX;
 
         match v {
-            // `display` shows only the first line of multi-line text.
-            Value::Text(_) | Value::Json(_) => v.to_text().into_owned(),
+            // `display` shows only the first line of multi-line text;
+            // booleans are copied as true / false, not as check boxes.
+            Value::Text(_) | Value::Json(_) | Value::Bool(_) => v.to_text().into_owned(),
             _ => format_value(v, &full, col.format.as_ref()).into_owned(),
         }
     } else {

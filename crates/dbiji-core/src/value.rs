@@ -177,8 +177,8 @@ pub enum BinaryFormat {
 /// How booleans are rendered in the grid.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum BoolStyle {
-    #[default]
     TrueFalse,
+    #[default]
     Checkbox,
     OneZero,
 }
@@ -201,6 +201,9 @@ pub struct FormatOptions {
     pub binary_max_len: usize,
     /// Text longer than this is truncated in grid cells (the value panel shows everything).
     pub max_text_len: usize,
+    /// Saved as `bool_display`: settings of earlier versions (true / false
+    /// by default) switch to the check boxes once.
+    #[serde(rename = "bool_display")]
     pub bool_style: BoolStyle,
 }
 
@@ -217,7 +220,7 @@ impl Default for FormatOptions {
             binary_format: BinaryFormat::Hex,
             binary_max_len: 64,
             max_text_len: 512,
-            bool_style: BoolStyle::TrueFalse,
+            bool_style: BoolStyle::Checkbox,
         }
     }
 }

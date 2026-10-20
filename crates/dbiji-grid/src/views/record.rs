@@ -17,8 +17,9 @@ fn value_text(v: &Value, is_default: bool, modified: bool, fmt: &PreparedFormat,
         RichText::new(options.format.null_text.clone()).italics().color(theme.weak)
     } else {
         match v {
-            Value::Bool(true) => RichText::new(format!("{}  true", icon::CHECK_SQUARE)).color(theme.bool_true),
-            Value::Bool(false) => RichText::new(format!("{}  false", icon::SQUARE)).color(theme.text),
+            // A check box only (its state is the value).
+            Value::Bool(true) => RichText::new(icon::CHECK_SQUARE).size(17.0).color(theme.bool_true),
+            Value::Bool(false) => RichText::new(icon::SQUARE).size(17.0).color(theme.weak),
             Value::Json(s) => RichText::new(s.to_string()).monospace().color(theme.text),
             Value::Text(s) => RichText::new(clip(s)).color(theme.text),
             other => RichText::new(clip(&fmt.format(other))).color(theme.text),

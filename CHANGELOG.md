@@ -3,6 +3,12 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.8 — 2026-10-20
+
+### Changed
+- Scroll bars are easy to see: the data grid's thumb stands out from its track in both themes (stronger while hovered or dragged), and the other scroll bars stay visible instead of appearing only on hover.
+- Booleans are check boxes (☑ / ☐) in the grid and the record view, without the words; Settings → Result sets still offers true / false or 1 / 0. Copying a boolean still gives true / false.
+
 ## 0.3.7 — 2026-10-20
 
 ### Changed

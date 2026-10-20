@@ -65,6 +65,16 @@ pub fn apply_theme(ctx: &Context, choice: ThemeChoice, high_contrast: bool) {
             style.spacing.button_padding = egui::vec2(6.0, 2.0);
             style.spacing.interact_size.y = 20.0;
             style.interaction.tooltip_delay = 0.4;
+            // Scroll bars stay visible (egui shows them only on hover), wider when used.
+            style.spacing.scroll = egui::style::ScrollStyle {
+                floating_width: 6.0,
+                bar_width: 10.0,
+                dormant_handle_opacity: 0.55,
+                active_handle_opacity: 0.8,
+                interact_handle_opacity: 1.0,
+                foreground_color: true,
+                ..egui::style::ScrollStyle::floating()
+            };
             style.visuals = visuals(theme);
             let v = &mut style.visuals;
             v.window_highlight_topmost = true;

@@ -375,8 +375,15 @@ impl DbijiApp {
 
     fn process_commands(&mut self, ctx: &egui::Context) {
         #[cfg(target_os = "macos")]
-        if let Some(menu) = &self.app_menu {
-            self.commands.extend(menu.commands());
+        {
+            let actions = self.app_menu.as_mut().map(|m| m.actions()).unwrap_or_default();
+            for a in actions {
+                self.run_menu_action(ctx, a);
+            }
+            let state = self.menu_state();
+            if let Some(menu) = &mut self.app_menu {
+                menu.sync(&state);
+            }
         }
         let commands = std::mem::take(&mut self.commands);
         for cmd in commands {
@@ -1187,175 +1194,177 @@ impl DbijiApp {
         }
     }
 
+    /// The connection the Database menu works on: the selected one, when connected.
+    fn menu_connection(&self) -> Option<String> {
+        self.selected_connection().filter(|c| self.conns.is_connected(c))
+    }
+
+    /// The state of the main menu's items (enabled, checked).
+    pub(crate) fn menu_state(&self) -> crate::menu::MenuState {
+        let (new_database, new_schema) = self.menu_connection().as_deref().and_then(|c| self.conns.live(c)).map_or((false, false), |l| {
+            let probe = dbiji_core::NewDatabase { name: "x".into(), ..Default::default() };
+            (l.dialect.create_database_sql(&probe).is_some(), l.dialect.create_schema_sql("x", None).is_some())
+        });
+        crate::menu::MenuState {
+            new_database,
+            new_schema,
+            properties: self.settings.navigator.show_properties,
+            theme: self.settings.general.theme,
+            diagnostics: self.diagnostics.is_none(),
+            updates: !self.updates.checking(),
+        }
+    }
+
+    /// Run an item of the main menu (the in-window one or macOS's).
+    pub(crate) fn run_menu_action(&mut self, ctx: &egui::Context, action: crate::menu::MenuAction) {
+        use crate::menu::MenuAction as M;
+        let cmd = match action {
+            M::NewSqlEditor => Some(AppCommand::NewSqlEditor { connection: None, schema: None, text: None }),
+            M::OpenScript => rfd::FileDialog::new().add_filter("SQL", &["sql"]).pick_file().map(AppCommand::OpenScript),
+            M::Settings => Some(AppCommand::OpenSettings),
+            M::Quit => Some(AppCommand::Quit),
+            M::NewConnection => Some(AppCommand::NewConnection { kind: None, folder: None }),
+            M::ImportConnections => Some(AppCommand::ImportConnections),
+            M::NewDatabase => self.menu_connection().map(|c| AppCommand::NewDatabase { connection: c }),
+            M::NewSchema => {
+                let database = self.nav.selected_schema().and_then(|s| s.database);
+                self.menu_connection().map(|c| AppCommand::NewSchema { connection: c, database })
+            }
+            M::DisconnectAll => Some(AppCommand::DisconnectAll),
+            M::PendingTransactions => {
+                self.pending_tx.open = true;
+                None
+            }
+            M::CompareSchemas => Some(AppCommand::OpenSchemaCompare { connection: None, schema: None }),
+            M::CompareData => Some(AppCommand::OpenDataCompare { connection: None, table: None }),
+            M::Search => Some(AppCommand::OpenSearch { connection: None, data: false }),
+            M::QueryHistory => Some(AppCommand::OpenHistory),
+            M::Tasks => Some(AppCommand::OpenTasks),
+            M::AiAssistant => Some(AppCommand::OpenAiAssistant { connection: self.nav.selected.as_ref().and_then(|n| n.connection()).map(str::to_string) }),
+            M::BackgroundOperations => Some(AppCommand::ToggleOperations),
+            M::ToggleNavigator => Some(AppCommand::ToggleNavigator),
+            M::PropertiesPanel => {
+                self.settings.navigator.show_properties = !self.settings.navigator.show_properties;
+                self.save_settings();
+                None
+            }
+            M::Theme(t) => {
+                self.set_theme(ctx, t);
+                None
+            }
+            M::CommandPalette => Some(AppCommand::ShowPalette),
+            M::KeyboardShortcuts => Some(AppCommand::ShowShortcuts),
+            M::DatabaseDrivers => {
+                self.dialogs.drivers_open = true;
+                None
+            }
+            M::CreateSampleDatabase => Some(AppCommand::CreateSampleDatabase),
+            M::TipOfTheDay => {
+                self.show_tip();
+                None
+            }
+            M::ErrorLog => {
+                self.open_tab(Box::new(crate::tabs::errorlog::ErrorLogTab::new()));
+                None
+            }
+            M::CollectDiagnostics => {
+                if self.diagnostics.is_none() {
+                    self.collect_diagnostics(None);
+                }
+                None
+            }
+            M::WhatsNew => {
+                self.updates.show_whats_new();
+                None
+            }
+            M::CheckForUpdates => Some(AppCommand::CheckForUpdates),
+            M::About => Some(AppCommand::ShowAbout),
+        };
+        if let Some(c) = cmd {
+            self.commands.push(c);
+        }
+    }
+
+    /// The in-window menu bar (macOS shows the same menus in its own menu bar instead).
     fn menu_bar(&mut self, ui: &mut Ui) {
+        use crate::menu::MenuAction as M;
+        let state = self.menu_state();
+        let chosen: std::cell::Cell<Option<M>> = std::cell::Cell::new(None);
         egui::MenuBar::new().ui(ui, |ui| {
+            // An item: an optional (coloured) icon and its text.
+            let item = |ui: &mut Ui, enabled: bool, glyph: Option<&str>, text: &str, action: M| {
+                let button = match glyph {
+                    Some(g) => egui::Button::new((dbiji_icons::ic(g), text)),
+                    None => egui::Button::new(text),
+                };
+                if ui.add_enabled(enabled, button).clicked() {
+                    chosen.set(Some(action));
+                    ui.close();
+                }
+            };
             ui.menu_button(tr("File"), |ui| {
-                if ui.button((dbiji_icons::ic(icon::FILE_SQL), tr("New SQL editor"))).clicked() {
-                    self.commands.push(AppCommand::NewSqlEditor { connection: None, schema: None, text: None });
-                    ui.close();
-                }
-                if ui.button((dbiji_icons::ic(icon::FOLDER_OPEN), tr("Open script…"))).clicked() {
-                    if let Some(path) = rfd::FileDialog::new().add_filter("SQL", &["sql"]).pick_file() {
-                        self.commands.push(AppCommand::OpenScript(path));
-                    }
-                    ui.close();
-                }
+                item(ui, true, Some(icon::FILE_SQL), tr("New SQL editor"), M::NewSqlEditor);
+                item(ui, true, Some(icon::FOLDER_OPEN), tr("Open script…"), M::OpenScript);
                 ui.separator();
-                if ui.button((dbiji_icons::ic(icon::GEAR), tr("Settings…"))).clicked() {
-                    self.commands.push(AppCommand::OpenSettings);
-                    ui.close();
-                }
+                item(ui, true, Some(icon::GEAR), tr("Settings…"), M::Settings);
                 ui.separator();
-                if ui.button(tr("Quit")).clicked() {
-                    self.commands.push(AppCommand::Quit);
-                    ui.close();
-                }
+                item(ui, true, None, tr("Quit"), M::Quit);
             });
             ui.menu_button(tr("Database"), |ui| {
-                if ui.button((dbiji_icons::ic(icon::PLUS), tr("New connection…"))).clicked() {
-                    self.commands.push(AppCommand::NewConnection { kind: None, folder: None });
-                    ui.close();
-                }
-                if ui.button((dbiji_icons::ic(icon::DOWNLOAD_SIMPLE), tr("Import connections…"))).clicked() {
-                    self.commands.push(AppCommand::ImportConnections);
-                    ui.close();
-                }
+                item(ui, true, Some(icon::PLUS), tr("New connection…"), M::NewConnection);
+                item(ui, true, Some(icon::DOWNLOAD_SIMPLE), tr("Import connections…"), M::ImportConnections);
                 ui.separator();
-                let conn = self.selected_connection().filter(|c| self.conns.is_connected(c));
-                // What the selected server can create.
-                let (db_ok, schema_ok, file_based) = conn.as_deref().and_then(|c| self.conns.live(c)).map_or((false, false, false), |l| {
-                    let probe = dbiji_core::NewDatabase { name: "x".into(), ..Default::default() };
-                    (l.dialect.create_database_sql(&probe).is_some(), l.dialect.create_schema_sql("x", None).is_some(), l.config.kind.is_file_based())
-                });
-                let why = if conn.is_none() {
-                    tr("Select a connected connection in the navigator first.")
-                } else if file_based {
-                    tr("A database of this type is a file: use New connection and choose a new file.")
-                } else {
-                    tr("Not supported by this database type.")
-                };
-                let resp = ui.add_enabled(db_ok, egui::Button::new((dbiji_icons::ic(icon::DATABASE), tr("New database…")))).on_disabled_hover_text(why);
-                if resp.clicked()
-                    && let Some(c) = conn.clone()
-                {
-                    self.commands.push(AppCommand::NewDatabase { connection: c });
-                    ui.close();
-                }
-                if ui.add_enabled(schema_ok, egui::Button::new((dbiji_icons::ic(icon::STACK), tr("New schema…")))).on_disabled_hover_text(why).clicked()
-                    && let Some(c) = conn
-                {
-                    let database = self.nav.selected_schema().and_then(|s| s.database);
-                    self.commands.push(AppCommand::NewSchema { connection: c, database });
-                    ui.close();
-                }
+                item(ui, state.new_database, Some(icon::DATABASE), tr("New database…"), M::NewDatabase);
+                item(ui, state.new_schema, Some(icon::STACK), tr("New schema…"), M::NewSchema);
                 ui.separator();
-                if ui.button((dbiji_icons::ic(icon::PLUGS), tr("Disconnect all"))).clicked() {
-                    self.commands.push(AppCommand::DisconnectAll);
-                    ui.close();
-                }
-                if ui.button((dbiji_icons::ic(icon::QUEUE), tr("Pending transactions…"))).clicked() {
-                    self.pending_tx.open = true;
-                    ui.close();
-                }
+                item(ui, true, Some(icon::PLUGS), tr("Disconnect all"), M::DisconnectAll);
+                item(ui, true, Some(icon::QUEUE), tr("Pending transactions…"), M::PendingTransactions);
                 ui.separator();
-                if ui.button((dbiji_icons::ic(icon::GIT_DIFF), tr("Compare schemas…"))).clicked() {
-                    self.commands.push(AppCommand::OpenSchemaCompare { connection: None, schema: None });
-                    ui.close();
-                }
-                if ui.button((dbiji_icons::ic(icon::ARROWS_LEFT_RIGHT), tr("Compare data…"))).clicked() {
-                    self.commands.push(AppCommand::OpenDataCompare { connection: None, table: None });
-                    ui.close();
-                }
-                if ui.button((dbiji_icons::ic(icon::MAGNIFYING_GLASS), tr("Search…"))).clicked() {
-                    self.commands.push(AppCommand::OpenSearch { connection: None, data: false });
-                    ui.close();
-                }
+                item(ui, true, Some(icon::GIT_DIFF), tr("Compare schemas…"), M::CompareSchemas);
+                item(ui, true, Some(icon::ARROWS_LEFT_RIGHT), tr("Compare data…"), M::CompareData);
+                item(ui, true, Some(icon::MAGNIFYING_GLASS), tr("Search…"), M::Search);
             });
             ui.menu_button(tr("Tools"), |ui| {
-                if ui.button((dbiji_icons::ic(icon::CLOCK_COUNTER_CLOCKWISE), tr("Query history"))).clicked() {
-                    self.commands.push(AppCommand::OpenHistory);
-                    ui.close();
-                }
-                if ui.button((dbiji_icons::ic(icon::LIST_CHECKS), tr("Tasks"))).clicked() {
-                    self.commands.push(AppCommand::OpenTasks);
-                    ui.close();
-                }
-                if ui.button((dbiji_icons::ic(icon::SPARKLE), tr("AI assistant"))).clicked() {
-                    let conn = self.nav.selected.as_ref().and_then(|n| n.connection()).map(str::to_string);
-                    self.commands.push(AppCommand::OpenAiAssistant { connection: conn });
-                    ui.close();
-                }
-                if ui.button((dbiji_icons::ic(icon::HOURGLASS), tr("Background operations"))).clicked() {
-                    self.commands.push(AppCommand::ToggleOperations);
-                    ui.close();
-                }
+                item(ui, true, Some(icon::CLOCK_COUNTER_CLOCKWISE), tr("Query history"), M::QueryHistory);
+                item(ui, true, Some(icon::LIST_CHECKS), tr("Tasks"), M::Tasks);
+                item(ui, true, Some(icon::SPARKLE), tr("AI assistant"), M::AiAssistant);
+                item(ui, true, Some(icon::HOURGLASS), tr("Background operations"), M::BackgroundOperations);
             });
             ui.menu_button(tr("View"), |ui| {
-                if ui.button(tr("Toggle navigator")).clicked() {
-                    self.commands.push(AppCommand::ToggleNavigator);
-                    ui.close();
-                }
-                let mut props = self.settings.navigator.show_properties;
+                item(ui, true, None, tr("Toggle navigator"), M::ToggleNavigator);
+                let mut props = state.properties;
                 if ui.checkbox(&mut props, tr("Properties panel")).clicked() {
-                    self.settings.navigator.show_properties = props;
-                    self.save_settings();
+                    chosen.set(Some(M::PropertiesPanel));
                     ui.close();
                 }
                 ui.menu_button((dbiji_icons::ic(icon::CIRCLE_HALF), tr("Theme")), |ui| {
                     use dbiji_config::settings::Theme;
                     for (t, label) in [(Theme::System, tr("System")), (Theme::Light, tr("Light")), (Theme::Dark, tr("Dark"))] {
-                        if ui.radio(self.settings.general.theme == t, label).clicked() {
-                            self.set_theme(ui.ctx(), t);
+                        if ui.radio(state.theme == t, label).clicked() {
+                            chosen.set(Some(M::Theme(t)));
                             ui.close();
                         }
                     }
                 });
-                if ui.button(tr("Command palette")).clicked() {
-                    self.commands.push(AppCommand::ShowPalette);
-                    ui.close();
-                }
+                item(ui, true, None, tr("Command palette"), M::CommandPalette);
             });
             ui.menu_button(tr("Help"), |ui| {
-                if ui.button(tr("Keyboard shortcuts")).clicked() {
-                    self.commands.push(AppCommand::ShowShortcuts);
-                    ui.close();
-                }
-                if ui.button(tr("Database drivers")).clicked() {
-                    self.dialogs.drivers_open = true;
-                    ui.close();
-                }
-                if ui.button(tr("Create sample database")).clicked() {
-                    self.commands.push(AppCommand::CreateSampleDatabase);
-                    ui.close();
-                }
-                if ui.button((dbiji_icons::ic(icon::LIGHTBULB), tr("Tip of the day"))).clicked() {
-                    self.show_tip();
-                    ui.close();
-                }
+                item(ui, true, None, tr("Keyboard shortcuts"), M::KeyboardShortcuts);
+                item(ui, true, None, tr("Database drivers"), M::DatabaseDrivers);
+                item(ui, true, None, tr("Create sample database"), M::CreateSampleDatabase);
+                item(ui, true, Some(icon::LIGHTBULB), tr("Tip of the day"), M::TipOfTheDay);
                 ui.separator();
-                if ui.button((dbiji_icons::ic(icon::WARNING_OCTAGON), tr("Error log"))).clicked() {
-                    self.open_tab(Box::new(crate::tabs::errorlog::ErrorLogTab::new()));
-                    ui.close();
-                }
-                if ui.add_enabled(self.diagnostics.is_none(), egui::Button::new((dbiji_icons::ic(icon::FILE_ZIP), tr("Collect diagnostic info")))).clicked() {
-                    self.collect_diagnostics(None);
-                    ui.close();
-                }
+                item(ui, true, Some(icon::WARNING_OCTAGON), tr("Error log"), M::ErrorLog);
+                item(ui, state.diagnostics, Some(icon::FILE_ZIP), tr("Collect diagnostic info"), M::CollectDiagnostics);
                 ui.separator();
-                if ui.button((dbiji_icons::ic(icon::SPARKLE), tr("What's new"))).clicked() {
-                    self.updates.show_whats_new();
-                    ui.close();
-                }
-                if ui.add_enabled(!self.updates.checking(), egui::Button::new((dbiji_icons::ic(icon::ARROW_CIRCLE_UP), tr("Check for updates…")))).clicked() {
-                    self.commands.push(AppCommand::CheckForUpdates);
-                    ui.close();
-                }
-                if ui.button(tr("About DBiji")).clicked() {
-                    self.commands.push(AppCommand::ShowAbout);
-                    ui.close();
-                }
+                item(ui, true, Some(icon::SPARKLE), tr("What's new"), M::WhatsNew);
+                item(ui, state.updates, Some(icon::ARROW_CIRCLE_UP), tr("Check for updates…"), M::CheckForUpdates);
+                item(ui, true, None, tr("About DBiji"), M::About);
             });
         });
+        if let Some(a) = chosen.get() {
+            self.run_menu_action(ui.ctx(), a);
+        }
     }
 
     /// Whether a toolbar action can run now, with the reason when not.
@@ -1626,7 +1635,14 @@ impl eframe::App for DbijiApp {
             self.open_path(&path, false);
         }
 
-        egui::Panel::top("dbiji_menu").show(ui, |ui| self.menu_bar(ui));
+        // On macOS the menus are in the system's menu bar (as in DBeaver).
+        #[cfg(target_os = "macos")]
+        let native_menu = self.app_menu.is_some();
+        #[cfg(not(target_os = "macos"))]
+        let native_menu = false;
+        if !native_menu {
+            egui::Panel::top("dbiji_menu").show(ui, |ui| self.menu_bar(ui));
+        }
         egui::Panel::top("dbiji_toolbar").show(ui, |ui| self.toolbar(ui));
         egui::Panel::bottom("dbiji_status").exact_size(24.0).show(ui, |ui| self.status_bar(ui));
 

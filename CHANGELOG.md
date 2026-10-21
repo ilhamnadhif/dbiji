@@ -3,6 +3,12 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.17 — 2026-10-21
+
+### Changed
+- macOS: File, Database, Tools, View and Help are in the system's menu bar, as in DBeaver, with a Window menu (Minimize, Zoom, Full Screen) and the menu search of Help; the menu row inside the window is gone. New database / New schema are on only when the selected connection can create one, and the check marks follow the properties panel and the theme. Windows and Linux keep the in-window menu.
+- Copying from the Calc panel: a copy button at the end of the hovered row ("Copied" confirms it), a click selects a row (Shift / ⌘ more) and ⌘C copies the selected values, a double click copies too, and the right-click menu copies a value, the name and value, or the whole table (tab separated). Values are copied plain: 1234, not "1,234"; the mode without its count.
+
 ## 0.3.16 — 2026-10-21
 
 ### Changed

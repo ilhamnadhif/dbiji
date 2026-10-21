@@ -310,3 +310,28 @@ fn references_panel_requests_and_shows_related_rows() {
     ui.run(vec![], Modifiers::NONE, |ui| actions = ReferencesPanel::new(&model, &grid, &mut state).show(ui));
     assert!(actions.is_empty());
 }
+
+#[test]
+fn calc_values_copy() {
+    let mut v = Viewer::new(editable_model(10));
+    v.state.grid.select_cell(2, 0);
+    v.state.open_panel(PanelKind::Calc);
+    v.frame(vec![]);
+    v.frame(vec![]);
+    let copied = |v: &Viewer| {
+        v.output.commands.iter().find_map(|c| match c {
+            egui::OutputCommand::CopyText(t) => Some(t.clone()),
+            _ => None,
+        })
+    };
+    // A click selects the row, ⌘C copies its value.
+    let count = v.find("Count: 1").expect("count row");
+    v.click(count);
+    v.frame(vec![Event::Copy]);
+    assert_eq!(copied(&v).as_deref(), Some("1"));
+    // The copy button at the end of a hovered row.
+    let bounds = v.output.accesskit_update.as_ref().and_then(|u| u.nodes.iter().find_map(|(_, n)| n.label().or(n.value()).filter(|l| l.starts_with("Distinct")).and(n.bounds())));
+    let button = bounds.map(|b| egui::pos2(b.x1 as f32 - 14.0, ((b.y0 + b.y1) / 2.0) as f32)).expect("distinct row");
+    v.click(button);
+    assert_eq!(copied(&v).as_deref(), Some("1"));
+}

@@ -393,3 +393,8 @@ Mode	Modus
 {} (×{})	{} (×{})
 Server: the database filters and sorts. The query runs again with your WHERE / ORDER BY, over all rows of the table.	Server: database yang memfilter dan mengurutkan. Query dijalankan ulang dengan WHERE / ORDER BY Anda, atas semua baris tabel.
 Client: DBiji filters and sorts the rows already fetched, without asking the database. Fast, but only those rows.	Client: DBiji memfilter dan mengurutkan baris yang sudah diambil, tanpa bertanya ke database. Cepat, tapi hanya baris itu.
+Copy: click a row and press {}, or the copy button at its end, or right-click.	Salin: klik baris lalu tekan {}, atau tombol salin di ujungnya, atau klik kanan.
+Copy value	Salin nilai
+Copy name and value	Salin nama dan nilai
+Copy all	Salin semua
+Copied	Tersalin

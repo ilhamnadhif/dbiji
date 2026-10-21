@@ -21,6 +21,7 @@ pub mod headless;
 pub mod keys;
 #[cfg(target_os = "macos")]
 pub mod macmenu;
+pub mod menu;
 pub mod nav;
 pub mod ops;
 pub mod palette;

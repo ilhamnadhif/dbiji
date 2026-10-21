@@ -141,7 +141,19 @@ impl ResultSource {
                 self.fetch_job = None;
                 match res {
                     Ok(b) => {
-                        if let Some(cols) = b.columns
+                        let mut columns = b.columns;
+                        // The same columns without their tables (a driver that did not look them
+                        // up again) keep the known ones: the result stays editable.
+                        if let Some(cols) = columns.as_mut()
+                            && cols.len() == self.columns.len()
+                            && cols.iter().all(|c| c.source.is_none())
+                            && cols.iter().zip(&self.columns).all(|(a, b)| a.name == b.name && a.type_name == b.type_name)
+                        {
+                            for (c, old) in cols.iter_mut().zip(&self.columns) {
+                                c.source = old.source.clone();
+                            }
+                        }
+                        if let Some(cols) = columns
                             && cols.iter().map(|c| (&c.name, &c.type_name, &c.source)).ne(self.columns.iter().map(|c| (&c.name, &c.type_name, &c.source)))
                         {
                             self.columns = cols;
@@ -254,7 +266,9 @@ async fn fetch_rows(
         return Ok(FetchBatch { added: 0, exhausted: true, token: None, messages: vec![m], columns: None });
     }
     if reopen {
-        let ex = session.execute(&sql, &params, &ExecOptions::default()).await?;
+        // With the columns' tables: without them the result would turn read-only after a
+        // refresh, a server-side filter or sort, or a cursor closed while idle.
+        let ex = session.execute(&sql, &params, &ExecOptions { resolve_sources: true, ..Default::default() }).await?;
         messages.extend(ex.messages);
         match ex.header {
             Some(ResultHeader::Rows(cols)) => columns = Some(cols),

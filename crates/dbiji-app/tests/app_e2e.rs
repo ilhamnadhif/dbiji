@@ -157,6 +157,20 @@ fn execute_fetch_count_and_metadata() {
             "refresh",
         );
         assert_eq!(src.row_count(), 50, "{name}: refreshed first page");
+        // The columns keep their table: the result stays editable after a refresh
+        // and a server-side filter (they turned read-only in 0.3.13 to 0.3.17).
+        let sourced = |src: &ResultSource| src.columns.iter().all(|c| c.source.as_ref().is_some_and(|s| s.table.eq_ignore_ascii_case(&table)));
+        assert!(sourced(&src), "{name}: sources after refresh: {:?}", src.columns.iter().map(|c| &c.source).collect::<Vec<_>>());
+        src.requery(&backend, format!("SELECT * FROM {table} WHERE id > 10 ORDER BY id DESC"), 50);
+        wait_until(
+            || {
+                src.poll();
+                !src.is_fetching()
+            },
+            "server-side filter",
+        );
+        assert!(src.error.is_none(), "{name}: {:?}", src.error);
+        assert!(sourced(&src), "{name}: sources after a server-side filter");
 
         // The navigator's metadata cache sees the new table.
         let live = cm.live_mut(&id).unwrap();

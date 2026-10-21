@@ -3,6 +3,11 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.18 — 2026-10-21
+
+### Fixed
+- A table's data turned read-only ("the result columns cannot be traced back to a table") after a refresh, a server-side filter or sort, or a while idle: the query ran again without looking up the columns' tables (since 0.3.13). Reopen a tab that shows it, or update.
+
 ## 0.3.17 — 2026-10-21
 
 ### Changed

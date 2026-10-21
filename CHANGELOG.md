@@ -3,6 +3,11 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.14 — 2026-10-21
+
+### Changed
+- A smaller app: egui's Ubuntu font, which DBiji does not use, is no longer bundled (about 360 KB). The few symbols the code font lacks are drawn with Inter, like the rest of the UI.
+
 ## 0.3.13 — 2026-10-21
 
 ### Fixed

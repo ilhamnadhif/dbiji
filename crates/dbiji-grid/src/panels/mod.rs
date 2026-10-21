@@ -4,6 +4,7 @@ mod calc;
 mod grouping;
 mod metadata;
 mod references;
+mod style;
 mod value;
 
 pub use calc::{CalcPanel, CalcPanelState, MAX_CALC_CELLS, selection_stats};

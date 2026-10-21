@@ -382,3 +382,9 @@ OK	OK
 DBiji saves a change with UPDATE … WHERE <key> = …, so it needs a primary key, a unique key or a unique index to find exactly that row. This table has none in the result.	DBiji menyimpan perubahan dengan UPDATE … WHERE <key> = …, jadi butuh primary key, unique key, atau unique index untuk menemukan tepat baris itu. Tabel ini tidak punya satu pun di hasilnya.
 Define a virtual key (columns whose values identify a row) to edit it here, or add a primary key to the table.	Tentukan virtual key (kolom yang nilainya mengidentifikasi satu baris) untuk mengeditnya di sini, atau tambahkan primary key ke tabel.
 Some fetched rows could not be read back from the disk cache; refresh the result	Sebagian baris yang sudah diambil tidak dapat dibaca kembali dari cache disk; muat ulang hasilnya
+Hide panels	Sembunyikan panel
+Show panels	Tampilkan panel
+{} (click to close)	{} (klik untuk menutup)
+Close panel	Tutup panel
+Numbers ({})	Angka ({})
+Range	Rentang

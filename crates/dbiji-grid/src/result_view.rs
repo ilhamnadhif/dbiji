@@ -9,7 +9,7 @@ use crate::panels::{
 };
 use crate::toolbar::{FilterBar, ResultToolbar, ToolbarState};
 use crate::views::{DocumentKind, DocumentView, DocumentViewState, RecordView, RecordViewState, TextView, TextViewState};
-use dbiji_core::tr;
+use dbiji_core::{tr, trf};
 use egui::{Frame, Id, Panel, Ui};
 use serde::{Deserialize, Serialize};
 
@@ -62,7 +62,13 @@ impl ResultViewState {
     /// Open a side panel and make it the active tab.
     pub fn open_panel(&mut self, p: PanelKind) {
         self.toolbar.set_panel_open(p, true);
+        self.toolbar.panels_hidden = false;
         self.active_panel = Some(p);
+    }
+
+    /// The side panel area is on screen.
+    pub fn panels_visible(&self) -> bool {
+        !self.toolbar.open_panels.is_empty() && !self.toolbar.panels_hidden
     }
 }
 
@@ -135,15 +141,125 @@ fn error_popup(ui: &Ui, id: Id, message: &str, model: &ResultModel, state: &mut 
     }
 }
 
-fn panel_label(p: PanelKind) -> String {
+const PANELS: [PanelKind; 5] = [PanelKind::Value, PanelKind::Metadata, PanelKind::Grouping, PanelKind::Calc, PanelKind::References];
+
+fn panel_icon(p: PanelKind) -> &'static str {
     use egui_phosphor::regular as icon;
     match p {
-        PanelKind::Value => format!("{} {}", icon::EYE, tr("Value")),
-        PanelKind::Metadata => format!("{} {}", icon::INFO, tr("Metadata")),
-        PanelKind::Grouping => format!("{} {}", icon::STACK, tr("Grouping")),
-        PanelKind::Calc => format!("{} {}", icon::CALCULATOR, tr("Calc")),
-        PanelKind::References => format!("{} {}", icon::TREE_STRUCTURE, tr("References")),
+        PanelKind::Value => icon::EYE,
+        PanelKind::Metadata => icon::INFO,
+        PanelKind::Grouping => icon::STACK,
+        PanelKind::Calc => icon::CALCULATOR,
+        PanelKind::References => icon::TREE_STRUCTURE,
     }
+}
+
+fn panel_name(p: PanelKind) -> &'static str {
+    match p {
+        PanelKind::Value => tr("Value"),
+        PanelKind::Metadata => tr("Metadata"),
+        PanelKind::Grouping => tr("Grouping"),
+        PanelKind::Calc => tr("Calc"),
+        PanelKind::References => tr("References"),
+    }
+}
+
+/// Each panel's colour (its icon in the strip and its tab).
+fn panel_color(p: PanelKind, dark: bool) -> egui::Color32 {
+    let (light, dim) = match p {
+        PanelKind::Value => (0x2F6FDB, 0x6CA2F5),
+        PanelKind::Metadata => (0x0E8A8A, 0x4CC3C3),
+        PanelKind::Grouping => (0xC26A00, 0xE9A84F),
+        PanelKind::Calc => (0x7B4FD6, 0xAE8CF2),
+        PanelKind::References => (0x2E8B3E, 0x6CC97B),
+    };
+    let c = if dark { dim } else { light };
+    egui::Color32::from_rgb((c >> 16) as u8, (c >> 8) as u8, c as u8)
+}
+
+/// The strip at the right edge (as in DBeaver): show or hide the panels, and a
+/// button per panel. A panel's button opens it, or closes it when it is shown.
+fn panel_strip(ui: &mut Ui, state: &mut ResultViewState) {
+    use egui::{Button, RichText};
+    use egui_phosphor::regular as icon;
+    let visible = state.panels_visible();
+    let dark = ui.visuals().dark_mode;
+    let size = egui::vec2(24.0, 24.0);
+    ui.vertical_centered(|ui| {
+        ui.spacing_mut().item_spacing.y = 4.0;
+        let tip = if visible { tr("Hide panels") } else { tr("Show panels") };
+        if ui.add(Button::new(RichText::new(icon::SIDEBAR_SIMPLE).size(15.0)).selected(visible).min_size(size)).on_hover_text(tip).clicked() {
+            if visible {
+                state.toolbar.panels_hidden = true;
+            } else if state.toolbar.open_panels.is_empty() {
+                state.open_panel(PanelKind::Value);
+            } else {
+                state.toolbar.panels_hidden = false;
+            }
+        }
+        let y = ui.cursor().top() + 1.0;
+        let x = ui.max_rect().x_range();
+        ui.painter().hline(x.shrink(3.0), y, ui.visuals().widgets.noninteractive.bg_stroke);
+        ui.add_space(6.0);
+        for p in PANELS {
+            let open = state.toolbar.is_panel_open(p);
+            let shown = visible && state.active_panel == Some(p);
+            let text = RichText::new(panel_icon(p)).size(15.0).color(panel_color(p, dark));
+            let mut b = Button::new(text).min_size(size).selected(shown);
+            if !open {
+                b = b.frame_when_inactive(false);
+            }
+            let r = ui.add(b);
+            // Open but not shown: a dot next to it.
+            if open && !shown {
+                let c = egui::pos2(r.rect.right() - 2.0, r.rect.top() + 3.0);
+                ui.painter().circle_filled(c, 2.5, panel_color(p, dark));
+            }
+            let tip = if shown { trf("{} (click to close)", &[&panel_name(p)]) } else { panel_name(p).to_string() };
+            if r.on_hover_text(tip).clicked() {
+                if shown {
+                    state.toolbar.set_panel_open(p, false);
+                } else {
+                    state.open_panel(p);
+                }
+            }
+        }
+    });
+}
+
+/// A panel tab: its icon and name, and × to close it. Returns (select, close).
+fn panel_tab(ui: &mut Ui, p: PanelKind, selected: bool) -> (bool, bool) {
+    use egui::{Button, CornerRadius, Label, Margin, RichText, Sense};
+    let v = ui.visuals().clone();
+    let fill = if selected { v.extreme_bg_color } else { egui::Color32::TRANSPARENT };
+    let text_color = if selected { v.strong_text_color() } else { v.text_color() };
+    let stroke = if selected { v.widgets.noninteractive.bg_stroke } else { egui::Stroke::NONE };
+    let color = panel_color(p, v.dark_mode);
+    let inner = Frame::new()
+        .fill(fill)
+        .stroke(stroke)
+        .corner_radius(CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 })
+        .inner_margin(Margin { left: 8, right: 4, top: 4, bottom: 4 })
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing.x = 5.0;
+            let mut label = RichText::new(panel_name(p)).color(text_color);
+            if selected {
+                label = label.strong();
+            }
+            let a = ui.add(Label::new(RichText::new(panel_icon(p)).color(color)).sense(Sense::click()));
+            let b = ui.add(Label::new(label).sense(Sense::click()));
+            let close =
+                ui.add(Button::new(RichText::new(egui_phosphor::regular::X).size(11.0).color(v.weak_text_color())).frame(false).small()).on_hover_text(tr("Close panel")).clicked();
+            (a.clicked() || b.clicked(), close)
+        });
+    let (mut select, close) = inner.inner;
+    select |= inner.response.interact(Sense::click()).clicked();
+    // The selected tab sits on the content below it.
+    if selected {
+        let r = inner.response.rect;
+        ui.painter().hline(r.x_range().shrink(1.0), r.bottom(), egui::Stroke::new(2.0, color));
+    }
+    (select && !close, close)
 }
 
 impl<'a> ResultViewer<'a> {
@@ -189,7 +305,12 @@ impl<'a> ResultViewer<'a> {
         if let Some(message) = state.toolbar.error_popup.clone() {
             error_popup(ui, id, &message, model, state, &mut actions);
         }
-        if !state.toolbar.open_panels.is_empty() {
+        Panel::right(id.with("panel_strip"))
+            .resizable(false)
+            .exact_size(32.0)
+            .frame(Frame::new().inner_margin(egui::Margin::symmetric(3, 6)).fill(ui.visuals().panel_fill))
+            .show(ui, |ui| panel_strip(ui, state));
+        if state.panels_visible() {
             if state.active_panel.is_none_or(|p| !state.toolbar.is_panel_open(p)) {
                 state.active_panel = state.toolbar.open_panels.last().copied();
             }
@@ -197,32 +318,64 @@ impl<'a> ResultViewer<'a> {
                 .resizable(true)
                 .default_size(state.side_width.unwrap_or(340.0))
                 .size_range(220.0..=900.0)
-                .frame(Frame::new().inner_margin(6).fill(ui.visuals().panel_fill))
+                .frame(Frame::new().fill(ui.visuals().panel_fill))
                 .show(ui, |ui| {
                     state.side_width = Some(ui.available_width());
-                    ui.horizontal_wrapped(|ui| {
-                        for p in state.toolbar.open_panels.clone() {
-                            ui.selectable_value(&mut state.active_panel, Some(p), panel_label(p));
+                    // Tabs of the open panels (× closes one), and Hide for the whole area.
+                    Frame::new().inner_margin(egui::Margin { left: 6, right: 4, top: 5, bottom: 0 }).show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            let tabs_width = (ui.available_width() - 30.0).max(60.0);
+                            ui.allocate_ui_with_layout(egui::vec2(tabs_width, 0.0), egui::Layout::left_to_right(egui::Align::Center).with_main_wrap(true), |ui| {
+                                ui.spacing_mut().item_spacing = egui::vec2(2.0, 2.0);
+                                for p in state.toolbar.open_panels.clone() {
+                                    let (select, close) = panel_tab(ui, p, state.active_panel == Some(p));
+                                    if close {
+                                        state.toolbar.set_panel_open(p, false);
+                                    } else if select {
+                                        state.active_panel = Some(p);
+                                    }
+                                }
+                            });
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                                let hide = egui::Button::new(egui::RichText::new(egui_phosphor::regular::CARET_DOUBLE_RIGHT).size(13.0)).frame(false);
+                                if ui.add(hide).on_hover_text(tr("Hide panels")).clicked() {
+                                    state.toolbar.panels_hidden = true;
+                                }
+                            });
+                        });
+                    });
+                    if state.active_panel.is_none_or(|p| !state.toolbar.is_panel_open(p)) {
+                        state.active_panel = state.toolbar.open_panels.last().copied();
+                    }
+                    // The tabs sit on the content's top edge.
+                    ui.spacing_mut().item_spacing.y = 0.0;
+                    let content = Frame::new()
+                        .fill(ui.visuals().extreme_bg_color)
+                        .stroke(ui.visuals().widgets.noninteractive.bg_stroke)
+                        .inner_margin(egui::Margin::same(8))
+                        .outer_margin(egui::Margin { left: 4, right: 4, top: 0, bottom: 4 })
+                        .corner_radius(egui::CornerRadius { nw: 0, ne: 6, sw: 6, se: 6 });
+                    content.show(ui, |ui| {
+                        ui.spacing_mut().item_spacing.y = 4.0;
+                        ui.set_min_size(ui.available_size());
+                        match state.active_panel {
+                            Some(PanelKind::Value) => {
+                                actions.extend(ValuePanel::new(model, &state.grid, options, &mut state.value).show(ui));
+                            }
+                            Some(PanelKind::Metadata) => MetadataPanel::new(model, &mut state.grid).show(ui),
+                            Some(PanelKind::Calc) => CalcPanel::new(model, &state.grid, &mut state.calc).show(ui),
+                            Some(PanelKind::Grouping) => {
+                                if let Some(GroupingAction::Filtered(text)) = GroupingPanel::new(model, &mut state.grouping).show(ui) {
+                                    state.grid.mode = DataMode::Client;
+                                    state.toolbar.filter_text = text;
+                                }
+                            }
+                            Some(PanelKind::References) => {
+                                actions.extend(ReferencesPanel::new(model, &state.grid, &mut state.references).show(ui));
+                            }
+                            None => {}
                         }
                     });
-                    ui.separator();
-                    match state.active_panel {
-                        Some(PanelKind::Value) => {
-                            actions.extend(ValuePanel::new(model, &state.grid, options, &mut state.value).show(ui));
-                        }
-                        Some(PanelKind::Metadata) => MetadataPanel::new(model, &mut state.grid).show(ui),
-                        Some(PanelKind::Calc) => CalcPanel::new(model, &state.grid, &mut state.calc).show(ui),
-                        Some(PanelKind::Grouping) => {
-                            if let Some(GroupingAction::Filtered(text)) = GroupingPanel::new(model, &mut state.grouping).show(ui) {
-                                state.grid.mode = DataMode::Client;
-                                state.toolbar.filter_text = text;
-                            }
-                        }
-                        Some(PanelKind::References) => {
-                            actions.extend(ReferencesPanel::new(model, &state.grid, &mut state.references).show(ui));
-                        }
-                        None => {}
-                    }
                 });
         }
         egui::CentralPanel::no_frame().show(ui, |ui| match state.toolbar.view {

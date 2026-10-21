@@ -2710,3 +2710,8 @@ Uncommitted transaction	Transaksi belum di-commit
 Roll back and close	Rollback dan tutup
 Read-only: the table definition could not be read: {}	Hanya-baca: definisi tabel tidak bisa dibaca: {}
 The transaction was rolled back: refresh to see the current rows.	Transaksi di-rollback: refresh untuk melihat baris yang sebenarnya.
+Hide panels	Sembunyikan panel
+Show panels	Tampilkan panel
+{} (click to close)	{} (klik untuk menutup)
+Close panel	Tutup panel
+Numbers ({})	Angka ({})

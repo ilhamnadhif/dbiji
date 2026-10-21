@@ -67,38 +67,43 @@ impl<'a> CalcPanel<'a> {
         }
         let s = &self.state.stats;
         if s.count == 0 {
-            ui.weak(tr("Select cells to calculate statistics"));
+            ui.add_space(24.0);
+            ui.vertical_centered(|ui| {
+                ui.label(egui::RichText::new(egui_phosphor::regular::CALCULATOR).size(28.0).color(ui.visuals().weak_text_color()));
+                ui.weak(tr("Select cells to calculate statistics"));
+            });
             return;
         }
-        let fmt_v = |v: &Option<Value>| v.as_ref().map(|v| v.to_text().chars().take(80).collect::<String>()).unwrap_or_default();
-        egui::Grid::new("dbiji_calc_grid").num_columns(2).striped(true).spacing([16.0, 4.0]).show(ui, |ui| {
-            let row = |ui: &mut Ui, k: &str, v: String| {
-                ui.label(k);
-                let resp = ui.add(egui::Label::new(egui::RichText::new(&v).monospace()).sense(egui::Sense::click()));
-                if resp.on_hover_text(tr("Click to copy")).clicked() {
-                    ui.ctx().copy_text(v);
-                }
-                ui.end_row();
-            };
-            row(ui, tr("Count"), crate::format::group_thousands(&s.count.to_string()));
-            row(ui, tr("Distinct"), crate::format::group_thousands(&s.distinct.to_string()));
-            row(ui, tr("NULLs"), crate::format::group_thousands(&s.nulls.to_string()));
+        let n = |v: usize| crate::format::group_thousands(&v.to_string());
+        let fmt_v = |v: &Option<Value>| v.as_ref().map(|v| v.to_text().chars().take(200).collect::<String>()).unwrap_or_default();
+        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+            super::style::stat_tiles(ui, &[(tr("Count"), n(s.count)), (tr("Distinct"), n(s.distinct)), (tr("NULLs"), n(s.nulls))]);
             if s.numeric_count > 0 {
-                row(ui, tr("Numbers"), s.numeric_count.to_string());
-                row(ui, tr("Sum"), s.sum_text().unwrap_or_default());
-                row(ui, tr("Average"), s.avg.map(format_number).unwrap_or_default());
-                row(ui, tr("Median"), s.median.map(format_number).unwrap_or_default());
+                super::style::section_title(ui, &trf("Numbers ({})", &[&n(s.numeric_count)]));
+                super::style::stat_tiles(
+                    ui,
+                    &[
+                        (tr("Sum"), s.sum_text().unwrap_or_default()),
+                        (tr("Average"), s.avg.map(format_number).unwrap_or_default()),
+                        (tr("Median"), s.median.map(format_number).unwrap_or_default()),
+                    ],
+                );
             }
-            row(ui, tr("Min"), fmt_v(&s.min));
-            row(ui, tr("Max"), fmt_v(&s.max));
-            if let (Some(a), Some(b)) = (s.min_len, s.max_len) {
-                row(ui, tr("Min length"), a.to_string());
-                row(ui, tr("Max length"), b.to_string());
+            super::style::section_title(ui, tr("Range"));
+            super::style::card(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 0.0;
+                super::style::kv_row(ui, tr("Min"), &fmt_v(&s.min));
+                super::style::kv_row(ui, tr("Max"), &fmt_v(&s.max));
+                if let (Some(a), Some(b)) = (s.min_len, s.max_len) {
+                    super::style::kv_row(ui, tr("Min length"), &a.to_string());
+                    super::style::kv_row(ui, tr("Max length"), &b.to_string());
+                }
+            });
+            if s.truncated {
+                ui.add_space(6.0);
+                ui.weak(trf("Only the first {} cells were analysed", &[&crate::format::group_thousands(&MAX_CALC_CELLS.to_string())]));
             }
         });
-        if s.truncated {
-            ui.weak(trf("Only the first {} cells were analysed", &[&crate::format::group_thousands(&MAX_CALC_CELLS.to_string())]));
-        }
     }
 }
 

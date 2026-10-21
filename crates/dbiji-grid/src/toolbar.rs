@@ -34,6 +34,8 @@ pub struct ToolbarState {
     pub view: ResultViewKind,
     /// Open side panels.
     pub open_panels: Vec<PanelKind>,
+    /// The side panel area is hidden (its panels stay open for the next show).
+    pub panels_hidden: bool,
     /// Message of the application shown next to the status: (text, error).
     /// Errors open a pop-up instead (see [`ToolbarState::error_popup`]).
     #[serde(skip)]
@@ -505,7 +507,8 @@ impl<'a> ResultToolbar<'a> {
             // --- side panels
             let open_count = state.open_panels.len();
             let label = if open_count > 0 { format!("{} {} ({open_count})", icon::SIDEBAR_SIMPLE, tr("Panels")) } else { format!("{} {}", icon::SIDEBAR_SIMPLE, tr("Panels")) };
-            let resp = ui.add(Button::new(label).selected(open_count > 0)).on_hover_text(tr("Side panels: value, metadata, grouping, calculations, references"));
+            let resp =
+                ui.add(Button::new(label).selected(open_count > 0 && !state.panels_hidden)).on_hover_text(tr("Side panels: value, metadata, grouping, calculations, references"));
             Popup::menu(&resp).show(|ui| {
                 for (p, ic, tip) in [
                     (PanelKind::Value, icon::EYE, tr("Value panel")),
@@ -517,6 +520,9 @@ impl<'a> ResultToolbar<'a> {
                     let open = state.is_panel_open(p);
                     if ui.add(Button::new(format!("{ic}  {tip}")).right_text(if open { icon::CHECK } else { "" })).clicked() {
                         state.set_panel_open(p, !open);
+                        if !open {
+                            state.panels_hidden = false;
+                        }
                         actions.push(GridAction::TogglePanel(p));
                         ui.close();
                     }

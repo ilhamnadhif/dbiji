@@ -3,6 +3,13 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.15 — 2026-10-21
+
+### Changed
+- The side panels of a result (Value, Metadata, Grouping, Calc, References) have a strip of buttons at the right edge, as in DBeaver: one coloured button per panel opens it, or closes it while it is shown, and the top one shows or hides the panels. A dot marks a panel that is open behind another one.
+- Each panel's tab has a × to close it, and » hides the whole panel area (the open panels come back with it). The panels sit in a framed area.
+- The Calc panel shows Count, Distinct and NULLs, and Sum, Average and Median, as tiles with large numbers, and the range (min, max, lengths) as a card; every value copies on a click.
+
 ## 0.3.14 — 2026-10-21
 
 ### Changed

@@ -5,6 +5,8 @@
 #
 #   scripts/release.sh            # notes from this version's CHANGELOG.md section
 #   scripts/release.sh notes.md   # notes from a file
+#   scripts/release.sh --ci       # only tag and push: CI tests, builds and
+#                                 # publishes it (scripts/ci-publish.sh)
 #
 # Set DBIJI_SIGN_IDENTITY and DBIJI_NOTARY_PROFILE (see bundle-macos.sh) for
 # Developer ID signed, notarized builds; DBIJI_SKIP_TESTS=1 leaves the tests
@@ -18,6 +20,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
 
+CI_ONLY=""
+if [ "${1:-}" = "--ci" ]; then
+    CI_ONLY=1
+    shift
+fi
 NOTES_FILE="${1:-}"
 VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
 TAG="v$VERSION"
@@ -44,6 +51,15 @@ if [ -n "$NOTES_FILE" ]; then
     cp "$NOTES_FILE" "$NOTES"
 else
     awk -v v="$VERSION" '$0 ~ "^## " v " " {on=1; next} on && /^## / {exit} on' CHANGELOG.md >"$NOTES"
+fi
+
+if [ -n "$CI_ONLY" ]; then
+    echo "==> Tag $TAG"
+    git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || git tag -a "$TAG" -m "DBiji $VERSION"
+    git push --quiet origin "$BRANCH"
+    git push --quiet origin "$TAG"
+    echo "==> Pushed: CI publishes $TAG once its tests pass ($(gh repo view --json url --jq .url)/actions)"
+    exit 0
 fi
 
 if [ -z "${DBIJI_SKIP_TESTS:-}" ]; then

@@ -124,10 +124,14 @@ jobs:
           name: benchmarks
           path: bench.json
 
+  # A pushed tag (scripts/release.sh --ci) is built, published and put into the
+  # Homebrew cask here, once the tests passed.
   bundle:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [unit-tests, integration]
     runs-on: macos-14
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -140,3 +144,7 @@ jobs:
           path: |
             dist/*.dmg
             dist/*.zip
+      - name: Publish the release and update the Homebrew cask
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/ci-publish.sh

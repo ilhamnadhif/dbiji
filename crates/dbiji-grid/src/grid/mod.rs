@@ -342,12 +342,17 @@ impl<'a> DataGrid<'a> {
     /// Text for the current selection in `opts` format (what Cmd+C copies with
     /// [`CopyOptions::plain`]).
     pub fn copy_text(model: &ResultModel, state: &DataGridState, options: &GridOptions, opts: &CopyOptions) -> Result<(String, usize), String> {
-        copy_text_and_nulls(model, state, options, opts).map(|(text, cells, _)| (text, cells))
+        copy_text_and_nulls(model, state, options, opts).map(|(text, cells, ..)| (text, cells))
     }
 }
 
 /// [`DataGrid::copy_text`] and which copied cells are NULL (row by row).
-pub(crate) fn copy_text_and_nulls(model: &ResultModel, state: &DataGridState, options: &GridOptions, opts: &CopyOptions) -> Result<(String, usize, Vec<Vec<bool>>), String> {
+/// Copied text, its cell count, which cells are NULL, and whether cells
+/// between the copied ones were left out (a ⌘-click selection).
+type CopiedText = (String, usize, Vec<Vec<bool>>, bool);
+
+/// Copy the selection (see [`CopiedText`]).
+pub(crate) fn copy_text_and_nulls(model: &ResultModel, state: &DataGridState, options: &GridOptions, opts: &CopyOptions) -> Result<CopiedText, String> {
     let data = selection_copy_data(model, state, options)?;
     let mut opts = opts.clone();
     if opts.sql_table.trim().is_empty() {
@@ -356,7 +361,8 @@ pub(crate) fn copy_text_and_nulls(model: &ResultModel, state: &DataGridState, op
     let cells = data.cell_count();
     let dialect = options.dialect.as_deref();
     let nulls = data.rows.iter().map(|r| r.cells.iter().map(|c| c.as_ref().is_some_and(Value::is_null)).collect()).collect();
-    Ok((crate::copy::render(&data, &opts, &options.format, dialect), cells, nulls))
+    let gaps = data.rows.iter().any(|r| r.cells.iter().any(Option::is_none));
+    Ok((crate::copy::render(&data, &opts, &options.format, dialect), cells, nulls, gaps))
 }
 
 /// Insert a new row after the active row (or at the end) and select it.
@@ -447,18 +453,30 @@ pub(crate) fn selection_copy_data_limited(model: &ResultModel, state: &DataGridS
 /// Paste clipboard text at the active cell.
 pub(crate) fn paste_into(model: &mut ResultModel, state: &mut DataGridState, text: &str) -> Result<usize, String> {
     // Text DBiji copied itself: its NULLs and its single cell are known.
-    let remembered = state.rt.last_copy.as_ref().filter(|(t, _)| !text.is_empty() && t == text).map(|(_, n)| n.clone());
+    let own = state.rt.last_copy.as_ref().filter(|(t, ..)| !text.is_empty() && t == text);
+    if own.is_some_and(|(.., gaps)| *gaps) {
+        return Err(tr("Cells copied with gaps between them cannot be pasted: copy a block").to_string());
+    }
+    let remembered = own.map(|(_, n, _)| n.clone());
     let block = match &remembered {
         Some(n) if n.len() == 1 && n[0].len() == 1 => vec![vec![text.to_string()]],
-        _ => parse_clipboard_table(text),
+        Some(n) => Some(crate::copy::parse_own_copy(text)).filter(|b| b.len() == n.len()).unwrap_or_else(|| parse_clipboard_table(text)),
+        None => parse_clipboard_table(text),
     };
     if block.is_empty() {
         return Ok(0);
     }
     let nulls = remembered.filter(|n| n.len() == block.len() && n.iter().zip(&block).all(|(a, b)| a.len() == b.len()));
     let visible = state.visible_columns();
-    let Some((row, col)) = state.active_cell() else { return Err(tr("Select a cell to paste into").to_string()) };
-    let start = visible.iter().position(|&c| c == col).unwrap_or(0);
+    let Some((active_row, col)) = state.active_cell() else { return Err(tr("Select a cell to paste into").to_string()) };
+    let mut row = active_row;
+    let mut start = visible.iter().position(|&c| c == col).unwrap_or(0);
+    // A block goes to the top left of a selected range, wherever the cursor is in it.
+    if state.selection().cell_count(model.row_count(), visible.len()) > 1
+        && let (Some(&r0), Some(&c0)) = (state.selection().rows(model.row_count(), 1).first(), state.selection().columns(visible.len()).first())
+    {
+        (row, start) = (r0, c0);
+    }
     let width = block.iter().map(Vec::len).max().unwrap_or(0);
     // Paste a single value into every selected cell of a multi-cell selection.
     if block.len() == 1 && width == 1 {
@@ -570,7 +588,7 @@ pub(crate) fn apply_sort(model: &mut ResultModel, state: &mut DataGridState, opt
     match state.mode {
         DataMode::Server => actions.push(GridAction::ServerQueryChanged { where_clause: None, order_by: Some(server_order_by(model, options, &keys)) }),
         DataMode::Client => {
-            let mut spec = model.client_view_spec();
+            let mut spec = model.requested_view_spec();
             spec.sort = keys;
             let ctx = ctx.clone();
             model.start_client_view(spec, Box::new(move || ctx.request_repaint()));
@@ -594,7 +612,7 @@ pub(crate) fn apply_value_filter(
         }
         DataMode::Client => {
             let cond = ClientFilter::condition(col, model.column_name(col), op, value);
-            let mut spec = model.client_view_spec();
+            let mut spec = model.requested_view_spec();
             spec.filter = Some(match spec.filter.take() {
                 Some(f) => f.and(cond),
                 None => cond,
@@ -607,7 +625,7 @@ pub(crate) fn apply_value_filter(
 
 /// Apply a client filter typed in the filter bar (or clear it with `None`).
 pub fn apply_client_filter(model: &mut ResultModel, filter: Option<ClientFilter>, ctx: &egui::Context) {
-    let spec = ViewSpec { sort: model.client_view_spec().sort, filter };
+    let spec = ViewSpec { sort: model.requested_view_spec().sort, filter };
     let ctx = ctx.clone();
     model.start_client_view(spec, Box::new(move || ctx.request_repaint()));
 }

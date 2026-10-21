@@ -69,7 +69,7 @@ pub struct Dialogs {
     pub shortcuts_open: bool,
     pub vault_open: bool,
     pub drivers_open: bool,
-    vault: vault::VaultDialog,
+    pub vault: vault::VaultDialog,
     pub import: Option<import::ImportDialog>,
     pub drop: Option<drop::DropDialog>,
     pub create_db: Option<create_db::CreateDatabaseDialog>,
@@ -430,9 +430,20 @@ impl Dialogs {
         let modal = egui::Modal::new(egui::Id::new("delete_conn")).show(ctx, |ui| {
             ui.heading(tr("Delete connection"));
             ui.label(trf("Delete the connection \"{}\" and its saved passwords?", &[&d.name]));
+            // Disconnected first, the usual way: open transactions are asked about, the
+            // editors' sessions close and the after-disconnect command runs.
+            let connected = cx.conns.is_connected(&d.conn_id) || cx.conns.status(&d.conn_id) == crate::conn::ConnStatus::Connecting;
+            if connected {
+                ui.add_space(4.0);
+                ui.colored_label(ui.visuals().warn_fg_color, tr("It is connected: disconnect it first."));
+            }
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                if ui.button(RichText::new(tr("Delete")).color(crate::theme::error_color(ui.visuals().dark_mode))).clicked() {
+                if connected && ui.button(tr("Disconnect")).clicked() {
+                    cx.push(AppCommand::Disconnect(d.conn_id.clone()));
+                }
+                let delete = egui::Button::new(RichText::new(tr("Delete")).color(crate::theme::error_color(ui.visuals().dark_mode)));
+                if ui.add_enabled(!connected, delete).clicked() {
                     cx.conns.remove(&d.conn_id);
                     cx.push(AppCommand::SaveConnections);
                     close = true;

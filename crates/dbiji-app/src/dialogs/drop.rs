@@ -96,6 +96,10 @@ impl DropDialog {
         // A session that failed to open: its error instead of waiting for ever.
         let session_error = self.objects.iter().zip(&sessions).filter(|(_, s)| s.is_none()).find_map(|(o, _)| live.session_error(o.database.as_deref()));
         let opening = sessions.iter().any(Option::is_none);
+        // DBiji's own sessions on a database being dropped (the navigator's): the server
+        // refuses the DROP while they are connected.
+        let own: Vec<SessionHandle> =
+            self.objects.iter().filter(|o| o.kind == ObjectKind::Database).filter_map(|o| live.db_sessions.get(&o.name).and_then(|l| l.get()).cloned()).collect();
         let read_only = live.config.read_only;
         let statements: Vec<String> = self.objects.iter().map(|o| drop_sql(dialect.as_ref(), o, self.cascade)).collect();
         let mut keep = true;
@@ -126,13 +130,17 @@ impl DropDialog {
                 let danger = crate::theme::error_color(ui.visuals().dark_mode);
                 if ui.add_enabled(!busy && !read_only && !opening, egui::Button::new(RichText::new(tr("Drop")).color(danger))).clicked() {
                     let work: Vec<(String, SessionHandle)> = statements.iter().cloned().zip(sessions.iter().flatten().cloned()).collect();
+                    let own = own.clone();
                     self.error = None;
                     self.job = Some(backend.spawn(async move {
                         // The sessions are shared: other uncommitted work would be committed with the drop.
-                        if work.iter().any(|(_, s)| s.has_uncommitted_writes()) {
+                        if work.iter().map(|(_, s)| s).chain(&own).any(|s| s.has_uncommitted_writes()) {
                             return Err(dbiji_core::DbError::config(tr(
                                 "The session has uncommitted changes (another tab, the data editor): commit or roll them back before dropping objects.",
                             )));
+                        }
+                        for s in &own {
+                            s.close().await;
                         }
                         let mut n = 0;
                         for (sql, s) in &work {

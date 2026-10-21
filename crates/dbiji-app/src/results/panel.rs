@@ -77,6 +77,8 @@ pub struct ResultPanel {
     saved_in_tx: Option<u64>,
     /// A reload asked while edits are pending (it would discard them).
     confirm_discard: Option<Deferred>,
+    /// Re-running the statement of this result would change data again: asking first.
+    confirm_rerun: Option<Deferred>,
     refs_job: Option<(usize, Vec<Value>, Job<DbResult<(Vec<ColumnMeta>, Vec<Row>)>>)>,
     virtual_key_dialog: Option<(ObjectRef, Vec<bool>)>,
     mode: Mode,
@@ -183,6 +185,7 @@ impl ResultPanel {
             columns_seen: 0,
             saved_in_tx: None,
             confirm_discard: None,
+            confirm_rerun: None,
             refs_job: None,
             virtual_key_dialog: None,
             mode: Mode::Grid,
@@ -621,7 +624,13 @@ impl ResultPanel {
             | GridAction::EditFilter(_)
             | GridAction::SaveDefaultFilter
             | GridAction::ClearFilterText => {}
-            GridAction::OpenValuePanel { .. } | GridAction::AutoRefreshChanged(_) => {}
+            GridAction::OpenValuePanel { .. } | GridAction::AutoRefreshChanged(None) => {}
+            // Auto-refresh would run INSERT / UPDATE … RETURNING, CALL … again every few seconds.
+            GridAction::AutoRefreshChanged(Some(_)) if !self.src.rerun_safe => {
+                self.view.toolbar.auto_refresh_secs = None;
+                self.status = Some((tr("No auto-refresh: it would run the statement that changes data again.").to_string(), true));
+            }
+            GridAction::AutoRefreshChanged(Some(_)) => {}
             GridAction::ServerQueryChanged { where_clause, order_by } => self.run_or_confirm(Deferred::Query { where_clause, order_by }, cx),
             GridAction::NavigateForeignKey { link, values } => {
                 let Some(d) = self.dialect(cx) else { return };
@@ -794,6 +803,16 @@ impl ResultPanel {
     }
 
     fn run_deferred(&mut self, d: Deferred, cx: &mut AppContext) {
+        // Refreshing or filtering on the server runs the statement again: not a write
+        // (INSERT / UPDATE … RETURNING, CALL) without asking.
+        if !self.src.rerun_safe && matches!(d, Deferred::Refresh | Deferred::Query { .. }) && self.confirm_rerun.is_none() {
+            self.confirm_rerun = Some(d);
+            return;
+        }
+        self.run_now(d, cx);
+    }
+
+    fn run_now(&mut self, d: Deferred, cx: &mut AppContext) {
         match d {
             Deferred::Refresh => {
                 self.src.refresh(cx.backend, Self::fetch_size(cx));
@@ -809,6 +828,40 @@ impl ResultPanel {
                 self.requery(cx);
             }
             Deferred::Navigate(to) => self.navigate(cx, to, true),
+        }
+    }
+
+    /// "Run the statement again?" for a result of a statement that changes data.
+    fn confirm_rerun_ui(&mut self, ui: &Ui, cx: &mut AppContext) {
+        if self.confirm_rerun.is_none() {
+            return;
+        }
+        let mut decided: Option<bool> = None;
+        let modal = egui::Modal::new(egui::Id::new(("confirm_rerun", &self.conn, &self.title))).show(ui.ctx(), |ui| {
+            ui.set_max_width(460.0);
+            ui.heading(tr("Run the statement again?"));
+            ui.label(tr("These rows come from a statement that changes data (INSERT / UPDATE … RETURNING, CALL, EXEC). Reloading them runs it again."));
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                if ui.button(RichText::new(tr("Run again")).color(crate::theme::error_color(ui.visuals().dark_mode))).clicked() {
+                    decided = Some(true);
+                }
+                if ui.button(tr("Cancel")).clicked() {
+                    decided = Some(false);
+                }
+            });
+        });
+        if decided.is_none() && modal.should_close() {
+            decided = Some(false);
+        }
+        match decided {
+            Some(true) => {
+                if let Some(d) = self.confirm_rerun.take() {
+                    self.run_now(d, cx);
+                }
+            }
+            Some(false) => self.confirm_rerun = None,
+            None => {}
         }
     }
 
@@ -1046,6 +1099,7 @@ impl ResultPanel {
 
     pub fn ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
         self.confirm_discard_ui(ui, cx);
+        self.confirm_rerun_ui(ui, cx);
         if !self.settings_applied {
             self.settings_applied = true;
             let r = &cx.settings.results;
@@ -1053,7 +1107,7 @@ impl ResultPanel {
                 dbiji_config::settings::SortFilterMode::Server => dbiji_grid::DataMode::Server,
                 dbiji_config::settings::SortFilterMode::Client => dbiji_grid::DataMode::Client,
             };
-            if r.auto_refresh_secs > 0 && self.view.toolbar.auto_refresh_secs.is_none() {
+            if r.auto_refresh_secs > 0 && self.view.toolbar.auto_refresh_secs.is_none() && self.src.rerun_safe {
                 self.view.toolbar.auto_refresh_secs = Some(r.auto_refresh_secs as u64);
             }
         }

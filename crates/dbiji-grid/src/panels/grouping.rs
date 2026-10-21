@@ -189,7 +189,7 @@ impl<'a> GroupingPanel<'a> {
             && let Some(f) = group_filter(&spec, &result.groups[i], &names)
         {
             // The groups were counted in the filtered rows: narrow that filter, do not replace it.
-            let f = match model.client_view_spec().filter {
+            let f = match model.requested_view_spec().filter {
                 Some(current) => current.and(f),
                 None => f,
             };

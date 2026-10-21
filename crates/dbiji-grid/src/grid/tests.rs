@@ -407,3 +407,37 @@ fn header_menu_button_opens_the_column_menu() {
     h.frame(vec![]);
     assert!(h.state.rt.header_popup.is_none());
 }
+
+#[test]
+fn open_editor_follows_its_record_when_the_view_changes() {
+    let mut h = GridHarness::new(editable_model(10));
+    // A filtered view shows store rows 5.. first; edit display row 0 (store row 5).
+    h.model.set_view(Some((5..10).collect()));
+    h.click_at(h.cell_center(0, 1), PointerButton::Primary, Modifiers::NONE);
+    h.frame(vec![Event::Text("z".into())]);
+    assert!(h.state.is_editing());
+    // The filter is cleared while the editor is open: display row 0 is store row 0 now.
+    h.model.clear_view();
+    h.frame(vec![]);
+    h.key(Key::Enter, Modifiers::NONE);
+    assert!(!h.state.is_editing());
+    assert_eq!(h.model.cell(5, 1), Some(Value::text("z")), "the edited record");
+    assert_eq!(h.model.cell(0, 1), Some(Value::text("name 0")), "not the row now shown at that position");
+}
+
+#[test]
+fn copied_null_pastes_back_as_its_own_row() {
+    let mut h = GridHarness::new(editable_model(10));
+    h.model.set_value(1, 1, Value::Null).unwrap();
+    h.click_at(h.cell_center(0, 1), PointerButton::Primary, Modifiers::NONE);
+    h.key(Key::ArrowDown, Modifiers::SHIFT);
+    h.frame(vec![Event::Copy]);
+    let text = h.copied().unwrap();
+    assert_eq!(text, "name 0\n");
+    // A two-cell selection gets the two copied values, not the first one twice.
+    h.state.select_cell(5, 1);
+    h.key(Key::ArrowDown, Modifiers::SHIFT);
+    h.frame(vec![Event::Paste(text)]);
+    assert_eq!(h.model.cell(5, 1), Some(Value::text("name 0")));
+    assert_eq!(h.model.cell(6, 1), Some(Value::Null));
+}

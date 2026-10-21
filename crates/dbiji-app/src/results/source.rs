@@ -203,6 +203,16 @@ impl ResultSource {
         self.cancelled_op.take()
     }
 
+    /// The result is no longer shown: close its cursor on the server now (it holds a
+    /// snapshot and locks) instead of when it goes idle.
+    pub fn release(&mut self, backend: &Backend) {
+        self.cancel_fetch();
+        if let Some(t) = self.token.take() {
+            let s = self.session.clone();
+            backend.spawn_detached(async move { s.close_cursor_token(t).await });
+        }
+    }
+
     /// Saved deletions of `n` server rows: a re-executed query no longer returns them.
     pub fn rows_deleted(&mut self, n: usize) {
         self.server_rows = self.server_rows.saturating_sub(n);

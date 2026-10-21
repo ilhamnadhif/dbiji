@@ -489,3 +489,16 @@ async fn run_task_once_for_the_cli() {
     assert_eq!(run.exit_code(), 2);
     assert!(run_task_once(store, log, fake, "missing", Trigger::Cli, None, CancellationToken::new()).await.is_err());
 }
+
+#[tokio::test(start_paused = true)]
+async fn system_scheduled_tasks_are_left_to_the_system() {
+    let h = harness(SchedulerOptions::default(), &[("os", Behave::Ok { secs: 1, rows: 1 })]);
+    let mut def = shell("os").with_schedule(Schedule::Interval { every_secs: 60 });
+    def.os_scheduler = true;
+    let t = h.store.create(def).unwrap();
+    h.sched.start().unwrap();
+    tokio::time::sleep(Duration::from_secs(200)).await;
+    assert!(h.fake.calls_of("os").is_empty(), "launchd / cron / Task Scheduler runs it");
+    assert!(h.sched.next_runs().contains_key(&t.id), "the next run is still shown");
+    h.sched.shutdown(Duration::from_secs(1)).await;
+}

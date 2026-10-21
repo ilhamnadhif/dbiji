@@ -2,7 +2,7 @@
 
 use crate::format::PreparedFormat;
 use crate::grid::{DataGridState, GridAction, GridOptions, ResultViewKind};
-use crate::model::{CellRef, ResultModel, RowState};
+use crate::model::{CellRef, ResultModel, RowAnchor, RowState};
 use crate::theme::GridTheme;
 use dbiji_core::{Value, tr, trf};
 use egui::{Button, Key, RichText, ScrollArea, TextEdit, Ui};
@@ -81,6 +81,8 @@ pub struct RecordViewState {
     pub column_filter: String,
     /// Row, column, text being typed, the text it started with.
     editing: Option<(usize, usize, String, String)>,
+    /// The record being edited: the editor closes when the row shows another one.
+    editing_anchor: Option<RowAnchor>,
     error: Option<String>,
     /// Last shown values: ((generation, row, columns), values) for frames where the store is busy.
     cache: Option<RecordCache>,
@@ -155,6 +157,11 @@ impl<'a> RecordView<'a> {
         let mut actions = Vec::new();
         model.try_sync();
         grid.sync_columns(model);
+        if let Some((r, ..)) = &state.editing
+            && state.editing_anchor.and_then(|a| model.anchored_row(a, *r)) != Some(*r)
+        {
+            state.editing = None;
+        }
         let nrows = model.row_count();
         if nrows == 0 {
             ui.weak(tr("No rows"));
@@ -535,6 +542,7 @@ fn rows_table(
                                 if can_edit && !multi {
                                     let text = if v.is_null() { String::new() } else { v.to_text().into_owned() };
                                     state.editing = Some((r, c, text.clone(), text));
+                                    state.editing_anchor = model.row_anchor(r);
                                     state.error = None;
                                 } else {
                                     open_value = Some((r, c));

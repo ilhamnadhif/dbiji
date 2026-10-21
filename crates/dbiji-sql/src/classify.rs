@@ -248,35 +248,38 @@ pub(crate) fn classify_tokens(src: &str, tokens: &[Token], syntax: &SqlSyntax) -
         return StatementInfo::new(StatementKind::Other, String::new());
     }
     let mut info = Sig { src, t: &sig }.classify(0, 0);
-    // T-SQL runs statements one after another without `;` (`SELECT 1 DELETE FROM t`):
-    // one span may hold several, a later one writing.
-    if syntax.batch_separator.is_some() && !info.is_write {
-        let mut depth = 0i32;
-        for (k, t) in sig.iter().enumerate().skip(1) {
-            match t.kind {
-                TokenKind::LParen => depth += 1,
-                TokenKind::RParen => depth -= 1,
-                // `a INNER MERGE JOIN b` is a join hint, no MERGE statement.
-                _ if depth == 0
-                    && LATER_WRITE_STARTS
-                        .iter()
-                        .any(|w| t.text(src).eq_ignore_ascii_case(w))
-                    && !(t.text(src).eq_ignore_ascii_case("MERGE")
-                        && sig
-                            .get(k + 1)
-                            .is_some_and(|n| n.text(src).eq_ignore_ascii_case("JOIN"))) =>
-                {
-                    let later = Sig { src, t: &sig[k..] }.classify(0, 0);
-                    if later.is_write {
-                        info.is_write = true;
-                        if info.danger.is_none() {
-                            info.danger = later.danger;
-                        }
-                        break;
-                    }
-                }
-                _ => {}
+    // T-SQL runs statements one after another without `;` (`SELECT 1 DELETE FROM t`,
+    // `UPDATE t SET a = 1 DELETE FROM u WHERE id = 5`): one span may hold several.
+    // Each is classified on its own tokens, so a later WHERE does not count for an
+    // earlier UPDATE.
+    if syntax.batch_separator.is_some() {
+        let (mut from, mut kind, mut is_write) = (0, info.kind, info.is_write);
+        let mut several = false;
+        let mut danger = None;
+        loop {
+            let next = next_batch_statement(src, &sig, from, kind, is_write);
+            if next.is_none() && !several {
+                break;
             }
+            let piece = Sig {
+                src,
+                t: &sig[from..next.unwrap_or(sig.len())],
+            }
+            .classify(0, 0);
+            info.is_write |= piece.is_write;
+            danger = danger.or(piece.danger);
+            several = true;
+            let Some(next) = next else { break };
+            // What the next statement is shows in its first words.
+            let head = Sig {
+                src,
+                t: &sig[next..(next + 16).min(sig.len())],
+            }
+            .classify(0, 0);
+            (from, kind, is_write) = (next, head.kind, head.is_write);
+        }
+        if several {
+            info.danger = danger;
         }
     }
     // MySQL runs `/*! … */` comments: `SELECT * FROM t /*!INTO OUTFILE '/tmp/x'*/` writes.
@@ -310,6 +313,50 @@ pub(crate) fn classify_tokens(src: &str, tokens: &[Token], syntax: &SqlSyntax) -
 }
 
 /// Statements that may follow another one in a T-SQL batch without `;`.
+/// Start of the T-SQL statement after the one at `from` (of `kind`), in a
+/// run without `;`. Statements that hold others (MERGE's actions, CREATE's
+/// body, GRANT's privileges) are not cut.
+fn next_batch_statement(
+    src: &str,
+    sig: &[Token],
+    from: usize,
+    kind: StatementKind,
+    is_write: bool,
+) -> Option<usize> {
+    use StatementKind as K;
+    let cut = !is_write
+        || matches!(
+            kind,
+            K::Insert | K::Update | K::Delete | K::Drop | K::Truncate | K::Call
+        );
+    if !cut {
+        return None;
+    }
+    let mut depth = 0i32;
+    for (k, t) in sig.iter().enumerate().skip(from + 1) {
+        match t.kind {
+            TokenKind::LParen => depth += 1,
+            TokenKind::RParen => depth -= 1,
+            _ if depth == 0 => {
+                let w = t.text(src);
+                let is = |s: &str| w.eq_ignore_ascii_case(s);
+                let write = LATER_WRITE_STARTS.iter().any(|s| is(s))
+                    // `a INNER MERGE JOIN b` is a join hint, no MERGE statement.
+                    && !(is("MERGE") && sig.get(k + 1).is_some_and(|n| n.text(src).eq_ignore_ascii_case("JOIN")))
+                    // `INSERT … EXEC p` fills the insert.
+                    && !(kind == K::Insert && (is("EXEC") || is("EXECUTE")));
+                // After UPDATE / DELETE a SELECT is the next statement (`INSERT … SELECT` fills the insert).
+                let read = is("SELECT") && matches!(kind, K::Update | K::Delete);
+                if write || read {
+                    return Some(k);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 const LATER_WRITE_STARTS: &[&str] = &[
     "INSERT",
     "UPDATE",
@@ -1023,6 +1070,30 @@ mod tests {
         }
         assert!(!t("SELECT a FROM t WHERE b IN (SELECT b FROM u)").is_write);
         assert!(!t("SELECT * FROM a INNER MERGE JOIN b ON a.id = b.id").is_write);
+        // Each statement of a run is checked on its own.
+        assert_eq!(
+            t("UPDATE orders SET status = 'x'\nDELETE FROM log WHERE id = 5").danger,
+            Some(Danger::UpdateWithoutWhere)
+        );
+        assert_eq!(
+            t("UPDATE t SET a = 1 WHERE id = 2\nDELETE FROM log").danger,
+            Some(Danger::DeleteWithoutWhere)
+        );
+        assert_eq!(
+            t("SELECT 1\nUPDATE t SET a = 1 WHERE id = 2\nDELETE FROM log").danger,
+            Some(Danger::DeleteWithoutWhere)
+        );
+        assert_eq!(
+            t("UPDATE t SET a = 1 WHERE id = 2\nSELECT * FROM t").danger,
+            None
+        );
+        assert_eq!(
+            t("UPDATE t WITH (ROWLOCK) SET a = 1 WHERE id = 2").danger,
+            None
+        );
+        assert_eq!(t("INSERT INTO t EXEC dbo.p").danger, None);
+        assert_eq!(t("INSERT INTO t SELECT a FROM u WHERE b = 1").danger, None);
+        assert_eq!(t("MERGE t USING s ON t.id = s.id WHEN MATCHED THEN DELETE WHEN NOT MATCHED THEN INSERT (id) VALUES (s.id);").danger, None);
         assert!(c("SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE").is_write);
         assert!(c("SET default_transaction_read_only = off").is_write);
         assert!(cm("SET SESSION transaction_read_only = 0").is_write);

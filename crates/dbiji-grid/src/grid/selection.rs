@@ -116,7 +116,8 @@ impl Selection {
     }
 
     /// Cmd-click: add a cell as a new range (or remove it when it is the only
-    /// cell of an existing single-cell range).
+    /// cell of an existing single-cell range; a cell already selected
+    /// otherwise only becomes the active one).
     pub fn toggle_cell(&mut self, p: CellPos) {
         if let Some(i) = self.ranges.iter().position(|r| *r == CellRange::cell(p))
             && self.ranges.len() > 1
@@ -126,7 +127,9 @@ impl Selection {
             self.anchor = p;
             return;
         }
-        self.ranges.push(CellRange::cell(p));
+        if !self.contains(p.row, p.col) {
+            self.ranges.push(CellRange::cell(p));
+        }
         self.anchor = p;
         self.active = p;
     }

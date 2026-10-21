@@ -63,6 +63,8 @@ pub(crate) struct TableTarget {
     pub table_sql: String,
     /// Quoted column names, in the order of the row values.
     pub columns: Vec<String>,
+    /// Their database types, where known (empty text: unknown).
+    pub types: Vec<String>,
     /// Positions of the key columns for insert-or-replace; empty for plain inserts.
     pub key_index: Vec<usize>,
 }
@@ -115,6 +117,11 @@ pub(crate) struct BatchWriter<'a> {
     identity_off: Option<String>,
     upsert_sql: Option<String>,
     insert_cache: Option<(usize, String)>,
+    /// PostgreSQL: a GENERATED ALWAYS identity column is written (`OVERRIDING SYSTEM VALUE`).
+    overriding: bool,
+    /// Columns written as literals instead of parameters ([`Dialect::inline_value`]:
+    /// MySQL BIT and geometry, SQL Server datetime).
+    inline: Vec<bool>,
     item: String,
     pub(crate) written: u64,
     pub(crate) failed: u64,
@@ -137,9 +144,13 @@ impl<'a> BatchWriter<'a> {
             dialect.upsert(&target.table_sql, &target.columns, &keys, &placeholders)
         };
         let savepoints = savepoint_sql(dialect.kind());
+        let inline: Vec<bool> = (0..target.columns.len()).map(|i| target.types.get(i).is_some_and(|t| !t.trim().is_empty() && dialect.inline_value(t))).collect();
         let mut warnings = Vec::new();
         let mut scope = scope;
-        if on_error != OnError::Abort && savepoints.is_none() && scope != TransactionScope::None {
+        // ClickHouse has no transactions: rows are committed as they are written.
+        if dialect.kind() == DbKind::ClickHouse {
+            scope = TransactionScope::None;
+        } else if on_error != OnError::Abort && savepoints.is_none() && scope != TransactionScope::None {
             warnings.push(format!("{} has no savepoints: rows are committed statement by statement so failing rows can be skipped", dialect.kind().display_name()));
             scope = TransactionScope::None;
         }
@@ -155,6 +166,8 @@ impl<'a> BatchWriter<'a> {
             identity_off: None,
             upsert_sql,
             insert_cache: None,
+            overriding: false,
+            inline,
             item: item.into(),
             written: 0,
             failed: 0,
@@ -170,6 +183,21 @@ impl<'a> BatchWriter<'a> {
         let mode = self.session.transaction_mode();
         if mode == TransactionMode::Manual && self.session.in_transaction() {
             return Err(DbError::config("The session has an open transaction; commit or roll it back before writing data"));
+        }
+        // PostgreSQL refuses explicit values for a GENERATED ALWAYS identity
+        // column (copied ids, imported keys) unless the INSERT overrides it.
+        if self.dialect.kind() == DbKind::Postgres {
+            let table = self.dialect.string_literal(&self.target.table_sql);
+            let names: Vec<String> = self.target.columns.iter().map(|c| self.dialect.string_literal(&unquote_tsql(c))).collect();
+            let sql =
+                format!("SELECT count(*) FROM pg_attribute WHERE attrelid = to_regclass({table}) AND attidentity = 'a' AND NOT attisdropped AND attname IN ({})", names.join(", "));
+            if self.query_i64(&sql).await?.unwrap_or(0) > 0 {
+                self.overriding = true;
+                let head = format!("INSERT INTO {} ({})", self.target.table_sql, self.target.columns.join(", "));
+                if let Some(u) = self.upsert_sql.as_mut().filter(|u| u.starts_with(&head)) {
+                    u.insert_str(head.len(), " OVERRIDING SYSTEM VALUE");
+                }
+            }
         }
         self.original_mode = Some(mode);
         let wanted = match self.scope {
@@ -270,7 +298,8 @@ impl<'a> BatchWriter<'a> {
             return sql.clone();
         }
         let ncols = self.target.columns.len();
-        let mut sql = format!("INSERT INTO {} ({}) VALUES ", self.target.table_sql, self.target.columns.join(", "));
+        let overriding = if self.overriding { " OVERRIDING SYSTEM VALUE" } else { "" };
+        let mut sql = format!("INSERT INTO {} ({}){overriding} VALUES ", self.target.table_sql, self.target.columns.join(", "));
         let mut p = 1;
         for r in 0..nrows {
             if r > 0 {
@@ -400,7 +429,18 @@ impl<'a> BatchWriter<'a> {
         if let Some(upsert) = self.upsert_sql.clone() {
             let mut failure = None;
             for (i, (_, row)) in rows.iter().enumerate() {
-                if let Err(e) = self.exec(&upsert, row).await {
+                let result = if self.inline.contains(&true) {
+                    let mut params = Vec::new();
+                    let values = self.row_values(row, &mut params);
+                    let keys: Vec<String> = self.target.key_index.iter().filter_map(|&k| self.target.columns.get(k).cloned()).collect();
+                    match self.dialect.upsert(&self.target.table_sql, &self.target.columns, &keys, &values) {
+                        Some(sql) => self.exec(&sql, &params).await,
+                        None => self.exec(&upsert, row).await,
+                    }
+                } else {
+                    self.exec(&upsert, row).await
+                };
+                if let Err(e) = result {
                     failure = Some((i, e));
                     break;
                 }
@@ -444,7 +484,33 @@ impl<'a> BatchWriter<'a> {
         self.insert_rows(rows, ncols).await
     }
 
+    /// Placeholders (their values pushed to `params`) or literals of one row.
+    fn row_values(&self, row: &[Value], params: &mut Vec<Value>) -> Vec<String> {
+        row.iter()
+            .enumerate()
+            .map(|(i, v)| {
+                let ty = self.target.types.get(i).map(String::as_str).filter(|t| !t.trim().is_empty());
+                if self.inline.get(i).copied().unwrap_or(false) && !v.is_null() {
+                    self.dialect.literal(v, ty)
+                } else {
+                    params.push(v.clone());
+                    self.dialect.placeholder(params.len())
+                }
+            })
+            .collect()
+    }
+
     async fn insert_rows(&mut self, rows: Vec<(u64, Row)>, ncols: usize) -> Result<(), (DbError, Vec<(u64, Row)>)> {
+        if self.inline.contains(&true) {
+            let overriding = if self.overriding { " OVERRIDING SYSTEM VALUE" } else { "" };
+            let mut params = Vec::new();
+            let tuples: Vec<String> = rows.iter().map(|(_, row)| format!("({})", self.row_values(row, &mut params).join(", "))).collect();
+            let sql = format!("INSERT INTO {} ({}){overriding} VALUES {}", self.target.table_sql, self.target.columns.join(", "), tuples.join(", "));
+            return match self.exec(&sql, &params).await {
+                Ok(_) => Ok(()),
+                Err(e) => Err((e, rows)),
+            };
+        }
         let numbers: Vec<u64> = rows.iter().map(|r| r.0).collect();
         let sql = self.insert_sql(rows.len());
         let mut params: Vec<Value> = Vec::with_capacity(rows.len() * ncols);

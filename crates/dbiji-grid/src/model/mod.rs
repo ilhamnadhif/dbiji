@@ -121,6 +121,15 @@ pub enum RowKey {
     Inserted(u64),
 }
 
+/// A row of one fetched result: its key and the store it belongs to, so an
+/// open editor follows its record when the view changes and stops when the
+/// result is replaced.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RowAnchor {
+    store: usize,
+    key: RowKey,
+}
+
 /// Pending state of a row, used for colouring.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RowState {
@@ -578,6 +587,27 @@ impl ResultModel {
         })
     }
 
+    /// Anchor of a display row (see [`RowAnchor`]).
+    pub fn row_anchor(&self, row: usize) -> Option<RowAnchor> {
+        Some(RowAnchor { store: self.store_id(), key: self.row_key(row)? })
+    }
+
+    /// Current display row of an anchored row, given where it was last
+    /// (`row`); `None` when it is gone or the result was replaced.
+    pub fn anchored_row(&self, anchor: RowAnchor, row: usize) -> Option<usize> {
+        if anchor.store != self.store_id() {
+            return None;
+        }
+        if self.row_key(row) == Some(anchor.key) {
+            return Some(row);
+        }
+        self.display_row_of(anchor.key)
+    }
+
+    fn store_id(&self) -> usize {
+        std::sync::Arc::as_ptr(&self.store) as *const () as usize
+    }
+
     /// Current display row of a row identity (linear in the view size for stored rows).
     pub fn display_row_of(&self, key: RowKey) -> Option<usize> {
         match key {
@@ -784,6 +814,12 @@ impl ResultModel {
             ViewKind::Client(s) => s.clone(),
             _ => ViewSpec::default(),
         }
+    }
+
+    /// The client view last asked for: the one being computed, else the shown
+    /// one. A further sort or filter builds on it.
+    pub fn requested_view_spec(&self) -> ViewSpec {
+        self.pending_view_spec().cloned().unwrap_or_else(|| self.client_view_spec())
     }
 
     /// True when a client sort or filter is active.

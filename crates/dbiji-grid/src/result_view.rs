@@ -415,6 +415,13 @@ impl<'a> ResultViewer<'a> {
             {
                 state.toolbar.dismissed_fetch_error = Some(e);
             }
+            // A sort / filter computed in the background is installed by the grid,
+            // and here for the other views (they show and copy the same rows).
+            if state.toolbar.view != ResultViewKind::Grid
+                && let Some(Err(e)) = model.poll_view_job()
+            {
+                state.grid.show_message(e, true);
+            }
             match state.toolbar.view {
                 ResultViewKind::Grid => {
                     let r = DataGrid::new(model, &mut state.grid, options).id_salt(id.with("grid")).notices_elsewhere().show(ui);

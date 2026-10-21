@@ -23,6 +23,9 @@ pub enum Json {
     Number(String),
     /// A string with escapes resolved.
     String(String),
+    /// A string that is not UTF-8 text: binary data in a `String` column
+    /// (`unhex(…)`, digests), kept byte for byte.
+    Bytes(Vec<u8>),
     /// An array.
     Array(Vec<Json>),
     /// An object; key order is preserved.
@@ -104,7 +107,10 @@ impl Parser<'_> {
             Some(b'n') if self.input[self.pos..].starts_with(b"null") => self.expect_literal(b"null", Json::Null),
             Some(b't') => self.expect_literal(b"true", Json::Bool(true)),
             Some(b'f') => self.expect_literal(b"false", Json::Bool(false)),
-            Some(b'"') => self.string().map(Json::String),
+            Some(b'"') => self.string_bytes().map(|b| match String::from_utf8(b) {
+                Ok(s) => Json::String(s),
+                Err(e) => Json::Bytes(e.into_bytes()),
+            }),
             Some(b'[') => self.array(depth),
             Some(b'{') => self.object(depth),
             // Numbers; ClickHouse may also print special floats (`nan`,
@@ -201,9 +207,17 @@ impl Parser<'_> {
         Ok(v)
     }
 
-    /// Parse a string starting at the opening quote. Raw bytes are collected
-    /// and converted lossily so invalid UTF-8 never aborts a row.
+    /// Parse a string (an object key) starting at the opening quote; invalid
+    /// UTF-8 is replaced so it never aborts a row.
     fn string(&mut self) -> Result<String, JsonError> {
+        self.string_bytes().map(|b| match String::from_utf8(b) {
+            Ok(s) => s,
+            Err(e) => String::from_utf8_lossy(e.as_bytes()).into_owned(),
+        })
+    }
+
+    /// Bytes of a string starting at the opening quote, escapes resolved.
+    fn string_bytes(&mut self) -> Result<Vec<u8>, JsonError> {
         self.pos += 1; // opening quote
         let mut out: Vec<u8> = Vec::new();
         loop {
@@ -213,10 +227,7 @@ impl Parser<'_> {
             match c {
                 b'"' => {
                     self.pos += 1;
-                    return Ok(match String::from_utf8(out) {
-                        Ok(s) => s,
-                        Err(e) => String::from_utf8_lossy(e.as_bytes()).into_owned(),
-                    });
+                    return Ok(out);
                 }
                 b'\\' => {
                     self.pos += 1;
@@ -295,6 +306,7 @@ impl Json {
                 }
             }
             Json::String(s) => write_json_string(out, s),
+            Json::Bytes(b) => write_json_string(out, &String::from_utf8_lossy(b)),
             Json::Array(items) => {
                 out.push('[');
                 for (i, v) in items.iter().enumerate() {
@@ -378,12 +390,12 @@ mod tests {
     }
 
     #[test]
-    fn invalid_utf8_is_replaced() {
+    fn invalid_utf8_is_kept_as_bytes() {
         let mut line = b"[\"a".to_vec();
         line.push(0xff);
         line.extend_from_slice(b"b\"]");
         let row = parse_row(&line).unwrap();
-        assert_eq!(row[0], Json::String("a\u{FFFD}b".into()));
+        assert_eq!(row[0], Json::Bytes(vec![b'a', 0xff, b'b']));
     }
 
     #[test]

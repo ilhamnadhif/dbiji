@@ -387,7 +387,7 @@ impl<'a> ResultToolbar<'a> {
     pub fn show(self, ui: &mut Ui) -> Vec<GridAction> {
         let ResultToolbar { model, grid, state } = self;
         let mut actions = Vec::new();
-        auto_refresh_tick(ui, model, state, &mut actions);
+        auto_refresh_tick(ui, model, grid.is_editing(), state, &mut actions);
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
             // --- refresh
@@ -593,8 +593,9 @@ fn set_auto_refresh(ui: &Ui, state: &mut ToolbarState, secs: Option<u64>, action
     }
 }
 
-/// Emit `Refresh` when the auto refresh interval elapsed; schedules the next frame.
-fn auto_refresh_tick(ui: &Ui, model: &ResultModel, state: &mut ToolbarState, actions: &mut Vec<GridAction>) {
+/// Emit `Refresh` when the auto refresh interval elapsed, unless there are
+/// changes or a cell is being edited; schedules the next frame.
+fn auto_refresh_tick(ui: &Ui, model: &ResultModel, editing: bool, state: &mut ToolbarState, actions: &mut Vec<GridAction>) {
     let Some(secs) = state.auto_refresh_secs else {
         state.rt.next_refresh = None;
         return;
@@ -602,7 +603,7 @@ fn auto_refresh_tick(ui: &Ui, model: &ResultModel, state: &mut ToolbarState, act
     let now = ui.input(|i| i.time);
     let next = *state.rt.next_refresh.get_or_insert(now + secs as f64);
     if now >= next {
-        if !model.has_changes() && !model.fetch.fetching {
+        if !model.has_changes() && !model.fetch.fetching && !editing {
             actions.push(GridAction::Refresh);
         }
         state.rt.next_refresh = Some(now + secs as f64);

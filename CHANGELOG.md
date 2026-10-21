@@ -3,6 +3,28 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.20 — 2026-10-22
+
+### Fixed
+- A date or time format that does not fit the value (`%H` in the date format, `%z` in the timestamp format) made DBiji crash every time a table was opened; such formats now fall back to the standard ones.
+- An open cell editor wrote into another row when the filter was cleared or the data refreshed while typing; it now stays with its row, and auto-refresh waits while a cell is being edited.
+- `WITH … (…)` or `INSERT INTO t (a, b)` followed by a blank line was split into two statements, so the wrong statement could run.
+- SQL Server: `UPDATE` or `DELETE` without WHERE ran without the confirmation when another statement followed on the next line.
+- Closing an editor with an uncommitted transaction asks first ("Roll back and close"); quitting warns about exports, imports and migrations still running, and closes the connections cleanly.
+- Refresh and auto-refresh no longer run a statement that changes data again (INSERT / UPDATE … RETURNING, CALL, EXEC) without asking.
+- A connected connection cannot be deleted; switching an editor's connection or database is refused while a statement runs, a result has unsaved changes or its transaction is open.
+- Copying a value and a NULL and pasting them lost the NULL row; a block pasted onto a selected range starts at its top left; copies with gaps (⌘-click) are refused instead of pasting empty values.
+- A header sort clicked while a filter was still being computed dropped the filter; the Record, Text, JSON and XML views now show filtered rows too.
+- Grouping merged different integers above 2^53; Calc no longer reports "only the first cells were analysed" for overlapping selections.
+- Scheduled tasks also registered with the system scheduler ran twice while DBiji was open.
+- Migrations: MySQL TIMESTAMP values into PostgreSQL timestamptz were shifted by the time zone difference; text primary keys into MySQL or SQL Server failed (they get varchar(255) / nvarchar(450)); MySQL BIT and geometry values were written as strings; ids into a PostgreSQL GENERATED ALWAYS identity were refused.
+- ClickHouse: imports, migrations and mock data failed at the start ("does not support transactions"); binary String values (`unhex`, digests) are kept as bytes instead of being garbled.
+- SQL Server: NULL into varbinary or image columns was refused; rows with a `datetime` key were often "not found" when saved.
+- The navigator no longer shows a horizontal scrollbar all the time; Run in the query builder runs the query; restored scripts keep the connection they had.
+
+### Known limits
+- SQL Server `money` values above about 900 billion lose their last decimal digits (the client library reads them as floating point).
+
 ## 0.3.19 — 2026-10-21
 
 ### Fixed

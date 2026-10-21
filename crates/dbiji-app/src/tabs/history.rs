@@ -97,7 +97,9 @@ impl HistoryTab {
     }
 
     fn open_in_editor(&self, cx: &mut AppContext, e: &HistoryEntry) {
-        cx.push(AppCommand::NewSqlEditor { connection: e.connection_id.clone(), schema: None, text: Some(e.sql.clone()) });
+        // Where it ran: a DELETE of database `reports` does not reopen on the default one.
+        let schema = (e.database.is_some() || e.schema.is_some()).then(|| dbiji_core::meta::SchemaRef::new(e.database.clone(), e.schema.clone()));
+        cx.push(AppCommand::NewSqlEditor { connection: e.connection_id.clone(), schema, text: Some(e.sql.clone()) });
     }
 }
 

@@ -598,9 +598,9 @@ impl GridFrame<'_> {
     /// Copy the selection to the clipboard.
     pub fn copy_selection(&mut self, opts: &CopyOptions) {
         match super::copy_text_and_nulls(self.model, self.state, self.options, opts) {
-            Ok((text, cells, nulls)) => {
+            Ok((text, cells, nulls, gaps)) => {
                 let plain = opts.format == CopyFormat::Tsv && !opts.include_header && !opts.include_row_numbers;
-                self.state.rt.last_copy = plain.then(|| (text.clone(), nulls));
+                self.state.rt.last_copy = plain.then(|| (text.clone(), nulls, gaps));
                 self.ctx.copy_text(text);
                 self.actions.push(GridAction::Copied { cells, format: opts.format });
                 let msg = if opts.format == CopyFormat::Tsv && !opts.include_header {
@@ -643,7 +643,7 @@ impl GridFrame<'_> {
             return;
         }
         if typed.is_none() && (self.model.dictionary(col).is_some() || self.model.enum_values(col).is_some()) {
-            self.state.rt.dropdown = Some(super::state::Dropdown { row, col, search: String::new(), just_opened: true });
+            self.state.rt.dropdown = Some(super::state::Dropdown { row, anchor: self.model.row_anchor(row), col, search: String::new(), just_opened: true });
             return;
         }
         let text = value.to_text().into_owned();
@@ -652,13 +652,24 @@ impl GridFrame<'_> {
             return;
         }
         let is_typed = typed.is_some();
-        self.state.rt.editing = Some(EditSession { row, col, text: typed.unwrap_or_else(|| text.clone()), original: text, error: None, just_started: true, typed: is_typed });
+        self.state.rt.editing = Some(EditSession {
+            row,
+            anchor: self.model.row_anchor(row),
+            col,
+            text: typed.unwrap_or_else(|| text.clone()),
+            original: text,
+            error: None,
+            just_started: true,
+            typed: is_typed,
+        });
         self.state.rt.scroll_to_active = true;
     }
 
     /// Commit the open editor. `move_rows`/`move_cols` move the selection afterwards.
     pub fn commit_edit(&mut self, keep_on_error: bool, move_rows: isize, move_cols: isize) -> bool {
         let Some(mut session) = self.state.rt.editing.take() else { return true };
+        let Some(row) = session.anchor.and_then(|a| self.model.anchored_row(a, session.row)) else { return true };
+        session.row = row;
         if session.text != session.original
             && let Err(e) = self.model.set_cell(session.row, session.col, &session.text)
         {

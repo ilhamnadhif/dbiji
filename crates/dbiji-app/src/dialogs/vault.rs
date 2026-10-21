@@ -12,6 +12,8 @@ pub struct VaultDialog {
     confirm: String,
     job: Option<Job<DbResult<()>>>,
     error: Option<String>,
+    /// "Skip" (or closed): connections ask for their passwords instead of the vault.
+    pub skipped: bool,
 }
 
 impl VaultDialog {
@@ -100,6 +102,7 @@ impl VaultDialog {
             }
         }
         if skip || (modal.should_close() && !busy) {
+            self.skipped = true;
             *open = false;
         }
     }

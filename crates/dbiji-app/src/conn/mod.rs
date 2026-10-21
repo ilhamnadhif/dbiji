@@ -689,6 +689,12 @@ impl ConnectionManager {
         }
     }
 
+    /// `s` is a connection's own session (main or per database), not a tab's: closing a
+    /// tab that uses it ends no transaction.
+    pub fn is_shared_session(&self, s: &SessionHandle) -> bool {
+        self.live.values().any(|l| l.main.same(s) || l.db_sessions.values().any(|d| d.get().is_some_and(|d| d.same(s))))
+    }
+
     /// Take the connect error of `id` (shown once by the UI).
     pub fn take_error(&mut self, id: &str) -> Option<String> {
         let e = self.failed.get(id).cloned();
@@ -703,25 +709,7 @@ impl ConnectionManager {
     /// Disconnect, closing all sessions in the background.
     pub fn disconnect(&mut self, backend: &Backend, id: &str) {
         if let Some(live) = self.live.remove(id) {
-            let after = live.config.init.shell_after_disconnect.clone();
-            backend.spawn_detached(async move {
-                live.main.cancel_and_close().await;
-                for s in live.db_sessions.values() {
-                    if let Some(s) = s.get() {
-                        s.cancel_and_close().await;
-                    }
-                }
-                let tab_sessions: Vec<SessionHandle> = std::mem::take(&mut *live.tab_sessions.lock()).iter().filter_map(|w| w.upgrade()).collect();
-                for s in tab_sessions {
-                    s.cancel_and_close().await;
-                }
-                drop(live.tunnel);
-                if let Some(cmd) = after.filter(|c| !c.trim().is_empty())
-                    && let Err(e) = run_shell(&cmd, Duration::from_secs(60)).await
-                {
-                    tracing::warn!("shell command after disconnect failed: {e}");
-                }
-            });
+            backend.spawn_detached(close_live(live));
         }
         self.connecting.remove(id);
     }
@@ -735,6 +723,45 @@ impl ConnectionManager {
         for id in self.live_ids() {
             self.disconnect(backend, &id);
         }
+    }
+
+    /// Disconnect everything and wait (at most `timeout`): DBiji is quitting, and a
+    /// detached task would not finish (sessions, tunnels, the after-disconnect commands).
+    pub fn disconnect_all_and_wait(&mut self, backend: &Backend, timeout: Duration) {
+        let lives: Vec<LiveConnection> = self.live_ids().iter().filter_map(|id| self.live.remove(id)).collect();
+        self.connecting.clear();
+        if lives.is_empty() {
+            return;
+        }
+        backend.block_on(async move {
+            let _ = tokio::time::timeout(timeout, async move {
+                for live in lives {
+                    close_live(live).await;
+                }
+            })
+            .await;
+        });
+    }
+}
+
+/// Close a connection's sessions and tunnel, then run its after-disconnect command.
+async fn close_live(live: LiveConnection) {
+    let after = live.config.init.shell_after_disconnect.clone();
+    live.main.cancel_and_close().await;
+    for s in live.db_sessions.values() {
+        if let Some(s) = s.get() {
+            s.cancel_and_close().await;
+        }
+    }
+    let tab_sessions: Vec<SessionHandle> = std::mem::take(&mut *live.tab_sessions.lock()).iter().filter_map(|w| w.upgrade()).collect();
+    for s in tab_sessions {
+        s.cancel_and_close().await;
+    }
+    drop(live.tunnel);
+    if let Some(cmd) = after.filter(|c| !c.trim().is_empty())
+        && let Err(e) = run_shell(&cmd, Duration::from_secs(60)).await
+    {
+        tracing::warn!("shell command after disconnect failed: {e}");
     }
 }
 

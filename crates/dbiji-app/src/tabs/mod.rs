@@ -145,6 +145,12 @@ impl Tab {
     pub fn needs_close_confirm(&self) -> bool {
         !self.force_close && !self.view.prompts_on_close() && self.view.is_dirty()
     }
+
+    /// Closing it rolls back writes its own session made in an open transaction
+    /// (a data tab saved in manual commit), and it does not ask about that itself.
+    pub fn close_rolls_back(&self, conns: &crate::conn::ConnectionManager) -> bool {
+        !self.force_close && !self.view.prompts_on_close() && self.view.transaction_session().is_some_and(|s| s.has_uncommitted_writes() && !conns.is_shared_session(&s))
+    }
 }
 
 /// egui_dock adapter that renders tabs with access to the application context.
@@ -286,7 +292,7 @@ impl egui_dock::TabViewer for DockViewer<'_, '_> {
     }
 
     fn on_close(&mut self, tab: &mut Tab) -> egui_dock::tab_viewer::OnCloseResponse {
-        if tab.needs_close_confirm() {
+        if tab.needs_close_confirm() || tab.close_rolls_back(self.cx.conns) {
             self.close_confirm.push(tab.id);
             return egui_dock::tab_viewer::OnCloseResponse::Ignore;
         }

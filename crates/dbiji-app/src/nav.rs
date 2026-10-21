@@ -236,13 +236,27 @@ impl Navigator {
     }
 
     /// Expand the path to `obj` and select it (once loaded).
-    pub fn reveal(&mut self, conn: &str, obj: &ObjectRef) {
+    pub fn reveal(&mut self, conn: &str, obj: &ObjectRef, conns: &crate::conn::ConnectionManager) {
         let c = conn.to_string();
         self.expanded.insert(NavNode::Connection(c.clone()));
-        if let Some(db) = &obj.database {
-            self.expanded.insert(NavNode::Database { conn: c.clone(), db: db.clone() });
+        // The folders the connection sits in.
+        if let Some(folder) = conns.config(conn).and_then(|cfg| cfg.folder.clone()) {
+            let mut path = String::new();
+            for part in folder.split('/').filter(|p| !p.is_empty()) {
+                if !path.is_empty() {
+                    path.push('/');
+                }
+                path.push_str(part);
+                self.expanded.insert(NavNode::Folder(path.clone()));
+            }
         }
-        for database in [obj.database.clone(), None] {
+        // An object without a database is in the connection's current one (PostgreSQL,
+        // SQL Server list databases first).
+        let current = conns.live(conn).and_then(|l| l.current_database.clone());
+        if let Some(db) = obj.database.clone().or(current.clone()) {
+            self.expanded.insert(NavNode::Database { conn: c.clone(), db });
+        }
+        for database in [obj.database.clone(), current, None] {
             let schema = SchemaRef { database, schema: obj.schema.clone() };
             self.expanded.insert(NavNode::Schema { conn: c.clone(), schema: schema.clone() });
             self.expanded.insert(NavNode::KindFolder { conn: c.clone(), schema, kind: obj.kind });
@@ -1077,7 +1091,9 @@ impl Navigator {
             scroll_target = rows.iter().position(|r| Some(&r.node) == self.selected.as_ref());
             self.scroll_to_selected = false;
         }
-        let mut sa = egui::ScrollArea::both().auto_shrink([false, false]).id_salt("nav_scroll");
+        // Vertical only: a row is as wide as the panel (long names end in "…"); a
+        // horizontal bar was always shown for a few pixels of overflow.
+        let mut sa = egui::ScrollArea::vertical().auto_shrink([false, false]).id_salt("nav_scroll");
         if let Some(i) = scroll_target {
             sa = sa.vertical_scroll_offset((i as f32 * row_h - 80.0).max(0.0));
         }

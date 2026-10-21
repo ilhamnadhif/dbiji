@@ -5,7 +5,7 @@ use super::selection::{CellPos, Selection};
 use super::text::GlyphCache;
 use crate::copy::CopyOptions;
 use crate::format::ColumnFormat;
-use crate::model::ResultModel;
+use crate::model::{ResultModel, RowAnchor};
 use crate::view::SortKey;
 use dbiji_core::{ColumnMeta, DataKind};
 use serde::{Deserialize, Serialize};
@@ -120,8 +120,9 @@ pub(crate) struct Runtime {
     pub fetch_store: usize,
     /// Text of the last plain copy and which of its cells were NULL: pasted back,
     /// those stay NULL (not ''), and one copied cell stays one value (its line
-    /// breaks, tabs and quotes are part of the value, not a table).
-    pub last_copy: Option<(String, Vec<Vec<bool>>)>,
+    /// breaks, tabs and quotes are part of the value, not a table). The flag:
+    /// cells between the copied ones were left out.
+    pub last_copy: Option<(String, Vec<Vec<bool>>, bool)>,
     /// Scroll the active cell into view on the next frame.
     pub scroll_to_active: bool,
     pub copy_dialog: bool,
@@ -161,6 +162,8 @@ pub(crate) struct BodyCache {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct EditSession {
     pub row: usize,
+    /// The record being edited (`row` follows it).
+    pub anchor: Option<RowAnchor>,
     /// Model column.
     pub col: usize,
     pub text: String,
@@ -176,6 +179,7 @@ pub(crate) struct EditSession {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct Dropdown {
     pub row: usize,
+    pub anchor: Option<RowAnchor>,
     pub col: usize,
     pub search: String,
     pub just_opened: bool,

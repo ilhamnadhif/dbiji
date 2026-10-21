@@ -240,8 +240,45 @@ fn plan_table(job: &MigrationJob, source: &ObjectRef, def: TableDef, src_kind: D
             idx
         })
         .collect();
+    // MySQL and SQL Server cannot index unbounded text (`longtext`,
+    // `nvarchar(max)`): key and index columns get a bounded type.
+    if !same {
+        let keyed: Vec<String> = t
+            .primary_key
+            .iter()
+            .chain(&t.unique_keys)
+            .flat_map(|k| k.columns.iter().cloned())
+            .chain(indexes.iter().flat_map(|i| i.columns.iter().filter(|c| !c.is_expression).map(|c| c.name.clone())))
+            .collect();
+        for col in t.columns.iter_mut().filter(|c| keyed.contains(&c.name)) {
+            let explicit = job.column_types.contains_key(&format!("{}.{}", def.name, col.name));
+            if let Some(bounded) = bounded_key_type(dst.kind(), &col.data_type).filter(|_| !explicit) {
+                warnings.push(format!("{}.{}: {} cannot be a key or index column, {bounded} is used", def.name, col.name, col.data_type));
+                col.data_type = bounded.to_string();
+            }
+        }
+    }
     let target_ref = ObjectRef::table(job.target_schema.clone(), tname);
     Plan { source: source.clone(), source_def: def, target: t, target_ref, copy, indexes }
+}
+
+/// Bounded type for an unbounded text / binary type `ty` of a key or index column.
+fn bounded_key_type(kind: DbKind, ty: &str) -> Option<&'static str> {
+    let ty = ty.trim().to_ascii_lowercase();
+    match kind {
+        DbKind::MySql | DbKind::MariaDb => match ty.as_str() {
+            "tinytext" | "text" | "mediumtext" | "longtext" => Some("varchar(255)"),
+            "tinyblob" | "blob" | "mediumblob" | "longblob" => Some("varbinary(255)"),
+            _ => None,
+        },
+        DbKind::SqlServer => match ty.replace(' ', "").as_str() {
+            "nvarchar(max)" | "ntext" => Some("nvarchar(450)"),
+            "varchar(max)" | "text" => Some("varchar(900)"),
+            "varbinary(max)" | "image" => Some("varbinary(900)"),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 /// Copy `job.tables` from `source` to `target`.
@@ -474,14 +511,33 @@ async fn migrate_table(
     } else {
         Vec::new()
     };
-    let target = TableTarget { table_sql: dst_dialect.qualified_ref(&plan.target_ref), columns: plan.copy.iter().map(|(_, t, _)| dst_dialect.quote_ident(t)).collect(), key_index };
+    let target = TableTarget {
+        table_sql: dst_dialect.qualified_ref(&plan.target_ref),
+        columns: plan.copy.iter().map(|(_, t, _)| dst_dialect.quote_ident(t)).collect(),
+        types: plan.copy.iter().map(|(_, t, _)| plan.target.columns.iter().find(|c| &c.name == t).map(|c| c.data_type.clone()).unwrap_or_default()).collect(),
+        key_index,
+    };
     let scope = if job.transaction_per_table { TransactionScope::Whole } else { TransactionScope::PerBatch };
     let select_cols: Vec<String> = plan.copy.iter().map(|(s, _, _)| s.clone()).collect();
     let sql = src_dialect.select_table(&plan.source, Some(&select_cols), None, None, None);
-    let cursor = cancellable(src.execute(&sql, &[], &dbiji_core::ExecOptions::default()), cancel, src_handle.clone()).await?;
-    let mut rows = cancellable(CursorSource::new(cursor), cancel, src_handle.clone()).await?;
     let kinds: Vec<DataKind> = plan.copy.iter().map(|(_, _, k)| *k).collect();
     let convert = ConvertOptions::default();
+    // MySQL gives TIMESTAMP values in the session's time zone without saying
+    // which: going into time zone aware columns (PostgreSQL's timestamptz),
+    // they are read in UTC on this session (the migration's own), so they keep
+    // their instant. Into plain timestamps they keep their wall clock time.
+    let mysql = matches!(src_dialect.kind(), DbKind::MySql | DbKind::MariaDb);
+    let timestamps: Vec<bool> =
+        plan.copy.iter().map(|(s, _, _)| mysql && plan.source_def.columns.iter().any(|c| &c.name == s && c.data_type.to_ascii_lowercase().starts_with("timestamp"))).collect();
+    let zoned = |want: bool| timestamps.iter().zip(&kinds).any(|(t, k)| *t && (*k == DataKind::DateTimeTz) == want);
+    let read_utc = zoned(true) && !zoned(false);
+    if read_utc {
+        cancellable(execute_update(src, "SET @dbiji_time_zone = @@session.time_zone, time_zone = '+00:00'", &[]), cancel, src_handle.clone()).await?;
+    }
+    let utc = ConvertOptions { default_offset_minutes: Some(0), ..ConvertOptions::default() };
+    let in_utc: Vec<bool> = timestamps.iter().map(|t| *t && read_utc).collect();
+    let cursor = cancellable(src.execute(&sql, &[], &dbiji_core::ExecOptions::default()), cancel, src_handle.clone()).await?;
+    let mut rows = cancellable(CursorSource::new(cursor), cancel, src_handle.clone()).await?;
     let name = plan.target_ref.display_path();
     // The source's ids are copied into the target's identity / serial columns.
     let identity: Vec<String> = plan.copy.iter().filter(|(_, t, _)| plan.target.columns.iter().any(|c| &c.name == t && c.auto_increment)).map(|(_, t, _)| t.clone()).collect();
@@ -513,7 +569,7 @@ async fn migrate_table(
                     .map(|(i, kind)| {
                         let v = row.get(i).unwrap_or(&crate::sink::NULL_VALUE);
                         // Values that do not convert are passed on unchanged; the database decides.
-                        convert_value(v, *kind, &convert).unwrap_or_else(|_| v.clone())
+                        convert_value(v, *kind, if in_utc[i] { &utc } else { &convert }).unwrap_or_else(|_| v.clone())
                     })
                     .collect();
                 converted.push((row_no, out));
@@ -526,6 +582,9 @@ async fn migrate_table(
     }
     .await;
     let _ = rows.close().await;
+    if read_utc {
+        let _ = execute_update(src, "SET time_zone = @dbiji_time_zone", &[]).await;
+    }
     match outcome {
         Ok(()) => {
             writer.finish().await?;

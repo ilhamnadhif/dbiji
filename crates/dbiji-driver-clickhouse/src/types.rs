@@ -651,6 +651,7 @@ pub fn json_to_value(ty: &ChType, j: Json) -> Value {
         },
         ChType::String | ChType::FixedString(_) | ChType::Enum(_) | ChType::Ipv4 | ChType::Ipv6 => match j {
             Json::String(s) => Value::Text(s.into_boxed_str()),
+            Json::Bytes(b) => Value::Bytes(b.into_boxed_slice()),
             other => fallback(other),
         },
         ChType::Uuid => match &j {
@@ -711,6 +712,7 @@ fn fallback(j: Json) -> Value {
         Json::Bool(b) => Value::Bool(b),
         Json::Number(n) => Value::Decimal(n.into_boxed_str()),
         Json::String(s) => Value::Text(s.into_boxed_str()),
+        Json::Bytes(b) => Value::Bytes(b.into_boxed_slice()),
         other => Value::Json(other.to_json_string().into_boxed_str()),
     }
 }

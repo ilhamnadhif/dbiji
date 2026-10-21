@@ -122,8 +122,14 @@ impl TabView for QueryBuilderTab {
         for ev in resp.events {
             match ev {
                 QbEvent::AddTableRequested => self.picker_open = true,
-                QbEvent::RunQuery(sql) | QbEvent::OpenInEditor(sql) => {
+                QbEvent::OpenInEditor(sql) => {
                     cx.push(AppCommand::NewSqlEditor { connection: Some(self.conn.clone()), schema: self.schema.clone(), text: Some(sql) });
+                }
+                // Run: an editor that executes it as soon as its session is open.
+                QbEvent::RunQuery(sql) => {
+                    let mut tab = crate::tabs::sql_editor::SqlEditorTab::new(Some(self.conn.clone()), self.schema.clone(), sql, None, false, tr("Query builder").to_string());
+                    tab.auto_run = true;
+                    cx.push(AppCommand::OpenTab(Box::new(tab)));
                 }
                 QbEvent::Changed => {}
             }

@@ -775,7 +775,12 @@ pub async fn run_mock(config: &MockConfig, session: &mut dyn Session, progress: 
     }
 
     let mut st = State { rng, sequences, fk_samples };
-    let target = TableTarget { table_sql: dialect.qualified_ref(&table_ref), columns: active.iter().map(|(_, c)| dialect.quote_ident(&c.name)).collect(), key_index: Vec::new() };
+    let target = TableTarget {
+        table_sql: dialect.qualified_ref(&table_ref),
+        columns: active.iter().map(|(_, c)| dialect.quote_ident(&c.name)).collect(),
+        types: active.iter().map(|(_, c)| c.data_type.clone()).collect(),
+        key_index: Vec::new(),
+    };
     let limits: Vec<Option<usize>> = active.iter().map(|(_, c)| text_limit(c)).collect();
     let convert = ConvertOptions::default();
     progress.set_total_rows(Some(config.rows));

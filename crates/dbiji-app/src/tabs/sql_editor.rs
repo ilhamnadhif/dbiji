@@ -221,6 +221,13 @@ fn keyword_case(k: dbiji_config::settings::KeywordCase) -> dbiji_sql::KeywordCas
     }
 }
 
+/// A result leaves the editor: its server cursor closes now.
+fn release_result(item: ResultItem, cx: &AppContext) {
+    if let ResultItem::Rows(mut p) = item {
+        p.src.release(cx.backend);
+    }
+}
+
 impl SqlEditorTab {
     pub fn new(conn: Option<String>, schema: Option<SchemaRef>, text: String, path: Option<PathBuf>, console: bool, title: String) -> Self {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
@@ -299,9 +306,32 @@ impl SqlEditorTab {
         self.pending_schema = true;
     }
 
+    /// Why the editor cannot change its session now (another connection or database):
+    /// closing it would roll back a transaction, strand the results' pending edits, or
+    /// leave a running statement's results on the old session.
+    fn session_switch_blocked(&self, cx: &AppContext) -> Option<&'static str> {
+        if self.exec.is_some() || self.explain_job.is_some() {
+            return Some(tr("A statement is running: wait for it or cancel it first."));
+        }
+        if self.results.iter().any(|r| matches!(r, ResultItem::Rows(p) if p.has_changes() || p.is_saving())) {
+            return Some(tr("A result has unsaved changes: save or discard them first."));
+        }
+        if let SessionSlot::Ready(s) = &self.session
+            && s.has_uncommitted_writes()
+            && !cx.conns.is_shared_session(s)
+        {
+            return Some(tr("The editor's transaction is not committed: commit or roll it back first."));
+        }
+        None
+    }
+
     /// Change the editor's connection.
     pub fn set_connection(&mut self, cx: &mut AppContext, conn: Option<String>) {
         if self.conn == conn {
+            return;
+        }
+        if let Some(why) = self.session_switch_blocked(cx) {
+            cx.toasts.warning(tr("The connection was not changed"), Some(why.to_string()));
             return;
         }
         self.reset_session(cx);
@@ -660,7 +690,8 @@ impl SqlEditorTab {
             switch_to_manual: smart,
         };
         let name = cfg.as_ref().map(|c| c.name.clone());
-        let history = cx.services.history_sink(Some(conn.clone()), name, self.schema.as_ref().and_then(|s| s.database.clone()));
+        let history =
+            cx.services.history_sink(Some(conn.clone()), name, self.schema.as_ref().and_then(|s| s.database.clone()), self.schema.as_ref().and_then(|s| s.schema.clone()));
         self.variables = prepared.variables.clone();
         self.log("INFO", trf("Executing {} statement(s)…", &[&prepared.plans.len()]));
         self.exec = Some(Execution::start(cx.backend, session, prepared.plans, opts, history));
@@ -701,6 +732,10 @@ impl SqlEditorTab {
                     }
                     if let Some(opts) = self.pending_export.take() {
                         self.export_result(cx, &sql, opts);
+                        if let Some(t) = token {
+                            let s = session.clone();
+                            cx.backend.spawn_detached(async move { s.close_cursor_token(t).await });
+                        }
                         continue;
                     }
                     let budget = cx.settings.results.store_budget_bytes();
@@ -709,6 +744,7 @@ impl SqlEditorTab {
                     src.rerun_safe = !dbiji_sql::classify(&sql, self.lang.syntax()).is_write;
                     if self.terminal {
                         self.print_rows(&src, cx);
+                        src.release(cx.backend);
                         continue;
                     }
                     let title = result_title(&sql, self.results.len() + 1);
@@ -719,7 +755,7 @@ impl SqlEditorTab {
                     let item = ResultItem::Rows(Box::new(panel));
                     let pos = match (self.replace_result, self.bottom) {
                         (true, Bottom::Result(i)) if i < self.results.len() && !self.result_has_changes(i) => {
-                            self.results[i] = item;
+                            release_result(std::mem::replace(&mut self.results[i], item), cx);
                             i
                         }
                         _ => {
@@ -733,7 +769,7 @@ impl SqlEditorTab {
                         let victim = (0..self.results.len()).find(|&i| i != pos && !self.result_has_changes(i));
                         match victim {
                             Some(v) => {
-                                self.results.remove(v);
+                                release_result(self.results.remove(v), cx);
                                 if v < pos {
                                     pos -= 1;
                                 }
@@ -1211,12 +1247,18 @@ impl SqlEditorTab {
             if let Some(s) = chosen_schema {
                 self.select_schema_open = false;
                 let db_changed = s.database.is_some() && s.database != self.schema.as_ref().and_then(|x| x.database.clone());
-                self.schema = Some(s);
-                if db_changed {
-                    self.reset_session(cx);
+                // Another database closes the session: not over a transaction or pending edits.
+                let blocked = if db_changed { self.session_switch_blocked(cx) } else { None };
+                if let Some(why) = blocked {
+                    cx.toasts.warning(tr("The database was not changed"), Some(why.to_string()));
+                } else {
+                    self.schema = Some(s);
+                    if db_changed {
+                        self.reset_session(cx);
+                    }
+                    self.pending_schema = true;
+                    self.catalog_generation = None;
                 }
-                self.pending_schema = true;
-                self.catalog_generation = None;
             }
             ui.separator();
             let running = self.exec.is_some() || self.explain_job.is_some();
@@ -1361,7 +1403,7 @@ impl SqlEditorTab {
             if self.result_has_changes(i) {
                 cx.toasts.info(tr("Save or cancel the data changes first."));
             } else {
-                self.results.remove(i);
+                release_result(self.results.remove(i), cx);
                 self.bottom = if self.results.is_empty() { Bottom::Output } else { Bottom::Result(i.min(self.results.len() - 1)) };
             }
         }
@@ -1983,12 +2025,13 @@ impl TabView for SqlEditorTab {
             let session = self.session(cx);
             // Results of a session that was lost save and fetch through the new one.
             if let Some(s) = &session {
-                // Only a lost session of the same connection and database: a session closed on
-                // purpose (the editor switched database or connection) keeps its results there.
+                // A closed session (lost, or Disconnect / Reconnect) of the same connection and
+                // database: its results go on with the new one. Results of another database
+                // or connection stay where they are.
                 let conn = self.conn.clone().unwrap_or_default();
                 for r in &mut self.results {
                     if let ResultItem::Rows(p) = r
-                        && p.src.session.is_lost()
+                        && p.src.session.is_closed()
                         && !p.src.session.same(s)
                         && p.conn() == conn
                         && p.src.session.database() == s.database()

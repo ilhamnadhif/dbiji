@@ -566,10 +566,11 @@ impl Splitter<'_> {
             BlankLineMode::Smart => {
                 if seg.paren > 0 {
                     false
-                } else if seg.first_sig.is_some() {
+                } else if let Some(first) = seg.first_sig {
                     let prev = self.tokens[seg.last_sig];
                     let next = self.next_sig(i).map(|j| self.tokens[j]);
                     !self.continues(&prev, next.as_ref(), self.complete_ending(seg.last_sig))
+                        && !self.only_prefix(first, seg.last_sig)
                 } else {
                     // Only an executable comment so far.
                     true
@@ -580,6 +581,45 @@ impl Splitter<'_> {
             self.finish(seg, None);
             *seg = Seg::new(true);
         }
+    }
+
+    /// The statement so far is only a prefix of one: a `WITH` list without
+    /// its main statement, or `INSERT INTO target (columns)` without the rows.
+    fn only_prefix(&self, first: usize, last: usize) -> bool {
+        let lead = |w: &str| self.word(first, w);
+        let main: &[&str] = if lead("WITH") {
+            &[
+                "SELECT", "INSERT", "UPDATE", "DELETE", "MERGE", "VALUES", "TABLE", "REPLACE",
+            ]
+        } else if lead("INSERT") || lead("REPLACE") {
+            &[
+                "VALUES",
+                "VALUE",
+                "SELECT",
+                "SET",
+                "DEFAULT",
+                "WITH",
+                "TABLE",
+                "EXEC",
+                "EXECUTE",
+                "OUTPUT",
+                "FORMAT",
+                "ON",
+                "RETURNING",
+            ]
+        } else {
+            return false;
+        };
+        let mut depth = 0i32;
+        for t in &self.tokens[first + 1..=last] {
+            match t.kind {
+                TokenKind::LParen => depth += 1,
+                TokenKind::RParen => depth -= 1,
+                _ if depth == 0 && word_in(t, self.src, main) => return false,
+                _ => {}
+            }
+        }
+        true
     }
 
     /// A last word that usually continues but ends this statement:
@@ -925,6 +965,25 @@ mod tests {
         assert_eq!(
             texts("SELECT a FROM t UNION ALL\n\nSELECT b FROM u", &pg()).len(),
             1
+        );
+    }
+
+    #[test]
+    fn statement_prefixes_continue_after_blank_line() {
+        let cte = "WITH old AS (SELECT id FROM items WHERE seen < 1)\n\nDELETE FROM items WHERE id IN (SELECT id FROM old)";
+        assert_eq!(texts(cte, &pg()), vec![cte]);
+        let two = "WITH a AS (SELECT 1), b AS (SELECT 2)\n\nSELECT * FROM a, b";
+        assert_eq!(texts(two, &pg()), vec![two]);
+        let insert = "INSERT INTO t (a, b)\n\nSELECT 1, 2";
+        assert_eq!(texts(insert, &mysql()), vec![insert]);
+        // Complete statements still split.
+        assert_eq!(
+            texts("INSERT INTO t (a) VALUES (1)\n\nSELECT 1", &pg()),
+            vec!["INSERT INTO t (a) VALUES (1)", "SELECT 1"]
+        );
+        assert_eq!(
+            texts("WITH a AS (SELECT 1) SELECT * FROM a\n\nSELECT 2", &pg()),
+            vec!["WITH a AS (SELECT 1) SELECT * FROM a", "SELECT 2"]
         );
     }
 

@@ -440,8 +440,18 @@ fn render_xml(data: &CopyData, opts: &CopyOptions, fmt: &FormatOptions) -> Strin
 /// rows of fields. Quoted fields may contain tabs, quotes (`""`) and line
 /// breaks. A trailing line break is ignored.
 pub fn parse_clipboard_table(text: &str) -> Vec<Vec<String>> {
+    parse_table(text, true)
+}
+
+/// Parse DBiji's own copied text: a last line break is a last empty field
+/// (a copied NULL or empty text).
+pub(crate) fn parse_own_copy(text: &str) -> Vec<Vec<String>> {
+    parse_table(text, false)
+}
+
+fn parse_table(text: &str, trim_last_break: bool) -> Vec<Vec<String>> {
     let text = text.replace("\r\n", "\n");
-    let text = text.strip_suffix('\n').unwrap_or(&text);
+    let text = if trim_last_break { text.strip_suffix('\n').unwrap_or(&text) } else { &text };
     if text.is_empty() {
         return Vec::new();
     }

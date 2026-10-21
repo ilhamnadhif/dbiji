@@ -577,7 +577,7 @@ fn menus_actions_commands_and_dialogs() {
     let cancelled = h.output().viewport_output.get(&egui::ViewportId::ROOT).is_some_and(|v| v.commands.contains(&egui::ViewportCommand::CancelClose));
     assert!(cancelled, "close cancelled while a tab is dirty");
     frames(&mut h, 2);
-    assert!(has(&h, "Unsaved changes"), "quit confirmation: {:?}", labels(&h));
+    assert!(has(&h, "Quit DBiji?"), "quit confirmation: {:?}", labels(&h));
     no_errors(&mut h, "quit");
 }
 

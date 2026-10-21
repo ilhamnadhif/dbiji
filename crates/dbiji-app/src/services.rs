@@ -140,7 +140,13 @@ impl Services {
     }
 
     /// Record an executed statement in the history (runs on a worker thread).
-    pub fn history_sink(&self, connection_id: Option<String>, connection_name: Option<String>, database: Option<String>) -> Option<crate::exec::HistorySink> {
+    pub fn history_sink(
+        &self,
+        connection_id: Option<String>,
+        connection_name: Option<String>,
+        database: Option<String>,
+        schema: Option<String>,
+    ) -> Option<crate::exec::HistorySink> {
         let history = self.history.clone()?;
         Some(Arc::new(move |r: crate::exec::HistoryRecord| {
             let status = if r.cancelled {
@@ -155,6 +161,7 @@ impl Services {
             e.connection_id = connection_id.clone();
             e.connection_name = connection_name.clone();
             e.database = database.clone();
+            e.schema = schema.clone();
             e.duration_ms = Some(r.duration.as_millis() as u64);
             e.rows = r.rows;
             e.error_message = r.error.clone();

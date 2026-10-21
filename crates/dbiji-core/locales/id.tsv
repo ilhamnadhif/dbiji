@@ -2729,3 +2729,16 @@ Copy all	Salin semua
 Copied	Tersalin
 Minimize	Minimalkan
 Enter Full Screen	Layar Penuh
+No auto-refresh: it would run the statement that changes data again.	Tanpa auto-refresh: itu akan menjalankan ulang statement yang mengubah data.
+Run the statement again?	Jalankan statement lagi?
+These rows come from a statement that changes data (INSERT / UPDATE … RETURNING, CALL, EXEC). Reloading them runs it again.	Baris ini berasal dari statement yang mengubah data (INSERT / UPDATE … RETURNING, CALL, EXEC). Memuat ulang akan menjalankannya lagi.
+Run again	Jalankan lagi
+A statement is running: wait for it or cancel it first.	Sebuah statement sedang berjalan: tunggu atau batalkan dulu.
+A result has unsaved changes: save or discard them first.	Ada hasil dengan perubahan yang belum disimpan: simpan atau buang dulu.
+The editor's transaction is not committed: commit or roll it back first.	Transaksi editor belum di-commit: commit atau rollback dulu.
+The connection was not changed	Koneksi tidak diganti
+The database was not changed	Database tidak diganti
+{} operation(s) are still running (export, import, migration …); quitting stops them half way.	{} operasi masih berjalan (export, import, migrasi …); keluar sekarang akan menghentikannya di tengah jalan.
+Quit DBiji?	Keluar dari DBiji?
+It is connected: disconnect it first.	Koneksi masih tersambung: putuskan dulu.
+Cells copied with gaps between them cannot be pasted: copy a block	Sel yang disalin dengan celah di antaranya tidak bisa ditempel: salin satu blok

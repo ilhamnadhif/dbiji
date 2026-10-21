@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt;
+use std::fmt::Write as _;
 use uuid::Uuid;
 
 /// One row of a result set.
@@ -465,26 +466,29 @@ impl Value {
                     BinaryFormat::Text => Cow::Owned(format!("{}{}", String::from_utf8_lossy(shown), more)),
                 }
             }
-            Value::Date(d) => Cow::Owned(d.format(&opts.date_format).to_string()),
+            Value::Date(d) => Cow::Owned(strftime(|out| write!(out, "{}", d.format(&opts.date_format))).unwrap_or_else(|| self.to_text().into_owned())),
             Value::Time(t) => {
                 if opts.show_fractional_seconds && opts.time_format == "%H:%M:%S" {
                     Cow::Owned(time_text(t, true))
                 } else {
-                    Cow::Owned(t.format(&opts.time_format).to_string())
+                    Cow::Owned(strftime(|out| write!(out, "{}", t.format(&opts.time_format))).unwrap_or_else(|| self.to_text().into_owned()))
                 }
             }
             Value::DateTime(dt) => {
                 if opts.show_fractional_seconds && opts.datetime_format == "%Y-%m-%d %H:%M:%S" {
                     Cow::Owned(format!("{} {}", dt.date().format("%Y-%m-%d"), time_text(&dt.time(), true)))
                 } else {
-                    Cow::Owned(dt.format(&opts.datetime_format).to_string())
+                    Cow::Owned(strftime(|out| write!(out, "{}", dt.format(&opts.datetime_format))).unwrap_or_else(|| self.to_text().into_owned()))
                 }
             }
             Value::DateTimeTz(dt) => {
                 if opts.show_fractional_seconds && opts.datetime_format == "%Y-%m-%d %H:%M:%S" {
                     Cow::Owned(self.to_text().into_owned())
                 } else {
-                    Cow::Owned(format!("{}{}", dt.naive_local().format(&opts.datetime_format), offset_text(dt.offset())))
+                    Cow::Owned(
+                        strftime(|out| write!(out, "{}{}", dt.naive_local().format(&opts.datetime_format), offset_text(dt.offset())))
+                            .unwrap_or_else(|| self.to_text().into_owned()),
+                    )
                 }
             }
             Value::Uuid(_) | Value::Array(_) => {
@@ -937,9 +941,29 @@ impl<T: Into<Value>> From<Option<T>> for Value {
     }
 }
 
+/// Format with a user's chrono pattern: `None` instead of chrono's panic when
+/// the pattern is invalid or does not fit the value (`%H` for a date, `%z`
+/// without an offset).
+fn strftime(f: impl FnOnce(&mut String) -> fmt::Result) -> Option<String> {
+    let mut out = String::new();
+    f(&mut out).ok().map(|()| out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn date_patterns_that_do_not_fit_fall_back() {
+        let d = NaiveDate::from_ymd_opt(2024, 1, 31).unwrap();
+        let dt = d.and_hms_opt(10, 5, 0).unwrap();
+        let opts = FormatOptions { date_format: "%H:%M".into(), datetime_format: "%Y %z".into(), time_format: "%Y".into(), ..Default::default() };
+        assert_eq!(Value::Date(d).display(&opts), "2024-01-31");
+        assert_eq!(Value::DateTime(dt).display(&opts), "2024-01-31 10:05:00");
+        assert_eq!(Value::Time(dt.time()).display(&opts), "10:05:00");
+        let opts = FormatOptions { date_format: "%d.%m.%Y".into(), ..Default::default() };
+        assert_eq!(Value::Date(d).display(&opts), "31.01.2024");
+    }
 
     #[test]
     fn value_is_small() {

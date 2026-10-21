@@ -203,6 +203,13 @@ impl Dialect for MsSqlDialect {
         format!("@P{index}")
     }
 
+    // A datetime parameter is a datetime2 (.003), and SQL Server compares a datetime
+    // column (.00333…) with it exactly: a row's own value would not find the row.
+    // The literal converts to the column's datetime.
+    fn inline_value(&self, type_name: &str) -> bool {
+        matches!(base_type(Some(type_name)).as_str(), "datetime" | "smalldatetime")
+    }
+
     fn limit_query(&self, sql: &str, limit: u64, offset: u64) -> String {
         let inner = ansi::strip_trailing_semicolon(sql);
         let shape = sqltext::select_shape(inner);
@@ -520,6 +527,7 @@ mod tests {
         assert_eq!(d.literal(&Value::Float(0.1), None), "1e-1");
         let dt = NaiveDate::from_ymd_opt(2024, 1, 2).unwrap().and_hms_nano_opt(3, 4, 5, 3_333_333).unwrap();
         assert_eq!(d.literal(&Value::DateTime(dt), Some("datetime")), "'2024-01-02T03:04:05.003'");
+        assert!(d.inline_value("datetime") && d.inline_value("[smalldatetime]") && !d.inline_value("datetime2(3)"));
         assert_eq!(d.literal(&Value::DateTime(dt), Some("datetime2(7)")), "'2024-01-02T03:04:05.0033333'");
         assert_eq!(d.literal(&Value::DateTime(dt), None), "CAST('2024-01-02T03:04:05.0033333' AS datetime2)");
         assert_eq!(d.literal(&Value::Date(dt.date()), None), "'20240102'");

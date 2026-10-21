@@ -60,7 +60,9 @@ pub fn selection_stats(model: &ResultModel, grid: &DataGridState, limit: usize) 
         }
     }
     let mut stats = compute_stats(flat, limit);
-    if sel.cell_count(nrows, visible.len()) > stats.count {
+    // Every selected cell was read unless rows were cut (`cell_count` counts
+    // overlapping ranges twice).
+    if rows.len() >= row_limit && sel.cell_count(nrows, visible.len()) > stats.count {
         stats.truncated = true;
     }
     stats

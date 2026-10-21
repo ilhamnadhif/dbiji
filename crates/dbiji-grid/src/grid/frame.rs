@@ -157,25 +157,21 @@ pub(super) struct GridFrame<'a> {
 pub(super) fn show(model: &mut ResultModel, state: &mut DataGridState, options: &GridOptions, id_salt: Id, ui: &mut Ui) -> GridResponse {
     let id = ui.make_persistent_id(id_salt);
     model.try_sync();
-    // A sort / filter computed in the background may be installed while a cell editor
-    // is open: it edits the same record afterwards, at its new display row.
-    let edit_key = state.rt.editing.as_ref().and_then(|e| model.row_key(e.row));
-    let drop_key = state.rt.dropdown.as_ref().and_then(|d| model.row_key(d.row));
-    if let Some(r) = model.poll_view_job() {
-        if state.rt.editing.is_some() {
-            match edit_key.and_then(|k| model.display_row_of(k)) {
-                Some(row) => state.rt.editing.as_mut().expect("checked").row = row,
-                None => state.rt.editing = None,
-            }
+    if let Some(Err(e)) = model.poll_view_job() {
+        state.show_message(e, true);
+    }
+    // The view may have changed under an open cell editor (a sort or filter, a
+    // refresh): it edits the same record, at its new display row, or closes.
+    if let Some(e) = &mut state.rt.editing {
+        match e.anchor.and_then(|a| model.anchored_row(a, e.row)) {
+            Some(row) => e.row = row,
+            None => state.rt.editing = None,
         }
-        if state.rt.dropdown.is_some() {
-            match drop_key.and_then(|k| model.display_row_of(k)) {
-                Some(row) => state.rt.dropdown.as_mut().expect("checked").row = row,
-                None => state.rt.dropdown = None,
-            }
-        }
-        if let Err(e) = r {
-            state.show_message(e, true);
+    }
+    if let Some(d) = &mut state.rt.dropdown {
+        match d.anchor.and_then(|a| model.anchored_row(a, d.row)) {
+            Some(row) => d.row = row,
+            None => state.rt.dropdown = None,
         }
     }
     state.sync_columns(model);

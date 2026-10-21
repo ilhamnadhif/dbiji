@@ -316,7 +316,12 @@ async fn import_rows(source: &mut dyn RowSource, session: &mut dyn Session, mapp
     } else {
         Vec::new()
     };
-    let target = TableTarget { table_sql: dialect.qualified_ref(&mapping.target), columns: active.iter().map(|c| dialect.quote_ident(&c.target_name)).collect(), key_index };
+    let target = TableTarget {
+        table_sql: dialect.qualified_ref(&mapping.target),
+        columns: active.iter().map(|c| dialect.quote_ident(&c.target_name)).collect(),
+        types: active.iter().map(|c| c.target_type.clone()).collect(),
+        key_index,
+    };
     let handle = session.cancel_handle();
     let mut writer = BatchWriter::new(session, target, mapping.transaction, mapping.on_error, mapping.rows_per_statement, item.clone());
     writer.begin().await?;

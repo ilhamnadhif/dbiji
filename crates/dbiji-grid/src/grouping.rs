@@ -71,15 +71,45 @@ struct Acc {
 fn key_part(v: &Value) -> (u8, String) {
     match v {
         Value::Null => (0, String::new()),
-        Value::Int(_) | Value::UInt(_) | Value::Float(_) | Value::Decimal(_) => {
-            // Equal numbers group together regardless of representation.
-            match v.as_f64() {
+        // Equal numbers group together regardless of representation (3, 3.0,
+        // 3.00), as exact decimal text: big integers stay apart.
+        Value::Int(i) => (1, i.to_string()),
+        Value::UInt(u) => (1, u.to_string()),
+        Value::Float(f) => (1, if *f == 0.0 { "0".into() } else { format!("{f}") }),
+        Value::Decimal(d) => match plain_decimal(d) {
+            Some(t) => (1, t),
+            None => match v.as_f64() {
                 Some(f) => (1, format!("{f}")),
-                None => (2, v.to_text().into_owned()),
-            }
-        }
+                None => (2, d.to_string()),
+            },
+        },
         other => (2, other.to_text().into_owned()),
     }
+}
+
+/// `d` without a plus sign, leading zeros or trailing fraction zeros
+/// (`+001.50` → `1.5`, `-0.0` → `0`); `None` when it is not a plain number.
+fn plain_decimal(d: &str) -> Option<String> {
+    let (neg, body) = match d.strip_prefix('-') {
+        Some(r) => (true, r),
+        None => (false, d.strip_prefix('+').unwrap_or(d)),
+    };
+    let (int, frac) = body.split_once('.').unwrap_or((body, ""));
+    if int.is_empty() && frac.is_empty() || !int.bytes().chain(frac.bytes()).all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let int = int.trim_start_matches('0');
+    let frac = frac.trim_end_matches('0');
+    let mut out = String::new();
+    if neg && !(int.is_empty() && frac.is_empty()) {
+        out.push('-');
+    }
+    out.push_str(if int.is_empty() { "0" } else { int });
+    if !frac.is_empty() {
+        out.push('.');
+        out.push_str(frac);
+    }
+    Some(out)
 }
 
 /// Group the rows `rows` of `store` (all stored rows when `None`).
@@ -189,6 +219,17 @@ pub fn group_filter(spec: &GroupSpec, group: &GroupRow, column_names: &[String])
 mod tests {
     use super::*;
     use dbiji_core::RowStore;
+
+    #[test]
+    fn number_keys_are_exact() {
+        let k = |v: Value| key_part(&v);
+        assert_ne!(k(Value::Int(9_007_199_254_740_993)), k(Value::Int(9_007_199_254_740_992)));
+        assert_eq!(k(Value::Int(3)), k(Value::Float(3.0)));
+        assert_eq!(k(Value::Int(3)), k(Value::decimal("3.00")));
+        assert_eq!(k(Value::Float(0.1)), k(Value::decimal("+0.10")));
+        assert_eq!(k(Value::Int(0)), k(Value::decimal("-0.0")));
+        assert_eq!(k(Value::UInt(u64::MAX)), k(Value::decimal(u64::MAX.to_string())));
+    }
 
     fn store() -> SharedRowStore {
         let s = RowStore::shared(1 << 24);

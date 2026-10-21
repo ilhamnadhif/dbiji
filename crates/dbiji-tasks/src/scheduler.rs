@@ -284,7 +284,10 @@ async fn run_loop(inner: Arc<Inner>) {
                 inner.state.lock().next_due.remove(&id);
                 continue;
             };
-            if engine.is_task_running(&task.id) {
+            if task.os_scheduler {
+                // The system scheduler starts it (`--run-task`), DBiji open or not:
+                // starting it here as well would run it twice.
+            } else if engine.is_task_running(&task.id) {
                 if inner.options.record_skipped {
                     engine.record_skipped(&task, Trigger::Schedule, tr("Skipped: the previous run is still in progress"), None);
                 }

@@ -324,7 +324,7 @@ impl GridFrame<'_> {
                     ui.close();
                 }
             });
-            let has_filter = self.model.client_view_spec().filter.is_some();
+            let has_filter = self.model.requested_view_spec().filter.is_some();
             if has_filter && item(ui, icon::FUNNEL_X, tr("Clear client filter"), None).clicked() {
                 crate::grid::apply_client_filter(self.model, None, &self.ctx);
                 ui.close();

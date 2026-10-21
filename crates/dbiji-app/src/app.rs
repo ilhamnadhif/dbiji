@@ -210,7 +210,7 @@ impl DbijiApp {
             None => self.dock.iter_all_tabs_mut().find(|(_, t)| t.id == id).map(|(_, t)| t),
         };
         let Some(tab) = tab else { return };
-        if tab.needs_close_confirm() {
+        if tab.needs_close_confirm() || tab.close_rolls_back(&self.conns) {
             if !self.close_confirm.contains(&id) {
                 self.close_confirm.push(id);
             }
@@ -249,17 +249,23 @@ impl DbijiApp {
     /// "Discard the unsaved changes of … and close?" for the first waiting tab.
     fn close_confirm_ui(&mut self, ctx: &egui::Context) {
         let Some(&id) = self.close_confirm.first() else { return };
-        let title = self.popups.iter().chain(self.dock.iter_all_tabs().map(|(_, t)| t)).find(|t| t.id == id).map(|t| t.view.title());
-        let Some(title) = title else {
+        let tab = self.popups.iter().chain(self.dock.iter_all_tabs().map(|(_, t)| t)).find(|t| t.id == id);
+        let Some((title, dirty)) = tab.map(|t| (t.view.title(), t.view.is_dirty())) else {
             self.close_confirm.remove(0);
             return;
         };
         let mut decided: Option<bool> = None;
         let modal = egui::Modal::new(egui::Id::new(("confirm_close", id))).show(ctx, |ui| {
-            ui.heading(tr("Unsaved changes"));
-            ui.label(dbiji_core::trf("\"{}\" has unsaved changes; closing it discards them.", &[&title]));
+            // Pending edits, or edits saved inside a transaction that closing rolls back.
+            let (heading, text, button) = if dirty {
+                (tr("Unsaved changes"), dbiji_core::trf("\"{}\" has unsaved changes; closing it discards them.", &[&title]), tr("Discard and close"))
+            } else {
+                (tr("Uncommitted transaction"), dbiji_core::trf("\"{}\" has uncommitted changes; closing it rolls them back.", &[&title]), tr("Roll back and close"))
+            };
+            ui.heading(heading);
+            ui.label(text);
             ui.horizontal(|ui| {
-                if ui.button(RichText::new(tr("Discard and close")).color(crate::theme::error_color(ui.visuals().dark_mode))).clicked() {
+                if ui.button(RichText::new(button).color(crate::theme::error_color(ui.visuals().dark_mode))).clicked() {
                     decided = Some(true);
                 }
                 if ui.button(tr("Cancel")).clicked() {
@@ -357,8 +363,9 @@ impl DbijiApp {
 
     /// Request connecting, prompting for credentials when needed.
     pub(crate) fn request_connect(&mut self, id: &str) {
-        if self.conns.secrets.is_locked() {
-            // Encrypted vault locked (auto-lock): ask for the master password first.
+        // Encrypted vault locked (auto-lock): ask for the master password first, unless the
+        // user skipped it: then the passwords are asked when connecting.
+        if self.conns.secrets.is_locked() && !self.dialogs.vault.skipped {
             self.dialogs.vault_open = true;
             self.toasts.info(tr("Unlock the saved passwords, then connect again."));
             return;
@@ -913,7 +920,10 @@ impl DbijiApp {
             match t.kind {
                 dbiji_config::project::TabKind::SqlScript if t.path.as_ref().is_some_and(|p| p.exists()) => {
                     if let Some(p) = t.path.clone() {
-                        let _ = self.open_script(p);
+                        // The session's connection and schema: the editor's last, not the file's saved ones.
+                        let conn = t.connection_id.clone().filter(|c| self.conns.config(c).is_some());
+                        let schema = (t.schema.is_some() || t.database.is_some()).then(|| dbiji_core::meta::SchemaRef::new(t.database.clone(), t.schema.clone()));
+                        let _ = self.open_script_with(p, conn.map(|c| (c, schema)));
                         opened += 1;
                     }
                 }
@@ -981,6 +991,11 @@ impl DbijiApp {
 
     /// Open a script file in an editor (its saved connection and schema are restored).
     pub fn open_script(&mut self, path: std::path::PathBuf) -> Option<u64> {
+        self.open_script_with(path, None)
+    }
+
+    /// Open a script with this connection and schema instead of the ones saved for it.
+    fn open_script_with(&mut self, path: std::path::PathBuf, binding: Option<(String, Option<dbiji_core::meta::SchemaRef>)>) -> Option<u64> {
         let text = match std::fs::read_to_string(&path) {
             Ok(t) => t,
             Err(e) => {
@@ -996,6 +1011,10 @@ impl DbijiApp {
             .filter(|c| self.conns.config(c).is_some())
             .or_else(|| self.nav.selected.as_ref().and_then(|n| n.connection()).map(str::to_string));
         let schema = meta.as_ref().and_then(|m| (m.schema.is_some() || m.database.is_some()).then(|| dbiji_core::meta::SchemaRef::new(m.database.clone(), m.schema.clone())));
+        let (conn, schema) = match binding {
+            Some((c, s)) => (Some(c), s),
+            None => (conn, schema),
+        };
         let title = path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
         if let Some(c) = &conn
             && !self.conns.is_connected(c)
@@ -1461,7 +1480,7 @@ impl DbijiApp {
             self.show_nav = true;
             self.show_project = false;
             match object {
-                Some((conn, obj)) => self.nav.reveal(&conn, &obj),
+                Some((conn, obj)) => self.nav.reveal(&conn, &obj, &self.conns),
                 None => self.nav.select(crate::nav::NavNode::Connection(loc.conn)),
             }
         }
@@ -1575,7 +1594,8 @@ impl eframe::App for DbijiApp {
         self.shortcuts(&ctx);
         // Unsaved changes: ask before quitting.
         if ctx.input(|i| i.viewport().close_requested()) && !self.quit_confirmed && self.exit_at.is_none() && !self.exit_after_first_frame {
-            let dirty = self.dock.iter_all_tabs().any(|(_, t)| t.view.is_dirty()) || !crate::pending_tx::collect(&self.dock, &self.conns).is_empty();
+            // Unsaved tabs, open transactions, or work in progress (a migration, an import).
+            let dirty = self.dock.iter_all_tabs().any(|(_, t)| t.view.is_dirty()) || !crate::pending_tx::collect(&self.dock, &self.conns).is_empty() || self.ops.running() > 0;
             if dirty && self.settings.general.confirm_exit_with_unsaved {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
                 self.confirm_quit = true;
@@ -1587,7 +1607,7 @@ impl eframe::App for DbijiApp {
             let mut decided: Option<bool> = None;
             let mut review = false;
             let modal = egui::Modal::new(egui::Id::new("confirm_quit")).show(&ctx, |ui| {
-                ui.heading(tr("Unsaved changes"));
+                ui.heading(tr("Quit DBiji?"));
                 if !dirty.is_empty() {
                     ui.label(tr("These tabs have unsaved changes:"));
                     for t in dirty.iter().take(10) {
@@ -1599,6 +1619,10 @@ impl eframe::App for DbijiApp {
                     for p in pending.iter().take(10) {
                         ui.label(format!("• {} — {}", p.conn_name, p.owner));
                     }
+                }
+                let running = self.ops.running();
+                if running > 0 {
+                    ui.label(dbiji_core::trf("{} operation(s) are still running (export, import, migration …); quitting stops them half way.", &[&running]));
                 }
                 ui.horizontal(|ui| {
                     if !pending.is_empty() && ui.button(tr("Review transactions")).clicked() {
@@ -1689,7 +1713,7 @@ impl eframe::App for DbijiApp {
         if cx.settings.navigator.link_with_editor && self.active_tab != self.linked_tab {
             self.linked_tab = self.active_tab;
             if let Some((conn, obj)) = self.dock.find_active_focused().and_then(|(_, t)| t.view.navigator_object()) {
-                self.nav.reveal(&conn, &obj);
+                self.nav.reveal(&conn, &obj, cx.conns);
             }
         }
         egui::CentralPanel::default().frame(egui::Frame::new()).show(ui, |ui| {
@@ -1828,6 +1852,7 @@ impl eframe::App for DbijiApp {
             self.backend.block_on(async move { s.shutdown(std::time::Duration::from_secs(3)).await });
         }
         self.ops.cancel_all();
-        self.conns.disconnect_all(&self.backend);
+        // Waited for: the after-disconnect commands (tunnels, VPN) run before DBiji exits.
+        self.conns.disconnect_all_and_wait(&self.backend, std::time::Duration::from_secs(10));
     }
 }

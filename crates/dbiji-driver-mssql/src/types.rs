@@ -323,7 +323,7 @@ fn bind_value(cmd: &mut Command<'static>, name: String, v: &Value) {
 pub fn executesql_command(sql: &str, values: &[Value]) -> DbResult<Command<'static>> {
     let decls = param_declarations(values)?;
     let mut cmd = Command::new("sp_executesql");
-    cmd.bind_param("@stmt", sql.to_string());
+    cmd.bind_param("@stmt", inline_null_params(sql, values));
     if !values.is_empty() {
         cmd.bind_param("@params", decls);
         for (i, v) in values.iter().enumerate() {
@@ -331,6 +331,27 @@ pub fn executesql_command(sql: &str, values: &[Value]) -> DbResult<Command<'stat
         }
     }
     Ok(cmd)
+}
+
+/// `sql` with the parameters bound to NULL written as `NULL`. A NULL
+/// parameter has a type (nvarchar), and SQL Server converts nvarchar to
+/// neither varbinary nor image, even for NULL; a NULL literal fits any column.
+fn inline_null_params(sql: &str, values: &[Value]) -> String {
+    if !values.iter().any(Value::is_null) {
+        return sql.to_string();
+    }
+    let mut out = String::with_capacity(sql.len());
+    let mut at = 0;
+    for t in crate::sqltext::tokenize(sql) {
+        let index = t.text.strip_prefix("@P").or_else(|| t.text.strip_prefix("@p")).and_then(|n| n.parse::<usize>().ok());
+        if t.kind == crate::sqltext::TokKind::Variable && index.is_some_and(|n| n >= 1 && values.get(n - 1).is_some_and(Value::is_null)) {
+            out.push_str(&sql[at..t.start]);
+            out.push_str("NULL");
+            at = t.end();
+        }
+    }
+    out.push_str(&sql[at..]);
+    out
 }
 
 /// `Cow` helper for statement text passed to tiberius.
@@ -427,5 +448,11 @@ mod tests {
         assert_eq!(decl, "@P1 bigint, @P2 nvarchar(4000), @P3 nvarchar(4000), @P4 numeric(4,2), @P5 bit, @P6 varbinary(8000), @P7 numeric(20,0), @P8 nvarchar(max)");
         assert!(param_declarations(&[Value::Float(f64::NAN)]).is_err());
         assert!(executesql_command("SELECT @P1", &[Value::Int(1)]).is_ok());
+        let nulls = [Value::Int(1), Value::Null, Value::Null];
+        assert_eq!(
+            inline_null_params("UPDATE t SET b = @P2, c = '@P3' /* @P2 */ WHERE id = @P1 AND x = @P3 -- @P2", &nulls),
+            "UPDATE t SET b = NULL, c = '@P3' /* @P2 */ WHERE id = @P1 AND x = NULL -- @P2"
+        );
+        assert_eq!(inline_null_params("SELECT @P10, @P1", &[Value::Int(1)]), "SELECT @P10, @P1");
     }
 }

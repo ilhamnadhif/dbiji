@@ -3,6 +3,14 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.13 — 2026-10-21
+
+### Fixed
+- The connection's dot turns red when the connection is lost: also when the server closed it while DBiji was idle (idle timeout, restart), and when a data tab or SQL editor found its own session closed (the connection is checked then). Double-click a red connection to reconnect.
+- A data tab or SQL editor result whose session was lost saves and loads through a new session instead of failing with "connection closed" until the tab is opened again; a session of another database is opened again too.
+- New rows show the values the database gave them right after **Save**: a generated id (serial, identity, auto increment) and column defaults (they stayed NULL until a refresh). PostgreSQL, SQLite, DuckDB and MariaDB return the row (`RETURNING`); MySQL and SQL Server read it back by its key.
+- Security: certificate checks of TLS connections no longer accept distrusted intermediate certificates (rustls-webpki 0.103.16, webpki-roots 1.0.10).
+
 ## 0.3.12 — 2026-10-21
 
 ### Changed

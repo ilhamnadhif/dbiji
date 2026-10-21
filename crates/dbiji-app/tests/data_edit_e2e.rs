@@ -250,6 +250,47 @@ fn edit_save_and_cancel() {
 }
 
 #[test]
+fn generated_values_show_after_save() {
+    for (name, url) in servers() {
+        let mut h = H::new(&url);
+        let table = format!("dbiji_gen_{}", &uuid::Uuid::new_v4().simple().to_string()[..8]);
+        let id = match name {
+            "sqlite" => "id INTEGER PRIMARY KEY AUTOINCREMENT",
+            "postgres" | "cockroach" => "id SERIAL PRIMARY KEY",
+            _ => "id INT AUTO_INCREMENT PRIMARY KEY",
+        };
+        h.sql(&format!("CREATE TABLE {table} ({id}, name VARCHAR(40), note VARCHAR(10) DEFAULT 'n/a')"));
+        h.sql(&format!("INSERT INTO {table} (name) VALUES ('one')"));
+        let schema = {
+            let live = h.cm.live(&h.id).unwrap();
+            if name == "sqlite" { None } else { live.current_schema.clone().or(live.current_database.clone()) }
+        };
+        let mut view = TableDataView::new(h.id.clone(), ObjectRef::table(schema, table.clone()), None);
+        h.until(&mut view, "rows", |v| v.panel.as_ref().is_some_and(|p| p.model.row_count() == 1 && p.model.is_editable()));
+        let (id_col, note_col) = {
+            let p = view.panel.as_mut().unwrap();
+            let col = |n: &str| p.model.columns().iter().position(|c| c.name.eq_ignore_ascii_case(n)).unwrap();
+            let (id_col, name_col, note_col) = (col("id"), col("name"), col("note"));
+            // A new row with the id and the note left to the database.
+            let new = p.model.add_row(None).unwrap();
+            p.model.set_cell(new, name_col, "two").unwrap();
+            (id_col, note_col)
+        };
+        save_and_wait(&mut h, &mut view);
+        let db_id = h.query(&format!("SELECT id FROM {table} WHERE name = 'two'"))[0][0].clone();
+        let p = view.panel.as_ref().unwrap();
+        let row = (0..p.model.row_count()).find(|&r| p.model.cell(r, id_col).is_some_and(|v| !v.is_null() && v.to_text() == db_id));
+        assert!(row.is_some(), "{name}: the generated id {db_id} shows without a refresh");
+        assert_eq!(p.model.cell(row.unwrap(), note_col).map(|v| v.to_text().into_owned()), Some("n/a".to_string()), "{name}: the default shows");
+        h.sql(&format!("DROP TABLE {table}"));
+        h.cm.disconnect_all(&h.backend);
+        if let Some(p) = url.strip_prefix("sqlite://") {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+}
+
+#[test]
 fn virtual_model_dictionary_and_virtual_columns() {
     let file = std::env::temp_dir().join(format!("dbiji-vm-e2e-{}.db", uuid::Uuid::new_v4().simple()));
     let url = format!("sqlite://{}", file.display());

@@ -83,6 +83,13 @@ impl TableDataView {
         // A table of another database of the server needs a session there.
         let database = self.table.database.clone();
         let Some(session) = self.session.get_in(ui, cx, &conn, "data", database.as_deref()) else { return };
+        // The tab's session was lost (server restart, idle timeout) and opened again:
+        // the grid saves and fetches through the new one instead of failing with "closed".
+        if let Some(p) = self.panel.as_mut()
+            && !p.src.session.same(&session)
+        {
+            p.src.session = session.clone();
+        }
         if !self.started {
             self.start(cx, session.clone());
         }

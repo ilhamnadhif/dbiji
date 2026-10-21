@@ -1125,6 +1125,12 @@ impl Navigator {
                     }
                     RowKind::Node => {}
                 }
+                let resp = match &r.node {
+                    NavNode::Connection(id) if matches!(cx.conns.status(id), ConnStatus::Lost) => {
+                        resp.on_hover_text(tr("The connection to the server was lost: double-click to reconnect"))
+                    }
+                    _ => resp,
+                };
                 let icol = r.icon_color.or_else(|| dbiji_icons::color(r.icon)).unwrap_or_else(|| ui.visuals().weak_text_color());
                 // A connection: its database's logo (the icon when there is none).
                 let logo_rect = egui::Rect::from_center_size(egui::pos2(x + 8.0, y), egui::vec2(font.size + 5.0, font.size + 5.0));
@@ -1185,6 +1191,14 @@ impl Navigator {
     }
 
     fn toggle(&mut self, node: &NavNode, cx: &mut AppContext) {
+        // A lost connection (red) is connected again instead of being folded.
+        if let NavNode::Connection(id) = node
+            && matches!(cx.conns.status(id), ConnStatus::Lost)
+        {
+            cx.push(AppCommand::Reconnect(id.clone()));
+            self.expanded.insert(node.clone());
+            return;
+        }
         if self.expanded.contains(node) {
             self.expanded.remove(node);
         } else {

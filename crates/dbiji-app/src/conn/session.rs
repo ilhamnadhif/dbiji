@@ -39,6 +39,8 @@ struct Shared {
     database: Option<String>,
     busy: AtomicBool,
     closed: AtomicBool,
+    /// Closed by [`SessionHandle::close`] (not lost: the server or the network ended it).
+    closed_here: AtomicBool,
     next_token: AtomicU64,
     tx: Mutex<TxState>,
     busy_since: Mutex<Option<Instant>>,
@@ -76,6 +78,7 @@ impl SessionHandle {
                 database,
                 busy: AtomicBool::new(false),
                 closed: AtomicBool::new(false),
+                closed_here: AtomicBool::new(false),
                 next_token: AtomicU64::new(1),
                 tx: Mutex::new(TxState { mode, ..Default::default() }),
                 busy_since: Mutex::new(None),
@@ -113,7 +116,24 @@ impl SessionHandle {
     }
 
     pub fn is_closed(&self) -> bool {
-        self.inner.closed.load(Ordering::Relaxed)
+        if self.inner.closed.load(Ordering::Relaxed) {
+            return true;
+        }
+        // The server or the network may have ended the connection while it was idle
+        // (idle timeout, server restart): the driver knows without a round trip.
+        // A busy session is not waited for; its statement reports the error.
+        if let Ok(s) = self.inner.session.try_lock()
+            && s.is_closed()
+        {
+            self.inner.closed.store(true, Ordering::Relaxed);
+            return true;
+        }
+        false
+    }
+
+    /// Closed without [`close`](Self::close): the connection to the server was lost.
+    pub fn is_lost(&self) -> bool {
+        self.is_closed() && !self.inner.closed_here.load(Ordering::Relaxed)
     }
 
     pub fn tx_state(&self) -> TxState {
@@ -319,6 +339,12 @@ impl SessionHandle {
     /// committed). Returns the total number of affected rows and whether the
     /// changes are already committed.
     pub async fn apply_changes(&self, stmts: &[(String, Vec<Value>)]) -> DbResult<(u64, bool)> {
+        self.apply_changes_reading(stmts).await.map(|a| (a.rows, a.committed))
+    }
+
+    /// [`apply_changes`](Self::apply_changes) that also keeps, per statement, the first
+    /// row it returned (`INSERT … RETURNING`) and the generated id (MySQL).
+    pub async fn apply_changes_reading(&self, stmts: &[(String, Vec<Value>)]) -> DbResult<Applied> {
         let mut guard = self.lock().await;
         let manual = guard.transaction_mode() == TransactionMode::Manual;
         if !manual {
@@ -337,12 +363,14 @@ impl SessionHandle {
         };
         let mut total = 0u64;
         let mut failure = None;
+        let mut results = Vec::with_capacity(stmts.len());
         for (sql, params) in stmts {
             let started = Instant::now();
-            match dbiji_core::driver::execute_update(guard.as_mut(), sql, params).await {
-                Ok(n) => {
-                    total += n.unwrap_or(0);
-                    self.log_tx(sql, started, n, true);
+            match run_reading(guard.as_mut(), sql, params).await {
+                Ok(r) => {
+                    total += r.rows.unwrap_or(0);
+                    self.log_tx(sql, started, r.rows, true);
+                    results.push(r);
                 }
                 Err(e) => {
                     self.note_error(&e);
@@ -367,8 +395,8 @@ impl SessionHandle {
                 }
                 Err(e)
             }
-            None if !manual => guard.commit().await.map(|_| (total, true)),
-            None => Ok((total, false)),
+            None if !manual => guard.commit().await.map(|_| Applied { rows: total, committed: true, results }),
+            None => Ok(Applied { rows: total, committed: false, results }),
         };
         if !manual {
             let _ = guard.set_transaction_mode(TransactionMode::Auto).await;
@@ -413,7 +441,11 @@ impl SessionHandle {
         if self.inner.cursor.try_lock().map(|c| c.is_some()).unwrap_or(true) {
             return Ok(());
         }
-        let r = guard.ping().await;
+        // A connection silently dropped by the network may never answer: bounded.
+        let r = match tokio::time::timeout(Duration::from_secs(20), guard.ping()).await {
+            Ok(r) => r,
+            Err(_) => Err(DbError::connection("The server did not answer the ping within 20 s")),
+        };
         if let Err(e) = &r {
             self.note_error(e);
         }
@@ -421,11 +453,67 @@ impl SessionHandle {
     }
 
     pub async fn close(&self) {
+        self.inner.closed_here.store(true, Ordering::Relaxed);
         self.close_cursor().await;
         let mut guard = self.inner.session.lock().await;
         let _ = guard.close().await;
         self.inner.closed.store(true, Ordering::Relaxed);
     }
+}
+
+/// Outcome of [`SessionHandle::apply_changes_reading`].
+pub struct Applied {
+    /// Rows changed.
+    pub rows: u64,
+    /// Committed (auto-commit), else left in the open transaction.
+    pub committed: bool,
+    /// Per statement, in order.
+    pub results: Vec<StatementResult>,
+}
+
+/// What one statement of a save returned.
+#[derive(Default)]
+pub struct StatementResult {
+    pub rows: Option<u64>,
+    /// First row of its result (`RETURNING`).
+    pub first_row: Option<Row>,
+    /// Id generated by the statement (MySQL `LAST_INSERT_ID`).
+    pub last_insert_id: Option<u64>,
+}
+
+/// Run `sql` to its end, keeping its first returned row and generated id.
+async fn run_reading(s: &mut dyn Session, sql: &str, params: &[Value]) -> DbResult<StatementResult> {
+    let mut cursor = s.execute(sql, params, &ExecOptions::default()).await?;
+    let mut out = StatementResult::default();
+    let mut returned = 0u64;
+    let mut counted = false;
+    while let Some(h) = cursor.next_result().await? {
+        match h {
+            ResultHeader::Update { rows_affected, last_insert_id, .. } => {
+                if let Some(n) = rows_affected {
+                    out.rows = Some(out.rows.unwrap_or(0) + n);
+                    counted = true;
+                }
+                out.last_insert_id = last_insert_id.filter(|id| *id > 0).or(out.last_insert_id);
+            }
+            ResultHeader::Rows(_) => loop {
+                let rows = cursor.fetch(1024).await?;
+                if rows.is_empty() {
+                    break;
+                }
+                returned += rows.len() as u64;
+                if out.first_row.is_none() {
+                    out.first_row = rows.into_iter().next();
+                }
+            },
+        }
+    }
+    cursor.close().await?;
+    // `INSERT … RETURNING` reports its rows as a result, not as a count.
+    if !counted && returned > 0 {
+        out.rows = Some(returned);
+    }
+    Ok(out)
 }
 
 pub struct FetchOutcome {

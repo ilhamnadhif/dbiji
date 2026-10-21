@@ -1866,7 +1866,19 @@ impl TabView for SqlEditorTab {
         if self.conn.as_ref().is_some_and(|c| cx.conns.is_connected(c)) {
             self.catalog_sync(cx);
             // Open the session early and apply the active schema.
-            if let Some(s) = self.session(cx)
+            let session = self.session(cx);
+            // Results of a session that was lost save and fetch through the new one.
+            if let Some(s) = &session {
+                for r in &mut self.results {
+                    if let ResultItem::Rows(p) = r
+                        && p.src.session.is_closed()
+                        && !p.src.session.same(s)
+                    {
+                        p.src.session = s.clone();
+                    }
+                }
+            }
+            if let Some(s) = session
                 && self.pending_schema
             {
                 self.pending_schema = false;

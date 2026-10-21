@@ -1384,6 +1384,10 @@ impl eframe::App for DbijiApp {
             }
         }
         self.conns.poll(&self.backend);
+        // The status dots follow a connection the server closed while DBiji was idle.
+        if !self.conns.live_ids().is_empty() {
+            ctx.request_repaint_after(std::time::Duration::from_secs(5));
+        }
         if self.bench_workload.is_some() {
             self.poll_bench_workload();
             ctx.request_repaint_after(std::time::Duration::from_millis(50));

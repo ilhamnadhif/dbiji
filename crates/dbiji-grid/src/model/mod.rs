@@ -1418,7 +1418,8 @@ impl ResultModel {
                     .collect(),
             })
             .collect();
-        Some(ChangeSet { table: target.table.clone(), deletes, updates, inserts })
+        let columns = (0..self.columns.len()).filter_map(|c| col_info(c).map(|(n, t)| (c, n, t))).collect();
+        Some(ChangeSet { table: target.table.clone(), deletes, updates, inserts, columns, key_columns: target.key_columns.clone() })
     }
 
     /// Parameterised statements saving the pending changes (deletes, updates,
@@ -1437,6 +1438,12 @@ impl ResultModel {
     /// `DEFAULT` cells become NULL in the store; refresh the result to see
     /// server generated values.
     pub fn apply_saved(&mut self) {
+        self.apply_saved_with(&HashMap::new());
+    }
+
+    /// [`apply_saved`](Self::apply_saved) with the values the database gave the new
+    /// rows (pending row id → (result column, value)): generated ids, defaults.
+    pub fn apply_saved_with(&mut self, inserted_values: &HashMap<u64, Vec<(usize, Value)>>) {
         if !self.has_changes() {
             return;
         }
@@ -1464,6 +1471,11 @@ impl ResultModel {
         for r in &self.inserted {
             let mut row: Row = r.values.iter().map(|v| v.value_or_null().clone()).collect();
             row.resize(n_cols, Value::Null);
+            for (c, v) in inserted_values.get(&r.id).into_iter().flatten() {
+                if let Some(slot) = row.get_mut(*c) {
+                    *slot = v.clone();
+                }
+            }
             guard.push(row);
         }
         let new_len = guard.len();

@@ -87,6 +87,9 @@ pub struct LiveConnection {
     /// Sessions opened for tabs (editors, data tabs): closed on disconnect too,
     /// so that none keeps running with the old settings, transactions or locks.
     tab_sessions: Arc<parking_lot::Mutex<Vec<SessionHandle>>>,
+    /// A ping of `main` after another session of the connection was lost (is the
+    /// server gone or just that session?).
+    health_probe: Option<Job<DbResult<()>>>,
     pub server: ServerInfo,
     pub meta: MetadataCache,
     pub connected_at: Instant,
@@ -192,6 +195,36 @@ impl LiveConnection {
             }));
         }
         None
+    }
+
+    /// When a session of a tab or of another database lost its connection (the data
+    /// tab's insert failed with "connection closed"), ping the main session: if the
+    /// server is gone, the connection shows as lost (red) instead of connected.
+    fn check_health(&mut self, backend: &Backend) {
+        if let Some(job) = self.health_probe.as_mut()
+            && job.poll().is_some()
+        {
+            self.health_probe = None;
+        }
+        // Each closed session is looked at once: tab sessions are forgotten, a closed
+        // session of another database is opened again on its next use.
+        let mut lost = {
+            let mut list = self.tab_sessions.lock();
+            let n = list.iter().filter(|s| s.is_lost()).count();
+            list.retain(|s| !s.is_closed());
+            n
+        };
+        self.db_sessions.retain(|_, l| match l.get() {
+            Some(s) if s.is_closed() => {
+                lost += usize::from(s.is_lost());
+                false
+            }
+            _ => true,
+        });
+        if lost > 0 && self.health_probe.is_none() && !self.main.is_closed() {
+            let main = self.main.clone();
+            self.health_probe = Some(backend.spawn(async move { main.ping().await }));
+        }
     }
 
     /// Why the session for `database` could not be opened (shown instead of "Loading…").
@@ -623,6 +656,7 @@ impl ConnectionManager {
                                 main,
                                 db_sessions: HashMap::new(),
                                 tab_sessions: Arc::new(parking_lot::Mutex::new(Vec::new())),
+                                health_probe: None,
                                 server: c.server,
                                 meta: MetadataCache::default(),
                                 connected_at: Instant::now(),
@@ -645,6 +679,7 @@ impl ConnectionManager {
             for s in live.db_sessions.values_mut() {
                 s.poll();
             }
+            live.check_health(backend);
         }
     }
 
@@ -776,6 +811,26 @@ impl NetConnector for DirectNet {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    async fn sqlite_session(label: &str) -> SessionHandle {
+        let mut cfg = ConnectionConfig::new(DbKind::Sqlite, label);
+        cfg.file_path = Some(":memory:".into());
+        let s = dbiji_driver_sqlite::SqliteDriver::new().connect(&ConnectParams::from_config(&cfg, None)).await.unwrap();
+        SessionHandle::new(s, label, None)
+    }
+
+    #[tokio::test]
+    async fn a_connection_ended_underneath_is_lost() {
+        // The server ends the connection (idle timeout, restart): no error was seen yet.
+        let h = sqlite_session("a").await;
+        assert!(!h.is_closed());
+        h.lock().await.close().await.unwrap();
+        assert!(h.is_closed() && h.is_lost());
+        // Closed by DBiji: closed, not lost.
+        let h = sqlite_session("b").await;
+        h.close().await;
+        assert!(h.is_closed() && !h.is_lost());
+    }
 
     #[test]
     fn simple_split() {

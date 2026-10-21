@@ -88,6 +88,11 @@ pub struct ChangeSet {
     pub updates: Vec<RowUpdate>,
     /// Rows to insert.
     pub inserts: Vec<RowInsert>,
+    /// The table columns of the result (result column, table column name, type):
+    /// read back after an insert (generated ids, defaults).
+    pub columns: Vec<(usize, String, String)>,
+    /// Result columns of the row key.
+    pub key_columns: Vec<usize>,
 }
 
 impl ChangeSet {
@@ -116,6 +121,28 @@ impl ChangeSet {
             out.push(render_insert(dialect, &table, i, r));
         }
         out
+    }
+
+    /// [`statements`](Self::statements) for saving: an insert returns the new row
+    /// (`RETURNING`) where the database can, so generated ids and defaults show at
+    /// once. Its result columns are [`ChangeSet::columns`] in order.
+    pub fn save_statements(&self, dialect: &dyn Dialect) -> Vec<(String, Vec<Value>)> {
+        let mut out = self.statements(dialect);
+        if dialect.supports_returning() && !self.columns.is_empty() {
+            let cols: Vec<String> = self.columns.iter().map(|(_, n, _)| dialect.quote_ident(n)).collect();
+            let returning = format!(" RETURNING {}", cols.join(", "));
+            let first_insert = out.len() - self.inserts.len();
+            for (sql, _) in &mut out[first_insert..] {
+                sql.push_str(&returning);
+            }
+        }
+        out
+    }
+
+    /// Index in [`save_statements`](Self::save_statements) of the insert of pending row `id`.
+    pub fn insert_statement(&self, id: u64) -> Option<usize> {
+        let first_insert = self.deletes.len() + self.updates.len();
+        self.inserts.iter().position(|i| i.id == id).map(|p| first_insert + p)
     }
 
     /// SQL text with literals, for the "preview SQL" dialog.

@@ -24,6 +24,7 @@ quick-xml.workspace = true
 
 [dev-dependencies]
 eframe.workspace = true
+egui = { workspace = true, features = ["default_fonts"] }
 
 [[example]]
 name = "grid_demo"

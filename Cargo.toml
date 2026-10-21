@@ -98,8 +98,11 @@ open = "5"
 zip = { version = "9", default-features = false, features = ["deflate"] }
 
 # --- UI
-eframe = { version = "0.36", default-features = false, features = ["accesskit", "default_fonts", "glow", "links", "wayland", "x11"] }
-egui = "0.36"
+# Without egui's bundled fonts: the app loads the ones it uses (theme.rs), so
+# the unused Ubuntu-Light (360 KB) is not linked. Tests turn them back on.
+eframe = { version = "0.36", default-features = false, features = ["accesskit", "glow", "links", "wayland", "x11"] }
+egui = { version = "0.36", default-features = false }
+epaint_default_fonts = "0.36"
 egui_extras = { version = "0.36", default-features = false }
 egui_plot = "0.37"
 egui_dock = "0.21"

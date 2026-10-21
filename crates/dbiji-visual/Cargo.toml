@@ -11,6 +11,7 @@ authors.workspace = true
 dbiji-core.workspace = true
 dbiji-icons.workspace = true
 egui.workspace = true
+epaint_default_fonts.workspace = true
 egui-phosphor.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -22,3 +23,4 @@ chrono.workspace = true
 
 [dev-dependencies]
 eframe.workspace = true
+egui = { workspace = true, features = ["default_fonts"] }

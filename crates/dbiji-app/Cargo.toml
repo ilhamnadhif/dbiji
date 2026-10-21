@@ -41,6 +41,7 @@ dbiji-driver-duckdb = { workspace = true, optional = true }
 dbiji-transfer.workspace = true
 eframe.workspace = true
 egui.workspace = true
+epaint_default_fonts.workspace = true
 egui_dock.workspace = true
 egui-phosphor.workspace = true
 egui_plot.workspace = true
@@ -71,6 +72,7 @@ objc2 = "0.6.5"
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSUserDefaults", "NSDictionary", "NSString", "NSValue", "NSObject"] }
 
 [dev-dependencies]
+egui = { workspace = true, features = ["default_fonts"] }
 egui_kittest = { version = "0.36", features = ["eframe"] }
 regex.workspace = true
 tempfile.workspace = true

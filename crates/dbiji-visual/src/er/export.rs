@@ -565,8 +565,11 @@ fn font_db() -> Arc<usvg::fontdb::Database> {
         db.load_system_fonts();
         if db.is_empty() {
             // Headless systems without fonts: use the fonts bundled with egui.
-            for data in egui::FontDefinitions::default().font_data.values() {
-                db.load_font_data(data.font.to_vec());
+            for data in [
+                epaint_default_fonts::HACK_REGULAR,
+                epaint_default_fonts::NOTO_EMOJI_REGULAR,
+            ] {
+                db.load_font_data(data.to_vec());
             }
             let family = db
                 .faces()

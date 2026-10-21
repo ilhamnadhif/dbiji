@@ -14,19 +14,27 @@ pub use dbiji_config::settings::Theme as ThemeChoice;
 const INTER: &[u8] = include_bytes!("../assets/fonts/Inter-Regular.ttf");
 const INTER_MEDIUM: &[u8] = include_bytes!("../assets/fonts/Inter-Medium.ttf");
 
-/// Fonts: Inter for the UI, Hack for code, then egui's defaults (emoji and
-/// symbols) and the Phosphor icon font as fallbacks, so icons can be mixed
-/// into any label. Inter is the Medium weight in the light theme: dark text
-/// on a light background reads thinner than light text on a dark one.
+/// Fonts: Inter for the UI, Hack for code, then egui's emoji fonts and the
+/// Phosphor icon font as fallbacks, so icons can be mixed into any label.
+/// Inter is the Medium weight in the light theme: dark text on a light
+/// background reads thinner than light text on a dark one. (egui's other
+/// bundled font, Ubuntu-Light, is not used and not linked.)
 pub fn font_definitions(theme: Theme) -> FontDefinitions {
+    use egui::FontTweak;
     let inter = if theme == Theme::Light { INTER_MEDIUM } else { INTER };
-    let mut fonts = FontDefinitions::default();
-    fonts.font_data.insert("Inter".into(), Arc::new(FontData::from_static(inter)));
-    let proportional = fonts.families.entry(FontFamily::Proportional).or_default();
-    proportional.retain(|f| f != "Ubuntu-Light");
-    proportional.insert(0, "Inter".into());
-    // Labels in monospace still find letters Hack lacks.
-    fonts.families.entry(FontFamily::Monospace).or_default().push("Inter".into());
+    let mut fonts = FontDefinitions::empty();
+    let mut add = |name: &str, data: FontData| {
+        fonts.font_data.insert(name.into(), Arc::new(data));
+    };
+    add("Inter", FontData::from_static(inter));
+    add("Hack", FontData::from_static(epaint_default_fonts::HACK_REGULAR));
+    // egui's sizes for its emoji fonts.
+    add("NotoEmoji-Regular", FontData::from_static(epaint_default_fonts::NOTO_EMOJI_REGULAR).tweak(FontTweak { scale: 0.81, ..Default::default() }));
+    add("emoji-icon-font", FontData::from_static(epaint_default_fonts::EMOJI_ICON).tweak(FontTweak { scale: 0.90, ..Default::default() }));
+    let emoji = ["NotoEmoji-Regular".to_string(), "emoji-icon-font".to_string()];
+    fonts.families.insert(FontFamily::Proportional, ["Inter".to_string()].into_iter().chain(emoji.clone()).collect());
+    // Labels in monospace still find letters and symbols Hack lacks.
+    fonts.families.insert(FontFamily::Monospace, ["Hack".to_string(), "Inter".to_string()].into_iter().chain(emoji).collect());
     egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
     dbiji_icons::add_fill_font(&mut fonts);
     fonts

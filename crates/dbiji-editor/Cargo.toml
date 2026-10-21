@@ -17,5 +17,6 @@ regex.workspace = true
 
 [dev-dependencies]
 eframe.workspace = true
+egui = { workspace = true, features = ["default_fonts"] }
 serde_json.workspace = true
 image.workspace = true

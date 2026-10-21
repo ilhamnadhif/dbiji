@@ -234,6 +234,14 @@ fn mv_target(create: &str) -> Option<String> {
     create[i + 4..].split_whitespace().next().map(str::to_string)
 }
 
+/// `MergeTree ORDER BY a SETTINGS …` of `CREATE MATERIALIZED VIEW v (…) ENGINE = … AS SELECT …`.
+fn mv_engine(create: &str) -> Option<String> {
+    let upper = create.to_ascii_uppercase();
+    let e = upper.find(" ENGINE = ")? + " ENGINE = ".len();
+    let end = upper[e..].find(" AS ").map(|i| e + i)?;
+    Some(create[e..end].trim().to_string()).filter(|s| !s.is_empty())
+}
+
 fn is_plain_ident(s: &str) -> bool {
     !s.is_empty() && s.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '`' || c == '.')
 }
@@ -531,6 +539,9 @@ pub async fn view_definition(s: &mut ClickHouseSession, view: &ObjectRef) -> DbR
     let mut v = ViewDef { schema: Some(db.clone()), name: view.name.clone(), materialized, definition: text(r.get(1)), comment: opt(r.get(2)), ..Default::default() };
     if materialized && let Some(to) = mv_target(&text(r.get(3))) {
         v.options.insert("to".into(), to);
+    } else if materialized && let Some(engine) = mv_engine(&text(r.get(3))) {
+        // Without TO the view stores its rows itself: its ENGINE (with ORDER BY, SETTINGS ...) is part of the DDL.
+        v.options.insert("engine".into(), engine);
     }
     let where_ = format!("database = {} AND table = {}", lit(&db), lit(&view.name));
     for r in s.rows(&format!("SELECT {COLUMN_COLS} FROM system.columns WHERE {where_} ORDER BY position")).await? {
@@ -999,6 +1010,10 @@ mod tests {
         assert!(key_list("").is_empty());
         assert_eq!(mv_target("CREATE MATERIALIZED VIEW db.mv TO db.target (`x` UInt8) AS SELECT 1"), Some("db.target".into()));
         assert_eq!(mv_target("CREATE MATERIALIZED VIEW db.mv ENGINE = Memory AS SELECT 1 TO x"), None);
+        assert_eq!(
+            mv_engine("CREATE MATERIALIZED VIEW db.mv (`a` UInt8) ENGINE = MergeTree ORDER BY a SETTINGS index_granularity = 8192 AS SELECT 1 AS a"),
+            Some("MergeTree ORDER BY a SETTINGS index_granularity = 8192".into())
+        );
         assert!(is_system_db("system"));
         assert_eq!(human_bytes(512), "512 B");
         assert_eq!(human_bytes(2048), "2.00 KiB");

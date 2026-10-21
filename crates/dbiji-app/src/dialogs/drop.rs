@@ -3,6 +3,7 @@
 
 use crate::backend::Job;
 use crate::command::AppCommand;
+use crate::conn::session::SessionHandle;
 use crate::cx::AppContext;
 use dbiji_core::ddl::{CheckDef, ForeignKeyDef, IndexDef, KeyDef, RoutineDef, SequenceDef, TableDef, TriggerDef, ViewDef};
 use dbiji_core::meta::{ObjectKind, ObjectRef};
@@ -81,9 +82,13 @@ impl DropDialog {
                 Err(e) => self.error = Some(e.full_text()),
             }
         }
-        let Some(live) = cx.conns.live(&self.conn) else { return false };
+        let backend = cx.backend;
+        let Some(live) = cx.conns.live_mut(&self.conn) else { return false };
         let dialect = live.dialect.clone();
-        let session = live.main.clone();
+        // Each object is dropped in its own database (another database of the server has its own session).
+        let sessions: Vec<Option<SessionHandle>> =
+            self.objects.iter().map(|o| if o.kind == ObjectKind::Database { Some(live.main.clone()) } else { live.ensure_session(backend, o.database.as_deref()) }).collect();
+        let opening = sessions.iter().any(Option::is_none);
         let read_only = live.config.read_only;
         let statements: Vec<String> = self.objects.iter().map(|o| drop_sql(dialect.as_ref(), o, self.cascade)).collect();
         let mut keep = true;
@@ -101,18 +106,21 @@ impl DropDialog {
             if read_only {
                 crate::widgets::error_box(ui, tr("The connection is read-only."));
             }
+            if opening {
+                ui.weak(tr("Opening a session…"));
+                ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
+            }
             if let Some(e) = &self.error {
                 crate::widgets::error_box(ui, e);
             }
             ui.horizontal(|ui| {
                 let danger = crate::theme::error_color(ui.visuals().dark_mode);
-                if ui.add_enabled(!busy && !read_only, egui::Button::new(RichText::new(tr("Drop")).color(danger))).clicked() {
-                    let stmts = statements.clone();
-                    let s = session.clone();
+                if ui.add_enabled(!busy && !read_only && !opening, egui::Button::new(RichText::new(tr("Drop")).color(danger))).clicked() {
+                    let work: Vec<(String, SessionHandle)> = statements.iter().cloned().zip(sessions.iter().flatten().cloned()).collect();
                     self.error = None;
-                    self.job = Some(cx.backend.spawn(async move {
+                    self.job = Some(backend.spawn(async move {
                         let mut n = 0;
-                        for sql in &stmts {
+                        for (sql, s) in &work {
                             s.execute_update(sql, &[]).await.map_err(|e| e.with_context(sql.clone()))?;
                             n += 1;
                         }

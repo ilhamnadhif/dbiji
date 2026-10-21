@@ -335,6 +335,10 @@ impl XmlSource {
 
 #[async_trait]
 impl RowSource for XmlSource {
+    fn binary_is_base64(&self) -> bool {
+        true
+    }
+
     fn columns(&self) -> &[ColumnMeta] {
         &self.columns
     }

@@ -915,6 +915,7 @@ pub static DUCKDB_SYNTAX: SqlSyntax = SqlSyntax {
     extra_ident_chars: "$",
     // identifiers are case-insensitive (even quoted ones) but keep their case
     ident_case: IdentCase::Preserve,
+    case_sensitive_names: false,
 };
 
 /// True when `ident` must be quoted.
@@ -1145,17 +1146,22 @@ impl Dialect for DuckDbDialect {
                     }
                 }
                 ("checkpoint", _) => {
+                    // A schema or table without its database: the current database
+                    // (the schema's name is no database name).
                     let db = if t.kind == ObjectKind::Database {
-                        t.name.as_str()
+                        Some(t.name.as_str())
                     } else {
-                        t.database.as_deref().unwrap_or(t.name.as_str())
+                        t.database.as_deref()
                     };
                     let force = if options.get("force").copied().unwrap_or(false) {
                         "FORCE "
                     } else {
                         ""
                     };
-                    format!("{force}CHECKPOINT {}", quote_ident(db))
+                    match db {
+                        Some(db) => format!("{force}CHECKPOINT {}", quote_ident(db)),
+                        None => format!("{force}CHECKPOINT"),
+                    }
                 }
                 ("analyze", ObjectKind::Table) => format!("ANALYZE {}", self.qualified_ref(t)),
                 ("analyze", _) => "ANALYZE".into(),

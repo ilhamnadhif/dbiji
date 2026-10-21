@@ -283,13 +283,31 @@ impl ResultModel {
         let fetch = std::mem::take(&mut self.fetch);
         let editability = std::mem::replace(&mut self.editability, Err(ReadOnlyReason::NoSourceTable));
         let same_columns = columns.len() == self.columns.len() && columns.iter().zip(&self.columns).all(|(a, b)| a.name == b.name);
+        let old_sources: Vec<Option<dbiji_core::value::ColumnSource>> = self.columns.iter().map(|c| c.source.clone()).collect();
+        let client_spec = match &self.view_kind {
+            ViewKind::Client(spec) => Some(spec.clone()),
+            _ => None,
+        };
+        // The generation keeps counting: caches keyed on it must see the new rows.
+        let generation = self.generation;
         *self = ResultModel::new(columns, store);
+        self.generation = generation + 1;
         self.fetch = fetch;
         if same_columns {
             self.dictionaries = dictionaries;
-            self.editability = editability;
+            // Same names from another table (navigating a foreign key) must not save into the old one.
+            let same_sources = self.columns.iter().zip(&old_sources).all(|(a, b)| &a.source == b);
+            if same_sources {
+                self.editability = editability;
+            }
             for v in virtuals {
                 let _ = self.add_virtual_column(&v.name, v.expression.source());
+            }
+            // The client sort / filter stays (its arrows and filter text are still shown):
+            // the view is stale and recomputed once the new rows are fetched.
+            if let Some(spec) = client_spec {
+                self.view_kind = ViewKind::Client(spec);
+                self.view_source_len = 0;
             }
         }
     }
@@ -951,6 +969,15 @@ impl ResultModel {
     /// Parse user input for column `col` without changing anything.
     pub fn parse_for_column(&self, col: usize, text: &str) -> Result<Value, String> {
         let meta = self.columns.get(col).ok_or_else(|| tr("No such column").to_string())?;
+        // Empty input is NULL here too: '' is no valid array, interval, inet, enum value ...
+        if text.is_empty()
+            && matches!(
+                meta.kind,
+                DataKind::Array | DataKind::Interval | DataKind::Geometry | DataKind::Network | DataKind::Range | DataKind::Bit | DataKind::TimeTz | DataKind::Enum
+            )
+        {
+            return Ok(Value::Null);
+        }
         let kind = match meta.kind {
             // Keep arrays, intervals, geometry ... as text for the database to parse.
             DataKind::Array
@@ -1065,7 +1092,8 @@ impl ResultModel {
         self.target()?;
         let id = self.next_insert_id;
         self.next_insert_id += 1;
-        let anchor = self.base_to_store(0);
+        // Before the first row: anchored at the top, not after the current first row.
+        let anchor = None;
         self.inserted.insert(0, InsertedRow { id, anchor, after_base: 0, values: vec![CellValue::Default; self.columns.len()] });
         self.push_undo(Undo::Insert(vec![id]));
         self.generation += 1;
@@ -1184,7 +1212,8 @@ impl ResultModel {
     /// of each line goes to model column `columns[j]` (the visible columns from
     /// the active cell rightwards). Rows are added when the block extends past
     /// the end. All-or-nothing; one undo step. Returns the number of cells set.
-    pub fn paste_block(&mut self, row: usize, block: &[Vec<String>], columns: &[usize]) -> Result<usize, String> {
+    /// `nulls` marks the cells that are NULL (text DBiji copied itself), else parsed.
+    pub fn paste_block(&mut self, row: usize, block: &[Vec<String>], columns: &[usize], nulls: Option<&[Vec<bool>]>) -> Result<usize, String> {
         self.target()?;
         if block.is_empty() {
             return Ok(0);
@@ -1199,7 +1228,11 @@ impl ResultModel {
                 if self.is_virtual_column(c) || c >= self.columns.len() {
                     continue;
                 }
-                let value = self.parse_for_column(c, text).map_err(|e| trf("Row {}: {}", &[&(row + i + 1), &e]))?;
+                let value = if nulls.and_then(|n| n.get(i)?.get(j).copied()).unwrap_or(false) {
+                    Value::Null
+                } else {
+                    self.parse_for_column(c, text).map_err(|e| trf("Row {}: {}", &[&(row + i + 1), &e]))?
+                };
                 parsed.push((row + i, c, CellValue::Value(value)));
             }
         }
@@ -1532,8 +1565,10 @@ impl ResultModel {
                     SqlKind::Select => format!("SELECT * FROM {table} WHERE {where_clause};"),
                     SqlKind::Delete => format!("DELETE FROM {table} WHERE {where_clause};"),
                     SqlKind::Insert => {
-                        let names: Vec<String> = cols.iter().map(|(_, n, _)| dialect.quote_ident(n)).collect();
-                        let vals: Vec<String> = cols.iter().map(|(c, _, t)| lit(&current(*c), t)).collect();
+                        // A new row's DEFAULT cells are left out (NULL would fail on an identity column).
+                        let given: Vec<&(usize, String, String)> = cols.iter().filter(|(c, _, _)| !matches!(cells.get(*c), CellRef::Default)).collect();
+                        let names: Vec<String> = given.iter().map(|(_, n, _)| dialect.quote_ident(n)).collect();
+                        let vals: Vec<String> = given.iter().map(|(c, _, t)| lit(&current(*c), t)).collect();
                         format!("INSERT INTO {table} ({}) VALUES ({});", names.join(", "), vals.join(", "))
                     }
                     SqlKind::Update => {

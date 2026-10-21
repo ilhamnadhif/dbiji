@@ -563,7 +563,8 @@ pub fn parse_routine_args(arguments: &str) -> Vec<RoutineArg> {
         .enumerate()
         .map(|(i, p)| {
             // Drop a DEFAULT clause.
-            let upper = p.to_uppercase();
+            // ASCII only: Unicode upper-casing changes byte lengths (`ı` → `I`), the index is used on `p`.
+            let upper = p.to_ascii_uppercase();
             let p = match upper.find(" DEFAULT ").or_else(|| upper.find(" = ")) {
                 Some(k) => p[..k].trim(),
                 None => p,

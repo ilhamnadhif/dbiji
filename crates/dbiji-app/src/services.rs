@@ -33,24 +33,7 @@ impl Services {
             warnings.push(e.to_string());
         }
         let secrets = Arc::new(RwLock::new(SecretsManager::new(&paths, &settings.security)));
-        let history = if settings.history.enabled {
-            match HistoryStore::open_or_recover(&paths.history_db()) {
-                Ok((mut h, note)) => {
-                    if let Some(n) = note {
-                        warnings.push(n);
-                    }
-                    h.set_redaction(settings.history.redact_secrets);
-                    let _ = h.set_retention(Some(settings.history.retention()));
-                    Some(Arc::new(Mutex::new(h)))
-                }
-                Err(e) => {
-                    warnings.push(e.to_string());
-                    None
-                }
-            }
-        } else {
-            None
-        };
+        let history = if settings.history.enabled { Self::open_history(&paths, settings, &mut warnings) } else { None };
         let projects = match ProjectManager::new(&paths) {
             Ok(p) => Some(p),
             Err(e) => {
@@ -63,6 +46,24 @@ impl Services {
         Self::start_auto_lock(&secrets, settings.security.auto_lock_minutes, &runtime);
         let (tasks, runlog, scheduler) = Self::task_services(&paths, &secrets, settings.tasks.scheduler_enabled, runtime, &mut warnings);
         Services { paths, secrets, history, projects, templates, tasks, runlog, scheduler, warnings }
+    }
+
+    /// The query history database (`None` when it cannot be opened: a warning).
+    pub fn open_history(paths: &AppPaths, settings: &Settings, warnings: &mut Vec<String>) -> Option<Arc<Mutex<HistoryStore>>> {
+        match HistoryStore::open_or_recover(&paths.history_db()) {
+            Ok((mut h, note)) => {
+                if let Some(n) = note {
+                    warnings.push(n);
+                }
+                h.set_redaction(settings.history.redact_secrets);
+                let _ = h.set_retention(Some(settings.history.retention()));
+                Some(Arc::new(Mutex::new(h)))
+            }
+            Err(e) => {
+                warnings.push(e.to_string());
+                None
+            }
+        }
     }
 
     /// Lock the encrypted vault after the configured idle time (checked on the

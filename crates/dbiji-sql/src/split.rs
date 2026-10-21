@@ -438,6 +438,25 @@ impl Splitter<'_> {
         (i + 1..self.tokens.len()).find(|&j| !self.tokens[j].is_trivia())
     }
 
+    fn prev_sig(&self, i: usize) -> Option<usize> {
+        (0..i).rev().find(|&j| !self.tokens[j].is_trivia())
+    }
+
+    /// Token `i` starts a statement of a routine body (after `;`, BEGIN, THEN, ELSE, DO ...).
+    fn statement_position(&self, i: usize) -> bool {
+        match self.prev_sig(i) {
+            None => true,
+            Some(j) => {
+                matches!(
+                    self.tokens[j].kind,
+                    TokenKind::Semicolon | TokenKind::Delimiter
+                ) || ["BEGIN", "THEN", "ELSE", "DO", "LOOP", "REPEAT"]
+                    .iter()
+                    .any(|w| self.word(j, w))
+            }
+        }
+    }
+
     fn word(&self, i: usize, w: &str) -> bool {
         self.tokens.get(i).is_some_and(|t| is_word(t, self.src, w))
     }
@@ -536,7 +555,7 @@ impl Splitter<'_> {
                 } else if seg.first_sig.is_some() {
                     let prev = self.tokens[seg.last_sig];
                     let next = self.next_sig(i).map(|j| self.tokens[j]);
-                    !self.continues(&prev, next.as_ref())
+                    !self.continues(&prev, next.as_ref(), self.complete_ending(seg.last_sig))
                 } else {
                     // Only an executable comment so far.
                     true
@@ -549,14 +568,34 @@ impl Splitter<'_> {
         }
     }
 
-    fn continues(&self, prev: &Token, next: Option<&Token>) -> bool {
+    /// A last word that usually continues but ends this statement:
+    /// `RESET ALL`, `DISCARD ALL`, `CLOSE ALL`, `INSERT … DEFAULT VALUES`.
+    fn complete_ending(&self, last: usize) -> bool {
+        let before = self.prev_sig(last);
+        let before_is = |w: &str| before.is_some_and(|b| self.word(b, w));
+        (self.word(last, "ALL")
+            && [
+                "RESET",
+                "DISCARD",
+                "CLOSE",
+                "SHOW",
+                "DEALLOCATE",
+                "UNLISTEN",
+                "PRIVILEGES",
+            ]
+            .iter()
+            .any(|w| before_is(w)))
+            || (self.word(last, "VALUES") && before_is("DEFAULT"))
+    }
+
+    fn continues(&self, prev: &Token, next: Option<&Token>, complete: bool) -> bool {
         if matches!(
             prev.kind,
             TokenKind::Comma | TokenKind::LParen | TokenKind::Operator | TokenKind::Dot
         ) {
             return true;
         }
-        if word_in(prev, self.src, CONTINUE_AFTER) {
+        if !complete && word_in(prev, self.src, CONTINUE_AFTER) {
             return true;
         }
         match next {
@@ -747,7 +786,9 @@ impl Splitter<'_> {
         } else if self.word(i, "CASE") || self.word(i, "LOOP") {
             true
         } else if self.word(i, "IF") {
-            !next_paren && !next_is("EXISTS") && !next_is("NOT") && self.lookahead(i, "THEN")
+            // `IF (a > 0) THEN`, `IF EXISTS (…) THEN`, `IF NOT done THEN` open a block;
+            // `IF(a, b, c)` in an expression and `DROP … IF EXISTS` do not.
+            self.statement_position(i) && self.lookahead(i, "THEN")
         } else if self.word(i, "WHILE") || self.word(i, "FOR") {
             self.lookahead(i, "DO")
         } else if self.word(i, "REPEAT") {
@@ -853,6 +894,31 @@ mod tests {
             &t[1..],
             &["SELECT 3", "BEGIN", "BEGIN WORK", "START TRANSACTION"]
         );
+    }
+
+    #[test]
+    fn complete_endings_after_blank_line() {
+        assert_eq!(
+            texts("RESET ALL\n\nSELECT 1", &pg()),
+            vec!["RESET ALL", "SELECT 1"]
+        );
+        assert_eq!(
+            texts("INSERT INTO t DEFAULT VALUES\n\nSELECT 1", &pg()),
+            vec!["INSERT INTO t DEFAULT VALUES", "SELECT 1"]
+        );
+        assert_eq!(
+            texts("SELECT a FROM t UNION ALL\n\nSELECT b FROM u", &pg()).len(),
+            1
+        );
+    }
+
+    #[test]
+    fn mysql_if_with_parenthesis_exists_not() {
+        let src = "CREATE PROCEDURE p() BEGIN IF (1>0) THEN SELECT 1; END IF; IF EXISTS(SELECT 1) THEN SELECT 2; END IF; IF NOT done THEN SELECT 3; END IF; DROP TABLE IF EXISTS t; SELECT 4; END;\nSELECT 5;";
+        let t = texts(src, &mysql());
+        assert_eq!(t.len(), 2, "{t:#?}");
+        assert!(t[0].ends_with("SELECT 4; END"), "{}", t[0]);
+        assert_eq!(t[1], "SELECT 5");
     }
 
     #[test]

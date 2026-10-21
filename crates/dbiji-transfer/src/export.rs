@@ -399,6 +399,8 @@ pub async fn run_export_job_with(
     let next = Arc::new(AtomicUsize::new(0));
     let results: Arc<Mutex<Vec<Option<ExportItemSummary>>>> = Arc::new(Mutex::new(vec![None; n]));
     let open_error: Arc<Mutex<Option<DbError>>> = Arc::new(Mutex::new(None));
+    // The item whose failure stopped the others (their errors only say "cancelled").
+    let first_failure: Arc<Mutex<Option<usize>>> = Arc::new(Mutex::new(None));
     let stop = cancel.child_token();
 
     let mut set = tokio::task::JoinSet::new();
@@ -406,6 +408,7 @@ pub async fn run_export_job_with(
         let (job, files, next, results, open_error) = (job.clone(), files.clone(), next.clone(), results.clone(), open_error.clone());
         let (factory, dialect, progress, stop) = (factory.clone(), dialect.clone(), progress.clone(), stop.clone());
         let output_dialect = output_dialect.clone();
+        let first_failure = first_failure.clone();
         set.spawn(async move {
             let mut session = match cancellable(factory.open(), &stop, None).await {
                 Ok(s) => s,
@@ -441,6 +444,7 @@ pub async fn run_export_job_with(
                     }
                     Err(e) => {
                         if e.kind != ErrorKind::Cancelled {
+                            first_failure.lock().get_or_insert(i);
                             progress.add_errors(1);
                             progress.error(Some(&name), e.full_text());
                             if !job.continue_on_error {
@@ -494,8 +498,10 @@ pub async fn run_export_job_with(
         summary.items.push(item);
     }
     summary.duration_ms = started.elapsed().as_millis() as u64;
+    let first_failure = first_failure.lock().filter(|i| summary.items.get(*i).is_some_and(|s| s.error.is_some()));
+    let failed = first_failure.map(|i| (i, summary.items[i].error.clone().unwrap_or_default()));
     if !job.continue_on_error
-        && let Some((i, err)) = summary.items.iter().enumerate().find_map(|(i, s)| s.error.clone().map(|e| (i, e)))
+        && let Some((i, err)) = failed.or_else(|| summary.items.iter().enumerate().find_map(|(i, s)| s.error.clone().map(|e| (i, e))))
     {
         return Err(with_item(DbError::query(err), &job.items[i].name()));
     }

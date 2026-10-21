@@ -142,7 +142,8 @@ pub(crate) fn connection_detail(cfg: &ConnectionConfig) -> String {
     let dir = path.parent().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
     let home = std::env::var("HOME").ok().filter(|h| h.len() > 1);
     let dir = match home {
-        Some(h) if dir.starts_with(&h) => format!("~{}", &dir[h.len()..]),
+        // Whole path components: HOME /Users/al is no prefix of /Users/alice.
+        Some(h) if std::path::Path::new(&dir).starts_with(&h) => format!("~{}", &dir[h.trim_end_matches('/').len()..]),
         _ => dir,
     };
     let dir = if dir.chars().count() > 32 {
@@ -596,7 +597,11 @@ impl Navigator {
         show_system: bool,
     ) {
         let Some(session) = live.ensure_session(backend, db) else {
-            rows.push(placeholder(depth, RowKind::Loading));
+            let row = match live.session_error(db) {
+                Some(e) => RowKind::Error(e),
+                None => RowKind::Loading,
+            };
+            rows.push(placeholder(depth, row));
             return;
         };
         live.meta.request_schemas(backend, &session, db);

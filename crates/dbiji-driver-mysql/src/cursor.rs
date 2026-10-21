@@ -653,6 +653,9 @@ async fn serve<P: Protocol>(
                     }
                     match r {
                         Ok(Some(row)) => {
+                            // The statement answered: the timeout no longer applies to
+                            // reading its rows at the user's pace (as in PostgreSQL).
+                            w.deadline = None;
                             rows.push(convert::convert_row(&decoders, row.unwrap_raw()))
                         }
                         Ok(None) => {

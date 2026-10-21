@@ -304,11 +304,30 @@ impl DuckDbDdl {
         to: &TableDef,
         pairs: &[(&ColumnDef, &ColumnDef)],
     ) -> Vec<String> {
-        let mut tmp = to.clone();
+        // A renamed table or column keeps the sequence it has (a new conventional one
+        // would start at 1 again while the copied ids are there).
+        let mut target = to.clone();
+        for c in &mut target.columns {
+            let renamed = pairs.iter().find(|(f, t)| {
+                t.name == c.name
+                    && f.auto_increment
+                    && f.default.is_none()
+                    && f.generated.is_none()
+                    && (from.name != to.name || f.name != t.name)
+            });
+            if let Some((f, _)) = renamed
+                && c.auto_increment
+                && c.default.is_none()
+                && c.generated.is_none()
+            {
+                c.default = Some(sequence_default(from, f));
+            }
+        }
+        let mut tmp = target.clone();
         tmp.schema = from.schema.clone();
         tmp.name = format!("{REBUILD_PREFIX}{}", from.name);
         let mut out = vec!["BEGIN TRANSACTION".to_string()];
-        out.extend(sequence_statements(to));
+        out.extend(sequence_statements(&target));
         // auto-increment defaults must keep pointing at the final table's sequence
         let mut create = tmp.clone();
         for c in &mut create.columns {
@@ -456,14 +475,41 @@ impl DdlGenerator for DuckDbDdl {
                     .iter()
                     .any(|k| k.columns.iter().any(|x| eq_ci(x, &c.name)))
         });
-        if reordered
+        let needs_rebuild = reordered
             || pk_changed
             || uniques_changed
             || checks_changed
             || fks_changed
             || generated_changed
-            || dropped_in_constraint
-        {
+            || dropped_in_constraint;
+        // DuckDB refuses most ALTERs of a table that other entries depend on
+        // ("Dependency Error"): only ADD COLUMN, defaults and comments pass.
+        let restricted = needs_rebuild
+            || !dropped.is_empty()
+            || from.name != to.name
+            || pairs.iter().any(|(f, t)| {
+                f.name != t.name
+                    || f.nullable != t.nullable
+                    || !squash(&f.data_type).eq_ignore_ascii_case(&squash(&t.data_type))
+            });
+        // Foreign keys of other tables cannot be dropped in DuckDB (no ALTER TABLE … DROP CONSTRAINT),
+        // so the change cannot be made; say so instead of failing half way.
+        let referencing: Vec<&str> = from
+            .referenced_by
+            .iter()
+            .map(|fk| fk.table.as_str())
+            .filter(|t| !eq_ci(t, &from.name))
+            .collect();
+        if restricted && !referencing.is_empty() {
+            let msg = format!(
+                "DuckDB cannot change table {} while {} reference it with foreign keys: drop those tables first, change {}, then create them again",
+                from.name,
+                referencing.join(", "),
+                from.name
+            );
+            return vec![format!("SELECT error({})", string_literal(&msg))];
+        }
+        if needs_rebuild {
             let mut out = Vec::new();
             // renames happen inside the rebuild (the copy maps old → new names)
             out.extend(self.rebuild(from, to, &pairs));
@@ -476,9 +522,16 @@ impl DdlGenerator for DuckDbDdl {
         // indexes that change or disappear are dropped first (they may use dropped columns)
         let from_idx: Vec<&IndexDef> = secondary_indexes(from).collect();
         let to_idx: Vec<&IndexDef> = secondary_indexes(to).collect();
+        // An index is a dependent entry: the unchanged ones are dropped too and created again at the end.
+        let mut recreate: Vec<&IndexDef> = Vec::new();
         for fi in &from_idx {
-            if !to_idx.iter().any(|ti| same_index(fi, ti, &map)) {
-                out.push(format!("DROP INDEX {}", qualified(s, &fi.name)));
+            match to_idx.iter().find(|ti| same_index(fi, ti, &map)) {
+                Some(ti) if restricted => {
+                    out.push(format!("DROP INDEX {}", qualified(s, &fi.name)));
+                    recreate.push(ti);
+                }
+                Some(_) => {}
+                None => out.push(format!("DROP INDEX {}", qualified(s, &fi.name))),
             }
         }
         for c in &dropped {
@@ -548,7 +601,9 @@ impl DdlGenerator for DuckDbDdl {
             ));
         }
         for ti in &to_idx {
-            if !from_idx.iter().any(|fi| same_index(fi, ti, &map)) {
+            if !from_idx.iter().any(|fi| same_index(fi, ti, &map))
+                || recreate.iter().any(|r| std::ptr::eq(*r, *ti))
+            {
                 out.push(index_sql(&to_in_schema, ti));
             }
         }
@@ -988,10 +1043,13 @@ mod tests {
             sql,
             vec![
                 "BEGIN TRANSACTION",
+                // DuckDB refuses these ALTERs while the index depends on the table
+                "DROP INDEX main.ix_name",
                 "ALTER TABLE main.items RENAME COLUMN name TO title",
                 "ALTER TABLE main.items ALTER COLUMN price SET DATA TYPE DECIMAL(12,2)",
                 "ALTER TABLE main.items ALTER COLUMN price SET NOT NULL",
                 "ALTER TABLE main.items ADD COLUMN stock INTEGER DEFAULT 0",
+                "CREATE INDEX ix_name ON main.items (title)",
                 "COMMIT",
             ]
         );

@@ -14,7 +14,7 @@ use dbiji_core::driver::{ServerInfo, parse_version_number};
 use dbiji_core::meta::*;
 use dbiji_core::plan::QueryPlan;
 use dbiji_core::{CancelHandle, ConnectParams, DbError, DbKind, DbResult, ErrorKind, ExecOptions, QueryCursor, ResultHeader, Row, Session, TransactionMode, Value};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::Semaphore;
@@ -69,7 +69,8 @@ pub struct ClickHouseSession {
     database: Arc<Mutex<Option<String>>>,
     active: Arc<ActiveQuery>,
     gate: Arc<Semaphore>,
-    cursor_open: Arc<AtomicBool>,
+    /// Id of the open cursor (0: none).
+    cursor_open: Arc<AtomicU64>,
     cancel: Arc<ClickHouseCancelHandle>,
     closed: bool,
     /// `readonly = 1` user: no settings may be sent.
@@ -80,6 +81,12 @@ pub struct ClickHouseSession {
 
 /// First keyword of a statement (upper case), skipping comments and `(`.
 pub fn first_keyword(sql: &str) -> String {
+    let s = skip_leading_trivia(sql);
+    s.chars().take_while(|c| c.is_ascii_alphabetic() || *c == '_').collect::<String>().to_ascii_uppercase()
+}
+
+/// `sql` without its leading comments, white space and `(`.
+fn skip_leading_trivia(sql: &str) -> &str {
     let mut s = sql.trim_start();
     loop {
         if let Some(r) = s.strip_prefix("--").or_else(|| s.strip_prefix('#')) {
@@ -92,26 +99,43 @@ pub fn first_keyword(sql: &str) -> String {
             break;
         }
     }
-    s.chars().take_while(|c| c.is_ascii_alphabetic() || *c == '_').collect::<String>().to_ascii_uppercase()
+    s
 }
 
-/// Database named by a `USE db` statement.
+/// Database named by a `USE db` statement (the name right after the keyword,
+/// not a `use` inside a comment or a word such as REUSE).
 pub fn use_target(sql: &str) -> Option<String> {
-    let s = sql.trim();
+    let s = skip_leading_trivia(sql);
     if first_keyword(s) != "USE" {
         return None;
     }
-    let idx = s.to_ascii_uppercase().find("USE")?;
-    let rest = s[idx + 3..].trim().trim_end_matches(';').trim();
-    if rest.is_empty() {
-        return None;
+    let rest = s[3..].trim_start();
+    let mut chars = rest.chars();
+    match chars.next()? {
+        q @ ('`' | '"') => {
+            // Quoted: up to the closing quote (doubled or backslash escaped inside).
+            let mut name = String::new();
+            while let Some(c) = chars.next() {
+                if c == '\\' {
+                    name.push(chars.next()?);
+                } else if c == q {
+                    if chars.as_str().starts_with(q) {
+                        chars.next();
+                        name.push(q);
+                    } else {
+                        return Some(name);
+                    }
+                } else {
+                    name.push(c);
+                }
+            }
+            None
+        }
+        _ => {
+            let name: String = rest.chars().take_while(|c| !c.is_whitespace() && *c != ';').collect();
+            (!name.is_empty() && !name.starts_with("--") && !name.starts_with("/*")).then_some(name)
+        }
     }
-    let unquoted = if (rest.starts_with('`') && rest.ends_with('`') || rest.starts_with('"') && rest.ends_with('"')) && rest.len() >= 2 {
-        rest[1..rest.len() - 1].replace("\\`", "`").replace("``", "`")
-    } else {
-        rest.split_whitespace().next()?.to_string()
-    };
-    Some(unquoted)
 }
 
 impl ClickHouseSession {
@@ -154,7 +178,7 @@ impl ClickHouseSession {
             database: Arc::new(Mutex::new(Some(probe.database))),
             active,
             gate: Arc::new(Semaphore::new(1)),
-            cursor_open: Arc::new(AtomicBool::new(false)),
+            cursor_open: Arc::new(AtomicU64::new(0)),
             cancel,
             closed: false,
             minimal: probe.minimal,
@@ -183,7 +207,7 @@ impl ClickHouseSession {
         if self.closed {
             return Err(DbError::connection("The session is closed"));
         }
-        if self.cursor_open.load(Ordering::SeqCst) {
+        if self.cursor_open.load(Ordering::SeqCst) != 0 {
             return Err(DbError::internal("A result set is still open on this session; close it before running another statement"));
         }
         let permit = tokio::time::timeout(Duration::from_secs(60), self.gate.clone().acquire_owned())
@@ -547,6 +571,9 @@ mod tests {
         assert_eq!(use_target("USE analytics"), Some("analytics".into()));
         assert_eq!(use_target("use `my db`;"), Some("my db".into()));
         assert_eq!(use_target("SELECT 1"), None);
+        assert_eq!(use_target("-- reuse old db\nUSE analytics"), Some("analytics".into()));
+        assert_eq!(use_target("USE `my db` -- x"), Some("my db".into()));
+        assert_eq!(use_target("USE analytics; -- done"), Some("analytics".into()));
     }
 
     #[test]

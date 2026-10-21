@@ -79,7 +79,8 @@ fn clip(s: &str) -> String {
 pub struct RecordViewState {
     /// Filter on column names.
     pub column_filter: String,
-    editing: Option<(usize, usize, String)>,
+    /// Row, column, text being typed, the text it started with.
+    editing: Option<(usize, usize, String, String)>,
     error: Option<String>,
     /// Last shown values: ((generation, row, columns), values) for frames where the store is busy.
     cache: Option<RecordCache>,
@@ -464,11 +465,12 @@ fn rows_table(
                         }
                         paint_text(ui, name_rect, name_text, theme.text);
                         for (j, &r) in rows.iter().enumerate() {
-                            if state.editing.as_ref().is_some_and(|(er, ec, _)| *er == r && *ec == c) {
-                                if let Some((_, _, text)) = state.editing.as_mut() {
+                            if state.editing.as_ref().is_some_and(|(er, ec, _, _)| *er == r && *ec == c) {
+                                if let Some((_, _, text, original)) = state.editing.as_mut() {
                                     let te = ui.add_sized([widths[j], row_h], TextEdit::singleline(text));
                                     if te.lost_focus() {
-                                        if ui.input(|inp| inp.key_pressed(Key::Escape)) {
+                                        // Unchanged text is no edit (a NULL would become '').
+                                        if ui.input(|inp| inp.key_pressed(Key::Escape)) || text == original {
                                             state.editing = None;
                                         } else {
                                             commit = Some((r, c, text.clone()));
@@ -531,7 +533,8 @@ fn rows_table(
                             if resp.double_clicked() && !boolean {
                                 let multi = matches!(v, Value::Text(s) if s.contains('\n')) || matches!(v, Value::Bytes(_));
                                 if can_edit && !multi {
-                                    state.editing = Some((r, c, if v.is_null() { String::new() } else { v.to_text().into_owned() }));
+                                    let text = if v.is_null() { String::new() } else { v.to_text().into_owned() };
+                                    state.editing = Some((r, c, text.clone(), text));
                                     state.error = None;
                                 } else {
                                     open_value = Some((r, c));

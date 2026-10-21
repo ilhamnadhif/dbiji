@@ -111,6 +111,8 @@ pub(crate) struct BatchWriter<'a> {
     rows_per_statement: usize,
     savepoints: Option<Savepoints>,
     original_mode: Option<TransactionMode>,
+    /// SQL Server: `SET IDENTITY_INSERT … OFF` once done (explicit values went into an identity column).
+    identity_off: Option<String>,
     upsert_sql: Option<String>,
     insert_cache: Option<(usize, String)>,
     item: String,
@@ -150,6 +152,7 @@ impl<'a> BatchWriter<'a> {
             rows_per_statement,
             savepoints,
             original_mode: None,
+            identity_off: None,
             upsert_sql,
             insert_cache: None,
             item: item.into(),
@@ -175,6 +178,16 @@ impl<'a> BatchWriter<'a> {
         };
         if mode != wanted {
             self.session.set_transaction_mode(wanted).await?;
+        }
+        // SQL Server refuses explicit values for an identity column (copied ids,
+        // imported keys) unless IDENTITY_INSERT is on for the table.
+        if self.dialect.kind() == DbKind::SqlServer {
+            let table = self.dialect.string_literal(&self.target.table_sql);
+            let names: Vec<String> = self.target.columns.iter().map(|c| self.dialect.string_literal(&unquote_tsql(c))).collect();
+            let when = format!("IF EXISTS (SELECT 1 FROM sys.identity_columns WHERE object_id = OBJECT_ID({table}) AND name IN ({}))", names.join(", "));
+            let t = self.target.table_sql.clone();
+            self.exec(&format!("{when} SET IDENTITY_INSERT {t} ON"), &[]).await?;
+            self.identity_off = Some(format!("{when} SET IDENTITY_INSERT {t} OFF"));
         }
         Ok(())
     }
@@ -308,6 +321,8 @@ impl<'a> BatchWriter<'a> {
         if protect {
             self.savepoint(SavepointOp::Create, "dbiji_batch").await?;
         }
+        // Replace without upsert keeps one row per key: count what is written, not what was read.
+        let chunk = if self.upsert_sql.is_none() && !self.target.key_index.is_empty() { dedupe_by_key(chunk, &self.target.key_index) } else { chunk };
         let n = chunk.len() as u64;
         match self.exec_rows(chunk).await {
             Ok(()) => {
@@ -456,7 +471,16 @@ impl<'a> BatchWriter<'a> {
             self.abort().await;
             return Err(e);
         }
+        self.identity_insert_off().await;
         self.restore_mode().await
+    }
+
+    async fn identity_insert_off(&mut self) {
+        if let Some(sql) = self.identity_off.take()
+            && let Err(e) = execute_update(&mut *self.session, &sql, &[]).await
+        {
+            tracing::debug!("SET IDENTITY_INSERT OFF failed: {e}");
+        }
     }
 
     /// Roll back what is not committed yet and restore the transaction mode.
@@ -466,6 +490,7 @@ impl<'a> BatchWriter<'a> {
         {
             tracing::debug!("rollback after failed write: {e}");
         }
+        self.identity_insert_off().await;
         if let Err(e) = self.restore_mode().await {
             tracing::debug!("restoring the transaction mode failed: {e}");
         }
@@ -482,6 +507,18 @@ impl<'a> BatchWriter<'a> {
 }
 
 /// Keep the last row of every key (later rows replace earlier ones).
+/// `[a]]b]` → `a]b`: a quoted T-SQL name as stored in the catalog.
+fn unquote_tsql(name: &str) -> String {
+    let n = name.trim();
+    if let Some(inner) = n.strip_prefix('[').and_then(|r| r.strip_suffix(']')) {
+        inner.replace("]]", "]")
+    } else if let Some(inner) = n.strip_prefix('"').and_then(|r| r.strip_suffix('"')) {
+        inner.replace("\"\"", "\"")
+    } else {
+        n.to_string()
+    }
+}
+
 fn dedupe_by_key(rows: Vec<(u64, Row)>, keys: &[usize]) -> Vec<(u64, Row)> {
     if rows.len() < 2 {
         return rows;

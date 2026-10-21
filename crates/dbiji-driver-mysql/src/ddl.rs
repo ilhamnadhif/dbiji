@@ -781,18 +781,44 @@ impl DdlGenerator for MySqlDdl {
         let pk_changed = rf.primary_key.as_ref().filter(|k| !k.columns.is_empty())
             != to.primary_key.as_ref().filter(|k| !k.columns.is_empty());
         let mut pk_pending_add = false;
+        // A primary key change that needs the column steps first: a key on a column
+        // added below, or dropping the key of a column that loses AUTO_INCREMENT below.
+        let mut pk_after_columns: Option<String> = None;
         if pk_changed {
+            let keeps_columns = |k: &KeyDef| {
+                !k.columns
+                    .iter()
+                    .any(|c| dropped.iter().any(|d| &d.name == c))
+            };
             match (
                 rf.primary_key.as_ref().filter(|k| !k.columns.is_empty()),
                 to.primary_key.as_ref().filter(|k| !k.columns.is_empty()),
             ) {
-                (Some(_), Some(new_pk)) => {
-                    out.push(format!(
+                (Some(old_pk), Some(new_pk)) => {
+                    let sql = format!(
                         "ALTER TABLE {t} DROP PRIMARY KEY, ADD {}",
                         self.pk_clause(to, new_pk)
-                    ));
+                    );
+                    let on_added = new_pk
+                        .columns
+                        .iter()
+                        .any(|c| added.iter().any(|a| &a.name == c));
+                    if on_added && keeps_columns(old_pk) {
+                        pk_after_columns = Some(sql);
+                    } else {
+                        out.push(sql);
+                    }
                 }
-                (Some(old_pk), None) => out.push(self.drop_primary_key(to, old_pk)),
+                (Some(old_pk), None) => {
+                    let loses_auto = pairs.iter().any(|(fc, tc)| {
+                        fc.auto_increment && !tc.auto_increment && old_pk.columns.contains(&tc.name)
+                    });
+                    if loses_auto && keeps_columns(old_pk) {
+                        pk_after_columns = Some(self.drop_primary_key(to, old_pk));
+                    } else {
+                        out.push(self.drop_primary_key(to, old_pk));
+                    }
+                }
                 (None, Some(_)) => pk_pending_add = true,
                 (None, None) => {}
             }
@@ -848,6 +874,7 @@ impl DdlGenerator for MySqlDdl {
         for c in &added {
             out.extend(self.add_column(to, c));
         }
+        out.extend(pk_after_columns);
         // 7. reorder remaining columns
         let mut current: Vec<String> = Vec::new();
         for fc in &from.columns {
@@ -1979,6 +2006,32 @@ mod tests {
             ddl().alter_table(&from, &to, &[]),
             vec!["ALTER TABLE `t` DROP PRIMARY KEY, ADD PRIMARY KEY (`a`, `b`)"]
         );
+    }
+
+    #[test]
+    fn pk_on_added_column_comes_after_it() {
+        let mut from = TableDef::new(None, "t");
+        from.columns = vec![ColumnDef::new("a", "int").not_null()];
+        from.primary_key = Some(KeyDef {
+            name: None,
+            columns: vec!["a".into()],
+        });
+        let mut to = from.clone();
+        to.columns.push(ColumnDef::new("b", "int").not_null());
+        to.primary_key = Some(KeyDef {
+            name: None,
+            columns: vec!["a".into(), "b".into()],
+        });
+        let sql = ddl().alter_table(&from, &to, &[]);
+        let add = sql
+            .iter()
+            .position(|s| s.contains("ADD COLUMN `b`"))
+            .expect("add column");
+        let pk = sql
+            .iter()
+            .position(|s| s.contains("DROP PRIMARY KEY"))
+            .expect("pk change");
+        assert!(add < pk, "{sql:#?}");
     }
 
     #[test]

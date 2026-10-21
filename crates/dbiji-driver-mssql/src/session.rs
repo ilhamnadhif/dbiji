@@ -16,7 +16,7 @@ use dbiji_core::plan::QueryPlan;
 use dbiji_core::value::ColumnMeta;
 use dbiji_core::{CancelHandle, ConnectParams, DbError, DbKind, DbResult, ExecOptions, QueryCursor, ResultHeader, Row, ServerMessage, Session, TransactionMode, Value};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::oneshot;
 
 /// Cancels the statement running on a session (TDS attention).
@@ -43,7 +43,8 @@ pub struct SqlServerSession {
     client: Option<MsClient>,
     pending: Option<oneshot::Receiver<TaskReturn>>,
     shared: Arc<Shared>,
-    cursor_open: Arc<AtomicBool>,
+    /// Id of the open cursor (0: none).
+    cursor_open: Arc<AtomicU64>,
     info: ServerInfo,
     dialect: Arc<MsSqlDialect>,
     mode: TransactionMode,
@@ -141,7 +142,7 @@ impl SqlServerSession {
             pending: None,
             cancel: Arc::new(SqlServerCancelHandle { shared: shared.clone() }),
             shared,
-            cursor_open: Arc::new(AtomicBool::new(false)),
+            cursor_open: Arc::new(AtomicU64::new(0)),
             info: init.info,
             dialect: Arc::new(MsSqlDialect::new()),
             mode: if manual { TransactionMode::Manual } else { TransactionMode::Auto },
@@ -197,7 +198,7 @@ impl SqlServerSession {
             return Err(DbError::connection("The session is closed"));
         }
         if self.pending.is_some() {
-            if self.cursor_open.load(Ordering::SeqCst) {
+            if self.cursor_open.load(Ordering::SeqCst) != 0 {
                 return Err(DbError::internal("A result set is still open on this session; close it before running another statement"));
             }
             if let Some(rx) = self.pending.as_mut() {
@@ -340,7 +341,7 @@ impl Session for SqlServerSession {
             return Ok(());
         }
         if let Some(rx) = self.pending.take()
-            && !self.cursor_open.load(Ordering::SeqCst)
+            && self.cursor_open.load(Ordering::SeqCst) == 0
             && let Ok(r) = rx.await
         {
             self.client = r.client;

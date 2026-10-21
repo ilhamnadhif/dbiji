@@ -356,7 +356,7 @@ fn virtual_columns() {
 fn paste_block_adds_rows_and_validates() {
     let mut m = model(2);
     let block = vec![vec!["Ann".to_string(), "30".into()], vec!["Ben".into(), "31".into()], vec!["Cy".into(), "32".into()]];
-    let n = m.paste_block(1, &block, &[1, 2]).unwrap();
+    let n = m.paste_block(1, &block, &[1, 2], None).unwrap();
     assert_eq!(n, 6);
     assert_eq!(m.row_count(), 4);
     assert_eq!(m.cell(1, 1), Some(Value::text("Ann")));
@@ -367,11 +367,11 @@ fn paste_block_adds_rows_and_validates() {
     assert!(!m.has_changes());
     // Invalid number: nothing changes.
     let bad = vec![vec!["Ann".to_string(), "x".into()]];
-    let err = m.paste_block(0, &bad, &[1, 2]).unwrap_err();
+    let err = m.paste_block(0, &bad, &[1, 2], None).unwrap_err();
     assert!(err.contains("Row 1"), "{err}");
     assert!(!m.has_changes());
     // Virtual / computed targets are skipped or rejected.
-    let err = m.paste_block(0, &[vec!["q".to_string()]], &[4]).unwrap_err();
+    let err = m.paste_block(0, &[vec!["q".to_string()]], &[4], None).unwrap_err();
     assert!(err.contains("label"), "{err}");
 }
 

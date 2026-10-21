@@ -63,7 +63,8 @@ pub struct DbijiApp {
     /// Tab last revealed in the navigator (Link with editor).
     linked_tab: Option<u64>,
     /// "Execute…" of routines waiting for their definition.
-    pending_routines: Vec<(String, dbiji_core::ObjectRef, crate::backend::Job<dbiji_core::DbResult<dbiji_core::ddl::RoutineDef>>)>,
+    /// Routines to call; the job starts once the session of the routine's database is open.
+    pending_routines: Vec<(String, dbiji_core::ObjectRef, Option<crate::backend::Job<dbiji_core::DbResult<dbiji_core::ddl::RoutineDef>>>)>,
     script_counter: u32,
     /// `DBIJI_BENCH_SCENARIO=workload`: connections still to open editors for.
     bench_workload: Option<Vec<String>>,
@@ -172,7 +173,7 @@ impl DbijiApp {
 
     /// Make a tab the active tab of its leaf and that leaf the focused one, so
     /// shortcuts and the status bar refer to it.
-    fn focus_tab_path(&mut self, path: egui_dock::TabPath) {
+    pub(crate) fn focus_tab_path(&mut self, path: egui_dock::TabPath) {
         let _ = self.dock.set_active_tab(path);
         self.dock.set_focused_node_and_surface(path.node_path());
     }
@@ -346,18 +347,19 @@ impl DbijiApp {
                 self.open_script(path);
             }
             AppCommand::ExecuteRoutine { connection, routine } => {
-                let Some(live) = self.conns.live_mut(&connection) else { return };
-                let Some(session) = live.ensure_session(&self.backend, routine.database.as_deref()) else { return };
-                let r = routine.clone();
-                let job = self.backend.spawn(async move { session.lock().await.routine_definition(&r).await });
-                self.pending_routines.push((connection, routine, job));
+                self.pending_routines.push((connection, routine, None));
             }
             AppCommand::GenerateSql { connection, object, kind } => {
-                if object.kind.is_table_like() {
-                    if let Some(live) = self.conns.live_mut(&connection) {
-                        let main = live.main.clone();
-                        live.meta.request_table_def(&self.backend, &main, &object);
+                // A view has rows but no table definition: SELECT * from it.
+                if kind == "select" && matches!(object.kind, dbiji_core::meta::ObjectKind::View | dbiji_core::meta::ObjectKind::MaterializedView) {
+                    if let Some(live) = self.conns.live(&connection) {
+                        let text = format!("{};\n", live.dialect.select_table(&object, None, None, None, None));
+                        self.commands.push(AppCommand::NewSqlEditor { connection: Some(connection), schema: Some(object.schema_ref()), text: Some(text) });
                     }
+                    return;
+                }
+                if object.kind.is_table_like() {
+                    // The definition is read by poll_generate in the object's own database.
                     self.pending_generate.push((connection, object, kind));
                 } else {
                     self.commands.push(AppCommand::OpenObject { connection, object, page: crate::command::ObjectPage::Ddl });
@@ -478,7 +480,10 @@ impl DbijiApp {
                     match (object, schema) {
                         (Some(o), _) => live.meta.clear_object(&o),
                         (None, Some(s)) => live.meta.clear_schema(&s),
-                        (None, None) => live.meta.clear(),
+                        (None, None) => {
+                            live.meta.clear();
+                            live.retry_failed_sessions();
+                        }
                     }
                 }
             }
@@ -869,7 +874,27 @@ impl DbijiApp {
     /// Finish "Generate SQL" requests whose table definitions arrived.
     fn poll_routines(&mut self) {
         let mut still = Vec::new();
-        for (conn, obj, mut job) in std::mem::take(&mut self.pending_routines) {
+        for (conn, obj, job) in std::mem::take(&mut self.pending_routines) {
+            // Another database of the server: wait until its session is open.
+            let mut job = match job {
+                Some(j) => j,
+                None => {
+                    let Some(live) = self.conns.live_mut(&conn) else { continue };
+                    match live.ensure_session(&self.backend, obj.database.as_deref()) {
+                        Some(session) => {
+                            let r = obj.clone();
+                            self.backend.spawn(async move { session.lock().await.routine_definition(&r).await })
+                        }
+                        None => {
+                            match live.session_error(obj.database.as_deref()) {
+                                Some(e) => self.toasts.error(tr("Cannot read the routine"), Some(e)),
+                                None => still.push((conn, obj, None)),
+                            }
+                            continue;
+                        }
+                    }
+                }
+            };
             match job.poll() {
                 Some(Ok(def)) => {
                     let Some(live) = self.conns.live(&conn) else { continue };
@@ -880,7 +905,7 @@ impl DbijiApp {
                     self.commands.push(AppCommand::NewSqlEditor { connection: Some(conn), schema: Some(obj.schema_ref()), text: Some(text) });
                 }
                 Some(Err(e)) => self.toasts.error(tr("Cannot read the routine"), Some(e.full_text())),
-                None => still.push((conn, obj, job)),
+                None => still.push((conn, obj, Some(job))),
             }
         }
         self.pending_routines = still;
@@ -889,7 +914,20 @@ impl DbijiApp {
     fn poll_generate(&mut self) {
         let mut still = Vec::new();
         for (conn, obj, kind) in std::mem::take(&mut self.pending_generate) {
-            let Some(live) = self.conns.live(&conn) else { continue };
+            let Some(live) = self.conns.live_mut(&conn) else { continue };
+            // Read in the object's database (main is another database's session).
+            if live.meta.table_defs.get(&obj).is_none_or(|l| l.is_not_loaded()) {
+                match live.ensure_session(&self.backend, obj.database.as_deref()) {
+                    Some(session) => live.meta.request_table_def(&self.backend, &session, &obj),
+                    None => {
+                        match live.session_error(obj.database.as_deref()) {
+                            Some(e) => self.toasts.error(tr("Cannot read the table"), Some(e)),
+                            None => still.push((conn, obj, kind)),
+                        }
+                        continue;
+                    }
+                }
+            }
             match live.meta.table_defs.get(&obj) {
                 Some(crate::backend::Loadable::Loaded(def)) => {
                     let d = live.dialect.as_ref();
@@ -918,10 +956,33 @@ impl DbijiApp {
         self.settings.results.apply_memory_limits();
         let (keymap, _) = crate::keys::Keymap::from_config(&self.settings.keymap, crate::keys::IS_MAC);
         self.keymap = keymap;
+        // History and the task schedule follow the settings at once (not at the next start).
+        match (self.settings.history.enabled, self.services.history.is_some()) {
+            (true, false) => {
+                let mut warnings = Vec::new();
+                self.services.history = crate::services::Services::open_history(&self.services.paths, &self.settings, &mut warnings);
+                for w in warnings {
+                    self.toasts.warning(w, None);
+                }
+            }
+            (false, true) => self.services.history = None,
+            _ => {}
+        }
         if let Some(h) = &self.services.history {
             let mut h = h.lock();
             h.set_redaction(self.settings.history.redact_secrets);
             let _ = h.set_retention(Some(self.settings.history.retention()));
+        }
+        if let Some(s) = &self.services.scheduler {
+            match (self.settings.tasks.scheduler_enabled, s.is_started()) {
+                (true, false) => {
+                    if let Err(e) = s.start() {
+                        self.toasts.error(tr("Cannot start the task scheduler"), Some(e.to_string()));
+                    }
+                }
+                (false, true) => s.stop_schedule(),
+                _ => {}
+            }
         }
         self.save_settings();
     }

@@ -134,11 +134,25 @@ async fn run_capture(command: &str, timeout: Duration) -> DbResult<CommandOutput
     let mut stderr = Vec::new();
 
     let result = tokio::time::timeout(timeout, async {
-        tokio::join!(
-            read_capped(stdout_pipe, &mut stdout),
-            read_capped(stderr_pipe, &mut stderr)
-        );
-        child.wait().await
+        // Done when the command exits: a helper it started in the background
+        // (`vpn-up &`, `ssh -fN …`) may keep the pipes open long after.
+        let mut reading = std::pin::pin!(async {
+            tokio::join!(
+                read_capped(stdout_pipe, &mut stdout),
+                read_capped(stderr_pipe, &mut stderr)
+            );
+        });
+        let mut read_all = false;
+        let status = loop {
+            tokio::select! {
+                _ = &mut reading, if !read_all => read_all = true,
+                s = child.wait() => break s,
+            }
+        };
+        if !read_all {
+            let _ = tokio::time::timeout(Duration::from_millis(500), &mut reading).await;
+        }
+        status
     })
     .await;
 

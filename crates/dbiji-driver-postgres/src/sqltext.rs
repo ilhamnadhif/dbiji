@@ -549,6 +549,10 @@ fn classify_tokens(toks: &[Spanned<'_>]) -> StmtInfo {
             info.tx = TxEffect::Savepoint;
             info.tag = "RELEASE".into();
         }
+        // Not allowed in a subtransaction: never wrapped in the statement savepoint.
+        "SET" if w(1) == "TRANSACTION" => {
+            info.tx = TxEffect::Savepoint;
+        }
         _ => {}
     }
 
@@ -629,7 +633,7 @@ fn classify_tokens(toks: &[Spanned<'_>]) -> StmtInfo {
         "REINDEX" => {
             info.may_return_rows = false;
             let concurrently = words.iter().take(6).any(|x| x == "CONCURRENTLY");
-            let whole = words.iter().skip(1).take(3).any(|x| x == "DATABASE" || x == "SYSTEM");
+            let whole = words.iter().skip(1).take(3).any(|x| x == "DATABASE" || x == "SYSTEM" || x == "SCHEMA");
             info.needs_autocommit = concurrently || whole;
         }
         "CLUSTER" => {
@@ -870,6 +874,7 @@ mod tests {
         assert_eq!(classify("rollback work to a").tx, TxEffect::Savepoint);
         assert_eq!(classify("savepoint a").tx, TxEffect::Savepoint);
         assert_eq!(classify("release savepoint a").tx, TxEffect::Savepoint);
+        assert_eq!(classify("set transaction isolation level serializable").tx, TxEffect::Savepoint);
         assert_eq!(classify("prepare transaction 'x'").tx, TxEffect::PrepareTransaction);
         let cp = classify("commit prepared 'x'");
         assert_eq!(cp.tx, TxEffect::FinishPrepared);

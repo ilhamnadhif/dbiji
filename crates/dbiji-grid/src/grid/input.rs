@@ -597,8 +597,10 @@ impl GridFrame<'_> {
 
     /// Copy the selection to the clipboard.
     pub fn copy_selection(&mut self, opts: &CopyOptions) {
-        match super::DataGrid::copy_text(self.model, self.state, self.options, opts) {
-            Ok((text, cells)) => {
+        match super::copy_text_and_nulls(self.model, self.state, self.options, opts) {
+            Ok((text, cells, nulls)) => {
+                let plain = opts.format == CopyFormat::Tsv && !opts.include_header && !opts.include_row_numbers;
+                self.state.rt.last_copy = plain.then(|| (text.clone(), nulls));
                 self.ctx.copy_text(text);
                 self.actions.push(GridAction::Copied { cells, format: opts.format });
                 let msg = if opts.format == CopyFormat::Tsv && !opts.include_header {

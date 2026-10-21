@@ -223,6 +223,8 @@ pub struct SearchTab {
     data_requested: bool,
     data_run: Option<DataRun>,
     data_hits: Vec<DataHit>,
+    /// Connection the data hits were found on (the combo may show another one by now).
+    hits_conn: Option<String>,
     data_done: Option<(usize, Duration, bool)>,
     notice: Option<String>,
 }
@@ -257,6 +259,7 @@ impl SearchTab {
             data_requested: false,
             data_run: None,
             data_hits: Vec::new(),
+            hits_conn: None,
             data_done: None,
             notice: None,
         }
@@ -594,6 +597,7 @@ impl SearchTab {
     fn poll_data(&mut self) {
         let Some(r) = self.data_run.as_mut() else { return };
         self.data_hits = r.state.lock().hits.clone();
+        self.hits_conn = Some(r.conn.clone());
         if let Some(res) = r.job.poll() {
             let p = r.state.lock();
             let cancelled = matches!(&res, Err(e) if e.kind == ErrorKind::Cancelled);
@@ -733,7 +737,7 @@ impl SearchTab {
             };
             ui.weak(text);
         }
-        let conn = self.data_run.as_ref().map(|r| r.conn.clone()).or_else(|| self.conn.clone()).unwrap_or_default();
+        let conn = self.data_run.as_ref().map(|r| r.conn.clone()).or_else(|| self.hits_conn.clone()).unwrap_or_default();
         let dark = ui.visuals().dark_mode;
         egui::ScrollArea::vertical().id_salt(("ds_hits", self.uid)).max_height((height - 30.0).max(120.0)).auto_shrink([false, true]).show(ui, |ui| {
             egui::Grid::new(("ds_hits_grid", self.uid)).num_columns(3).striped(true).spacing([12.0, 4.0]).show(ui, |ui| {

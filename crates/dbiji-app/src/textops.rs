@@ -51,24 +51,37 @@ pub fn run_formatter(command: &str, sql: &str) -> Result<String, String> {
     let mut stdin = child.stdin.take().ok_or("no stdin")?;
     let input = sql.to_string();
     let writer = std::thread::spawn(move || stdin.write_all(input.as_bytes()));
+    // Read while it runs: a formatter blocks once its output fills the pipe.
+    let read = |pipe: Option<Box<dyn std::io::Read + Send>>| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(mut p) = pipe {
+                let _ = p.read_to_end(&mut buf);
+            }
+            buf
+        })
+    };
+    let stdout = read(child.stdout.take().map(|p| Box::new(p) as Box<dyn std::io::Read + Send>));
+    let stderr = read(child.stderr.take().map(|p| Box::new(p) as Box<dyn std::io::Read + Send>));
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    loop {
+    let status = loop {
         match child.try_wait().map_err(|e| e.to_string())? {
-            Some(_) => break,
+            Some(s) => break s,
             None if std::time::Instant::now() >= deadline => {
                 let _ = child.kill();
                 return Err("the formatter did not finish within 10 seconds".into());
             }
             None => std::thread::sleep(std::time::Duration::from_millis(20)),
         }
-    }
+    };
     let _ = writer.join();
-    let out = child.wait_with_output().map_err(|e| e.to_string())?;
-    if !out.status.success() {
-        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
-        return Err(if err.is_empty() { format!("exit status {}", out.status) } else { err });
+    let out = stdout.join().unwrap_or_default();
+    let err = stderr.join().unwrap_or_default();
+    if !status.success() {
+        let err = String::from_utf8_lossy(&err).trim().to_string();
+        return Err(if err.is_empty() { format!("exit status {status}") } else { err });
     }
-    String::from_utf8(out.stdout).map_err(|_| "the formatter printed invalid UTF-8".to_string())
+    String::from_utf8(out).map_err(|_| "the formatter printed invalid UTF-8".to_string())
 }
 
 trait SpawnPiped {

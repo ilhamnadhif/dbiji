@@ -258,7 +258,7 @@ pub fn causes_implicit_commit(sql: &str) -> bool {
     });
     match words.next() {
         Some(
-            "ALTER" | "DROP" | "RENAME" | "TRUNCATE" | "GRANT" | "REVOKE" | "ANALYZE" | "OPTIMIZE"
+            "ALTER" | "RENAME" | "TRUNCATE" | "GRANT" | "REVOKE" | "ANALYZE" | "OPTIMIZE"
             | "REPAIR" | "CHECK" | "CACHE" | "FLUSH" | "LOCK" | "UNLOCK" | "LOAD" | "INSTALL"
             | "UNINSTALL",
         ) => true,
@@ -266,7 +266,11 @@ pub fn causes_implicit_commit(sql: &str) -> bool {
             // CREATE TEMPORARY TABLE does not commit.
             !matches!(words.next(), Some("TEMPORARY"))
         }
-        Some("BEGIN" | "START" | "COMMIT" | "ROLLBACK") => true,
+        // DROP TEMPORARY TABLE does not commit either.
+        Some("DROP") => !matches!(words.next(), Some("TEMPORARY")),
+        Some("BEGIN" | "START" | "COMMIT") => true,
+        // ROLLBACK TO [SAVEPOINT] x keeps the transaction open.
+        Some("ROLLBACK") => !words.any(|w| w == "TO"),
         _ => false,
     }
 }
@@ -516,6 +520,9 @@ mod tests {
         assert!(causes_implicit_commit("CREATE TABLE t (a int)"));
         assert!(!causes_implicit_commit("CREATE TEMPORARY TABLE t (a int)"));
         assert!(!causes_implicit_commit("INSERT INTO t VALUES (1)"));
+        assert!(!causes_implicit_commit("ROLLBACK TO SAVEPOINT x"));
+        assert!(!causes_implicit_commit("DROP TEMPORARY TABLE t"));
+        assert!(causes_implicit_commit("ROLLBACK") && causes_implicit_commit("DROP TABLE t"));
         assert!(has_top_level_word("SELECT * FROM t LIMIT 5", "LIMIT"));
         assert!(!has_top_level_word(
             "SELECT * FROM (SELECT * FROM t LIMIT 5) x",

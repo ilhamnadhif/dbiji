@@ -296,7 +296,8 @@ impl TaskSaver {
                 crate::widgets::error_box(ui, e);
             }
             ui.horizontal(|ui| {
-                let ok = !self.name.trim().is_empty();
+                // Not while a save runs: a second click would save the task twice.
+                let ok = !self.name.trim().is_empty() && self.job.is_none();
                 if ui.add_enabled(ok, egui::Button::new((dbiji_icons::ic(icon::FLOPPY_DISK), tr("Save")))).clicked() {
                     let folder = Some(self.folder.trim().to_string()).filter(|f| !f.is_empty());
                     confirmed = Some((self.name.trim().to_string(), folder));

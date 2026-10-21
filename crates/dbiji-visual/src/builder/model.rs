@@ -492,11 +492,12 @@ impl QueryModel {
         self.tables.retain(|t| t.alias != alias);
         self.joins
             .retain(|j| j.left_alias != alias && j.right_alias != alias);
-        let prefix = format!("{alias}.");
-        let refers = |e: &str| e.trim_start().starts_with(&prefix);
+        let refers = |e: &str| !alias_refs(e, alias).is_empty();
         self.select.retain(|s| !refers(&s.expr));
-        self.conditions.retain(|c| !refers(&c.expr));
-        self.having.retain(|c| !refers(&c.expr));
+        self.conditions
+            .retain(|c| !refers(&c.expr) && !refers(&c.value));
+        self.having
+            .retain(|c| !refers(&c.expr) && !refers(&c.value));
         self.group_by.retain(|g| !refers(g));
         self.order_by.retain(|(e, _)| !refers(e));
     }
@@ -519,15 +520,20 @@ impl QueryModel {
                 j.right_alias = new.to_string();
             }
         }
-        let (from, to) = (format!("{old}."), format!("{new}."));
         let fix = |e: &mut String| {
-            if let Some(rest) = e.strip_prefix(&from) {
-                *e = format!("{to}{rest}");
+            for at in alias_refs(e, old).into_iter().rev() {
+                e.replace_range(at..at + old.len(), new);
             }
         };
         self.select.iter_mut().for_each(|s| fix(&mut s.expr));
-        self.conditions.iter_mut().for_each(|c| fix(&mut c.expr));
-        self.having.iter_mut().for_each(|c| fix(&mut c.expr));
+        self.conditions.iter_mut().for_each(|c| {
+            fix(&mut c.expr);
+            fix(&mut c.value);
+        });
+        self.having.iter_mut().for_each(|c| {
+            fix(&mut c.expr);
+            fix(&mut c.value);
+        });
         self.group_by.iter_mut().for_each(fix);
         self.order_by.iter_mut().for_each(|(e, _)| fix(e));
         true
@@ -602,6 +608,45 @@ fn same_join(a: &QbJoin, b: &QbJoin) -> bool {
         && a.right_alias == b.left_alias
         && a.right_column == b.left_column;
     direct || reversed
+}
+
+/// Byte offsets of `alias.` references in `expr` (`o.total > c.limit`): at a word
+/// start, outside string literals and quoted names.
+fn alias_refs(expr: &str, alias: &str) -> Vec<usize> {
+    let mut out = Vec::new();
+    let b = expr.as_bytes();
+    let mut quote: Option<u8> = None;
+    let mut i = 0;
+    while i < b.len() {
+        let c = b[i];
+        if let Some(q) = quote {
+            if c == q {
+                quote = None;
+            }
+            i += 1;
+            continue;
+        }
+        if matches!(c, b'\'' | b'"' | b'`') {
+            quote = Some(c);
+            i += 1;
+            continue;
+        }
+        let word_start = i == 0
+            || !(b[i - 1].is_ascii_alphanumeric()
+                || b[i - 1] == b'_'
+                || b[i - 1] == b'.'
+                || b[i - 1] >= 0x80);
+        if word_start
+            && b[i..].starts_with(alias.as_bytes())
+            && b.get(i + alias.len()) == Some(&b'.')
+        {
+            out.push(i);
+            i += alias.len() + 1;
+            continue;
+        }
+        i += 1;
+    }
+    out
 }
 
 #[cfg(test)]
@@ -685,6 +730,21 @@ pub(crate) mod tests {
             ),
             ("o", "c")
         );
+    }
+
+    #[test]
+    fn alias_references_inside_expressions() {
+        let mut m = QueryModel::default();
+        m.add_table(&customers());
+        m.add_table(&orders());
+        m.conditions
+            .push(QbCondition::new("o.total", ">", "c.credit_limit"));
+        m.select.push(QbSelectItem::new("upper(c.name) || 'c.x'"));
+        assert!(m.rename_alias("c", "cust"));
+        assert_eq!(m.conditions[0].value, "cust.credit_limit");
+        assert_eq!(m.select.last().unwrap().expr, "upper(cust.name) || 'c.x'");
+        m.remove_table("cust");
+        assert!(m.conditions.is_empty());
     }
 
     #[test]

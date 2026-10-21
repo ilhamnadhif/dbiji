@@ -381,6 +381,8 @@ impl ChartData {
             data.folded_series = series.len() - keep.len();
             let mut kept = Vec::new();
             let mut other: Vec<[f64; 2]> = Vec::new();
+            // Folded values per x (to combine them with the chart's aggregate).
+            let mut other_n: Vec<usize> = Vec::new();
             let mut other_index: HashMap<u64, usize> = HashMap::new();
             for (i, s) in series.into_iter().enumerate() {
                 if keep.contains(&i) {
@@ -388,13 +390,27 @@ impl ChartData {
                 } else if fold_into_other {
                     for p in s.points {
                         match other_index.get(&p[0].to_bits()) {
-                            Some(&k) => other[k][1] += p[1],
+                            Some(&k) => {
+                                other[k][1] = match agg {
+                                    ChartAggregate::Min => other[k][1].min(p[1]),
+                                    ChartAggregate::Max => other[k][1].max(p[1]),
+                                    _ => other[k][1] + p[1],
+                                };
+                                other_n[k] += 1;
+                            }
                             None => {
                                 other_index.insert(p[0].to_bits(), other.len());
                                 other.push(p);
+                                other_n.push(1);
                             }
                         }
                     }
+                }
+            }
+            // Avg: the mean of the folded series' averages (their sum would be meaningless).
+            if agg == ChartAggregate::Avg {
+                for (p, n) in other.iter_mut().zip(&other_n) {
+                    p[1] /= *n as f64;
                 }
             }
             if fold_into_other && !other.is_empty() {

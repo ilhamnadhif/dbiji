@@ -76,7 +76,12 @@ pub async fn run_command(spec: CommandSpec, cancel: CancellationToken, mut on_li
                 None => break child.wait().await,
             },
             s = child.wait() => {
-                while let Ok(l) = rx.try_recv() {
+                // The readers may still hold the last lines (often the error itself).
+                while let Ok(Some(l)) = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv()).await {
+                    last_lines.push(l.clone());
+                    if last_lines.len() > 20 {
+                        last_lines.remove(0);
+                    }
                     on_line(l);
                 }
                 break s;

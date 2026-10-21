@@ -29,6 +29,8 @@ pub struct ConnectionDialog {
     ssh_passphrase: String,
     proxy_password: String,
     password_loaded: bool,
+    /// Saved secrets that could not be read (locked vault, keychain denied): left as they are on save.
+    unreadable: Vec<SecretSlot>,
     auto_commit_choice: u8, // 0 = type default, 1 = on, 2 = off
     new_prop: (String, String),
     test: Option<Job<DbResult<String>>>,
@@ -65,6 +67,7 @@ impl ConnectionDialog {
             ssh_passphrase: String::new(),
             proxy_password: String::new(),
             password_loaded: false,
+            unreadable: Vec::new(),
             auto_commit_choice,
             new_prop: Default::default(),
             test: None,
@@ -82,11 +85,19 @@ impl ConnectionDialog {
         }
         self.password_loaded = true;
         let id = self.cfg.id.clone();
-        let get = |slot| conns.secrets.get(&secret_key(&id, slot)).ok().flatten().map(|s| s.expose().to_string()).unwrap_or_default();
+        let mut unreadable = Vec::new();
+        let mut get = |slot| match conns.secrets.get(&secret_key(&id, slot)) {
+            Ok(s) => s.map(|s| s.expose().to_string()).unwrap_or_default(),
+            Err(_) => {
+                unreadable.push(slot);
+                String::new()
+            }
+        };
         self.password = get(SecretSlot::Password);
         self.ssh_password = get(SecretSlot::SshPassword);
         self.ssh_passphrase = get(SecretSlot::SshPassphrase);
         self.proxy_password = get(SecretSlot::ProxyPassword);
+        self.unreadable = unreadable;
     }
 
     fn credentials(&self) -> Credentials {
@@ -129,9 +140,17 @@ impl ConnectionDialog {
             return false;
         }
         let id = self.cfg.id.clone();
+        let unreadable = self.unreadable.clone();
         let store = |slot, value: &str, keep: bool| -> DbResult<()> {
             let key = secret_key(&id, slot);
-            if keep && !value.is_empty() { cx.conns.secrets.set(&key, &Secret::new(value)) } else { cx.conns.secrets.delete(&key) }
+            if keep && !value.is_empty() {
+                cx.conns.secrets.set(&key, &Secret::new(value))
+            } else if keep && unreadable.contains(&slot) {
+                // Not read, not retyped: the saved one stays.
+                Ok(())
+            } else {
+                cx.conns.secrets.delete(&key)
+            }
         };
         let ssh_save = self.cfg.ssh.as_ref().is_some_and(|s| s.enabled && s.save_credentials);
         let proxy_save = self.cfg.proxy.as_ref().is_some_and(|p| p.enabled && p.save_credentials);

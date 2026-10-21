@@ -387,11 +387,41 @@ impl DdlGenerator for MsSqlDdl {
             }
         }
 
-        // 1. foreign keys removed / changed / using touched columns
+        // Keys this alter drops (and maybe re-adds): foreign keys referencing them
+        // must go first, or SQL Server refuses to drop the key.
+        let same_set = |a: &[String], b: &[String]| a.len() == b.len() && a.iter().all(|x| b.iter().any(|y| x.eq_ignore_ascii_case(y)));
+        let mut dropped_keys: Vec<&[String]> = Vec::new();
+        if let Some(pk) = cur.primary_key.as_ref().filter(|k| cur.primary_key != to.primary_key || k.columns.iter().any(|c| touched.contains(&c.as_str()))) {
+            dropped_keys.push(&pk.columns);
+        }
+        for u in &cur.unique_keys {
+            if !to.unique_keys.contains(u) || u.columns.iter().any(|c| touched.contains(&c.as_str())) {
+                dropped_keys.push(&u.columns);
+            }
+        }
+        let unique_index_cols: Vec<Vec<String>> = secondary_indexes(&cur)
+            .filter(|i| i.unique)
+            .filter(|i| {
+                let kept = secondary_indexes(to).any(|x| same_index(x, i) && x.include == i.include && x.method == i.method);
+                !kept || touched.iter().any(|c| indexes_using(&cur, c).iter().any(|x| x.name == i.name))
+            })
+            .map(|i| i.columns.iter().map(|c| c.name.clone()).collect())
+            .collect();
+        dropped_keys.extend(unique_index_cols.iter().map(Vec::as_slice));
+        let on_dropped_key = |fk: &ForeignKeyDef| dropped_keys.iter().any(|k| same_set(k, &fk.ref_columns));
+        let self_ref = |fk: &ForeignKeyDef| fk.table.eq_ignore_ascii_case(&from.name) || fk.table.eq_ignore_ascii_case(&to.name);
+        let referencing: Vec<&ForeignKeyDef> = cur.referenced_by.iter().filter(|fk| !self_ref(fk) && on_dropped_key(fk)).collect();
+        let child = |fk: &ForeignKeyDef| TableDef::new(fk.schema.clone().or(cur.schema.clone()), fk.table.clone());
+        for fk in &referencing {
+            out.push(self.drop_foreign_key(&child(fk), fk));
+        }
+
+        // 1. foreign keys removed / changed / using touched columns (or a key dropped below)
         let mut dropped_fks: Vec<&ForeignKeyDef> = Vec::new();
         for fk in &cur.foreign_keys {
             let uses = fk.columns.iter().any(|c| touched.contains(&c.as_str()));
-            if !to.foreign_keys.contains(fk) || uses {
+            let on_own_key = (fk.ref_table.eq_ignore_ascii_case(&from.name) || fk.ref_table.eq_ignore_ascii_case(&to.name)) && on_dropped_key(fk);
+            if !to.foreign_keys.contains(fk) || uses || on_own_key {
                 out.push(self.drop_foreign_key(&cur, fk));
                 dropped_fks.push(fk);
             }
@@ -525,6 +555,24 @@ impl DdlGenerator for MsSqlDdl {
         for fk in &to.foreign_keys {
             if !cur.foreign_keys.contains(fk) || dropped_fks.contains(&fk) {
                 out.push(self.add_foreign_key(to, fk));
+            }
+        }
+        // Other tables' foreign keys on a key that exists again (columns renamed); one on a removed key stays dropped.
+        let renamed_col = |c: &String| pairs.iter().find(|(f, _)| f.name.eq_ignore_ascii_case(c)).map(|(_, tc)| tc.name.clone()).unwrap_or_else(|| c.clone());
+        let final_keys: Vec<Vec<String>> = to
+            .primary_key
+            .iter()
+            .chain(to.unique_keys.iter())
+            .map(|k| k.columns.clone())
+            .chain(secondary_indexes(to).filter(|i| i.unique).map(|i| i.columns.iter().map(|c| c.name.clone()).collect()))
+            .collect();
+        for fk in &referencing {
+            let mut nf = (*fk).clone();
+            nf.ref_table = to.name.clone();
+            nf.ref_schema = to.schema.clone().or(nf.ref_schema);
+            nf.ref_columns = fk.ref_columns.iter().map(renamed_col).collect();
+            if final_keys.iter().any(|k| same_set(k, &nf.ref_columns)) {
+                out.push(self.add_foreign_key(&child(fk), &nf));
             }
         }
         // 13. comments
@@ -1005,6 +1053,30 @@ mod tests {
         assert_eq!(sql.len(), 4);
         let no_fk = d.create_table(&sample(), false);
         assert!(!no_fk[0].contains("FOREIGN KEY"));
+    }
+
+    #[test]
+    fn referencing_foreign_keys_around_a_key_change() {
+        let d = MsSqlDdl::new();
+        let mut from = TableDef::new(Some("dbo".into()), "customers");
+        from.columns = vec![ColumnDef::new("id", "int").not_null(), ColumnDef::new("name", "nvarchar(50)")];
+        from.primary_key = Some(KeyDef { name: Some("PK_customers".into()), columns: vec!["id".into()] });
+        from.referenced_by.push(ForeignKeyDef {
+            name: Some("FK_orders_customers".into()),
+            schema: Some("dbo".into()),
+            table: "orders".into(),
+            columns: vec!["customer_id".into()],
+            ref_schema: Some("dbo".into()),
+            ref_table: "customers".into(),
+            ref_columns: vec!["id".into()],
+            ..Default::default()
+        });
+        let mut to = from.clone();
+        to.columns[0].data_type = "bigint".into();
+        let sql = d.alter_table(&from, &to, &[]);
+        let pos = |p: &str| sql.iter().position(|s| s.contains(p)).unwrap_or_else(|| panic!("{p} in {sql:#?}"));
+        assert!(pos("orders DROP CONSTRAINT [FK_orders_customers]") < pos("DROP CONSTRAINT [PK_customers]"), "{sql:#?}");
+        assert!(pos("ADD CONSTRAINT [PK_customers]") < pos("orders ADD CONSTRAINT [FK_orders_customers]"), "{sql:#?}");
     }
 
     #[test]

@@ -68,6 +68,9 @@ pub struct SqlSyntax {
     /// Characters allowed inside unquoted identifiers besides `[A-Za-z0-9_]`.
     pub extra_ident_chars: &'static str,
     pub ident_case: IdentCase,
+    /// Unquoted names are case sensitive (ClickHouse): a formatter must not
+    /// change the case of a keyword-like name (`database`, `rows`, `table`).
+    pub case_sensitive_names: bool,
 }
 
 impl SqlSyntax {
@@ -94,6 +97,7 @@ impl SqlSyntax {
             compound_blocks: false,
             extra_ident_chars: "",
             ident_case: IdentCase::Upper,
+            case_sensitive_names: false,
         }
     }
 
@@ -206,6 +210,14 @@ pub trait Dialect: Send + Sync + 'static {
     fn literal(&self, value: &Value, type_name: Option<&str>) -> String {
         let _ = type_name;
         ansi::literal(self, value)
+    }
+
+    /// Values of a `type_name` column that are written into statements as
+    /// [`literal`](Dialect::literal)s instead of parameters, because the
+    /// database cannot convert the parameter itself (MySQL BIT, geometry).
+    fn inline_value(&self, type_name: &str) -> bool {
+        let _ = type_name;
+        false
     }
 
     /// Positional parameter placeholder, 1-based (`$1` for PostgreSQL, `?` elsewhere).

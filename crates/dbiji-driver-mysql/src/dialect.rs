@@ -39,6 +39,7 @@ pub const fn mysql_syntax() -> SqlSyntax {
         compound_blocks: true,
         extra_ident_chars: "$",
         ident_case: IdentCase::Preserve,
+        case_sensitive_names: false,
     }
 }
 
@@ -138,7 +139,48 @@ pub struct MySqlDialect {
     ddl: MySqlDdl,
 }
 
+/// Column types whose values are written as literals (see [`Dialect::inline_value`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Special {
+    Bit,
+    Geometry,
+}
+
+fn special_type(type_name: &str) -> Option<Special> {
+    let base = type_name.trim().to_ascii_lowercase();
+    let base = base.split(['(', ' ']).next().unwrap_or("");
+    match base {
+        "bit" => Some(Special::Bit),
+        "geometry" | "point" | "linestring" | "polygon" | "multipoint" | "multilinestring"
+        | "multipolygon" | "geometrycollection" | "geomcollection" => Some(Special::Geometry),
+        _ => None,
+    }
+}
+
 impl MySqlDialect {
+    /// `ST_GeomFromText('POINT(1 2)', 4326)` for `SRID=4326;POINT(1 2)` (or plain WKT).
+    fn geometry_literal(&self, text: &str) -> String {
+        let (srid, wkt) = match text
+            .trim()
+            .strip_prefix("SRID=")
+            .and_then(|r| r.split_once(';'))
+        {
+            Some((n, wkt)) => (n.trim().parse::<u32>().ok(), wkt),
+            None => (None, text.trim()),
+        };
+        match srid {
+            // DBiji shows the stored x/y order; MySQL 8 reads geographic WKT as latitude-longitude by default.
+            Some(n) if self.profile.is_mysql() && self.profile.at_least(8, 0, 12) => {
+                format!(
+                    "ST_GeomFromText({}, {n}, 'axis-order=long-lat')",
+                    self.string_literal(wkt)
+                )
+            }
+            Some(n) => format!("ST_GeomFromText({}, {n})", self.string_literal(wkt)),
+            None => format!("ST_GeomFromText({})", self.string_literal(wkt)),
+        }
+    }
+
     /// Dialect of a flavor without server specific information.
     pub fn new(flavor: Flavor) -> Self {
         Self::for_server(ServerProfile::unknown(flavor))
@@ -241,9 +283,29 @@ impl Dialect for MySqlDialect {
         crate::ddl::string_literal(s)
     }
 
+    fn inline_value(&self, type_name: &str) -> bool {
+        special_type(type_name).is_some()
+    }
+
     fn literal(&self, value: &Value, type_name: Option<&str>) -> String {
-        let _ = type_name;
+        // BIT digits and geometry text (as DBiji shows them) would be stored as plain strings.
+        match (type_name.and_then(special_type), value) {
+            (Some(Special::Bit), Value::Text(s))
+                if !s.is_empty() && s.chars().all(|c| c == '0' || c == '1') =>
+            {
+                return format!("b'{s}'");
+            }
+            (Some(Special::Bit), Value::Bool(b)) => {
+                return if *b { "b'1'".into() } else { "b'0'".into() };
+            }
+            (Some(Special::Geometry), Value::Text(s)) => return self.geometry_literal(s),
+            _ => {}
+        }
         match value {
+            // With its offset where MySQL converts it (8.0.19+), else as UTC.
+            Value::DateTimeTz(dt) if self.profile.is_mysql() && self.profile.at_least(8, 0, 19) => {
+                self.string_literal(&dt.format("%Y-%m-%d %H:%M:%S%.6f%:z").to_string())
+            }
             Value::DateTimeTz(dt) => {
                 let v = Value::DateTime(dt.naive_utc());
                 self.string_literal(&v.to_text())
@@ -508,6 +570,32 @@ mod tests {
         assert_eq!(nb.string_literal("a\\b'c"), "'a\\b''c'");
         assert!(!nb.syntax().double_quoted_strings);
         assert_eq!(nb.syntax().identifier_quotes.len(), 2);
+    }
+
+    #[test]
+    fn bit_and_geometry_literals() {
+        let d = MySqlDialect::for_server(ServerProfile::new(Flavor::MySql, (8, 0, 36)));
+        assert!(
+            d.inline_value("bit(8)") && d.inline_value("POINT") && !d.inline_value("varchar(10)")
+        );
+        assert_eq!(
+            d.literal(&Value::text("00000101"), Some("bit(8)")),
+            "b'00000101'"
+        );
+        assert_eq!(
+            d.literal(&Value::text("SRID=4326;POINT(1 2)"), Some("geometry")),
+            "ST_GeomFromText('POINT(1 2)', 4326, 'axis-order=long-lat')"
+        );
+        assert_eq!(
+            d.literal(&Value::text("POINT(1 2)"), Some("point")),
+            "ST_GeomFromText('POINT(1 2)')"
+        );
+        let maria = MySqlDialect::for_server(ServerProfile::new(Flavor::MariaDb, (11, 4, 0)));
+        assert_eq!(
+            maria.literal(&Value::text("SRID=4326;POINT(1 2)"), Some("geometry")),
+            "ST_GeomFromText('POINT(1 2)', 4326)"
+        );
+        assert_eq!(d.literal(&Value::text("x"), Some("varchar(5)")), "'x'");
     }
 
     #[test]

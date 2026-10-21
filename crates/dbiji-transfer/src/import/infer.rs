@@ -248,15 +248,17 @@ pub fn infer_columns(columns: &[ColumnMeta], sample: &[Row], opts: &InferOptions
 pub fn generic_type_name(col: &InferredColumn) -> String {
     match col.kind {
         DataKind::Bool => "BOOLEAN".into(),
+        // Room above what the sample showed: later rows of the file may be longer
+        // or bigger, and a failing row stops an import half way.
         DataKind::Int => {
-            if col.precision.is_some_and(|p| p <= 9) {
+            if col.precision.is_some_and(|p| p <= 6) {
                 "INTEGER".into()
             } else {
                 "BIGINT".into()
             }
         }
         DataKind::Decimal => match (col.precision, col.scale) {
-            (Some(p), Some(s)) if p <= 38 => format!("NUMERIC({p},{s})"),
+            (Some(p), Some(s)) if p <= 38 => format!("NUMERIC({},{s})", (p + 4).min(38)),
             _ => "NUMERIC".into(),
         },
         DataKind::Float => "DOUBLE PRECISION".into(),
@@ -269,7 +271,7 @@ pub fn generic_type_name(col: &InferredColumn) -> String {
         DataKind::Binary => "BLOB".into(),
         _ => {
             const SIZES: [usize; 9] = [10, 20, 50, 100, 255, 500, 1000, 2000, 4000];
-            match SIZES.iter().find(|s| **s >= col.max_len.max(1)) {
+            match SIZES.iter().find(|s| **s >= col.max_len.max(1) * 2) {
                 Some(n) => format!("VARCHAR({n})"),
                 None => "TEXT".into(),
             }
@@ -312,7 +314,7 @@ mod tests {
         assert_eq!(infer(&["1", "x"]).kind, DataKind::Text);
         let t = infer(&["abc", "", "abcdef"]);
         assert_eq!((t.kind, t.nullable, t.max_len), (DataKind::Text, true, 6));
-        assert_eq!(generic_type_name(&t), "VARCHAR(10)");
+        assert_eq!(generic_type_name(&t), "VARCHAR(20)");
         let empty = infer(&["", ""]);
         assert_eq!((empty.kind, empty.nullable), (DataKind::Text, true));
     }

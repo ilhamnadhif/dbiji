@@ -796,7 +796,14 @@ impl Project {
         if target == abs {
             return Ok(target);
         }
-        if target.exists() {
+        // On a case-insensitive file system (macOS, Windows) `Script.sql` "exists" when
+        // renaming `script.sql`: it is the same file, not another one.
+        let same_file = target
+            .canonicalize()
+            .ok()
+            .zip(abs.canonicalize().ok())
+            .is_some_and(|(a, b)| a == b);
+        if target.exists() && !same_file {
             return Err(DbError::config(format!(
                 "{} already exists",
                 target.display()

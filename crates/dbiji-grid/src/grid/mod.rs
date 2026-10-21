@@ -342,15 +342,21 @@ impl<'a> DataGrid<'a> {
     /// Text for the current selection in `opts` format (what Cmd+C copies with
     /// [`CopyOptions::plain`]).
     pub fn copy_text(model: &ResultModel, state: &DataGridState, options: &GridOptions, opts: &CopyOptions) -> Result<(String, usize), String> {
-        let data = selection_copy_data(model, state, options)?;
-        let mut opts = opts.clone();
-        if opts.sql_table.trim().is_empty() {
-            opts.sql_table = sql_table_name(model, options);
-        }
-        let cells = data.cell_count();
-        let dialect = options.dialect.as_deref();
-        Ok((crate::copy::render(&data, &opts, &options.format, dialect), cells))
+        copy_text_and_nulls(model, state, options, opts).map(|(text, cells, _)| (text, cells))
     }
+}
+
+/// [`DataGrid::copy_text`] and which copied cells are NULL (row by row).
+pub(crate) fn copy_text_and_nulls(model: &ResultModel, state: &DataGridState, options: &GridOptions, opts: &CopyOptions) -> Result<(String, usize, Vec<Vec<bool>>), String> {
+    let data = selection_copy_data(model, state, options)?;
+    let mut opts = opts.clone();
+    if opts.sql_table.trim().is_empty() {
+        opts.sql_table = sql_table_name(model, options);
+    }
+    let cells = data.cell_count();
+    let dialect = options.dialect.as_deref();
+    let nulls = data.rows.iter().map(|r| r.cells.iter().map(|c| c.as_ref().is_some_and(Value::is_null)).collect()).collect();
+    Ok((crate::copy::render(&data, &opts, &options.format, dialect), cells, nulls))
 }
 
 /// Insert a new row after the active row (or at the end) and select it.
@@ -440,10 +446,16 @@ pub(crate) fn selection_copy_data_limited(model: &ResultModel, state: &DataGridS
 
 /// Paste clipboard text at the active cell.
 pub(crate) fn paste_into(model: &mut ResultModel, state: &mut DataGridState, text: &str) -> Result<usize, String> {
-    let block = parse_clipboard_table(text);
+    // Text DBiji copied itself: its NULLs and its single cell are known.
+    let remembered = state.rt.last_copy.as_ref().filter(|(t, _)| !text.is_empty() && t == text).map(|(_, n)| n.clone());
+    let block = match &remembered {
+        Some(n) if n.len() == 1 && n[0].len() == 1 => vec![vec![text.to_string()]],
+        _ => parse_clipboard_table(text),
+    };
     if block.is_empty() {
         return Ok(0);
     }
+    let nulls = remembered.filter(|n| n.len() == block.len() && n.iter().zip(&block).all(|(a, b)| a.len() == b.len()));
     let visible = state.visible_columns();
     let Some((row, col)) = state.active_cell() else { return Err(tr("Select a cell to paste into").to_string()) };
     let start = visible.iter().position(|&c| c == col).unwrap_or(0);
@@ -458,7 +470,7 @@ pub(crate) fn paste_into(model: &mut ResultModel, state: &mut DataGridState, tex
             for r in sel.rows(nrows, usize::MAX) {
                 for p in sel.columns(visible.len()) {
                     if sel.contains(r, p) && !model.is_virtual_column(visible[p]) {
-                        let v = model.parse_for_column(visible[p], &block[0][0])?;
+                        let v = if nulls.as_ref().is_some_and(|n| n[0][0]) { Value::Null } else { model.parse_for_column(visible[p], &block[0][0])? };
                         edits.push((r, visible[p], crate::model::CellValue::Value(v)));
                     }
                 }
@@ -469,7 +481,7 @@ pub(crate) fn paste_into(model: &mut ResultModel, state: &mut DataGridState, tex
         }
     }
     let columns: Vec<usize> = visible[start..].iter().copied().take(width).collect();
-    let n = model.paste_block(row, &block, &columns)?;
+    let n = model.paste_block(row, &block, &columns, nulls.as_deref())?;
     // Select the pasted block.
     let last_row = row + block.len() - 1;
     let last_col = start + columns.len().saturating_sub(1);
@@ -515,7 +527,20 @@ pub(crate) fn server_condition(model: &ResultModel, options: &GridOptions, col: 
                 format!("{c} IS NOT NULL")
             }
         }
-        FilterOp::Contains => format!("{c} LIKE {}", d.string_literal(&format!("%{}%", value.to_text().replace('%', "\\%").replace('_', "\\_")))),
+        FilterOp::Contains => {
+            // `\` escapes the pattern's wildcards; most databases need ESCAPE to know it.
+            let kind = d.kind();
+            let mut p = String::from("%");
+            for ch in value.to_text().chars() {
+                if matches!(ch, '%' | '_' | '\\') || (ch == '[' && kind == dbiji_core::DbKind::SqlServer) {
+                    p.push('\\');
+                }
+                p.push(ch);
+            }
+            p.push('%');
+            let escape = if kind == dbiji_core::DbKind::ClickHouse { String::new() } else { format!(" ESCAPE {}", d.string_literal("\\")) };
+            format!("{c} LIKE {}{escape}", d.string_literal(&p))
+        }
         FilterOp::Like | FilterOp::NotLike => format!("{c} {} {}", op.sql(), d.string_literal(&value.to_text())),
         _ => format!("{c} {} {}", op.sql(), d.literal(value, type_name)),
     }

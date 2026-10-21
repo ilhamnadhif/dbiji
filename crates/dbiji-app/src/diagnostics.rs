@@ -94,6 +94,39 @@ pub fn system_info(paths: &dbiji_config::AppPaths, settings: &Settings, conns: &
     )
 }
 
+/// Names, hosts, users, databases and files of the connections with their
+/// stand-ins: the logs mention them ("Cannot connect to Prod: …").
+fn identifying_words(conns: &[ConnectionConfig]) -> Vec<(String, String)> {
+    let mut words: Vec<(String, String)> = Vec::new();
+    for (i, c) in conns.iter().enumerate() {
+        let n = i + 1;
+        let mut push = |w: Option<&str>, what: &str| {
+            if let Some(w) = w.map(str::trim).filter(|w| w.chars().count() >= 3) {
+                words.push((w.to_string(), format!("<{what} {n}>")));
+            }
+        };
+        push(Some(c.name.as_str()), "connection");
+        push(Some(c.host.as_str()), "host");
+        push(c.user.as_deref(), "user");
+        push(c.database.as_deref(), "database");
+        push(c.file_path.as_deref(), "file");
+    }
+    // Longer first: a name containing a host name is replaced whole.
+    words.sort_by_key(|w| std::cmp::Reverse(w.0.len()));
+    words.dedup_by(|a, b| a.0 == b.0);
+    words
+}
+
+fn redact(text: &str, words: &[(String, String)]) -> String {
+    let mut out = text.to_string();
+    for (w, stand_in) in words {
+        if out.contains(w.as_str()) {
+            out = out.replace(w.as_str(), stand_in);
+        }
+    }
+    out
+}
+
 /// Write the diagnostic zip to `out`.
 pub fn collect(paths: &dbiji_config::AppPaths, settings: &Settings, conns: &[ConnectionConfig], out: &Path) -> DbResult<PathBuf> {
     let io = |e: std::io::Error| DbError::io(e.to_string());
@@ -101,9 +134,10 @@ pub fn collect(paths: &dbiji_config::AppPaths, settings: &Settings, conns: &[Con
     let file = std::fs::File::create(out).map_err(io)?;
     let mut zip = zip::ZipWriter::new(file);
     let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    let identifying = identifying_words(conns);
     let add = |zip: &mut zip::ZipWriter<std::fs::File>, name: &str, text: &str| -> DbResult<()> {
         zip.start_file(name, opts).map_err(zerr)?;
-        zip.write_all(scrub(text).as_bytes()).map_err(io)
+        zip.write_all(redact(&scrub(text), &identifying).as_bytes()).map_err(io)
     };
     add(&mut zip, "system.txt", &system_info(paths, settings, conns))?;
     let settings_json = serde_json::to_string_pretty(settings).map_err(|e| DbError::internal(e.to_string()))?;

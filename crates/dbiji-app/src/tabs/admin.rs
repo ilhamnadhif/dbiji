@@ -122,7 +122,8 @@ pub struct SessionManagerTab {
     admin: AdminSession,
     data: Loadable<SessionList>,
     refresh: Refresh,
-    selected: Option<usize>,
+    /// Id of the selected session (an index would move when the list refreshes).
+    selected: Option<String>,
     filter: String,
     hide_idle: bool,
     kill: Option<(String, KillMode)>,
@@ -183,8 +184,8 @@ impl TabView for SessionManagerTab {
             ui.add(egui::TextEdit::singleline(&mut self.filter).hint_text(tr("Filter…")).desired_width(160.0));
             ui.checkbox(&mut self.hide_idle, tr("Hide idle"));
             ui.separator();
-            let sel_id = match (&self.data, self.selected) {
-                (Loadable::Loaded(l), Some(i)) => l.data.rows.get(i).and_then(|r| r.get(l.id_column)).map(|v| v.to_text().into_owned()),
+            let sel_id = match (&self.data, &self.selected) {
+                (Loadable::Loaded(l), Some(id)) => l.data.rows.iter().any(|r| r.get(l.id_column).is_some_and(|v| v.to_text() == id.as_str())).then(|| id.clone()),
                 _ => None,
             };
             ui.add_enabled_ui(sel_id.is_some(), |ui| {
@@ -216,12 +217,13 @@ impl TabView for SessionManagerTab {
                 })
                 .collect();
             let headers: Vec<&str> = list.data.columns.iter().map(String::as_str).collect();
-            let selected_visible = self.selected.and_then(|s| index.iter().position(|i| *i == s));
+            let row_id = |i: usize| list.data.rows.get(i).and_then(|r| r.get(list.id_column)).map(|v| v.to_text().into_owned());
+            let selected_visible = self.selected.as_ref().and_then(|s| index.iter().position(|i| row_id(*i).as_ref() == Some(s)));
             let blocked = list.blocked_by_column.map(|c| rows.iter().filter(|r| r.get(c).is_some_and(|v| !v.is_empty() && v != &fmt.null_text)).count()).unwrap_or(0);
             ui.weak(trf("{} sessions, {} waiting for a lock", &[&rows.len(), &blocked]));
             let r = crate::widgets::simple_table(ui, ("sessions", &self.conn), &headers, &rows, selected_visible);
             if let Some(i) = r.clicked.or(r.context_row) {
-                self.selected = index.get(i).copied();
+                self.selected = index.get(i).and_then(|i| row_id(*i));
             }
             if let Some(i) = r.double_clicked
                 && let (Some(q), Some(row)) = (list.query_column, index.get(i).and_then(|i| list.data.rows.get(*i)))

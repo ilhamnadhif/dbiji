@@ -69,6 +69,8 @@ enum Bottom {
 struct StatRow {
     index: usize,
     sql: String,
+    /// Where the statement is in the editor text when it ran (empty for included scripts).
+    range: std::ops::Range<usize>,
     status: Option<bool>,
     rows: Option<u64>,
     elapsed: Option<Duration>,
@@ -127,6 +129,10 @@ pub struct SqlEditorTab {
     pending_schema: bool,
     exec: Option<Execution>,
     explain_job: Option<(String, Job<DbResult<QueryPlan>>)>,
+    /// Commit (true) or rollback (false) running on the session.
+    tx_job: Option<(bool, Job<DbResult<()>>)>,
+    /// The chosen schema being applied to the session.
+    schema_job: Option<(String, Job<DbResult<()>>)>,
     results: Vec<ResultItem>,
     bottom: Bottom,
     stats: Vec<StatRow>,
@@ -149,6 +155,8 @@ pub struct SqlEditorTab {
     catalog_generation: Option<(u64, SchemaRef)>,
     user_words: HashSet<String>,
     close_prompt: bool,
+    /// "Save" in the close prompt: the result edits are being saved, then the tab closes.
+    close_after_save: bool,
     ddl_executed: bool,
     last_run: Option<(Instant, Duration)>,
     terminal: bool,
@@ -225,6 +233,8 @@ impl SqlEditorTab {
             pending_schema: true,
             exec: None,
             explain_job: None,
+            tx_job: None,
+            schema_job: None,
             results: Vec::new(),
             bottom: Bottom::Output,
             stats: Vec::new(),
@@ -244,6 +254,7 @@ impl SqlEditorTab {
             catalog_generation: None,
             user_words: HashSet::new(),
             close_prompt: false,
+            close_after_save: false,
             ddl_executed: false,
             last_run: None,
             terminal: console,
@@ -269,8 +280,9 @@ impl SqlEditorTab {
 
     fn reset_session(&mut self, cx: &mut AppContext) {
         if let SessionSlot::Ready(s) = std::mem::replace(&mut self.session, SessionSlot::None) {
-            let main = self.conn.as_ref().and_then(|c| cx.conns.live(c)).map(|l| l.main.clone());
-            if !main.is_some_and(|m| m.same(&s)) {
+            // Only a session of its own: the connection's main and per-database sessions are shared.
+            let shared = self.conn.as_ref().and_then(|c| cx.conns.live(c)).is_some_and(|l| l.main.same(&s) || l.db_sessions.values().any(|d| d.get().is_some_and(|d| d.same(&s))));
+            if !shared {
                 cx.backend.spawn_detached(async move { s.close().await });
             }
         }
@@ -594,7 +606,11 @@ impl SqlEditorTab {
             return;
         }
         self.replace_result = !req.new_tab && !cx.settings.results.open_each_query_in_new_tab && prepared.plans.len() == 1;
-        self.stats = prepared.plans.iter().map(|p| StatRow { index: p.index, sql: p.original.clone(), status: None, rows: None, elapsed: None, message: String::new() }).collect();
+        self.stats = prepared
+            .plans
+            .iter()
+            .map(|p| StatRow { index: p.index, sql: p.original.clone(), range: p.range.clone(), status: None, rows: None, elapsed: None, message: String::new() })
+            .collect();
         self.ddl_executed = prepared.plans.iter().any(|p| {
             let k = dbiji_sql::classify(&p.sql, self.lang.syntax()).kind;
             matches!(k, dbiji_sql::StatementKind::Create | dbiji_sql::StatementKind::Alter | dbiji_sql::StatementKind::Drop | dbiji_sql::StatementKind::Rename)
@@ -658,6 +674,7 @@ impl SqlEditorTab {
                     let budget = cx.settings.results.store_budget_bytes();
                     let mut src = ResultSource::from_executed(session.clone(), sql.clone(), Vec::new(), columns, store, token, exhausted, budget);
                     src.exec_duration = elapsed;
+                    src.rerun_safe = !dbiji_sql::classify(&sql, self.lang.syntax()).is_write;
                     if self.terminal {
                         self.print_rows(&src, cx);
                         continue;
@@ -782,9 +799,12 @@ impl SqlEditorTab {
     /// Editor range of the statement with this plan index (only for plans
     /// from the editor text).
     fn statement_range(&self, index: usize) -> Option<std::ops::Range<usize>> {
-        let _ = index;
         let text = self.editor.text();
         let st = self.stats.iter().find(|s| s.index == index)?;
+        // Its own place (the same statement may be in the script twice), while the text is unchanged there.
+        if !st.range.is_empty() && text.get(st.range.clone()) == Some(st.sql.as_str()) {
+            return Some(st.range.clone());
+        }
         let pos = text.find(st.sql.as_str())?;
         Some(pos..pos + st.sql.len())
     }
@@ -976,8 +996,53 @@ impl SqlEditorTab {
     fn commit(&mut self, cx: &mut AppContext, commit: bool) {
         let Some(s) = self.session(cx) else { return };
         let job = cx.backend.spawn(async move { if commit { s.commit().await } else { s.rollback().await } });
-        let _ = job;
-        self.log("INFO", if commit { tr("Commit") } else { tr("Rollback") });
+        self.tx_job = Some((commit, job));
+    }
+
+    /// Close the tab once the result edits saved from the close prompt are saved;
+    /// a failed save keeps it open (the error is shown).
+    fn poll_close_after_save(&mut self, ui: &Ui, cx: &mut AppContext) {
+        if !self.close_after_save {
+            return;
+        }
+        let mut saving = false;
+        let mut left = false;
+        for r in &mut self.results {
+            if let ResultItem::Rows(p) = r {
+                p.poll(cx);
+                saving |= p.is_saving();
+                left |= p.has_changes();
+            }
+        }
+        if saving {
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
+            return;
+        }
+        self.close_after_save = false;
+        // Saved inside an open transaction (manual commit): closing would lose it; the tab stays to commit.
+        let in_tx = matches!(&self.session, SessionSlot::Ready(s) if s.tx_state().in_transaction);
+        if !left && !in_tx {
+            self.editor.mark_saved();
+            if let Some(id) = self.tab_id {
+                cx.push(AppCommand::CloseTab(id));
+            }
+        }
+    }
+
+    /// Report the commit or rollback once it is done.
+    fn poll_tx(&mut self, cx: &mut AppContext) {
+        let Some((commit, job)) = &mut self.tx_job else { return };
+        let Some(r) = job.poll() else { return };
+        let commit = *commit;
+        self.tx_job = None;
+        match r {
+            Ok(()) => self.log("INFO", if commit { tr("Commit") } else { tr("Rollback") }),
+            Err(e) => {
+                let title = if commit { trf("Commit failed: {}", &[&self.title]) } else { trf("Rollback failed: {}", &[&self.title]) };
+                self.log("ERROR", format!("{title}: {}", e.full_text()));
+                cx.toasts.error(title, Some(e.full_text()));
+            }
+        }
     }
 
     fn cancel(&mut self, cx: &mut AppContext) {
@@ -1061,10 +1126,15 @@ impl SqlEditorTab {
                     if multi {
                         live.meta.request_databases(backend, &main);
                     }
-                    live.meta.request_schemas(backend, &main, None);
+                    // The schemas of the editor's database (catalog_sync requests another database's).
+                    let editor_db = self.schema.as_ref().and_then(|s| s.database.clone());
+                    if editor_db.is_none() {
+                        live.meta.request_schemas(backend, &main, None);
+                    }
                     let dbs: Vec<String> = live.meta.databases.get().map(|v| v.iter().map(|d| d.name.clone()).collect()).unwrap_or_default();
-                    let schemas: Vec<String> = live.meta.schemas_of(None).get().map(|v| v.iter().filter(|s| !s.is_system).map(|s| s.name.clone()).collect()).unwrap_or_default();
-                    let cur_db = live.current_database.clone();
+                    let schemas: Vec<String> =
+                        live.meta.schemas_of(editor_db.as_deref()).get().map(|v| v.iter().filter(|s| !s.is_system).map(|s| s.name.clone()).collect()).unwrap_or_default();
+                    let cur_db = editor_db.clone().or_else(|| live.current_database.clone());
                     egui::Popup::from_response(&r).open_bool(&mut self.select_schema_open).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
                         ui.set_min_width(200.0);
                         egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
@@ -1080,7 +1150,7 @@ impl SqlEditorTab {
                             ui.weak(tr("Schemas"));
                             for s in &schemas {
                                 if ui.selectable_label(false, format!("{} {s}", icon::TREE_STRUCTURE)).clicked() {
-                                    chosen_schema = Some(SchemaRef::new(None, Some(s.clone())));
+                                    chosen_schema = Some(SchemaRef::new(editor_db.clone(), Some(s.clone())));
                                 }
                             }
                         });
@@ -1497,18 +1567,40 @@ impl SqlEditorTab {
                 });
             });
             match decided {
-                Some(save) => {
-                    if !save || self.save(cx) {
-                        self.editor.mark_saved();
+                // Save: the script (when it changed) and the result edits; the tab closes once they are saved.
+                Some(true) => {
+                    let script_saved = self.console || !self.editor.is_modified() || self.save(cx);
+                    if script_saved {
+                        self.close_prompt = false;
+                        let mut saving = false;
                         for r in &mut self.results {
-                            if let ResultItem::Rows(p) = r {
-                                p.discard();
+                            if let ResultItem::Rows(p) = r
+                                && p.has_changes()
+                            {
+                                p.save(cx);
+                                saving = true;
                             }
                         }
-                        self.close_prompt = false;
-                        if let Some(id) = self.tab_id {
-                            cx.push(AppCommand::CloseTab(id));
+                        if saving {
+                            self.close_after_save = true;
+                        } else {
+                            self.editor.mark_saved();
+                            if let Some(id) = self.tab_id {
+                                cx.push(AppCommand::CloseTab(id));
+                            }
                         }
+                    }
+                }
+                Some(false) => {
+                    self.editor.mark_saved();
+                    for r in &mut self.results {
+                        if let ResultItem::Rows(p) = r {
+                            p.discard();
+                        }
+                    }
+                    self.close_prompt = false;
+                    if let Some(id) = self.tab_id {
+                        cx.push(AppCommand::CloseTab(id));
                     }
                 }
                 None if close || modal.should_close() => self.close_prompt = false,
@@ -1734,6 +1826,23 @@ impl TabView for SqlEditorTab {
     }
 
     fn ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
+        self.poll_tx(cx);
+        // A schema that cannot be used (missing, no privilege): statements would run in the previous one.
+        if let Some((name, job)) = &mut self.schema_job
+            && let Some(r) = job.poll()
+        {
+            let name = name.clone();
+            self.schema_job = None;
+            if let Err(e) = r {
+                let title = trf("Cannot use schema {}", &[&name]);
+                self.log("ERROR", format!("{title}: {}", e.full_text()));
+                cx.toasts.error(title, Some(e.full_text()));
+            }
+        }
+        self.poll_close_after_save(ui, cx);
+        if self.tx_job.is_some() {
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
+        }
         if let Some((range, version, job)) = &mut self.format_job
             && let Some(res) = job.poll()
         {
@@ -1763,9 +1872,8 @@ impl TabView for SqlEditorTab {
                 self.pending_schema = false;
                 if let Some(schema) = self.schema.as_ref().and_then(|s| s.schema.clone()) {
                     let s2 = s.clone();
-                    cx.backend.spawn_detached(async move {
-                        let _ = s2.lock().await.set_current_schema(&schema).await;
-                    });
+                    let name = schema.clone();
+                    self.schema_job = Some((name, cx.backend.spawn(async move { s2.lock().await.set_current_schema(&schema).await })));
                 }
             }
         }

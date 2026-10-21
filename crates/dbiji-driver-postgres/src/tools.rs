@@ -153,11 +153,13 @@ pub(crate) fn tool_env(params: &ConnectParams) -> Vec<(String, Secret)> {
     {
         env.push(("PGPASSWORD".to_string(), pw.clone()));
     }
-    env.push(("PGSSLMODE".to_string(), Secret::new(params.ssl.mode.label())));
-    if params.ssl.mode != SslMode::Disable {
+    // The `sslmode` connection property overrides the TLS setting, as for the session.
+    let mode = ["sslmode", "ssl_mode"].iter().find_map(|k| params.property(k)).and_then(SslMode::parse).unwrap_or(params.ssl.mode);
+    env.push(("PGSSLMODE".to_string(), Secret::new(mode.label())));
+    if mode != SslMode::Disable {
         if let Some(ca) = params.ssl.ca_cert.as_deref().and_then(file_path_of) {
             env.push(("PGSSLROOTCERT".to_string(), Secret::new(ca)));
-        } else if params.ssl.mode.verifies_chain() {
+        } else if mode.verifies_chain() {
             env.push(("PGSSLROOTCERT".to_string(), Secret::new("system")));
         }
         if let Some(c) = params.ssl.client_cert.as_deref().and_then(file_path_of) {

@@ -177,6 +177,16 @@ fn date32(days: i32) -> Option<NaiveDate> {
     NaiveDate::from_ymd_opt(1970, 1, 1)?.checked_add_signed(chrono::Duration::days(i64::from(days)))
 }
 
+/// Text of a time of day chrono cannot hold (`24:00:00`).
+fn time_text(unit: TimeUnit, v: i64) -> Value {
+    let (secs, nanos) = split_timestamp(unit, v);
+    let mut s = format!("{:02}:{:02}:{:02}", secs / 3600, secs / 60 % 60, secs % 60);
+    if nanos > 0 {
+        s.push_str(format!(".{nanos:09}").trim_end_matches('0'));
+    }
+    Value::text(s)
+}
+
 fn time64(unit: TimeUnit, v: i64) -> Option<NaiveTime> {
     let (secs, nanos) = split_timestamp(unit, v);
     NaiveTime::from_num_seconds_from_midnight_opt(u32::try_from(secs).ok()?, nanos)
@@ -372,7 +382,10 @@ pub(crate) fn convert(v: ValueRef<'_>, conv: Conv) -> Value {
         ValueRef::Date32(d) => date32(d)
             .map(Value::Date)
             .unwrap_or_else(|| infinite_text(i64::from(d))),
-        ValueRef::Time64(unit, t) => time64(unit, t).map(Value::Time).unwrap_or(Value::Null),
+        // `TIME '24:00:00'` is valid in DuckDB but not a chrono time: kept as text.
+        ValueRef::Time64(unit, t) => time64(unit, t)
+            .map(Value::Time)
+            .unwrap_or_else(|| time_text(unit, t)),
         ValueRef::Interval {
             months,
             days,

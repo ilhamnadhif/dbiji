@@ -483,6 +483,9 @@ async fn migrate_table(
     let kinds: Vec<DataKind> = plan.copy.iter().map(|(_, _, k)| *k).collect();
     let convert = ConvertOptions::default();
     let name = plan.target_ref.display_path();
+    // The source's ids are copied into the target's identity / serial columns.
+    let identity: Vec<String> = plan.copy.iter().filter(|(_, t, _)| plan.target.columns.iter().any(|c| &c.name == t && c.auto_increment)).map(|(_, t, _)| t.clone()).collect();
+    let table_sql = dst_dialect.qualified_ref(&plan.target_ref);
     let mut writer = BatchWriter::new(dst, target, scope, job.on_error, job.batch_size.min(500), name.clone());
     writer.begin().await?;
     let outcome = async {
@@ -524,7 +527,23 @@ async fn migrate_table(
     .await;
     let _ = rows.close().await;
     match outcome {
-        Ok(()) => writer.finish().await?,
+        Ok(()) => {
+            writer.finish().await?;
+            // The sequence continues after the copied ids (else the next insert collides).
+            if dst_dialect.kind() == DbKind::Postgres {
+                for col in &identity {
+                    let sql = format!(
+                        "SELECT setval(pg_get_serial_sequence({}, {}), MAX({})) FROM {table_sql}",
+                        dst_dialect.string_literal(&table_sql),
+                        dst_dialect.string_literal(col),
+                        dst_dialect.quote_ident(col)
+                    );
+                    if let Err(e) = writer.execute(&sql).await {
+                        writer.errors.push(RowError { row: 0, column: Some(col.clone()), message: format!("Cannot advance the sequence: {}", e.message) });
+                    }
+                }
+            }
+        }
         Err(e) => {
             writer.abort().await;
             if e.kind == ErrorKind::Cancelled

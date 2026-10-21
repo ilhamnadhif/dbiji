@@ -41,6 +41,9 @@ pub struct ResultSource {
     /// Incremented whenever rows were appended (grid refresh hint).
     pub generation: u64,
     pub budget: usize,
+    /// The statement may run again to read past a closed cursor (a query, not
+    /// `UPDATE … RETURNING` or `CALL`: those would change the data again).
+    pub rerun_safe: bool,
 }
 
 impl ResultSource {
@@ -64,6 +67,7 @@ impl ResultSource {
             total_count: Loadable::NotLoaded,
             generation: 0,
             budget,
+            rerun_safe: true,
         }
     }
 
@@ -110,7 +114,8 @@ impl ResultSource {
         let sql = self.sql.clone();
         let params = self.params.clone();
         let token = self.token;
-        self.fetch_job = Some(backend.spawn(fetch_rows(session, store, sql, params, token, n, op)));
+        let rerun_safe = self.rerun_safe;
+        self.fetch_job = Some(backend.spawn(fetch_rows(session, store, sql, params, token, rerun_safe, n, op)));
     }
 
     /// Apply finished fetches. Returns the id of the finished operation, if any.
@@ -186,12 +191,14 @@ impl ResultSource {
 }
 
 /// Fetch `n` rows, re-executing the query when the cursor was closed.
+#[allow(clippy::too_many_arguments)]
 async fn fetch_rows(
     session: SessionHandle,
     store: SharedRowStore,
     sql: String,
     params: Vec<Value>,
     mut token: Option<u64>,
+    rerun_safe: bool,
     n: usize,
     op: Option<OpHandle>,
 ) -> DbResult<FetchBatch> {
@@ -204,6 +211,12 @@ async fn fetch_rows(
         Some(t) => !session.cursor_open(t).await,
         None => true,
     };
+    // A closed cursor of a statement that writes is not re-executed behind the user's back
+    // (an explicit refresh starts without a token and does run it again).
+    if reopen && token.is_some() && !rerun_safe {
+        let m = ServerMessage::new("WARNING", dbiji_core::tr("The cursor of this result was closed; run the statement again to see the remaining rows."));
+        return Ok(FetchBatch { added: 0, exhausted: true, token: None, messages: vec![m] });
+    }
     if reopen {
         let ex = session.execute(&sql, &params, &ExecOptions::default()).await?;
         messages.extend(ex.messages);

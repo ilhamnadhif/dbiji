@@ -133,8 +133,12 @@ impl<'a> CodeView<'a> {
             Some(editor) if cv.source != self.text => {
                 if !cv.source.is_empty() && self.text.starts_with(cv.source.as_str()) {
                     // Appended text (log views): keep scroll and selection.
-                    let tail =
-                        crate::text::normalize_newlines(&self.text[cv.source.len()..]).into_owned();
+                    // A `\r\n` split between two appends: its `\r` already became a line break.
+                    let mut raw = &self.text[cv.source.len()..];
+                    if cv.source.ends_with('\r') {
+                        raw = raw.strip_prefix('\n').unwrap_or(raw);
+                    }
+                    let tail = crate::text::normalize_newlines(raw).into_owned();
                     let end = editor.text().len();
                     editor.raw_edit(end..end, &tail);
                     editor.undo.clear();

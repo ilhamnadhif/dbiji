@@ -406,6 +406,11 @@ fn canvas(
             _ => {}
         }
     }
+    // MySQL and MariaDB have no FULL JOIN: it is not offered there.
+    let full_join = !matches!(
+        state.dialect.kind(),
+        dbiji_core::DbKind::MySql | dbiji_core::DbKind::MariaDb
+    );
     if response.clicked() {
         match hover.clone() {
             Some(QbHit::Row(a, c)) => {
@@ -422,8 +427,8 @@ fn canvas(
                     j.kind = match j.kind {
                         JoinKind::Inner => JoinKind::Left,
                         JoinKind::Left => JoinKind::Right,
-                        JoinKind::Right => JoinKind::Full,
-                        JoinKind::Full => JoinKind::Inner,
+                        JoinKind::Right if full_join => JoinKind::Full,
+                        JoinKind::Right | JoinKind::Full => JoinKind::Inner,
                     };
                 }
             }
@@ -442,7 +447,7 @@ fn canvas(
     }
     if let Some(ctx_target) = state.context.clone() {
         let mut alias_edit = std::mem::take(&mut state.alias_edit);
-        response.context_menu(|ui| match &ctx_target {
+        let menu = response.context_menu(|ui| match &ctx_target {
             QbContext::Join(i) => {
                 if let Some(j) = model.joins.get_mut(*i) {
                     ui.label(
@@ -454,6 +459,9 @@ fn canvas(
                     );
                     ui.separator();
                     for k in JoinKind::ALL {
+                        if k == JoinKind::Full && !full_join && j.kind != k {
+                            continue;
+                        }
                         if ui.radio(j.kind == k, tr(k.label())).clicked() {
                             j.kind = k;
                             ui.close();
@@ -541,6 +549,10 @@ fn canvas(
             }
         });
         state.alias_edit = alias_edit;
+        // The menu closed: the join is no longer highlighted (and an index may now name another one).
+        if menu.is_none() {
+            state.context = None;
+        }
     }
 
     // painting

@@ -152,7 +152,7 @@ pub(crate) async fn load_columns(s: &PgSession, oids: &[u32]) -> DbResult<Vec<(u
         "SELECT a.attrelid::int8, a.attname::text, pg_catalog.format_type(a.atttypid, a.atttypmod), a.attnotnull, \
          pg_catalog.pg_get_expr(ad.adbin, ad.adrelid), a.attidentity::text, a.attgenerated::text, d.description, \
          CASE WHEN a.attcollation <> 0 AND a.attcollation <> t.typcollation THEN \
-           CASE WHEN cn.nspname = 'pg_catalog' THEN co.collname::text ELSE cn.nspname::text || '.' || co.collname::text END END, \
+           CASE WHEN cn.nspname = 'pg_catalog' THEN co.collname::text ELSE '\"' || replace(cn.nspname, '\"', '\"\"') || '\".\"' || replace(co.collname, '\"', '\"\"') || '\"' END END, \
          a.attnum::int8, seq.seqstart, seq.seqincrement, seq.seqmin, seq.seqmax, seq.seqcache, seq.seqcycle, \
          EXISTS (SELECT 1 FROM pg_catalog.pg_depend od JOIN pg_catalog.pg_class oc ON oc.oid = od.objid AND oc.relkind = 'S' WHERE od.classid = 'pg_catalog.pg_class'::regclass AND od.refclassid = 'pg_catalog.pg_class'::regclass AND od.refobjid = a.attrelid AND od.refobjsubid = a.attnum AND od.deptype = 'a') \
          FROM pg_catalog.pg_attribute a \

@@ -267,7 +267,8 @@ impl<'a> FilterBar<'a> {
                 &mut state.order_text,
                 |t| t.hint_text(tr("column [DESC], …")).desired_width(flexible * 0.38).font(egui::TextStyle::Monospace),
                 &columns,
-                &["ASC", "DESC", "NULLS FIRST", "NULLS LAST"],
+                // The client sort knows no NULLS FIRST / LAST (NULLs sort first).
+                if server_mode { &["ASC", "DESC", "NULLS FIRST", "NULLS LAST"] } else { &["ASC", "DESC"] },
                 &quote,
                 &mut state.rt.order_suggest,
             );

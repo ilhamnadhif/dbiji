@@ -1725,9 +1725,9 @@ impl MySqlSession {
         };
         match o.kind {
             ObjectKind::Table | ObjectKind::View | ObjectKind::Sequence => {
-                let pattern = o.name.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
-                let literal = self.mysql_dialect().string_literal(&pattern);
-                let sql = format!("SHOW TABLE STATUS FROM {} LIKE {literal}", quote(&s));
+                // `WHERE Name =`: exact, whatever the escaping rules of the sql_mode.
+                let literal = self.mysql_dialect().string_literal(&o.name);
+                let sql = format!("SHOW TABLE STATUS FROM {} WHERE Name = {literal}", quote(&s));
                 let old = self.fresh_stats_begin().await;
                 let res = self.rows_with_columns(&sql).await;
                 self.fresh_stats_end(old).await;
@@ -1959,11 +1959,13 @@ impl MySqlSession {
         }
         let pattern = like_pattern(search.pattern.trim());
         let limit = search.limit.clamp(1, 100_000);
+        // `\` escapes the pattern: under NO_BACKSLASH_ESCAPES LIKE has no default escape character.
+        let esc = self.mysql_dialect().string_literal("\\");
         let cmp = |col: &str| {
             if search.case_sensitive {
-                format!("CONVERT({col} USING utf8mb4) COLLATE utf8mb4_bin LIKE ?")
+                format!("CONVERT({col} USING utf8mb4) COLLATE utf8mb4_bin LIKE ? ESCAPE {esc}")
             } else {
-                format!("LOWER(CONVERT({col} USING utf8mb4)) LIKE LOWER(?)")
+                format!("LOWER(CONVERT({col} USING utf8mb4)) LIKE LOWER(?) ESCAPE {esc}")
             }
         };
         let mut out: Vec<ObjectInfo> = Vec::new();
@@ -2167,7 +2169,8 @@ pub fn partition_bound(method: &str, description: Option<&str>) -> String {
     let m = method.to_ascii_uppercase();
     match description.map(str::trim).filter(|d| !d.is_empty()) {
         Some(d) if m.starts_with("RANGE") => {
-            if d.eq_ignore_ascii_case("MAXVALUE") {
+            // RANGE COLUMNS takes a value list: `(MAXVALUE)`; plain RANGE takes `MAXVALUE`.
+            if d.eq_ignore_ascii_case("MAXVALUE") && !m.contains("COLUMNS") {
                 "VALUES LESS THAN MAXVALUE".into()
             } else {
                 format!("VALUES LESS THAN ({d})")
@@ -2324,6 +2327,10 @@ mod tests {
         );
         assert_eq!(
             partition_bound("RANGE COLUMNS", Some("MAXVALUE")),
+            "VALUES LESS THAN (MAXVALUE)"
+        );
+        assert_eq!(
+            partition_bound("RANGE", Some("MAXVALUE")),
             "VALUES LESS THAN MAXVALUE"
         );
         assert_eq!(partition_bound("LIST", Some("1,2")), "VALUES IN (1,2)");

@@ -992,7 +992,7 @@ impl TabView for SettingsTab {
             ui.heading(self.section.label());
             ui.add_space(4.0);
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                changed = match self.section {
+                changed |= match self.section {
                     Section::General => self.general(ui, cx),
                     Section::Editor => self.editor(ui, cx),
                     Section::Results => self.results(ui, cx),

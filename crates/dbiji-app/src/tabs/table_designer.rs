@@ -460,6 +460,10 @@ pub struct TableDesignerTab {
     exec_error: Option<String>,
     /// Create mode: the statements created this table.
     creating: bool,
+    /// Statements of the running apply that succeeded (non-transactional DDL),
+    /// and the position of its CREATE TABLE.
+    applied: Arc<std::sync::atomic::AtomicUsize>,
+    create_at: Option<usize>,
     preview: Option<(Model, Vec<String>)>,
     close_prompt: bool,
     force_close: bool,
@@ -489,6 +493,8 @@ impl TableDesignerTab {
             exec: None,
             exec_error: None,
             creating: false,
+            applied: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            create_at: None,
             preview: None,
             close_prompt: false,
             force_close: false,
@@ -889,9 +895,17 @@ impl TableDesignerTab {
             self.exec_error = Some(tr("The connection is closed.").to_string());
             return;
         };
+        // The DDL is committed: other uncommitted work on this (shared) session would be committed with it.
+        if session.tx_state().in_transaction {
+            self.exec_error = Some(tr("The session has uncommitted changes (another tab, the data editor): commit or roll them back before changing the table.").to_string());
+            return;
+        }
         let transactional = transactional_ddl(self.kind);
         self.exec_error = None;
         self.creating = self.is_create();
+        let applied = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        self.applied = applied.clone();
+        self.create_at = stmts.iter().position(|s| s.trim_start().get(..12).is_some_and(|p| p.eq_ignore_ascii_case("CREATE TABLE")));
         self.exec = Some(cx.backend.spawn(async move {
             if transactional {
                 let list: Vec<(String, Vec<Value>)> = stmts.iter().map(|s| (s.clone(), Vec::new())).collect();
@@ -902,6 +916,7 @@ impl TableDesignerTab {
             } else {
                 for s in &stmts {
                     session.execute_update(s, &[]).await.map_err(|e| e.with_context(s.chars().take(200).collect::<String>()))?;
+                    applied.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 }
             }
             Ok(())
@@ -940,7 +955,17 @@ impl TableDesignerTab {
                 }
                 Err(e) => {
                     let mut text = e.full_text();
-                    if !transactional_ddl(self.kind) && !self.creating {
+                    let applied = self.applied.load(std::sync::atomic::Ordering::Relaxed);
+                    if !transactional_ddl(self.kind) && self.creating && self.create_at.is_some_and(|at| applied > at) {
+                        // CREATE TABLE ran, a later statement (an index …) did not: the table exists now,
+                        // so the designer edits it as it is (creating it again would fail).
+                        text.push_str("\n\n");
+                        text.push_str(tr("The table was created, the statements after the failing one were not run; it is shown as it is now."));
+                        let name = self.model.name.trim().to_string();
+                        self.table = Some(ObjectRef::table(self.schema.schema.clone(), name).with_database(self.schema.database.clone()));
+                        self.original = None;
+                        cx.push(AppCommand::RefreshMetadata { connection: self.conn.clone(), object: None, schema: Some(self.schema.clone()) });
+                    } else if !transactional_ddl(self.kind) && !self.creating {
                         text.push_str("\n\n");
                         text.push_str(tr("Statements before the failing one were applied; reload the table before continuing."));
                     }

@@ -555,6 +555,12 @@ impl TabView for MaintenanceTab {
 
     fn on_close(&mut self, cx: &mut AppContext) -> bool {
         self.cancel(cx);
+        // nothing polls the run once the tab is gone
+        if let Some(r) = &self.run
+            && r.job.is_some()
+        {
+            cx.ops.finish(r.op.id, OpState::Cancelled);
+        }
         true
     }
 

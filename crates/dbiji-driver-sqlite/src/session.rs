@@ -163,6 +163,7 @@ impl Session for SqliteSession {
             sql: sql.to_string(),
             params: params.to_vec(),
             opts: opts.clone(),
+            cancel_seq: self.shared.cancel_seq.load(Ordering::SeqCst),
             reply: tx,
         };
         self.tx

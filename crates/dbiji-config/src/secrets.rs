@@ -315,6 +315,9 @@ impl<S: SecretStore> SecretStore for BundledStore<S> {
     }
     fn set(&self, key: &str, value: &Secret) -> DbResult<()> {
         let mut state = self.state.lock();
+        // Read the bundle again before writing it: another DBiji process (a second
+        // window, a scheduled task) may have saved a secret since it was loaded.
+        state.secrets = None;
         self.load(&mut state)?;
         let map = state.secrets.get_or_insert_with(BTreeMap::new);
         map.insert(key.to_string(), value.clone());
@@ -325,6 +328,7 @@ impl<S: SecretStore> SecretStore for BundledStore<S> {
     }
     fn delete(&self, key: &str) -> DbResult<()> {
         let mut state = self.state.lock();
+        state.secrets = None;
         self.load(&mut state)?;
         let map = state.secrets.get_or_insert_with(BTreeMap::new);
         if map.remove(key).is_some() {

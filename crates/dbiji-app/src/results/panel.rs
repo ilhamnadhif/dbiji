@@ -149,6 +149,11 @@ impl ResultPanel {
         self.model.has_changes()
     }
 
+    /// Edits are being saved.
+    pub fn is_saving(&self) -> bool {
+        self.save_job.is_some()
+    }
+
     pub fn sql(&self) -> &str {
         &self.src.sql
     }
@@ -162,7 +167,7 @@ impl ResultPanel {
     }
 
     /// Keep the grid model in sync with the fetch job.
-    fn poll(&mut self, cx: &mut AppContext) {
+    pub(crate) fn poll(&mut self, cx: &mut AppContext) {
         if let Some((op, res)) = self.src.poll() {
             let state = match res {
                 Ok(n) => crate::ops::OpState::Succeeded(trf("{} rows", &[&n])),
@@ -306,6 +311,12 @@ impl ResultPanel {
         };
         let mut links = Vec::new();
         let mut relations = Vec::new();
+        // Referenced tables live in the base table's database (another database of the server too).
+        let base_db = base.as_ref().and_then(|b| b.database.clone());
+        let in_db = |mut o: ObjectRef| {
+            o.database = base_db.clone();
+            o
+        };
         if let Some(def) = base.as_ref().and_then(find) {
             for fk in &def.foreign_keys {
                 let cols: Option<Vec<usize>> = fk.columns.iter().map(|c| col_index(c)).collect();
@@ -313,7 +324,7 @@ impl ResultPanel {
                     links.push(ForeignKeyLink {
                         name: fk.name.clone(),
                         columns: cols,
-                        ref_table: ObjectRef::table(fk.ref_schema.clone().or(def.schema.clone()), fk.ref_table.clone()),
+                        ref_table: in_db(ObjectRef::table(fk.ref_schema.clone().or(def.schema.clone()), fk.ref_table.clone())),
                         ref_columns: fk.ref_columns.clone(),
                     });
                 }
@@ -325,7 +336,7 @@ impl ResultPanel {
                     relations.push(Relation {
                         name: fk.name.clone(),
                         direction: RelationDirection::ReferencedBy,
-                        table: ObjectRef::table(fk.schema.clone().or(def.schema.clone()), fk.table.clone()),
+                        table: in_db(ObjectRef::table(fk.schema.clone().or(def.schema.clone()), fk.table.clone())),
                         columns: fk.columns.clone(),
                         key_columns,
                     });
@@ -348,7 +359,8 @@ impl ResultPanel {
                 let mut cols = vec![d.quote_ident(&key_col)];
                 cols.extend(dict.description_columns.iter().map(|c| d.quote_ident(c)));
                 let sql = d.limit_query(&format!("SELECT {} FROM {}", cols.join(", "), d.qualified_ref(&link.ref_table)), 20_000, 0);
-                let s = live.main.clone();
+                // The result's own session: it is connected to the table's database.
+                let s = self.src.session.clone();
                 let col = link.columns[0];
                 self.dict_jobs.push((
                     col,
@@ -504,10 +516,11 @@ impl ResultPanel {
                 }
             }
             GridAction::RequestReferences { relation, values } => {
-                let (Some(rel), Some(d), Some(live)) = (self.relations.get(relation).cloned(), self.dialect(cx), cx.conns.live(&self.conn)) else { return };
+                let (Some(rel), Some(d)) = (self.relations.get(relation).cloned(), self.dialect(cx)) else { return };
                 let w = Self::where_for(d.as_ref(), &rel.columns, &values);
                 let sql = d.select_table(&rel.table, None, Some(&w), None, Some(200));
-                let s = live.main.clone();
+                // The result's own session: it is connected to the table's database.
+                let s = self.src.session.clone();
                 self.refs_job = Some((relation, values, backend.spawn(async move { s.query_all(&sql, &[]).await })));
             }
             GridAction::PasteRequested => match read_clipboard() {

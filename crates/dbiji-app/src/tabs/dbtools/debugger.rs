@@ -66,7 +66,7 @@ fn parse_argument(part: &str) -> Option<RoutineArg> {
     }
     let mut mode = "IN".to_string();
     for m in ["INOUT", "IN", "OUT", "VARIADIC"] {
-        if rest.len() > m.len() && rest[..m.len()].eq_ignore_ascii_case(m) && rest[m.len()..].starts_with(char::is_whitespace) {
+        if rest.get(..m.len()).is_some_and(|p| p.eq_ignore_ascii_case(m)) && rest[m.len()..].starts_with(char::is_whitespace) {
             mode = m.to_string();
             rest = rest[m.len()..].trim_start();
             break;

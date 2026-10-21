@@ -247,8 +247,86 @@ pub(crate) fn classify_tokens(src: &str, tokens: &[Token], syntax: &SqlSyntax) -
         }
         return StatementInfo::new(StatementKind::Other, String::new());
     }
-    Sig { src, t: &sig }.classify(0, 0)
+    let mut info = Sig { src, t: &sig }.classify(0, 0);
+    // T-SQL runs statements one after another without `;` (`SELECT 1 DELETE FROM t`):
+    // one span may hold several, a later one writing.
+    if syntax.batch_separator.is_some() && !info.is_write {
+        let mut depth = 0i32;
+        for (k, t) in sig.iter().enumerate().skip(1) {
+            match t.kind {
+                TokenKind::LParen => depth += 1,
+                TokenKind::RParen => depth -= 1,
+                _ if depth == 0
+                    && LATER_WRITE_STARTS
+                        .iter()
+                        .any(|w| t.text(src).eq_ignore_ascii_case(w)) =>
+                {
+                    let later = Sig { src, t: &sig[k..] }.classify(0, 0);
+                    if later.is_write {
+                        info.is_write = true;
+                        if info.danger.is_none() {
+                            info.danger = later.danger;
+                        }
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    // MySQL runs `/*! … */` comments: `SELECT * FROM t /*!INTO OUTFILE '/tmp/x'*/` writes.
+    if syntax.delimiter_command && !info.is_write {
+        for c in tokens
+            .iter()
+            .filter(|t| t.kind == TokenKind::BlockComment && t.text(src).starts_with("/*!"))
+        {
+            let inner = exec_comment_body(c.text(src));
+            let toks = tokenize(inner, syntax);
+            let sig: Vec<Token> = toks.iter().filter(|t| !t.is_trivia()).copied().collect();
+            let words: Vec<String> = sig
+                .iter()
+                .map(|t| t.text(inner).to_ascii_uppercase())
+                .collect();
+            let into_file = words
+                .windows(2)
+                .any(|w| w[0] == "INTO" && (w[1] == "OUTFILE" || w[1] == "DUMPFILE"));
+            // A fragment (`, 2`, `PARTITION BY …`) is no statement: only a writing statement word counts.
+            let writes = words.first().is_some_and(|w| {
+                LATER_WRITE_STARTS.contains(&w.as_str())
+                    || ["REPLACE", "RENAME", "LOAD"].contains(&w.as_str())
+            });
+            if into_file || writes {
+                info.is_write = true;
+                break;
+            }
+        }
+    }
+    info
 }
+
+/// Statements that may follow another one in a T-SQL batch without `;`.
+const LATER_WRITE_STARTS: &[&str] = &[
+    "INSERT",
+    "UPDATE",
+    "DELETE",
+    "MERGE",
+    "DROP",
+    "ALTER",
+    "CREATE",
+    "TRUNCATE",
+    "EXEC",
+    "EXECUTE",
+    "GRANT",
+    "REVOKE",
+    "DENY",
+    "BACKUP",
+    "RESTORE",
+    "DBCC",
+    "BULK",
+    "RECONFIGURE",
+    "KILL",
+    "SHUTDOWN",
+];
 
 /// Body of a MySQL executable comment: `/*!40101 SET x */` → `SET x`.
 fn exec_comment_body(text: &str) -> &str {
@@ -544,14 +622,18 @@ impl<'a> Sig<'a> {
                         ],
                     );
                 if tx {
-                    info(K::Transaction(TxCommand::Begin), first)
+                    let mut i = info(K::Transaction(TxCommand::Begin), first);
+                    i.is_write = self.read_write(next);
+                    i
                 } else {
                     info(K::Other, first).write()
                 }
             }
             "START" => {
                 if self.w(p + 1, "TRANSACTION") {
-                    info(K::Transaction(TxCommand::Begin), first)
+                    let mut i = info(K::Transaction(TxCommand::Begin), first);
+                    i.is_write = self.read_write(p + 2);
+                    i
                 } else {
                     info(K::Other, first).write()
                 }
@@ -732,15 +814,24 @@ impl<'a> Sig<'a> {
                 && (self.w(n + 1, "TRANSACTION") || self.w(n + 1, "CHARACTERISTICS")));
         if tx {
             let mut i = StatementInfo::new(K::Transaction(TxCommand::SetTransaction), first);
-            i.is_write = self.w(n, "GLOBAL");
+            // READ WRITE lifts the read-only session of a read-only connection.
+            i.is_write = self.w(n, "GLOBAL") || self.read_write(n);
             return i;
         }
         let global = self.any(n, &["GLOBAL", "PERSIST", "PERSIST_ONLY", "PASSWORD"])
             || self.text(n).to_ascii_lowercase().starts_with("@@global")
             || self.text(n).to_ascii_lowercase().starts_with("@@persist");
+        // `SET default_transaction_read_only = off`, `SET SESSION transaction_read_only = 0`
+        let read_only_setting =
+            (n..self.t.len()).any(|k| self.text(k).to_ascii_lowercase().contains("read_only"));
         let mut i = StatementInfo::new(K::Set, first);
-        i.is_write = global;
+        i.is_write = global || read_only_setting;
         i
+    }
+
+    /// `READ WRITE` from token `from` on.
+    fn read_write(&self, from: usize) -> bool {
+        (from..self.t.len()).any(|k| self.w(k, "READ") && self.w(k + 1, "WRITE"))
     }
 
     fn explain(&self, p: usize, first: String, depth: u32) -> StatementInfo {
@@ -888,6 +979,30 @@ mod tests {
     }
     fn cm(sql: &str) -> StatementInfo {
         classify(sql, &mysql())
+    }
+
+    #[test]
+    fn later_tsql_statements_and_read_write() {
+        let t = |sql: &str| classify(sql, &tsql());
+        for sql in [
+            "SELECT 1\nDELETE FROM t",
+            "SET NOCOUNT ON\nUPDATE t SET a = 1",
+            "DECLARE @x INT\nDROP TABLE t",
+            "PRINT 'x'\nTRUNCATE TABLE t",
+        ] {
+            assert!(t(sql).is_write, "{sql}");
+        }
+        assert!(!t("SELECT a FROM t WHERE b IN (SELECT b FROM u)").is_write);
+        assert!(c("SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE").is_write);
+        assert!(c("SET default_transaction_read_only = off").is_write);
+        assert!(c("BEGIN READ WRITE").is_write);
+        assert!(c("START TRANSACTION READ WRITE").is_write);
+        assert!(cm("SET SESSION TRANSACTION READ WRITE").is_write);
+        assert!(
+            !c("BEGIN").is_write && !c("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE").is_write
+        );
+        assert!(cm("SELECT * FROM users /*!INTO OUTFILE '/tmp/x.csv'*/").is_write);
+        assert!(!cm("SELECT 1 /*!50000 , 2 */").is_write);
     }
 
     #[test]

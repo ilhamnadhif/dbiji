@@ -310,6 +310,23 @@ pub(crate) fn key_repr(key: &[Value], o: &DataCompareOptions) -> String {
     key.iter().map(|v| key_part(v, o)).collect::<Vec<_>>().join("\u{1f}")
 }
 
+/// [`key_repr`] with text read as what it spells (`"1"` → the number 1, a UUID's
+/// text → the UUID), the way [`values_equal`] compares text with numbers and
+/// UUIDs: a TEXT key on one side matches an INTEGER or UUID key on the other.
+pub(crate) fn cross_key_repr(key: &[Value], o: &DataCompareOptions) -> String {
+    key.iter()
+        .map(|v| match v {
+            Value::Text(t) if Decimal::parse(t.trim()).is_some() => key_part(&Value::Decimal(t.trim().into()), o),
+            Value::Text(t) => match uuid::Uuid::parse_str(t.trim()) {
+                Ok(u) => key_part(&Value::Uuid(u), o),
+                Err(_) => key_part(v, o),
+            },
+            other => key_part(other, o),
+        })
+        .collect::<Vec<_>>()
+        .join("\u{1f}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -367,5 +384,8 @@ mod tests {
         let ci = DataCompareOptions { ignore_case: true, ..o() };
         assert_eq!(key_repr(&[Value::text("ABC")], &ci), key_repr(&[Value::text("abc")], &ci));
         assert_ne!(key_repr(&[Value::text("ABC")], &o()), key_repr(&[Value::text("abc")], &o()));
+        // text spelling a number meets the number (not another spelling of it as text)
+        assert_eq!(cross_key_repr(&[Value::text("1")], &o()), key_repr(&[Value::Int(1)], &o()));
+        assert_ne!(key_repr(&[Value::text("01")], &o()), key_repr(&[Value::text("1")], &o()));
     }
 }

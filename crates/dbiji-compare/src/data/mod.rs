@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::{HashMap, VecDeque};
 use tokio_util::sync::CancellationToken;
-use values::{key_repr, keys_cmp, orderable_kind, values_equal};
+use values::{cross_key_repr, key_repr, keys_cmp, orderable_kind, values_equal};
 
 /// One side of a data comparison.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -468,6 +468,15 @@ impl Engine<'_> {
     fn finish(mut self, src_rows: u64, tgt_rows: u64) -> DataDiff {
         self.diff.source_rows = src_rows;
         self.diff.target_rows = tgt_rows;
+        // SQL Server refuses explicit values for an identity column unless IDENTITY_INSERT is on.
+        if self.dst.kind() == dbiji_core::DbKind::SqlServer && !self.inserts.is_empty() {
+            let table = self.table();
+            let names: Vec<String> = self.lay.tgt_keys.iter().chain(&self.lay.tgt_cols).map(|&i| self.dst.string_literal(&self.tgt_meta[i].name)).collect();
+            let when =
+                format!("IF EXISTS (SELECT 1 FROM sys.identity_columns WHERE object_id = OBJECT_ID({}) AND name IN ({}))", self.dst.string_literal(&table), names.join(", "));
+            self.inserts.insert(0, format!("{when} SET IDENTITY_INSERT {table} ON"));
+            self.inserts.push(format!("{when} SET IDENTITY_INSERT {table} OFF"));
+        }
         let mut sync = std::mem::take(&mut self.deletes);
         sync.append(&mut self.updates);
         sync.append(&mut self.inserts);
@@ -653,11 +662,16 @@ async fn compare_open(
     Ok(e.finish(src.rows, tgt.rows))
 }
 
+/// Source rows keyed by the canonical key text, and the key text of text keys read
+/// as numbers / UUIDs ([`cross_key_repr`]; `None` when two keys give the same one).
+type SourceRows = (HashMap<String, (Vec<Value>, Row)>, HashMap<String, Option<String>>);
+
 /// Read the source into memory keyed by the canonical key text.
-async fn load_source(job: &DataCompareJob, src: &mut Stream, cancel: &CancellationToken, skipped: &mut u64) -> DbResult<HashMap<String, (Vec<Value>, Row)>> {
+async fn load_source(job: &DataCompareJob, src: &mut Stream, cancel: &CancellationToken, skipped: &mut u64) -> DbResult<SourceRows> {
     let o = &job.options;
     let idx = key_positions(&src.meta, &job.source.key_columns, "source")?;
     let mut map: HashMap<String, (Vec<Value>, Row)> = HashMap::new();
+    let mut cross: HashMap<String, Option<String>> = HashMap::new();
     let mut bytes = 0usize;
     while let Some(row) = src.next(cancel).await? {
         let Some(key) = key_of(&row, &idx) else {
@@ -672,17 +686,21 @@ async fn load_source(job: &DataCompareJob, src: &mut Stream, cancel: &Cancellati
                 &[&o.max_hash_rows, &(o.max_hash_bytes / (1024 * 1024))],
             )));
         }
+        let alt = cross_key_repr(&key, o);
+        if alt != repr {
+            cross.entry(alt).and_modify(|e| *e = None).or_insert_with(|| Some(repr.clone()));
+        }
         if map.insert(repr, (key.clone(), row)).is_some() {
             return Err(DbError::query(trf("Duplicate key in the {} table: {}", &[&"source", &key_text(&key)])));
         }
     }
-    Ok(map)
+    Ok((map, cross))
 }
 
 #[allow(clippy::too_many_arguments)]
 async fn probe_target(
     job: &DataCompareJob,
-    mut map: HashMap<String, (Vec<Value>, Row)>,
+    (mut map, cross): SourceRows,
     src_meta: &[ColumnMeta],
     tgt: &mut Stream,
     dst: &dyn Dialect,
@@ -702,7 +720,18 @@ async fn probe_target(
             skipped += 1;
             continue;
         };
-        match map.remove(&key_repr(&key, &job.options)) {
+        // Exactly the same key, else a text key of one side spelling the other's number / UUID.
+        let repr = key_repr(&key, &job.options);
+        let found = map.remove(&repr).or_else(|| {
+            let alt = cross_key_repr(&key, &job.options);
+            if alt != repr
+                && let Some(hit) = map.remove(&alt)
+            {
+                return Some(hit);
+            }
+            cross.get(&repr).cloned().flatten().and_then(|r| map.remove(&r))
+        });
+        match found {
             Some((sk, sr)) => e.compare(sk, &sr, &row),
             None => e.only_target(key, &row),
         }

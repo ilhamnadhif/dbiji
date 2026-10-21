@@ -63,6 +63,33 @@ impl AppTaskExecutor {
             (None, None) => return Err(DbError::config("The task has no SQL")),
         };
         let mut c = self.open(connection_id).await?;
+        let mut database = database;
+        // PostgreSQL cannot switch the database of a session: connect to it instead.
+        let caps = c.driver.info().capabilities.clone();
+        if let Some(db) = database.filter(|d| !d.is_empty())
+            && caps.multiple_databases
+            && !caps.switch_database
+        {
+            let mut params = c.params.clone();
+            params.database = Some(db.to_string());
+            let opened = async {
+                let mut s = c.driver.connect(&params).await?;
+                crate::conn::init_session(s.as_mut(), &c.config, &params).await?;
+                DbResult::Ok(s)
+            }
+            .await;
+            match opened {
+                Ok(s) => {
+                    let mut main = std::mem::replace(&mut c.session, s);
+                    let _ = main.close().await;
+                    database = None;
+                }
+                Err(e) => {
+                    let _ = c.session.close().await;
+                    return Err(e);
+                }
+            }
+        }
         let r = run_script(ctx, c.session.as_mut(), &text, database, schema, stop_on_error, commit_at_end).await;
         let _ = c.session.close().await;
         r
@@ -192,11 +219,12 @@ pub async fn run_script(
     if commit_at_end && s.transaction_mode() == TransactionMode::Manual {
         s.commit().await?;
     }
-    Ok(RunOutcome {
-        rows: Some(rows),
-        output_files: Vec::new(),
-        message: Some(if failed == 0 { format!("{total} statement(s) executed") } else { format!("{total} statement(s), {failed} failed") }),
-    })
+    // "Continue on error" runs the rest, but the run did not succeed: it is recorded as
+    // failed (and the failure notification fires); the statements that worked stay applied.
+    if failed > 0 {
+        return Err(DbError::query(format!("{failed} of {total} statement(s) failed; the others were executed")));
+    }
+    Ok(RunOutcome { rows: Some(rows), output_files: Vec::new(), message: Some(format!("{total} statement(s) executed")) })
 }
 
 #[async_trait::async_trait]

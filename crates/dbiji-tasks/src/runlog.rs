@@ -180,7 +180,8 @@ impl RunLog {
     /// Close runs left in `running` state by another (exited) process: they
     /// are recorded as failed. Returns the number of runs closed.
     pub fn mark_interrupted(&self, current_pid: u32) -> DbResult<usize> {
-        let stale: Vec<TaskRun> = self.runs()?.into_iter().filter(|r| r.status == RunStatus::Running && r.pid != current_pid).collect();
+        // A run of a process that still lives (a `--run-task` started by the OS scheduler) is not interrupted.
+        let stale: Vec<TaskRun> = self.runs()?.into_iter().filter(|r| r.status == RunStatus::Running && r.pid != current_pid && !process_alive(r.pid)).collect();
         for mut r in stale.iter().cloned() {
             let now = Utc::now();
             r.status = RunStatus::Failed;
@@ -200,6 +201,25 @@ impl RunLog {
             std::fs::remove_file(&p).map_err(|e| io_err("Cannot delete", &p, e))?;
         }
         Ok(())
+    }
+}
+
+/// The process `pid` is running (unknown on Windows: treated as exited).
+fn process_alive(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        if pid == 0 || pid > i32::MAX as u32 {
+            return false;
+        }
+        // Signal 0 only checks that the process exists (EPERM: it exists, owned by another user).
+        // SAFETY: kill(2) with signal 0 sends nothing.
+        let r = unsafe { libc::kill(pid as i32, 0) };
+        r == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        false
     }
 }
 
@@ -293,7 +313,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let log = RunLog::open(dir.path(), RunLogOptions::default()).unwrap();
         let mut stale = TaskRun::start(&task("a"), Trigger::Schedule, Utc::now(), None);
-        stale.pid = std::process::id().wrapping_add(1);
+        // the pid of a process that has exited (a live one is left running)
+        stale.pid = if cfg!(unix) {
+            let mut child = std::process::Command::new("true").spawn().unwrap();
+            child.wait().unwrap();
+            child.id()
+        } else {
+            std::process::id().wrapping_add(1)
+        };
         log.record(&stale).unwrap();
         let mine = TaskRun::start(&task("b"), Trigger::Manual, Utc::now(), None);
         log.record(&mine).unwrap();
@@ -301,5 +328,19 @@ mod tests {
         assert_eq!(log.get(&stale.run_id).unwrap().unwrap().status, RunStatus::Failed);
         assert_eq!(log.get(&mine.run_id).unwrap().unwrap().status, RunStatus::Running);
         assert_eq!(log.mark_interrupted(std::process::id()).unwrap(), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn runs_of_live_processes_are_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = RunLog::open(dir.path(), RunLogOptions::default()).unwrap();
+        let mut child = std::process::Command::new("sleep").arg("5").spawn().unwrap();
+        let mut other = TaskRun::start(&task("a"), Trigger::Schedule, Utc::now(), None);
+        other.pid = child.id();
+        log.record(&other).unwrap();
+        assert_eq!(log.mark_interrupted(std::process::id()).unwrap(), 0);
+        let _ = child.kill();
+        let _ = child.wait();
     }
 }

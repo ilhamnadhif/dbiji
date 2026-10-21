@@ -68,6 +68,18 @@ pub fn connection_args(flavor: Flavor, params: &ConnectParams) -> Vec<String> {
         a.push(format!("--user={u}"));
     }
     let mode = params.ssl.mode;
+    // Through a tunnel the tool connects to the local forwarder, whose name is not the
+    // certificate's: the server's identity was checked by the session (against the
+    // real host name); the tool checks the certificate chain only.
+    let tunneled = params
+        .tls_server_name
+        .as_deref()
+        .is_some_and(|n| n != params.host);
+    let mode = if tunneled && mode == SslMode::VerifyFull {
+        SslMode::VerifyCa
+    } else {
+        mode
+    };
     match flavor {
         Flavor::MySql => {
             let m = match mode {
@@ -83,6 +95,11 @@ pub fn connection_args(flavor: Flavor, params: &ConnectParams) -> Vec<String> {
             SslMode::Disable => a.push("--skip-ssl".into()),
             SslMode::Prefer => a.push("--skip-ssl-verify-server-cert".into()),
             SslMode::Require => {
+                a.push("--ssl".into());
+                a.push("--skip-ssl-verify-server-cert".into());
+            }
+            // MariaDB's client verifies chain and name together.
+            SslMode::VerifyCa if tunneled => {
                 a.push("--ssl".into());
                 a.push("--skip-ssl-verify-server-cert".into());
             }

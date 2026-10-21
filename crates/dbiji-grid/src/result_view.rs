@@ -161,6 +161,10 @@ impl<'a> ResultViewer<'a> {
     /// Show everything in the available space.
     pub fn show(self, ui: &mut Ui) -> ResultViewResponse {
         let ResultViewer { model, state, options, id_salt } = self;
+        // Rows fetched since the last frame (the grid syncs itself; the other views do not).
+        if !matches!(state.toolbar.view, ResultViewKind::Grid) {
+            model.try_sync();
+        }
         let id = ui.make_persistent_id(id_salt);
         let mut actions: Vec<GridAction> = Vec::new();
         let mut grid_response = None;

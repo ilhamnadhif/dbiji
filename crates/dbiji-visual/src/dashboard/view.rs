@@ -234,7 +234,12 @@ fn metric_card(ui: &mut Ui, m: &MetricHistory, now: f64, window: f64, width: f32
     let (lo, hi) = match stats {
         Some(s) => {
             let lo = if s.min >= 0.0 { 0.0 } else { s.min };
-            let hi = if s.max <= lo { lo + 1.0 } else { s.max * 1.1 };
+            // 10 % head room above the maximum, also for negative values.
+            let hi = if s.max <= lo {
+                lo + 1.0
+            } else {
+                s.max + (s.max - lo) * 0.1
+            };
             (lo, hi)
         }
         None => (0.0, 1.0),

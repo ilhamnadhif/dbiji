@@ -245,14 +245,19 @@ impl PgSession {
     /// Run an EXPLAIN statement through the simple protocol and return its text lines.
     async fn explain_wrapped(&mut self, q: &str, analyze: bool, prefix_chars: usize) -> DbResult<Vec<String>> {
         let in_tx = self.shared.in_tx();
-        if analyze {
+        // In the user's transaction a failing EXPLAIN (a typo) would abort it: always a savepoint.
+        if analyze || in_tx {
             self.batch(if in_tx { "SAVEPOINT dbiji_explain" } else { "BEGIN" }).await?;
         }
         let res = self.client()?.simple_query(q).await;
-        if analyze {
-            let undo = if in_tx { "ROLLBACK TO SAVEPOINT dbiji_explain; RELEASE SAVEPOINT dbiji_explain" } else { "ROLLBACK" };
+        if analyze || in_tx {
+            let undo = match (in_tx, analyze || res.is_err()) {
+                (true, true) => "ROLLBACK TO SAVEPOINT dbiji_explain; RELEASE SAVEPOINT dbiji_explain",
+                (true, false) => "RELEASE SAVEPOINT dbiji_explain",
+                (false, _) => "ROLLBACK",
+            };
             if let Err(e) = self.batch(undo).await {
-                tracing::warn!("rolling back EXPLAIN ANALYZE failed: {e}");
+                tracing::warn!("ending the EXPLAIN savepoint failed: {e}");
             }
         }
         let msgs = res.map_err(|e| {

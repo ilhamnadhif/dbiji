@@ -36,6 +36,9 @@ pub struct ConvertOptions {
     /// offset when they go into time zone aware columns; `None` uses the
     /// local time zone of the machine.
     pub default_offset_minutes: Option<i32>,
+    /// With `binary: None`: try base64 before plain hex (set from the source format).
+    #[serde(skip)]
+    pub prefer_base64: bool,
 }
 
 impl Default for ConvertOptions {
@@ -51,6 +54,7 @@ impl Default for ConvertOptions {
             trim_text: false,
             empty_text_as_null: false,
             default_offset_minutes: None,
+            prefer_base64: false,
         }
     }
 }
@@ -196,7 +200,7 @@ fn convert_text(s: &str, kind: DataKind, opts: &ConvertOptions) -> Result<Value,
                 },
             }
         }
-        DataKind::Binary => decode_binary(t, opts.binary).map(Value::bytes),
+        DataKind::Binary => decode_binary(t, opts.binary, opts.prefer_base64).map(Value::bytes),
         DataKind::Json => {
             if crate::sink::is_valid_json(t) {
                 Ok(Value::json(t))
@@ -247,16 +251,23 @@ pub(crate) fn normalize_number(t: &str, opts: &ConvertOptions) -> String {
     s
 }
 
-fn decode_binary(t: &str, encoding: Option<BinaryEncoding>) -> Result<Vec<u8>, String> {
+fn decode_binary(t: &str, encoding: Option<BinaryEncoding>, prefer_base64: bool) -> Result<Vec<u8>, String> {
     let b64 = |s: &str| base64::engine::general_purpose::STANDARD.decode(s.as_bytes()).map_err(|e| format!("invalid base64: {e}"));
     match encoding {
         Some(BinaryEncoding::Hex) => parse_hex_bytes(t).ok_or_else(|| format!("'{}' is not hexadecimal", shorten(t))),
         Some(BinaryEncoding::Base64) => b64(t),
         Some(BinaryEncoding::Text) => Ok(t.as_bytes().to_vec()),
-        None => match parse_hex_bytes(t) {
-            Some(b) => Ok(b),
-            None => b64(t).map_err(|_| format!("'{}' is neither hexadecimal nor base64", shorten(t))),
-        },
+        // `AAEC` is valid hex and base64: the source format decides which is tried first;
+        // a `0x` / `\x` / `X'…'` prefix is always hex.
+        None => {
+            let prefixed = ["0x", "0X", "\\x", "X'"].iter().any(|p| t.starts_with(p));
+            let neither = || format!("'{}' is neither hexadecimal nor base64", shorten(t));
+            if prefer_base64 && !prefixed {
+                b64(t).or_else(|_| parse_hex_bytes(t).ok_or_else(neither))
+            } else {
+                parse_hex_bytes(t).map_or_else(|| b64(t).map_err(|_| neither()), Ok)
+            }
+        }
     }
 }
 

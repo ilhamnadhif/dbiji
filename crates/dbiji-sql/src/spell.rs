@@ -632,12 +632,16 @@ impl SpellChecker {
             self.contains(&cand) || self.known(&cand, depth + 1)
         };
         let doubled = |stem: &str| -> bool {
-            let b = stem.as_bytes();
-            let n = b.len();
-            n >= 3
-                && b[n - 1] == b[n - 2]
-                && !matches!(b[n - 1], b'a' | b'e' | b'i' | b'o' | b'u')
-                && self.contains(&stem[..n - 1])
+            // By characters: two equal trailing bytes may be the inside of one character (`も`).
+            let mut rev = stem.char_indices().rev();
+            let (Some((i, last)), Some((_, prev))) = (rev.next(), rev.next()) else {
+                return false;
+            };
+            stem.chars().count() >= 3
+                && last == prev
+                && last.is_ascii()
+                && !matches!(last, 'a' | 'e' | 'i' | 'o' | 'u')
+                && self.contains(&stem[..i])
         };
         const RULES: &[(&str, &[&str])] = &[
             ("ies", &["y", "ie"]),

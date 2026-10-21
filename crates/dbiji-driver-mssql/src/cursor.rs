@@ -32,7 +32,7 @@ use dbiji_core::{DbError, DbResult, ErrorKind, QueryCursor, ResultHeader, Row, S
 use futures::future::FutureExt;
 use futures::stream::{BoxStream, StreamExt, TryStreamExt};
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tiberius::{ColumnType, CommandItem, QueryItem};
@@ -165,13 +165,16 @@ struct Described {
 
 /// Start `stmt` on `client`. Returns the cursor and the receiver through
 /// which the client comes back.
-pub(crate) fn spawn(client: MsClient, stmt: Statement, shared: Arc<Shared>, open_flag: Arc<AtomicBool>) -> (ChannelCursor, oneshot::Receiver<TaskReturn>) {
+/// Ids of cursors: the session's flag holds the id of the open one.
+static NEXT_CURSOR: AtomicU64 = AtomicU64::new(1);
+
+pub(crate) fn spawn(client: MsClient, stmt: Statement, shared: Arc<Shared>, open_flag: Arc<AtomicU64>) -> (ChannelCursor, oneshot::Receiver<TaskReturn>) {
     let (tx, rx) = mpsc::channel::<Event>(CHANNEL_CAPACITY);
     let (ret_tx, ret_rx) = oneshot::channel::<TaskReturn>();
     let cancel = CancellationToken::new();
     let abandon = CancellationToken::new();
     shared.set_active(Some(cancel.clone()));
-    open_flag.store(true, Ordering::SeqCst);
+    open_flag.store(NEXT_CURSOR.fetch_add(1, Ordering::SeqCst), Ordering::SeqCst);
     let task_abandon = abandon.clone();
     tokio::spawn(async move {
         let client = run(client, &stmt, &shared, &tx, &cancel, &task_abandon).await;
@@ -251,12 +254,23 @@ async fn run(mut client: MsClient, stmt: &Statement, shared: &Shared, tx: &mpsc:
     let batches: Vec<(String, u32)> = if stmt.mode == ExecMode::Batch && stmt.params.is_empty() { sqltext::split_batches(&stmt.sql) } else { vec![(stmt.sql.clone(), 1)] };
     let mut emitted = false;
     let mut outcome = Step::Done;
+    // Error positions are reported within the batch: shifted to the script (after a GO).
+    let mut search_from = 0usize;
     'outer: for (batch, repeat) in &batches {
+        let at = stmt.sql[search_from..].find(batch.as_str()).map(|i| search_from + i);
+        if let Some(at) = at {
+            search_from = at + batch.len();
+        }
+        let chars_before = at.map_or(0, |at| stmt.sql[..at].chars().count());
         for _ in 0..*repeat {
             match run_batch(&mut client, stmt, batch, tx, cancel, abandon, &mut clock, &mut described, &mut emitted).await {
                 Step::Done => {}
                 other => {
-                    outcome = other;
+                    outcome = match other {
+                        Step::Failed(e) => Step::Failed(shift_position(e, chars_before)),
+                        Step::Broken(e) => Step::Broken(shift_position(e, chars_before)),
+                        other => other,
+                    };
                     break 'outer;
                 }
             }
@@ -623,12 +637,20 @@ pub(crate) struct ChannelCursor {
     finished: bool,
     messages: Vec<ServerMessage>,
     on_close: Option<Box<dyn FnOnce() + Send>>,
-    open_flag: Arc<AtomicBool>,
+    /// The session's open cursor id, and this cursor's: cleared only while it is still this one
+    /// (an older cursor dropped late must not clear a newer cursor's flag).
+    open_flag: Arc<AtomicU64>,
+    id: u64,
 }
 
 impl ChannelCursor {
-    pub(crate) fn new(rx: mpsc::Receiver<Event>, on_close: Option<Box<dyn FnOnce() + Send>>, open_flag: Arc<AtomicBool>) -> Self {
-        ChannelCursor { rx, in_rows: false, buffer: VecDeque::new(), pending_header: None, pending_error: None, finished: false, messages: Vec::new(), on_close, open_flag }
+    pub(crate) fn new(rx: mpsc::Receiver<Event>, on_close: Option<Box<dyn FnOnce() + Send>>, open_flag: Arc<AtomicU64>) -> Self {
+        let id = open_flag.load(Ordering::SeqCst);
+        ChannelCursor { rx, in_rows: false, buffer: VecDeque::new(), pending_header: None, pending_error: None, finished: false, messages: Vec::new(), on_close, open_flag, id }
+    }
+
+    fn clear_open_flag(&self) {
+        let _ = self.open_flag.compare_exchange(self.id, 0, Ordering::SeqCst, Ordering::SeqCst);
     }
 
     async fn recv(&mut self) -> Option<Event> {
@@ -638,7 +660,7 @@ impl ChannelCursor {
                 Some(ev) => return Some(ev),
                 None => {
                     self.finished = true;
-                    self.open_flag.store(false, Ordering::SeqCst);
+                    self.clear_open_flag();
                     return None;
                 }
             }
@@ -738,8 +760,16 @@ impl Drop for ChannelCursor {
         {
             f();
         }
-        self.open_flag.store(false, Ordering::SeqCst);
+        self.clear_open_flag();
     }
+}
+
+/// `e`'s position moved by `chars` (the batch's start in the script).
+fn shift_position(mut e: DbError, chars: usize) -> DbError {
+    if let Some(p) = e.position.as_mut() {
+        *p += chars;
+    }
+    e
 }
 
 #[cfg(test)]
@@ -753,7 +783,7 @@ mod tests {
             tx.try_send(e).unwrap();
         }
         drop(tx);
-        ChannelCursor::new(rx, None, Arc::new(AtomicBool::new(true)))
+        ChannelCursor::new(rx, None, Arc::new(AtomicU64::new(1)))
     }
 
     #[tokio::test]

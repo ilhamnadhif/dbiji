@@ -276,6 +276,14 @@ impl MigrationTab {
 
     fn target_error(&self, cx: &AppContext) -> Option<String> {
         let Some(target) = &self.target_conn else { return Some(tr("Choose the target connection.").to_string()) };
+        // Two sources into one target table: the second would overwrite (truncate, drop) the first.
+        let mut names = std::collections::HashSet::new();
+        for t in self.tables.iter().filter(|t| t.enabled) {
+            let name = if t.target_name.trim().is_empty() { apply_case(self.options.name_case, &t.source.name) } else { t.target_name.trim().to_string() };
+            if !names.insert(name.to_lowercase()) {
+                return Some(trf("Several tables are migrated to {}; give them different target names.", &[&name]));
+            }
+        }
         if *target == self.conn {
             // Same connection: the target must not be the source table itself.
             let default = current_schema(cx, &self.conn).and_then(|s| s.schema);

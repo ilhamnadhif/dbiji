@@ -177,6 +177,8 @@ pub struct ErViewState {
     pub selection: BTreeSet<String>,
     /// Selected relation (index into `ErModel::relations`).
     pub selected_relation: Option<usize>,
+    /// The relation selected at that index (a refreshed model may hold another one there).
+    selected_relation_value: Option<ErRelation>,
     /// Selected note (index into `ErDiagram::notes`).
     pub selected_note: Option<usize>,
     /// Element under the pointer (updated every frame).
@@ -205,6 +207,7 @@ impl Default for ErViewState {
             pan: vec2(20.0, 20.0),
             selection: BTreeSet::new(),
             selected_relation: None,
+            selected_relation_value: None,
             selected_note: None,
             hover: None,
             drag: None,
@@ -356,7 +359,7 @@ pub fn show_er(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState) ->
     // keep indices valid after external model edits
     if state
         .selected_relation
-        .is_some_and(|i| i >= diagram.model.relations.len())
+        .is_some_and(|i| diagram.model.relations.get(i) != state.selected_relation_value.as_ref())
     {
         state.selected_relation = None;
     }
@@ -530,7 +533,12 @@ pub fn show_er(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState) ->
                 if let Some(target) = hit_test(&scene, diagram, &draw_order, current, view.zoom) {
                     let to_columns = match &target {
                         ErHover::Column { column, .. } => Some(vec![column.clone()]),
-                        ErHover::Table(k) => diagram.model.table(k).map(|t| t.pk_columns()),
+                        // The whole primary key, as many columns as the foreign key has (one).
+                        ErHover::Table(k) => diagram
+                            .model
+                            .table(k)
+                            .map(|t| t.pk_columns())
+                            .filter(|pk| pk.len() == 1),
                         _ => None,
                     };
                     if let (Some(to_table), Some(to_columns)) =
@@ -576,6 +584,7 @@ pub fn show_er(ui: &mut Ui, diagram: &mut ErDiagram, state: &mut ErViewState) ->
             }
             Some(ErHover::Relation(i)) => {
                 state.selected_relation = Some(i);
+                state.selected_relation_value = diagram.model.relations.get(i).cloned();
                 if !(mods.shift || mods.command) {
                     state.selection.clear();
                 }

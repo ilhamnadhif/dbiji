@@ -411,17 +411,22 @@ impl TaskStore {
             Err(_) => serde_json::from_str::<Vec<TaskDef>>(json).map_err(|e| DbError::config(trf("Invalid task file: {}", &[&e])))?,
         };
         self.mutate(|d| {
-            let existing: HashSet<String> = d.tasks.iter().map(|t| t.id.clone()).collect();
+            // An id per task: taken, empty or repeated in the file → a new one. Composite
+            // steps refer to the first task of an id.
+            let mut used: HashSet<String> = d.tasks.iter().map(|t| t.id.clone()).collect();
             let mut map: HashMap<String, String> = HashMap::new();
+            let mut ids: Vec<String> = Vec::with_capacity(tasks.len());
             for t in &tasks {
-                let new_id = if t.id.trim().is_empty() || existing.contains(&t.id) || map.values().any(|v| v == &t.id) { uuid::Uuid::new_v4().to_string() } else { t.id.clone() };
-                map.insert(t.id.clone(), new_id);
+                let new_id = if t.id.trim().is_empty() || used.contains(&t.id) { uuid::Uuid::new_v4().to_string() } else { t.id.clone() };
+                used.insert(new_id.clone());
+                map.entry(t.id.clone()).or_insert_with(|| new_id.clone());
+                ids.push(new_id);
             }
             let now = Utc::now();
             let mut imported = Vec::new();
-            for t in &tasks {
+            for (t, id) in tasks.iter().zip(ids) {
                 let mut n = t.clone();
-                n.id = map.get(&t.id).cloned().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+                n.id = id;
                 if let TaskKind::Composite { steps, .. } = &mut n.kind {
                     for s in steps.iter_mut() {
                         if let Some(m) = map.get(s) {

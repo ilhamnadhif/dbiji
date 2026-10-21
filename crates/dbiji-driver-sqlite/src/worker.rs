@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 use tokio::sync::oneshot;
@@ -39,6 +39,9 @@ pub(crate) struct Shared {
     pub interrupt: rusqlite::InterruptHandle,
     /// Set by [`Shared::cancel`]; checked by the busy and progress handlers.
     pub cancel_requested: AtomicBool,
+    /// Counts cancels: a request remembers it when sent, so that a cancel that
+    /// came before its statement started is not lost (`begin_command` resets the flag).
+    pub cancel_seq: AtomicU64,
     /// `!sqlite3_get_autocommit()`, refreshed after every command.
     pub in_transaction: AtomicBool,
     /// False once the connection thread has exited.
@@ -49,6 +52,7 @@ impl Shared {
     /// Interrupt the running statement (`sqlite3_interrupt`) and abort lock waits.
     pub fn cancel(&self) {
         self.cancel_requested.store(true, Ordering::SeqCst);
+        self.cancel_seq.fetch_add(1, Ordering::SeqCst);
         self.interrupt.interrupt();
     }
 }
@@ -83,6 +87,8 @@ pub(crate) struct ExecRequest {
     pub sql: String,
     pub params: Vec<Value>,
     pub opts: ExecOptions,
+    /// [`Shared::cancel_seq`] when the request was sent.
+    pub cancel_seq: u64,
     /// Receives the first result header (or `None` for an empty batch).
     pub reply: Reply<Option<ResultHeader>>,
 }
@@ -374,6 +380,7 @@ pub(crate) fn run(
     let shared = Arc::new(Shared {
         interrupt: conn.get_interrupt_handle(),
         cancel_requested: AtomicBool::new(false),
+        cancel_seq: AtomicU64::new(0),
         in_transaction: AtomicBool::new(false),
         alive: AtomicBool::new(true),
     });
@@ -787,8 +794,14 @@ impl Worker {
             sql,
             params,
             opts,
+            cancel_seq,
             reply,
         } = req;
+        // Cancelled while it waited for the connection thread.
+        if self.shared.cancel_seq.load(Ordering::SeqCst) != cancel_seq {
+            let _ = reply.send(Err(DbError::cancelled()));
+            return None;
+        }
         let statements = lexer::split_statements(&sql);
         let single = statements.len() == 1;
         let mut param_pos = 0usize;

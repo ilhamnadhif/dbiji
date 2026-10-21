@@ -600,7 +600,9 @@ impl JsonSource {
                         Some(b'[') => {
                             self.stream.bump()?;
                             let next = self.stream.skip_ws()?;
-                            if key == "rows" || next == Some(b'{') || next == Some(b']') {
+                            // A wrapper's array is its first member; a later array (`{"id":1,"tags":[]}`)
+                            // belongs to a record of a JSON Lines stream.
+                            if key == "rows" || (members.is_empty() && (next == Some(b'{') || next == Some(b']'))) {
                                 self.mode = Mode::Array { first: true };
                                 return Ok(None);
                             }
@@ -698,6 +700,10 @@ impl JsonSource {
 
 #[async_trait]
 impl RowSource for JsonSource {
+    fn binary_is_base64(&self) -> bool {
+        true
+    }
+
     fn columns(&self) -> &[ColumnMeta] {
         &self.columns
     }

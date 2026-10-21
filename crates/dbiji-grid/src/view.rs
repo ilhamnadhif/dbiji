@@ -197,7 +197,8 @@ fn quote_expr_ident(name: &str) -> String {
     {
         name.to_string()
     } else {
-        format!("[{}]", name.replace(']', ""))
+        // `[…]` cannot hold `]`: such a name is written as "…" (both are quoted names).
+        if name.contains(']') { format!("\"{}\"", name.replace('"', "\"\"")) } else { format!("[{name}]") }
     }
 }
 
@@ -414,10 +415,16 @@ pub fn sort_cmp(a: &Value, b: &Value) -> Ordering {
         (Value::Null, _) => Ordering::Less,
         (_, Value::Null) => Ordering::Greater,
         (Value::Text(x), Value::Text(y)) => x.cmp(y),
-        _ => match (a, b) {
-            (Value::Decimal(_), _) | (_, Value::Decimal(_)) => compare_values(a, b).unwrap_or_else(|| a.cmp_for_sort(b)),
-            _ => a.cmp_for_sort(b),
-        },
+        // Decimals exactly, but only against numbers: comparing them numerically with
+        // text too would make the order intransitive (sort_by may then panic).
+        _ => {
+            let numeric = |v: &Value| matches!(v, Value::Int(_) | Value::UInt(_) | Value::Float(_) | Value::Decimal(_));
+            if (matches!(a, Value::Decimal(_)) || matches!(b, Value::Decimal(_))) && numeric(a) && numeric(b) {
+                compare_values(a, b).unwrap_or_else(|| a.cmp_for_sort(b))
+            } else {
+                a.cmp_for_sort(b)
+            }
+        }
     }
 }
 
@@ -440,7 +447,7 @@ pub fn compute_filter_index(store: &SharedRowStore, filter: &ClientFilter) -> Ve
 pub struct ViewJob {
     spec: ViewSpec,
     cancel: Arc<AtomicBool>,
-    rx: mpsc::Receiver<Option<ViewIndex>>,
+    rx: mpsc::Receiver<Result<Option<ViewIndex>, String>>,
     started: Instant,
 }
 
@@ -470,8 +477,11 @@ impl ViewJob {
         let job_spec = spec.clone();
         let flag = cancel.clone();
         let spawned = std::thread::Builder::new().name("dbiji-grid-view".into()).spawn(move || {
+            let before = store.lock().read_failures();
             let result = compute_view(&store, &job_spec, &ctx, &flag);
-            let _ = tx.send(result);
+            // Rows of the disk cache that could not be read: the view would silently miss them.
+            let lost = store.lock().read_failures() != before;
+            let _ = tx.send(if lost { Err(tr("Some fetched rows could not be read back from the disk cache; refresh the result").to_string()) } else { Ok(result) });
             on_done();
         });
         if let Err(e) = spawned {
@@ -498,8 +508,9 @@ impl ViewJob {
     /// Non-blocking check for the result.
     pub fn poll(&self) -> JobPoll {
         match self.rx.try_recv() {
-            Ok(Some(v)) => JobPoll::Done(v),
-            Ok(None) => JobPoll::Failed(tr("Sorting/filtering was cancelled").to_string()),
+            Ok(Ok(Some(v))) => JobPoll::Done(v),
+            Ok(Ok(None)) => JobPoll::Failed(tr("Sorting/filtering was cancelled").to_string()),
+            Ok(Err(e)) => JobPoll::Failed(e),
             Err(mpsc::TryRecvError::Empty) => JobPoll::Running,
             Err(mpsc::TryRecvError::Disconnected) => JobPoll::Failed(trf("Sorting/filtering failed after {} ms", &[&self.started.elapsed().as_millis()])),
         }
@@ -508,8 +519,9 @@ impl ViewJob {
     /// Block until the job finishes (tests, synchronous callers).
     pub fn wait(self) -> JobPoll {
         match self.rx.recv() {
-            Ok(Some(v)) => JobPoll::Done(v),
-            Ok(None) => JobPoll::Failed(tr("Sorting/filtering was cancelled").to_string()),
+            Ok(Ok(Some(v))) => JobPoll::Done(v),
+            Ok(Ok(None)) => JobPoll::Failed(tr("Sorting/filtering was cancelled").to_string()),
+            Ok(Err(e)) => JobPoll::Failed(e),
             Err(_) => JobPoll::Failed(tr("Sorting/filtering failed").to_string()),
         }
     }

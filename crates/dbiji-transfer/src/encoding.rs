@@ -160,6 +160,9 @@ pub(crate) struct DecodingReader<R: Read> {
     eof: bool,
     finished: bool,
     had_errors: bool,
+    /// Detection saw only ASCII so far: the first non-ASCII bytes decide
+    /// between UTF-8 and windows-1252 (an accent after the first 64 KB).
+    undecided: bool,
 }
 
 const RAW_CAPACITY: usize = 64 * 1024;
@@ -186,6 +189,8 @@ impl<R: Read> DecodingReader<R> {
         }
         let head = &raw[..raw_len];
         let label = label.trim();
+        let auto = label.is_empty() || label.eq_ignore_ascii_case("auto");
+        let undecided = auto && !eof && head.is_ascii();
         let encoding = if let Some((enc, _)) = Encoding::for_bom(head) {
             enc
         } else if label.is_empty() || label.eq_ignore_ascii_case("auto") {
@@ -211,6 +216,7 @@ impl<R: Read> DecodingReader<R> {
             eof,
             finished: false,
             had_errors: false,
+            undecided,
         })
     }
 
@@ -251,6 +257,17 @@ impl<R: Read> Read for DecodingReader<R> {
                     self.eof = true;
                 }
             }
+            if self.undecided {
+                let chunk = &self.raw[self.raw_pos..self.raw_len];
+                if !chunk.is_ascii() {
+                    // Everything before was ASCII (the same in both): switching loses nothing.
+                    self.undecided = false;
+                    if std::str::from_utf8(chunk).is_err_and(|e| e.error_len().is_some()) {
+                        self.encoding = WINDOWS_1252;
+                        self.decoder = WINDOWS_1252.new_decoder_without_bom_handling();
+                    }
+                }
+            }
             let last = self.eof && self.raw_pos == self.raw_len;
             let (result, read, written, errors) = self.decoder.decode_to_utf8(&self.raw[self.raw_pos..self.raw_len], &mut self.out, last);
             self.raw_pos += read;
@@ -283,6 +300,14 @@ mod tests {
         let mut s = String::new();
         r.read_to_string(&mut s).unwrap();
         s
+    }
+
+    #[test]
+    fn late_windows_1252_is_detected() {
+        let mut bytes = vec![b'a'; RAW_CAPACITY + 10];
+        bytes.extend_from_slice(b"caf\xe9\n");
+        let text = decode("auto", &bytes);
+        assert!(text.ends_with("café\n"), "{}", &text[text.len() - 10..]);
     }
 
     #[test]

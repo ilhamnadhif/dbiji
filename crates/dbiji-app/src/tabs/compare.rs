@@ -32,6 +32,8 @@ pub struct SchemaCompareTab {
     diff: Option<SchemaDiff>,
     /// Keys (`kind:qualified name`) of the objects excluded from the script.
     excluded: BTreeSet<String>,
+    /// The pair `excluded` belongs to (kept when the same pair is compared again).
+    compared: Option<(String, SchemaRef, String, SchemaRef)>,
     show_unchanged: bool,
     drop_removed: bool,
     cascade: bool,
@@ -64,6 +66,7 @@ impl SchemaCompareTab {
             snapshots: None,
             diff: None,
             excluded: BTreeSet::new(),
+            compared: None,
             show_unchanged: false,
             drop_removed: true,
             cascade: false,
@@ -125,7 +128,11 @@ impl SchemaCompareTab {
         self.error = None;
         self.diff = None;
         self.script = None;
-        self.excluded.clear();
+        let pair = (sc, ss.clone(), tc, ts.clone());
+        if self.compared.as_ref() != Some(&pair) {
+            self.excluded.clear();
+            self.compared = Some(pair);
+        }
         self.job = Some(cx.backend.spawn(async move {
             let opts = SnapshotOptions::full();
             let sa = a.lock().await.schema_snapshot(&ss, &opts).await?;

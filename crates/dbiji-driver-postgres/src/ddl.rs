@@ -32,15 +32,13 @@ fn ident_list(cols: &[String]) -> String {
     cols.iter().map(|c| quote_ident(c)).collect::<Vec<_>>().join(", ")
 }
 
-/// Quote a possibly schema qualified collation name (`"C"`, `public.mycoll`).
+/// Quote a collation name. A plain name is one identifier, dots included
+/// (`en_US.utf8`); a schema qualified one comes quoted (`"public"."mycoll"`).
 fn collation_sql(c: &str) -> String {
-    if c.starts_with('"') {
+    if c.contains('"') {
         return c.to_string();
     }
-    match c.split_once('.') {
-        Some((s, n)) => format!("{}.{}", quote_ident(s), format_args!("\"{}\"", n.replace('"', "\"\""))),
-        None => format!("\"{}\"", c.replace('"', "\"\"")),
-    }
+    format!("\"{}\"", c)
 }
 
 /// `serial` type for an integer column with a `nextval` default.

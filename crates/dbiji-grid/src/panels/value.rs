@@ -178,7 +178,9 @@ impl<'a> ValuePanel<'a> {
         }
         match mode {
             ValueMode::Text | ValueMode::Auto => {
-                if state.edit_key != key {
+                // New rows or a dictionary change the generation: typed text of the same cell stays.
+                let same_cell = state.edit_key.as_ref().map(|k| (&k.0, k.1)) == key.as_ref().map(|k| (&k.0, k.1));
+                if state.edit_key != key && !(same_cell && state.edit_dirty) {
                     state.edit_key = key;
                     state.edit_text = text_for(&value, kind);
                     state.edit_dirty = false;

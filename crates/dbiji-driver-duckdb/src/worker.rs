@@ -168,12 +168,32 @@ pub(crate) fn open_shared(cfg: &OpenConfig) -> DbResult<(Arc<SharedDb>, Connecti
                 "An in-memory DuckDB database cannot be opened read-only",
             ));
         }
+        // `:memory:<key>`: one database shared by the sessions of one connection
+        // (a table made in the SQL editor is seen by the navigator); `:memory:` alone is private.
+        let named = cfg.path.len() > ":memory:".len();
+        let key = PathBuf::from(&cfg.path);
+        let mut registry = lock(&REGISTRY);
+        registry.retain(|_, w| w.strong_count() > 0);
+        if named && let Some(db) = registry.get(&key).and_then(Weak::upgrade) {
+            drop(registry);
+            let conn = join_shared(&db, cfg)?;
+            return Ok((db, conn));
+        }
         let conn =
             Connection::open_in_memory_with_flags(config(cfg)?).map_err(|e| open_error(e, cfg))?;
+        let root = if named {
+            Some(conn.try_clone().map_err(|e| open_error(e, cfg))?)
+        } else {
+            None
+        };
         let db = Arc::new(SharedDb {
-            root: Mutex::new(None),
+            root: Mutex::new(root),
             read_only: false,
         });
+        if named {
+            registry.insert(key, Arc::downgrade(&db));
+        }
+        drop(registry);
         return Ok((db, conn));
     }
     let key = registry_key(&cfg.path);

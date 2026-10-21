@@ -169,7 +169,9 @@ fn query(st: &mut EditorState, lang: &dyn EditorLanguage) {
     c.list = Some(list);
     c.anchor = anchor;
     c.replace_end = replace_end;
-    c.filter = st.text[anchor..cursor].to_owned();
+    c.filter = typed_word(&st.text[anchor..cursor], |ch| lang.is_word_char(ch))
+        .unwrap_or_default()
+        .to_owned();
     c.filtered = c
         .list
         .as_ref()
@@ -243,13 +245,14 @@ pub(crate) fn update(
         let valid = st.sel.is_empty()
             && cursor >= anchor
             && cursor <= st.text.len()
-            && st.text.is_char_boundary(anchor)
-            && st.text[anchor..cursor].chars().all(is_word);
-        if !valid {
+            && st.text.is_char_boundary(anchor);
+        let Some(filter) = valid
+            .then(|| typed_word(&st.text[anchor..cursor], is_word))
+            .flatten()
+        else {
             st.completion.close();
             return;
-        }
-        let filter = &st.text[anchor..cursor];
+        };
         if filter != st.completion.filter {
             let c = &mut st.completion;
             c.filter = filter.to_owned();
@@ -448,6 +451,21 @@ fn kind_color(theme: &EditorTheme, kind: crate::language::EntryKind) -> Color32 
         K::Snippet => theme.client_command,
         K::Sequence | K::Index | K::Trigger | K::Other => theme.comment,
     }
+}
+
+/// The word being completed: the trailing word characters of the replaced text.
+/// A leading sigil or quote (`"`, `${`, `:`, `@`) is part of the replaced range
+/// but not of the labels, so it must not filter them out.
+fn typed_word(typed: &str, is_word: impl Fn(char) -> bool) -> Option<&str> {
+    let start = typed
+        .char_indices()
+        .rev()
+        .take_while(|(_, c)| is_word(*c))
+        .last()
+        .map_or(typed.len(), |(i, _)| i);
+    let prefix = &typed[..start];
+    (prefix.chars().count() <= 2 && !prefix.chars().any(|c| c.is_whitespace() || is_word(c)))
+        .then(|| &typed[start..])
 }
 
 #[cfg(test)]

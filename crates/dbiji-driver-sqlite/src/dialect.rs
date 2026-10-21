@@ -378,6 +378,7 @@ pub static SQLITE_SYNTAX: SqlSyntax = SqlSyntax {
     compound_blocks: true,
     extra_ident_chars: "$",
     ident_case: IdentCase::Preserve,
+    case_sensitive_names: false,
 };
 
 /// True when `ident` must be quoted in SQLite: empty, not a plain
@@ -463,6 +464,13 @@ impl SqliteDialect {
     pub fn new() -> Self {
         SqliteDialect {
             ddl: SqliteDdl::new(),
+        }
+    }
+
+    /// The dialect of a connection with (or without) foreign key enforcement.
+    pub fn with_foreign_keys(foreign_keys: bool) -> Self {
+        SqliteDialect {
+            ddl: SqliteDdl::with_foreign_keys(foreign_keys),
         }
     }
 }

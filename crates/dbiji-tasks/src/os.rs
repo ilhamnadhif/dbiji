@@ -393,7 +393,9 @@ fn schtasks_schedule(schedule: &Schedule) -> DbResult<Vec<String>> {
 pub fn schtasks_create(task: &TaskDef, exe: &Path) -> DbResult<OsCommand> {
     let sched = schtasks_schedule(require_schedule(task)?)?;
     let mut args = vec!["/Create".to_string(), "/F".to_string(), "/TN".to_string(), schtasks_task_name(&task.id), "/TR".to_string()];
-    args.push(format!("\"{}\" --run-task {}", exe.to_string_lossy(), sanitize(&task.id)));
+    // The real id (quoted when needed): a sanitized one would not find the task.
+    let id = if sanitize(&task.id) == task.id { task.id.clone() } else { format!("\"{}\"", task.id.replace('"', "\\\"")) };
+    args.push(format!("\"{}\" --run-task {id}", exe.to_string_lossy()));
     args.extend(sched);
     Ok(OsCommand { program: "schtasks".into(), args })
 }

@@ -20,6 +20,10 @@ cron.workspace = true
 tracing.workspace = true
 parking_lot.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+# Whether the process of a run in progress is still alive.
+libc = "0.2"
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
 tempfile.workspace = true

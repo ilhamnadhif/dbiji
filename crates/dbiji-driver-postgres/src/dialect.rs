@@ -31,6 +31,7 @@ static PG_SYNTAX: SqlSyntax = SqlSyntax {
     compound_blocks: false,
     extra_ident_chars: "$",
     ident_case: IdentCase::Lower,
+    case_sensitive_names: false,
 };
 
 /// Lexical description of PostgreSQL, usable without a dialect instance
@@ -137,6 +138,54 @@ fn is_plain_type(t: &str) -> bool {
     )
 }
 
+/// Built-in (`pg_catalog`) types: a cast to them works whatever the `search_path`.
+/// A cast to a user type (enum, domain, extension type) is left out: unqualified it
+/// fails when its schema is not on the path, and the untyped literal takes the
+/// column's type anyway (`col = 'happy'`, `SET col = 'happy'`, `VALUES ('happy')`).
+fn is_builtin_type(t: &str) -> bool {
+    let base = t.trim().to_ascii_lowercase();
+    let base = base.strip_prefix("pg_catalog.").unwrap_or(&base);
+    let base = base.trim_end_matches("[]").split('(').next().unwrap_or("").trim();
+    is_plain_type(base)
+        || base.ends_with("range")
+        || base.ends_with("multirange")
+        || base.starts_with("time")
+        || base.starts_with("bit")
+        || base.starts_with("reg")
+        || matches!(
+            base,
+            "interval"
+                | "json"
+                | "jsonb"
+                | "uuid"
+                | "date"
+                | "bytea"
+                | "inet"
+                | "cidr"
+                | "macaddr"
+                | "macaddr8"
+                | "money"
+                | "varbit"
+                | "xml"
+                | "point"
+                | "line"
+                | "lseg"
+                | "box"
+                | "path"
+                | "polygon"
+                | "circle"
+                | "tsvector"
+                | "tsquery"
+                | "oid"
+                | "pg_lsn"
+                | "txid_snapshot"
+                | "pg_snapshot"
+                | "float4"
+                | "float8"
+                | "double precision"
+        )
+}
+
 /// Cast target text for a type name (quoted when it is a single mixed-case identifier).
 fn cast_type(t: &str) -> String {
     let t = t.trim();
@@ -174,7 +223,7 @@ impl Dialect for PgDialect {
     }
 
     fn literal(&self, value: &Value, type_name: Option<&str>) -> String {
-        let typed = type_name.filter(|t| !is_plain_type(t));
+        let typed = type_name.filter(|t| !is_plain_type(t) && is_builtin_type(t));
         let cast = |lit: String, default: Option<&str>| -> String {
             match typed.or(default) {
                 Some(t) => format!("{lit}::{}", cast_type(t)),
@@ -467,8 +516,10 @@ mod tests {
         assert_eq!(d.literal(&Value::bytes(vec![1u8, 0xab]), None), "'\\x01ab'::bytea");
         assert_eq!(d.literal(&Value::text("1 day"), Some("interval")), "'1 day'::interval");
         assert_eq!(d.literal(&Value::text("x"), Some("varchar(10)")), "'x'");
-        assert_eq!(d.literal(&Value::text("happy"), Some("Mood")), "'happy'::\"Mood\"");
-        assert_eq!(d.literal(&Value::text("SRID=4326;POINT(1 2)"), Some("geometry")), "'SRID=4326;POINT(1 2)'::geometry");
+        // user types (enum, domain, extension): no cast, the column's type applies
+        assert_eq!(d.literal(&Value::text("happy"), Some("Mood")), "'happy'");
+        assert_eq!(d.literal(&Value::text("SRID=4326;POINT(1 2)"), Some("geometry")), "'SRID=4326;POINT(1 2)'");
+        assert_eq!(d.literal(&Value::text("10.0.0.1"), Some("inet")), "'10.0.0.1'::inet");
         assert_eq!(d.literal(&Value::text("{1,2}"), Some("int4[]")), "'{1,2}'::int4[]");
         let date = NaiveDate::from_ymd_opt(2024, 2, 29).unwrap();
         assert_eq!(d.literal(&Value::Date(date), None), "'2024-02-29'::date");

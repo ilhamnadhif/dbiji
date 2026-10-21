@@ -1336,13 +1336,27 @@ fn without_column(table: &TableDef, column: &str) -> TableDef {
 }
 
 /// SQLite DDL generator.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct SqliteDdl;
+#[derive(Debug, Clone, Copy)]
+pub struct SqliteDdl {
+    /// The connection enforces foreign keys: a table rebuild switches them back on.
+    foreign_keys: bool,
+}
+
+impl Default for SqliteDdl {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl SqliteDdl {
     /// Create the generator.
     pub fn new() -> Self {
-        SqliteDdl
+        SqliteDdl { foreign_keys: true }
+    }
+
+    /// The generator for a connection with (or without) foreign key enforcement.
+    pub fn with_foreign_keys(foreign_keys: bool) -> Self {
+        SqliteDdl { foreign_keys }
     }
 
     fn script(&self, from: &TableDef, to: &TableDef) -> String {
@@ -1412,7 +1426,16 @@ impl DdlGenerator for SqliteDdl {
         }
         let plan = Plan::new(from, to, renamed_columns);
         if plan.needs_rebuild() {
-            plan.rebuild()
+            let mut out = plan.rebuild();
+            // Without enforcement on the connection the rebuild leaves it off (as it was).
+            if !self.foreign_keys
+                && let Some(last) = out
+                    .last_mut()
+                    .filter(|s| s.as_str() == "PRAGMA foreign_keys = ON")
+            {
+                *last = "PRAGMA foreign_keys = OFF".to_string();
+            }
+            out
         } else {
             plan.native()
         }
@@ -1731,7 +1754,7 @@ mod tests {
             ..Default::default()
         });
         t.options.insert(STRICT.into(), "true".into());
-        let sql = SqliteDdl.create_table(&t, true);
+        let sql = SqliteDdl::new().create_table(&t, true);
         assert_eq!(sql.len(), 2, "{sql:#?}");
         let c = &sql[0];
         assert!(c.starts_with("CREATE TABLE main.users ("), "{c}");
@@ -1751,7 +1774,7 @@ mod tests {
             sql[1],
             "CREATE INDEX main.ix_age ON users (age) WHERE age > 0"
         );
-        let no_fk = SqliteDdl.create_table(&t, false);
+        let no_fk = SqliteDdl::new().create_table(&t, false);
         assert!(!no_fk[0].contains("FOREIGN KEY"));
     }
 
@@ -1771,7 +1794,7 @@ mod tests {
         t.columns.push(g);
         t.options
             .insert(format!("{GENERATED_PREFIX}e"), "stored".into());
-        let sql = &SqliteDdl.create_table(&t, true)[0];
+        let sql = &SqliteDdl::new().create_table(&t, true)[0];
         assert!(sql.contains("a INT DEFAULT (1 + 2)"), "{sql}");
         assert!(sql.contains("b TEXT DEFAULT CURRENT_TIMESTAMP"), "{sql}");
         assert!(sql.contains("c REAL DEFAULT -1.5"), "{sql}");
@@ -1792,7 +1815,7 @@ mod tests {
         let mut nick = ColumnDef::new("nick", "TEXT");
         nick.default = Some("'x'".into());
         to.columns.push(nick);
-        let sql = SqliteDdl.alter_table(&from, &to, &[("email".into(), "mail".into())]);
+        let sql = SqliteDdl::new().alter_table(&from, &to, &[("email".into(), "mail".into())]);
         assert_eq!(
             sql,
             vec![
@@ -1808,7 +1831,7 @@ mod tests {
         to.columns.retain(|c| c.name != "age");
         to.checks.clear();
         to.indexes.clear();
-        let sql = SqliteDdl.alter_table(&from, &to, &[]);
+        let sql = SqliteDdl::new().alter_table(&from, &to, &[]);
         assert_eq!(sql[0], "PRAGMA foreign_keys = OFF", "{sql:?}");
         assert!(!sql.iter().any(|s| s.contains("ix_age")), "{sql:?}");
         // dropping an indexed column natively
@@ -1820,7 +1843,7 @@ mod tests {
             ..Default::default()
         });
         let to2 = users();
-        let sql = SqliteDdl.alter_table(&from2, &to2, &[]);
+        let sql = SqliteDdl::new().alter_table(&from2, &to2, &[]);
         assert_eq!(
             sql,
             vec![
@@ -1831,7 +1854,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            SqliteDdl.drop_column(&from2, "note"),
+            SqliteDdl::new().drop_column(&from2, "note"),
             "BEGIN;\nDROP INDEX main.ix_note;\nALTER TABLE main.users DROP COLUMN note;\nCOMMIT"
         );
     }
@@ -1841,7 +1864,7 @@ mod tests {
         let from = users();
         let mut to = from.clone();
         to.columns[2].data_type = "BIGINT".into();
-        let sql = SqliteDdl.alter_table(&from, &to, &[]);
+        let sql = SqliteDdl::new().alter_table(&from, &to, &[]);
         assert_eq!(sql[0], "PRAGMA foreign_keys = OFF");
         assert_eq!(sql[1], "BEGIN");
         assert!(
@@ -1880,7 +1903,7 @@ mod tests {
 
     #[test]
     fn type_mapping() {
-        let d = SqliteDdl;
+        let d = SqliteDdl::new();
         assert_eq!(
             d.map_type(DbKind::Postgres, "jsonb", DataKind::Json),
             "TEXT"
@@ -1943,7 +1966,7 @@ mod tests {
 
     #[test]
     fn views_and_misc() {
-        let d = SqliteDdl;
+        let d = SqliteDdl::new();
         let mut v = ViewDef {
             schema: Some("main".into()),
             name: "v".into(),

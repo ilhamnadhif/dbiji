@@ -522,6 +522,8 @@ pub struct SelectShape {
     pub has_into: bool,
     /// Byte offset where `TOP (n)` can be inserted (after SELECT [ALL|DISTINCT]).
     pub top_insert_at: Option<usize>,
+    /// `WITH ...` query: byte offset of its main SELECT (a CTE cannot be wrapped in a derived table).
+    pub cte_main_at: Option<usize>,
 }
 
 /// Inspect a statement for [`crate::dialect::MsSqlDialect::limit_query`].
@@ -536,7 +538,9 @@ pub fn select_shape(sql: &str) -> SelectShape {
         has_set_op: false,
         has_into: false,
         top_insert_at: None,
+        cte_main_at: None,
     };
+    let starts_with_cte = toks.iter().find(|t| t.kind == TokKind::Word).is_some_and(|t| t.is("WITH"));
     let mut seen_main_select = false;
     for (i, t) in toks.iter().enumerate() {
         if t.depth != 0 || t.kind != TokKind::Word {
@@ -546,6 +550,9 @@ pub fn select_shape(sql: &str) -> SelectShape {
         match upper.as_str() {
             "SELECT" if !seen_main_select => {
                 seen_main_select = true;
+                if starts_with_cte {
+                    shape.cte_main_at = Some(t.start);
+                }
                 let mut at = t.end();
                 if let Some(n) = toks.get(i + 1) {
                     if n.is("DISTINCT") || n.is("ALL") {

@@ -84,6 +84,9 @@ pub struct LiveConnection {
     pub main: SessionHandle,
     /// Sessions for other databases of the server (PostgreSQL / SQL Server).
     pub db_sessions: HashMap<String, Loadable<SessionHandle>>,
+    /// Sessions opened for tabs (editors, data tabs): closed on disconnect too,
+    /// so that none keeps running with the old settings, transactions or locks.
+    tab_sessions: Arc<parking_lot::Mutex<Vec<SessionHandle>>>,
     pub server: ServerInfo,
     pub meta: MetadataCache,
     pub connected_at: Instant,
@@ -191,6 +194,16 @@ impl LiveConnection {
         None
     }
 
+    /// Why the session for `database` could not be opened (shown instead of "Loading…").
+    pub fn session_error(&self, database: Option<&str>) -> Option<String> {
+        self.db_sessions.get(database?).and_then(|l| l.error()).map(|e| e.full_text())
+    }
+
+    /// Forget sessions that failed to open, so that the next use tries again.
+    pub fn retry_failed_sessions(&mut self) {
+        self.db_sessions.retain(|_, l| l.error().is_none());
+    }
+
     /// Open an additional session (separate connection per editor, FR-C7).
     pub fn open_session_job(&self, backend: &Backend, label: String, database: Option<String>) -> Job<DbResult<SessionHandle>> {
         let driver = self.driver.clone();
@@ -199,10 +212,15 @@ impl LiveConnection {
             params.database = database.clone();
         }
         let cfg = self.config.clone();
+        let tab_sessions = self.tab_sessions.clone();
         backend.spawn(async move {
             let mut s = driver.connect(&params).await?;
             init_session(s.as_mut(), &cfg, &params).await?;
-            Ok(SessionHandle::new(s, label, database))
+            let handle = SessionHandle::new(s, label, database);
+            let mut list = tab_sessions.lock();
+            list.retain(|s| !s.is_closed());
+            list.push(handle.clone());
+            Ok(handle)
         })
     }
 }
@@ -294,6 +312,10 @@ async fn connect_task(
     };
     let mut params = ConnectParams::from_config(&cfg, password);
     params.auto_commit = cfg.auto_commit.unwrap_or(conn_type.auto_commit);
+    // An in-memory database is one per connection, not one per session (editor, data tab, navigator).
+    if matches!(cfg.kind, DbKind::Sqlite | DbKind::DuckDb) && params.file_path.as_deref().is_some_and(|p| p.as_os_str() == ":memory:") {
+        params.file_path = Some(PathBuf::from(format!(":memory:{}", cfg.id)));
+    }
     let mut tunnel = None;
     if !cfg.kind.is_file_based()
         && let Some(t) = net.open(&cfg, &creds, &cfg.host, cfg.effective_port()).await?
@@ -579,7 +601,9 @@ impl ConnectionManager {
                     Ok(c) => {
                         let Some(cfg) = self.config(&id).cloned() else { continue };
                         let Some(driver) = self.registry.get(cfg.kind) else { continue };
-                        let dialect = driver.dialect();
+                        // The session's dialect: it knows the server (MySQL / MariaDB version,
+                        // CockroachDB) and the connection's settings (SQLite foreign keys).
+                        let dialect = c.session.dialect();
                         let catalog_folders = Arc::new(dialect.catalog_folders());
                         let conn_type = self.connection_type(&cfg.connection_type);
                         let main = SessionHandle::new(c.session, format!("{} (main)", cfg.name), c.database.clone());
@@ -598,6 +622,7 @@ impl ConnectionManager {
                                 tunnel: c.tunnel,
                                 main,
                                 db_sessions: HashMap::new(),
+                                tab_sessions: Arc::new(parking_lot::Mutex::new(Vec::new())),
                                 server: c.server,
                                 meta: MetadataCache::default(),
                                 connected_at: Instant::now(),
@@ -642,6 +667,10 @@ impl ConnectionManager {
                     if let Some(s) = s.get() {
                         s.close().await;
                     }
+                }
+                let tab_sessions: Vec<SessionHandle> = std::mem::take(&mut *live.tab_sessions.lock());
+                for s in tab_sessions {
+                    s.close().await;
                 }
                 drop(live.tunnel);
                 if let Some(cmd) = after.filter(|c| !c.trim().is_empty())

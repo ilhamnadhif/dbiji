@@ -122,7 +122,7 @@ pub struct RetentionPolicy {
 
 static REDACT_LITERAL: LazyLock<Option<Regex>> = LazyLock::new(|| {
     Regex::new(
-        r"(?i)\b(set\s+password(?:\s+for\s+\S+)?|password|identified(?:\s+with\s+[a-z0-9_]+)?\s+by(?:\s+password)?|secret)(\s*=\s*|\s+)(N?'(?:[^']|'')*'|PASSWORD\s*\(\s*'(?:[^']|'')*'\s*\))",
+        r#"(?i)\b(set\s+password(?:\s+for\s+\S+)?|password|identified(?:\s+with\s+[a-z0-9_]+)?\s+by(?:\s+password)?|secret)(\s*=\s*|\s+)(N?'(?:[^']|'')*'|"(?:[^"]|"")*"|\$\$.*?\$\$|PASSWORD\s*\(\s*'(?:[^']|'')*'\s*\))"#,
     )
     .ok()
 });
@@ -752,6 +752,10 @@ mod tests {
             (
                 "select dblink_connect('host=h password=hunter2 user=u')",
                 "select dblink_connect('host=h password=*** user=u')",
+            ),
+            (
+                "CREATE USER 'u'@'%' IDENTIFIED BY \"s3cret\"",
+                "CREATE USER 'u'@'%' IDENTIFIED BY '***'",
             ),
             ("select 1", "select 1"),
         ];

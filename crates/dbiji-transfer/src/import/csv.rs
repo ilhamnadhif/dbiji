@@ -99,6 +99,9 @@ pub(crate) struct CsvParser<R: Read> {
     escape: EscapeStyle,
     comment: Option<u8>,
     trim: bool,
+    /// A blank line is a record with one empty field (one-column files: the
+    /// CSV export writes a NULL as an empty line) instead of being skipped.
+    pub(crate) keep_blank_lines: bool,
     /// Current line number (1-based).
     pub(crate) line: u64,
     pub(crate) unterminated_quotes: u64,
@@ -128,6 +131,7 @@ impl<R: Read> CsvParser<R> {
             escape: opts.escape,
             comment: ascii_option(opts.comment_char, "comment character")?,
             trim: opts.trim,
+            keep_blank_lines: false,
             line: 1,
             unterminated_quotes: 0,
         })
@@ -226,6 +230,9 @@ impl<R: Read> CsvParser<R> {
                 None => return Ok(None),
                 Some(b'\n' | b'\r') => {
                     self.eat_line_end()?;
+                    if self.keep_blank_lines {
+                        return Ok(Some(vec![Field { text: String::new(), quoted: false }]));
+                    }
                     continue;
                 }
                 Some(c) if Some(c) == self.comment => {
@@ -398,6 +405,8 @@ impl CsvSource {
         }
         let mut sample: Vec<Vec<Field>> = Vec::new();
         let first = parser.read_record()?;
+        // One column: its blank lines are NULL values, not separators.
+        parser.keep_blank_lines = first.as_ref().is_some_and(|f| f.len() == 1);
         let header_line = parser.line;
         let mut header: Option<Vec<Field>> = None;
         if let Some(first) = first {
@@ -614,6 +623,19 @@ mod tests {
         assert_eq!(rows[2][3], Value::text("extra"));
         assert!(s.next_batch(10).await.unwrap().is_empty());
         assert!(!s.take_warnings().is_empty());
+    }
+
+    #[tokio::test]
+    async fn one_column_blank_lines_are_nulls() {
+        // what the CSV export writes for a single column with NULLs
+        let csv = "note\na\n\nb\n";
+        let mut s = CsvSource::from_reader(std::io::Cursor::new(csv.as_bytes().to_vec()), CsvReadOptions::default()).unwrap();
+        let rows = s.next_batch(10).await.unwrap();
+        assert_eq!(rows, vec![vec![Value::text("a")], vec![Value::Null], vec![Value::text("b")]]);
+        // several columns: blank lines are still skipped
+        let csv = "a,b\n1,2\n\n3,4\n";
+        let mut s = CsvSource::from_reader(std::io::Cursor::new(csv.as_bytes().to_vec()), CsvReadOptions::default()).unwrap();
+        assert_eq!(s.next_batch(10).await.unwrap().len(), 2);
     }
 
     #[tokio::test]

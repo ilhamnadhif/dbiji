@@ -146,14 +146,24 @@ impl SessionHandle {
     }
 
     /// Exclusive access to the session, after closing any open cursor.
+    /// The cursor is closed once the session is ours: closed before, a caller
+    /// waiting behind a running `execute` would get the session with that
+    /// execute's new cursor still open.
     pub async fn lock(&self) -> tokio::sync::MutexGuard<'_, Box<dyn Session>> {
+        let guard = self.inner.session.lock().await;
         self.close_cursor().await;
-        self.inner.session.lock().await
+        guard
     }
 
     fn mark_busy(&self, on: bool) {
         self.inner.busy.store(on, Ordering::Relaxed);
         *self.inner.busy_since.lock() = if on { Some(Instant::now()) } else { None };
+    }
+
+    /// Busy until the guard is dropped (also when the operation is cancelled mid-await).
+    fn busy(&self) -> BusyGuard<'_> {
+        self.mark_busy(true);
+        BusyGuard(self)
     }
 
     fn note_error(&self, e: &DbError) {
@@ -188,7 +198,7 @@ impl SessionHandle {
     /// result header; rows are read with [`SessionHandle::fetch`].
     pub async fn execute(&self, sql: &str, params: &[Value], opts: &ExecOptions) -> DbResult<Executed> {
         let started = Instant::now();
-        self.mark_busy(true);
+        let busy = self.busy();
         let res = async {
             let mut guard = self.lock().await;
             let mut cursor = guard.execute(sql, params, opts).await?;
@@ -204,7 +214,7 @@ impl SessionHandle {
             Ok(Executed { token, header, messages })
         }
         .await;
-        self.mark_busy(false);
+        drop(busy);
         match &res {
             Ok(ex) => {
                 let rows = match &ex.header {
@@ -229,7 +239,7 @@ impl SessionHandle {
     /// Returns `Err(CursorClosed)` when the cursor was closed in between
     /// (another operation needed the session).
     pub async fn fetch(&self, token: u64, max: usize) -> Result<FetchOutcome, FetchError> {
-        self.mark_busy(true);
+        let busy = self.busy();
         let mut slot = self.inner.cursor.lock().await;
         let res = match slot.as_mut() {
             Some(c) if c.token == token => match c.cursor.fetch(max).await {
@@ -245,7 +255,7 @@ impl SessionHandle {
             _ => Err(FetchError::CursorClosed),
         };
         drop(slot);
-        self.mark_busy(false);
+        drop(busy);
         res
     }
 
@@ -314,6 +324,17 @@ impl SessionHandle {
         if !manual {
             guard.set_transaction_mode(TransactionMode::Manual).await?;
         }
+        // In the user's open transaction a failure must not leave the batch half applied:
+        // the grid keeps every change pending, saving again would repeat the first ones.
+        let savepoint = match (manual, guard.dialect().kind()) {
+            (false, _) | (_, dbiji_core::DbKind::DuckDb | dbiji_core::DbKind::ClickHouse) => None,
+            (true, dbiji_core::DbKind::SqlServer) => Some(("SAVE TRANSACTION dbiji_save", "ROLLBACK TRANSACTION dbiji_save", None)),
+            (true, _) => Some(("SAVEPOINT dbiji_save", "ROLLBACK TO SAVEPOINT dbiji_save", Some("RELEASE SAVEPOINT dbiji_save"))),
+        };
+        let savepoint = match savepoint {
+            Some(sp) if dbiji_core::driver::execute_update(guard.as_mut(), sp.0, &[]).await.is_ok() => Some(sp),
+            _ => None,
+        };
         let mut total = 0u64;
         let mut failure = None;
         for (sql, params) in stmts {
@@ -329,6 +350,14 @@ impl SessionHandle {
                     failure = Some(e.with_context(sql.chars().take(200).collect::<String>()));
                     break;
                 }
+            }
+        }
+        if let Some((_, rollback, release)) = savepoint {
+            if failure.is_some() {
+                let _ = dbiji_core::driver::execute_update(guard.as_mut(), rollback, &[]).await;
+            }
+            if let Some(release) = release {
+                let _ = dbiji_core::driver::execute_update(guard.as_mut(), release, &[]).await;
             }
         }
         let result = match failure {
@@ -417,5 +446,13 @@ impl From<FetchError> for DbError {
             FetchError::CursorClosed => DbError::internal("The result cursor was closed"),
             FetchError::Db(e) => e,
         }
+    }
+}
+
+struct BusyGuard<'a>(&'a SessionHandle);
+
+impl Drop for BusyGuard<'_> {
+    fn drop(&mut self) {
+        self.0.mark_busy(false);
     }
 }

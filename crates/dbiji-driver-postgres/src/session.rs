@@ -59,6 +59,9 @@ pub struct PgSession {
     source_cache: HashMap<(u32, i16), Option<SourceInfo>>,
     /// The database never changes during a session.
     database: Option<String>,
+    /// The `SET search_path` of the chosen schema, and whether it ran inside a
+    /// transaction: a ROLLBACK undoes it, so it is applied again afterwards.
+    search_path: std::sync::Mutex<Option<(String, bool)>>,
 }
 
 /// Session settings applied right after connecting.
@@ -98,6 +101,7 @@ impl PgSession {
             task: Some(connected.task),
             source_cache: HashMap::new(),
             database: None,
+            search_path: std::sync::Mutex::new(None),
         };
         if let Err(e) = session.initialize(&connected.props).await {
             session.shutdown().await;
@@ -198,8 +202,27 @@ impl PgSession {
     /// settle the savepoint of the previous statement.
     pub(crate) async fn acquire(&self) -> DbResult<OwnedMutexGuard<()>> {
         let g = self.acquire_raw().await?;
+        self.restore_search_path().await?;
         self.settle_statement(false).await?;
         Ok(g)
+    }
+
+    /// The transaction in which the schema was chosen ended (a rollback reverted it): set it again.
+    async fn restore_search_path(&self) -> DbResult<()> {
+        let again = match self.search_path.lock() {
+            Ok(mut p) => match p.as_mut() {
+                Some((sql, in_tx)) if *in_tx && !self.shared.in_tx() => {
+                    *in_tx = false;
+                    Some(sql.clone())
+                }
+                _ => None,
+            },
+            Err(_) => None,
+        };
+        match again {
+            Some(sql) => self.batch(&sql).await,
+            None => Ok(()),
+        }
     }
 
     /// Inside a transaction every statement runs in the `dbiji_stmt`
@@ -415,6 +438,10 @@ impl PgSession {
         let stmt = match res {
             Ok(s) => s,
             Err(e) if e.code() == Some(&SqlState::INDETERMINATE_DATATYPE) => {
+                // In a transaction the failed Parse aborted it: back to the statement's savepoint first.
+                if self.shared.in_tx() && self.shared.stmt_savepoint.load(std::sync::atomic::Ordering::Acquire) {
+                    self.batch("ROLLBACK TO SAVEPOINT dbiji_stmt").await?;
+                }
                 let n = count_placeholders(sql).max(params.len());
                 let types = vec![Type::TEXT; n];
                 self.client()?.prepare_typed(sql, &types).await.map_err(pg)?
@@ -451,6 +478,7 @@ impl PgSession {
         if script.is_empty() {
             return Ok(Box::new(PgCursor::new(Body::Empty, self.shared.clone(), guard, self.cancel.clone(), None, self.rt.clone())));
         }
+        self.restore_search_path().await?;
         self.implicit_begin(&script).await?;
         // User savepoints are not wrapped: releasing ours would release theirs.
         let wrap = !script.statements.iter().any(|s| s.tx != TxEffect::None || s.needs_autocommit);
@@ -638,7 +666,11 @@ impl Session for PgSession {
     async fn set_current_schema(&mut self, schema: &str) -> DbResult<()> {
         let _g = self.acquire().await?;
         let sql = if schema == "public" { "SET search_path TO public".to_string() } else { format!("SET search_path TO {}, public", catalog::quote_ident_always(schema)) };
-        self.batch(&sql).await
+        self.batch(&sql).await?;
+        if let Ok(mut p) = self.search_path.lock() {
+            *p = Some((sql, self.shared.in_tx()));
+        }
+        Ok(())
     }
 
     async fn set_current_database(&mut self, _database: &str) -> DbResult<()> {

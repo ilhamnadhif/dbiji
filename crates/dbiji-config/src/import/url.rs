@@ -283,10 +283,7 @@ fn parse_network_url(
         }
     }
     if let Some(p) = semi_props {
-        for pair in p.split(';').filter(|p| !p.trim().is_empty()) {
-            let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
-            params.push((k.trim().to_string(), v.trim().to_string()));
-        }
+        params.extend(semi_properties(p));
     }
     let mut ssl_bool: Option<bool> = None;
     let mut trust_server_cert = false;
@@ -550,6 +547,51 @@ pub fn to_url(cfg: &ConnectionConfig) -> String {
     url
 }
 
+/// `;key=value` properties of a SQL Server JDBC URL. A value in braces may hold
+/// `;` and `=` (`password={p;w}`), `}}` being a literal `}`.
+fn semi_properties(p: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut rest = p;
+    while !rest.is_empty() {
+        let (key, after) = match rest.find(['=', ';']) {
+            Some(i) if rest.as_bytes()[i] == b'=' => (&rest[..i], &rest[i + 1..]),
+            Some(i) => (&rest[..i], &rest[i..]),
+            None => (rest, ""),
+        };
+        let mut value = String::new();
+        let tail;
+        if let Some(braced) = after.trim_start().strip_prefix('{') {
+            let mut chars = braced.char_indices();
+            let mut close = "";
+            while let Some((i, c)) = chars.next() {
+                if c == '}' {
+                    if braced[i + 1..].starts_with('}') {
+                        chars.next();
+                        value.push('}');
+                    } else {
+                        close = &braced[i + 1..];
+                        break;
+                    }
+                } else {
+                    value.push(c);
+                }
+            }
+            tail = close.split_once(';').map_or("", |(_, r)| r);
+        } else if !after.starts_with(';') {
+            let (v, r) = after.split_once(';').unwrap_or((after, ""));
+            value = v.trim().to_string();
+            tail = r;
+        } else {
+            tail = &after[1..];
+        }
+        if !key.trim().is_empty() {
+            out.push((key.trim().to_string(), value));
+        }
+        rest = tail;
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -645,6 +687,11 @@ mod tests {
         assert_eq!(c.user.as_deref(), Some("sa"));
         // ';' ends the property value (as in the JDBC driver).
         assert_eq!(pw.unwrap().expose(), "Pa");
+        let (_, braced) = parse("jdbc:sqlserver://h;user=sa;password={p;w}}x};encrypt=true");
+        assert_eq!(braced.unwrap().expose(), "p;w}x");
+        let (c2, braced) = parse("jdbc:sqlserver://h;password={x};databaseName=Db");
+        assert_eq!(braced.unwrap().expose(), "x");
+        assert_eq!(c2.database.as_deref(), Some("Db"));
         assert_eq!(c.ssl.mode, SslMode::Require);
         let (c, _) = parse("sqlserver://sa:x@srv\\SQLEXPRESS/db?encrypt=true");
         assert_eq!(c.host, "srv");

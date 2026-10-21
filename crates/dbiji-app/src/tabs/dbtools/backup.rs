@@ -1075,9 +1075,13 @@ impl TabView for BackupTab {
     }
 
     fn on_close(&mut self, cx: &mut AppContext) -> bool {
-        let _ = cx;
-        // a running tool is cancelled when the tab goes away
+        // a running tool is cancelled when the tab goes away; nothing polls it afterwards
         self.cancel();
+        if let Some(r) = &self.run
+            && r.job.is_some()
+        {
+            cx.ops.finish(r.op.id, OpState::Cancelled);
+        }
         true
     }
 

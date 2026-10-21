@@ -33,6 +33,12 @@ pub trait RowSource: Send {
     fn take_warnings(&mut self) -> Vec<String> {
         Vec::new()
     }
+
+    /// Binary values of this format are usually base64 (JSON, XML: what the
+    /// export writes there), so "detect" tries base64 before hex.
+    fn binary_is_base64(&self) -> bool {
+        false
+    }
 }
 
 #[async_trait]
@@ -54,6 +60,10 @@ impl<S: RowSource + ?Sized> RowSource for Box<S> {
     }
     fn take_warnings(&mut self) -> Vec<String> {
         (**self).take_warnings()
+    }
+
+    fn binary_is_base64(&self) -> bool {
+        (**self).binary_is_base64()
     }
 }
 
@@ -360,6 +370,10 @@ impl<S: RowSource> RowSource for PeekableSource<S> {
 
     fn take_warnings(&mut self) -> Vec<String> {
         self.inner.take_warnings()
+    }
+
+    fn binary_is_base64(&self) -> bool {
+        self.inner.binary_is_base64()
     }
 }
 

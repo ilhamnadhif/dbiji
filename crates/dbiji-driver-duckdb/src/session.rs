@@ -25,6 +25,18 @@ pub struct DuckDbCancelHandle {
     shared: Arc<Shared>,
 }
 
+/// The connection thread dropped a reply. It recovers from a panic (duckdb-rs
+/// panics on a few types it cannot read): the session is still usable then.
+fn reply_lost(shared: &Shared) -> DbError {
+    if shared.alive.load(Ordering::SeqCst) {
+        DbError::query(
+            "DuckDB could not read this result: it may hold a type DBiji cannot convert yet (e.g. TIME_NS); cast that column to VARCHAR",
+        )
+    } else {
+        worker_gone()
+    }
+}
+
 #[async_trait]
 impl CancelHandle for DuckDbCancelHandle {
     async fn cancel(&self) -> DbResult<()> {
@@ -168,7 +180,7 @@ impl Session for DuckDbSession {
             closed: false,
             in_flight: true,
         };
-        let first = rx.await.map_err(|_| worker_gone())?;
+        let first = rx.await.map_err(|_| reply_lost(&self.shared))?;
         cursor.in_flight = false;
         cursor.pending = Some(first?);
         Ok(Box::new(cursor))
@@ -365,7 +377,7 @@ impl DuckDbCursor {
         self.in_flight = true;
         let r = rx.await;
         self.in_flight = false;
-        r.map_err(|_| worker_gone())?
+        r.map_err(|_| reply_lost(&self.shared))?
     }
 }
 

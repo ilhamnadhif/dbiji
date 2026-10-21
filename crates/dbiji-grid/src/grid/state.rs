@@ -116,6 +116,12 @@ pub(crate) struct Runtime {
     pub glyphs: GlyphCache,
     /// Row count at which FetchMore was last emitted.
     pub fetch_requested_at: Option<usize>,
+    /// Store that count belongs to (a refresh brings a new store, with the same count again).
+    pub fetch_store: usize,
+    /// Text of the last plain copy and which of its cells were NULL: pasted back,
+    /// those stay NULL (not ''), and one copied cell stays one value (its line
+    /// breaks, tabs and quotes are part of the value, not a table).
+    pub last_copy: Option<(String, Vec<Vec<bool>>)>,
     /// Scroll the active cell into view on the next frame.
     pub scroll_to_active: bool,
     pub copy_dialog: bool,
@@ -125,6 +131,8 @@ pub(crate) struct Runtime {
     pub dropdown: Option<Dropdown>,
     /// Store length when a stale client view was last refreshed automatically.
     pub auto_view_len: usize,
+    /// Store that length belongs to (a refresh brings a new store).
+    pub view_store: usize,
     pub last_selection_label: String,
     /// Geometry of the last frame: body, header, row numbers, row height.
     pub last_geometry: Option<(egui::Rect, egui::Rect, egui::Rect, f32)>,

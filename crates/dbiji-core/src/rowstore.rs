@@ -66,6 +66,8 @@ pub struct RowStore {
     tick: u64,
     spill: Option<SpillFile>,
     spill_failed: bool,
+    /// Spilled pages that could not be read back (their rows were skipped).
+    read_failures: u64,
 }
 
 impl Default for RowStore {
@@ -76,7 +78,17 @@ impl Default for RowStore {
 
 impl RowStore {
     pub fn new(budget_bytes: usize) -> Self {
-        RowStore { page_rows: DEFAULT_PAGE_ROWS, pages: Vec::new(), len: 0, resident: 0, budget: budget_bytes.max(64 * 1024), tick: 0, spill: None, spill_failed: false }
+        RowStore {
+            page_rows: DEFAULT_PAGE_ROWS,
+            pages: Vec::new(),
+            len: 0,
+            resident: 0,
+            budget: budget_bytes.max(64 * 1024),
+            tick: 0,
+            spill: None,
+            spill_failed: false,
+            read_failures: 0,
+        }
     }
 
     pub fn shared(budget_bytes: usize) -> SharedRowStore {
@@ -170,10 +182,12 @@ impl RowStore {
         let mut buf = vec![0u8; len as usize];
         if let Err(e) = spill.file.seek(SeekFrom::Start(offset)).and_then(|_| spill.file.read_exact(&mut buf)) {
             tracing::error!("row store: failed to read spilled page: {e}");
+            self.read_failures += 1;
             return false;
         }
         let Some(rows) = decode_page(&buf) else {
             tracing::error!("row store: corrupt spilled page");
+            self.read_failures += 1;
             return false;
         };
         let bytes: usize = rows.iter().map(row_bytes).sum();
@@ -297,6 +311,12 @@ impl RowStore {
     }
 
     /// Visit rows in `start..end` sequentially (export, client side sort/filter).
+    /// Number of spilled pages that could not be read back so far: an iteration
+    /// that saw it grow missed rows ([`for_each_in`](Self::for_each_in) skips them).
+    pub fn read_failures(&self) -> u64 {
+        self.read_failures
+    }
+
     pub fn for_each_in(&mut self, start: usize, end: usize, mut f: impl FnMut(usize, &Row)) {
         let end = end.min(self.len);
         let mut i = start;

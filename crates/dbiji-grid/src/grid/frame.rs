@@ -157,10 +157,33 @@ pub(super) struct GridFrame<'a> {
 pub(super) fn show(model: &mut ResultModel, state: &mut DataGridState, options: &GridOptions, id_salt: Id, ui: &mut Ui) -> GridResponse {
     let id = ui.make_persistent_id(id_salt);
     model.try_sync();
-    if let Some(Err(e)) = model.poll_view_job() {
-        state.show_message(e, true);
+    // A sort / filter computed in the background may be installed while a cell editor
+    // is open: it edits the same record afterwards, at its new display row.
+    let edit_key = state.rt.editing.as_ref().and_then(|e| model.row_key(e.row));
+    let drop_key = state.rt.dropdown.as_ref().and_then(|d| model.row_key(d.row));
+    if let Some(r) = model.poll_view_job() {
+        if state.rt.editing.is_some() {
+            match edit_key.and_then(|k| model.display_row_of(k)) {
+                Some(row) => state.rt.editing.as_mut().expect("checked").row = row,
+                None => state.rt.editing = None,
+            }
+        }
+        if state.rt.dropdown.is_some() {
+            match drop_key.and_then(|k| model.display_row_of(k)) {
+                Some(row) => state.rt.dropdown.as_mut().expect("checked").row = row,
+                None => state.rt.dropdown = None,
+            }
+        }
+        if let Err(e) = r {
+            state.show_message(e, true);
+        }
     }
     state.sync_columns(model);
+    let store_id = std::sync::Arc::as_ptr(model.store()) as *const () as usize;
+    if state.rt.view_store != store_id {
+        state.rt.view_store = store_id;
+        state.rt.auto_view_len = usize::MAX;
+    }
     // Rows fetched after a client sort/filter: recompute once the fetch settles.
     if model.is_view_stale() && !model.fetch.fetching && !model.is_view_job_running() && state.rt.auto_view_len != model.stored_row_count() {
         let spec = model.client_view_spec();
@@ -333,6 +356,11 @@ impl GridFrame<'_> {
         let rows = self.geo.visible_rows(self.state.rt.scroll_y);
         let near_end = rows.end + self.options.fetch_more_threshold >= self.geo.nrows;
         let stored = self.model.stored_row_count();
+        let store_id = std::sync::Arc::as_ptr(self.model.store()) as *const () as usize;
+        if self.state.rt.fetch_store != store_id {
+            self.state.rt.fetch_store = store_id;
+            self.state.rt.fetch_requested_at = None;
+        }
         if near_end && self.state.rt.fetch_requested_at != Some(stored) {
             self.state.rt.fetch_requested_at = Some(stored);
             self.actions.push(GridAction::FetchMore);

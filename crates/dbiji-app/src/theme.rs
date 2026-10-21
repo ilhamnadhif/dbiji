@@ -65,9 +65,8 @@ pub fn apply_settings(ctx: &Context, settings: &dbiji_config::AppSettings) {
             style.text_styles.insert(TextStyle::Small, FontId::new((size - 3.0).max(7.0), FontFamily::Proportional));
             style.text_styles.insert(TextStyle::Heading, FontId::new(size + 5.0, FontFamily::Proportional));
             style.text_styles.insert(TextStyle::Monospace, FontId::new(size, FontFamily::Monospace));
-            if settings.accessibility.reduce_motion {
-                style.animation_time = 0.0;
-            }
+            // Back to egui's default when switched off again.
+            style.animation_time = if settings.accessibility.reduce_motion { 0.0 } else { egui::Style::default().animation_time };
         });
     }
 }

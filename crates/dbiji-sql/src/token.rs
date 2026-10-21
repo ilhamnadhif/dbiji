@@ -438,6 +438,16 @@ impl<'a> Lexer<'a> {
         i
     }
 
+    /// `@set`, `@include`, `@export`, `@echo` at `at` (the `@`).
+    fn known_client_command(&self, at: usize) -> bool {
+        let mut e = at + 1;
+        while self.byte(e).is_ascii_alphanumeric() || self.byte(e) == b'_' {
+            e += 1;
+        }
+        let name = self.src[at + 1..e].to_ascii_lowercase();
+        ["set", "include", "export", "echo"].contains(&name.as_str())
+    }
+
     fn command_position(&self) -> bool {
         self.stmt_start || (self.line_start && self.blank_since_sig && self.paren_depth <= 0)
     }
@@ -776,9 +786,11 @@ impl<'a> Lexer<'a> {
                 return (K::Delimiter, e, false);
             }
         }
+        // Mid-statement (a line after a blank line) only a known command name ends the
+        // statement: `@b INT` of a T-SQL parameter list or a MySQL `@var` does not.
         if c == b'@'
             && self.byte(start + 1).is_ascii_alphabetic()
-            && (self.stmt_start || self.command_position())
+            && (self.stmt_start || (self.command_position() && self.known_client_command(start)))
         {
             return (K::ClientCommand, self.scan_client_command(start), false);
         }
@@ -897,15 +909,16 @@ impl<'a> Lexer<'a> {
                 return (K::Operator, start + 1, false);
             }
             b'?' => {
-                if matches!(next, b'|' | b'&' | b'#' | b'-') {
-                    return (K::Operator, start + self.op_len(start), false);
-                }
+                // A placeholder first: `'%'||?||'%'`, `LIMIT ?-1` (the `?|` operators are PostgreSQL's).
                 if self.syntax.question_params {
                     let mut i = start + 1;
                     while self.byte(i).is_ascii_digit() {
                         i += 1;
                     }
                     return (K::Parameter, i, false);
+                }
+                if matches!(next, b'|' | b'&' | b'#' | b'-') {
+                    return (K::Operator, start + self.op_len(start), false);
                 }
                 return (K::Operator, start + 1, false);
             }

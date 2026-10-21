@@ -36,6 +36,7 @@ pub const fn tsql_syntax() -> SqlSyntax {
         compound_blocks: true,
         extra_ident_chars: "#@$",
         ident_case: IdentCase::Preserve,
+        case_sensitive_names: false,
     }
 }
 
@@ -222,7 +223,9 @@ impl Dialect for MsSqlDialect {
         if shape.has_into {
             return inner.to_string();
         }
-        format!("SELECT * FROM ({inner}) dbiji_q ORDER BY (SELECT NULL) OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY")
+        // `WITH a AS (…) SELECT …`: the CTEs stay in front, the main SELECT is wrapped.
+        let (ctes, main) = inner.split_at(shape.cte_main_at.unwrap_or(0));
+        format!("{ctes}SELECT * FROM ({main}) dbiji_q ORDER BY (SELECT NULL) OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY")
     }
 
     fn count_query(&self, sql: &str) -> String {
@@ -233,7 +236,9 @@ impl Dialect for MsSqlDialect {
             Some(pos) if !shape.has_top && !shape.has_offset && !shape.has_trailer => inner[..pos].trim_end(),
             _ => inner,
         };
-        format!("SELECT COUNT_BIG(*) FROM ({body}) dbiji_cnt")
+        // `WITH a AS (…) SELECT …`: the CTEs stay in front, the main SELECT is counted.
+        let (ctes, main) = body.split_at(shape.cte_main_at.unwrap_or(0).min(body.len()));
+        format!("{ctes}SELECT COUNT_BIG(*) FROM ({main}) dbiji_cnt")
     }
 
     fn select_table(&self, table: &ObjectRef, columns: Option<&[String]>, where_clause: Option<&str>, order_by: Option<&str>, limit: Option<u64>) -> String {
@@ -523,6 +528,11 @@ mod tests {
         assert_eq!(d.limit_query("SELECT TOP 3 a FROM t ORDER BY a", 5, 0).matches("dbiji_q").count(), 1);
         assert_eq!(d.limit_query("EXEC sp_who", 5, 0), "EXEC sp_who");
         assert_eq!(d.count_query("SELECT a FROM t ORDER BY a"), "SELECT COUNT_BIG(*) FROM (SELECT a FROM t) dbiji_cnt");
+        assert_eq!(d.count_query("WITH x AS (SELECT a FROM t) SELECT * FROM x ORDER BY a"), "WITH x AS (SELECT a FROM t) SELECT COUNT_BIG(*) FROM (SELECT * FROM x) dbiji_cnt");
+        assert_eq!(
+            d.limit_query("WITH x AS (SELECT a FROM t) SELECT a FROM x", 5, 10),
+            "WITH x AS (SELECT a FROM t) SELECT * FROM (SELECT a FROM x) dbiji_q ORDER BY (SELECT NULL) OFFSET 10 ROWS FETCH NEXT 5 ROWS ONLY"
+        );
         let t = ObjectRef::table(Some("dbo".into()), "users");
         assert_eq!(d.select_table(&t, None, Some("id > 1"), Some("id"), Some(200)), "SELECT TOP (200) * FROM dbo.users WHERE id > 1 ORDER BY id");
     }

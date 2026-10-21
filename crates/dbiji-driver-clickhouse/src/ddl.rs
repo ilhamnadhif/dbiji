@@ -255,9 +255,15 @@ impl DdlGenerator for ClickHouseDdl {
             && let Some(pk) = &to.primary_key
         {
             let old = key_columns(from);
-            // ClickHouse only allows appending (new) columns to the sorting key.
+            // ClickHouse only allows appending (new) columns to the sorting key;
+            // any other change fails here instead of being skipped silently.
             if pk.columns.starts_with(&old) && pk.columns.len() > old.len() {
                 out.push(self.add_primary_key(to, pk));
+            } else {
+                out.push(format!(
+                    "SELECT throwIf(1, {})",
+                    string_literal("ClickHouse can only append new columns to the sorting key (ORDER BY); create a new table with the new key and copy the data")
+                ));
             }
         }
         if from.comment != to.comment {

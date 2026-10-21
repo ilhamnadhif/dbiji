@@ -161,6 +161,7 @@ struct Builder<'a> {
 impl Builder<'_> {
     fn value(&mut self, v: &Value, type_name: &str) -> String {
         match self.mode {
+            Renderer::Params if !v.is_null() && !type_name.is_empty() && self.dialect.inline_value(type_name) => self.dialect.literal(v, Some(type_name)),
             Renderer::Params => {
                 self.params.push(v.clone());
                 self.dialect.placeholder(self.params.len())

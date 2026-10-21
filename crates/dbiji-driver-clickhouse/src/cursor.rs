@@ -15,7 +15,7 @@ use dbiji_core::value::ColumnMeta;
 use dbiji_core::{DbError, DbResult, ErrorKind, QueryCursor, ResultHeader, Row, ServerMessage, Value};
 use std::collections::VecDeque;
 use std::io::Read;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::{OwnedSemaphorePermit, mpsc};
@@ -95,7 +95,10 @@ pub(crate) struct Job {
 }
 
 /// Start `job` on its own thread and return the cursor reading its results.
-pub(crate) fn start(job: Job, open_flag: Arc<AtomicBool>) -> DbResult<ChannelCursor> {
+/// Ids of cursors: the session's flag holds the id of the open one.
+static NEXT_CURSOR: AtomicU64 = AtomicU64::new(1);
+
+pub(crate) fn start(job: Job, open_flag: Arc<AtomicU64>) -> DbResult<ChannelCursor> {
     let (tx, rx) = mpsc::channel::<Event>(CHANNEL_CAPACITY);
     let state = Arc::new(JobState::default());
     let query_id = job.request.query_id.clone();
@@ -153,7 +156,7 @@ pub(crate) fn start(job: Job, open_flag: Arc<AtomicBool>) -> DbResult<ChannelCur
         })
         .map_err(|e| DbError::internal(format!("Cannot start query thread: {e}")))?;
 
-    open_flag.store(true, Ordering::SeqCst);
+    open_flag.store(NEXT_CURSOR.fetch_add(1, Ordering::SeqCst), Ordering::SeqCst);
     let close_state = state.clone();
     let on_close: Box<dyn FnOnce() + Send> = Box::new(move || {
         close_state.abort.store(true, Ordering::SeqCst);
@@ -416,12 +419,19 @@ pub(crate) struct ChannelCursor {
     finished: bool,
     messages: Vec<ServerMessage>,
     on_close: Option<Box<dyn FnOnce() + Send>>,
-    open_flag: Arc<AtomicBool>,
+    /// The session's open cursor id, and this cursor's: cleared only while it is still this one.
+    open_flag: Arc<AtomicU64>,
+    id: u64,
 }
 
 impl ChannelCursor {
-    pub(crate) fn new(rx: mpsc::Receiver<Event>, on_close: Option<Box<dyn FnOnce() + Send>>, open_flag: Arc<AtomicBool>) -> Self {
-        ChannelCursor { rx, in_rows: false, buffer: VecDeque::new(), pending_header: None, pending_error: None, finished: false, messages: Vec::new(), on_close, open_flag }
+    pub(crate) fn new(rx: mpsc::Receiver<Event>, on_close: Option<Box<dyn FnOnce() + Send>>, open_flag: Arc<AtomicU64>) -> Self {
+        let id = open_flag.load(Ordering::SeqCst);
+        ChannelCursor { rx, in_rows: false, buffer: VecDeque::new(), pending_header: None, pending_error: None, finished: false, messages: Vec::new(), on_close, open_flag, id }
+    }
+
+    fn clear_open_flag(&self) {
+        let _ = self.open_flag.compare_exchange(self.id, 0, Ordering::SeqCst, Ordering::SeqCst);
     }
 
     /// Receive the next event, handling messages and end of stream.
@@ -432,7 +442,7 @@ impl ChannelCursor {
                 Some(ev) => return Some(ev),
                 None => {
                     self.finished = true;
-                    self.open_flag.store(false, Ordering::SeqCst);
+                    self.clear_open_flag();
                     return None;
                 }
             }
@@ -533,7 +543,7 @@ impl Drop for ChannelCursor {
         {
             f();
         }
-        self.open_flag.store(false, Ordering::SeqCst);
+        self.clear_open_flag();
     }
 }
 
@@ -548,7 +558,7 @@ mod tests {
             tx.try_send(e).unwrap();
         }
         drop(tx);
-        ChannelCursor::new(rx, None, Arc::new(AtomicBool::new(true)))
+        ChannelCursor::new(rx, None, Arc::new(AtomicU64::new(1)))
     }
 
     fn rows(n: i64) -> Vec<Row> {
@@ -598,7 +608,7 @@ mod tests {
 
     #[tokio::test]
     async fn close_drains_and_clears_flag() {
-        let flag = Arc::new(AtomicBool::new(true));
+        let flag = Arc::new(AtomicU64::new(7));
         let (tx, rx) = mpsc::channel(4);
         tx.try_send(Event::Header(ResultHeader::Rows(vec![]))).unwrap();
         drop(tx);
@@ -607,6 +617,17 @@ mod tests {
         let mut c = ChannelCursor::new(rx, Some(Box::new(move || c2.store(true, Ordering::SeqCst))), flag.clone());
         c.close().await.unwrap();
         assert!(called.load(Ordering::SeqCst));
-        assert!(!flag.load(Ordering::SeqCst));
+        assert_eq!(flag.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn late_drop_keeps_a_newer_cursors_flag() {
+        let flag = Arc::new(AtomicU64::new(1));
+        let (_tx, rx) = mpsc::channel(4);
+        let old = ChannelCursor::new(rx, None, flag.clone());
+        // a newer cursor took over the session
+        flag.store(2, Ordering::SeqCst);
+        drop(old);
+        assert_eq!(flag.load(Ordering::SeqCst), 2);
     }
 }

@@ -118,6 +118,18 @@ impl Scheduler {
         Ok(())
     }
 
+    /// The background loop runs (tasks start on their schedule).
+    pub fn is_started(&self) -> bool {
+        self.inner.loop_handle.lock().as_ref().is_some_and(|h| !h.is_finished())
+    }
+
+    /// Stop starting tasks on their schedule (runs in progress go on; `start` resumes).
+    pub fn stop_schedule(&self) {
+        if let Some(h) = self.inner.loop_handle.lock().take() {
+            h.abort();
+        }
+    }
+
     /// Events of all runs (started, messages, progress, finished).
     pub fn subscribe(&self) -> broadcast::Receiver<TaskEvent> {
         self.inner.engine.subscribe()

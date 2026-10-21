@@ -103,7 +103,7 @@ async fn import_creates_table_from_inferred_types() {
     assert_eq!(kinds, vec![DataKind::Int, DataKind::Text, DataKind::Decimal, DataKind::Date, DataKind::Bool]);
     let dialect = sqlite_dialect();
     let mapping = ImportMapping::from_inferred(ObjectRef::table(None, "people"), &inferred, dialect.as_ref());
-    assert_eq!(mapping.columns[2].target_type, "NUMERIC(4,2)");
+    assert_eq!(mapping.columns[2].target_type, "NUMERIC(8,2)");
     assert_eq!(mapping.columns[1].target_type, "VARCHAR(10)");
     let progress = Progress::new();
     let summary = run_import(&mut src, &mut session, &mapping, &progress, &CancellationToken::new()).await.unwrap();
@@ -111,7 +111,7 @@ async fn import_creates_table_from_inferred_types() {
     assert_eq!((summary.rows_read, summary.rows_written, summary.rows_failed), (3, 3, 0));
     assert_eq!(progress.rows(), 3);
     let types: Vec<String> = select(&session.conn, "SELECT type FROM pragma_table_info('people')").into_iter().map(|r| r[0].to_text().into_owned()).collect();
-    assert_eq!(types, vec!["INTEGER", "VARCHAR(10)", "NUMERIC(4,2)", "DATE", "BOOLEAN"]);
+    assert_eq!(types, vec!["INTEGER", "VARCHAR(10)", "NUMERIC(8,2)", "DATE", "BOOLEAN"]);
     let rows = select(&session.conn, "SELECT id, name, joined, active FROM people ORDER BY id");
     assert_eq!(rows[0], vec![Value::Int(1), Value::text("Ann"), Value::text("2024-01-31"), Value::Int(1)]);
     assert_eq!(select(&session.conn, "SELECT price FROM people WHERE id = 3"), vec![vec![Value::Null]]);
@@ -377,13 +377,13 @@ async fn xml_and_json_import_into_sqlite() {
     assert_eq!(s.rows_written, 2);
     assert_eq!(
         select(&session.conn, "SELECT id, customer, total, placed FROM orders ORDER BY id"),
-        // NUMERIC(3,2) has numeric affinity in SQLite, which stores 9.50 as REAL.
+        // NUMERIC(7,2) has numeric affinity in SQLite, which stores 9.50 as REAL.
         vec![
             vec![Value::Int(1), Value::text("Ann"), Value::Float(9.5), Value::text("2024-01-02 10:00:00")],
             vec![Value::Int(2), Value::text("Bob & Co"), Value::Null, Value::text("2024-01-03 11:30:00")],
         ]
     );
-    assert_eq!(m.columns[2].target_type, "NUMERIC(3,2)");
+    assert_eq!(m.columns[2].target_type, "NUMERIC(7,2)");
 
     let lines = "{\"id\": 1, \"tags\": [\"a\", \"b\"], \"price\": 12345678901234567890.25}\n{\"id\": 2, \"tags\": null, \"price\": 1}\n";
     let mut src = JsonSource::from_reader(Cursor::new(lines.as_bytes().to_vec()), JsonReadOptions::default()).unwrap();

@@ -181,6 +181,15 @@ const CASE_WORDS: &[&str] = &[
 ];
 /// After these words a keyword is probably used as a name (`FROM user`).
 const NAME_POSITION: &[&str] = &["FROM", "JOIN", "INTO", "UPDATE", "TABLE", "AS"];
+/// The keywords whose case changes where names are case sensitive.
+const CLAUSE_KEYWORDS: &[&str] = &[
+    "SELECT", "FROM", "WHERE", "PREWHERE", "GROUP", "BY", "ORDER", "HAVING", "LIMIT", "OFFSET",
+    "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "FULL", "CROSS", "ARRAY", "ON", "USING", "AS",
+    "AND", "OR", "NOT", "IN", "IS", "NULL", "LIKE", "ILIKE", "BETWEEN", "CASE", "WHEN", "THEN",
+    "ELSE", "END", "UNION", "ALL", "DISTINCT", "INSERT", "INTO", "VALUES", "UPDATE", "SET",
+    "DELETE", "CREATE", "ALTER", "DROP", "WITH", "ASC", "DESC", "EXISTS", "FINAL", "SETTINGS",
+    "FORMAT",
+];
 /// Keywords that are never names, even in name positions.
 const NEVER_NAMES: &[&str] = &[
     "SELECT",
@@ -322,6 +331,10 @@ impl<'a> Fmt<'a> {
             return text.to_string();
         }
         let upper = text.to_ascii_uppercase();
+        // Case sensitive names (ClickHouse): `database`, `table`, `rows` may be columns.
+        if self.syntax.case_sensitive_names && !CLAUSE_KEYWORDS.contains(&upper.as_str()) {
+            return text.to_string();
+        }
         if NAME_POSITION.contains(&prev_upper) && !NEVER_NAMES.contains(&upper.as_str()) {
             return text.to_string();
         }

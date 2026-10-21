@@ -218,6 +218,8 @@ pub async fn run_import(
 async fn import_rows(source: &mut dyn RowSource, session: &mut dyn Session, mapping: &ImportMapping, progress: &Progress, cancel: &CancellationToken) -> DbResult<ImportSummary> {
     let dialect = session.dialect();
     let src_cols = source.columns().to_vec();
+    let mut convert = mapping.convert.clone();
+    convert.prefer_base64 = source.binary_is_base64();
     let active: Vec<&ColumnMapping> = mapping.columns.iter().filter(|c| !c.skip).collect();
     if mapping.target.name.trim().is_empty() {
         return Err(DbError::config("The import has no target table"));
@@ -319,7 +321,7 @@ async fn import_rows(source: &mut dyn RowSource, session: &mut dyn Session, mapp
                 let mut failure = None;
                 for (c, kind) in active.iter().zip(&kinds) {
                     let v = row.get(c.source_index).unwrap_or(&crate::sink::NULL_VALUE);
-                    match convert_value(v, *kind, &mapping.convert) {
+                    match convert_value(v, *kind, &convert) {
                         Ok(x) => out.push(x),
                         Err(msg) => {
                             failure = Some((c.target_name.clone(), msg));

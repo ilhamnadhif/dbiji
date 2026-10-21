@@ -900,8 +900,31 @@ impl<'a> Planner<'a> {
         }
         let find_mod = |name: &str| mods.iter().find(|m| ctx.same(&m.target.name, name));
         let mut warnings = Vec::new();
+        // Column sets of the keys a modified table drops (phases 5-6).
+        let dropped_key_sets = |rm: &ModTable<'_>| -> Vec<BTreeSet<String>> {
+            let mut sets: Vec<BTreeSet<String>> = Vec::new();
+            if let Some(pk) = &rm.pk_drop {
+                sets.push(col_set(ctx, &pk.columns));
+            }
+            sets.extend(rm.uq_drop.iter().map(|u| col_set(ctx, &u.columns)));
+            sets.extend(rm.idx_drop.iter().filter(|i| i.unique).map(|i| i.columns.iter().map(|c| ctx.key(&c.name)).collect()));
+            sets
+        };
         for t in &ctx.target.tables {
             if dropped.contains(&ctx.key(&t.name)) {
+                // The table itself goes in phase 7, after those keys: its foreign keys
+                // on one of them must go first (phase 1), or dropping the key fails.
+                for f in &t.foreign_keys {
+                    if !ctx.is_own_schema(f.ref_schema.as_deref(), Side::Target) || dropped.contains(&ctx.key(&f.ref_table)) {
+                        continue;
+                    }
+                    if let Some(rm) = find_mod(&f.ref_table)
+                        && dropped_key_sets(rm).contains(&col_set(ctx, &f.ref_columns))
+                        && !drops.iter().any(|(tn, d)| ctx.same(tn, &t.name) && same_fk(d, f))
+                    {
+                        drops.push((t.name.clone(), f.clone()));
+                    }
+                }
                 continue;
             }
             let tmod = find_mod(&t.name);
@@ -935,12 +958,7 @@ impl<'a> Planner<'a> {
                             must_drop = true;
                         }
                         let set = col_set(ctx, &f.ref_columns);
-                        let mut dropped_sets: Vec<BTreeSet<String>> = Vec::new();
-                        if let Some(pk) = &rm.pk_drop {
-                            dropped_sets.push(col_set(ctx, &pk.columns));
-                        }
-                        dropped_sets.extend(rm.uq_drop.iter().map(|u| col_set(ctx, &u.columns)));
-                        dropped_sets.extend(rm.idx_drop.iter().filter(|i| i.unique).map(|i| i.columns.iter().map(|c| ctx.key(&c.name)).collect()));
+                        let dropped_sets = dropped_key_sets(rm);
                         nf.ref_columns = f.ref_columns.iter().map(|c| rm.renamed(ctx, c)).collect();
                         if dropped_sets.contains(&set) {
                             must_drop = true;

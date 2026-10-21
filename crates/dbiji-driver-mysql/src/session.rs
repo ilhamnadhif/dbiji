@@ -274,10 +274,12 @@ impl MySqlSession {
 
     /// Run an internal query and collect all rows of its first result.
     pub(crate) async fn rows(&mut self, sql: &str, params: Vec<MyValue>) -> DbResult<Vec<MyRow>> {
+        // The text goes in the connection's character set (as exec_internal does): `café` with latin1.
+        let bytes = convert::encode_text(&self.settings.wire_charset, sql)?;
         let res = {
             let conn = self.conn().await?;
             if params.is_empty() {
-                conn.query::<MyRow, _>(sql).await
+                conn.query::<MyRow, _>(bytes).await
             } else {
                 conn.exec::<MyRow, _, _>(sql, Params::Positional(params))
                     .await
@@ -291,10 +293,11 @@ impl MySqlSession {
         &mut self,
         sql: &str,
     ) -> DbResult<(Vec<String>, Vec<MyRow>)> {
+        let bytes = convert::encode_text(&self.settings.wire_charset, sql)?;
         let res = {
             let conn = self.conn().await?;
             async {
-                let mut qr = conn.query_iter(sql).await?;
+                let mut qr = conn.query_iter(bytes).await?;
                 let cols: Vec<String> = qr
                     .columns_ref()
                     .iter()
@@ -451,10 +454,40 @@ impl Session for MySqlSession {
                      library treats as a named parameter; use '?' placeholders (or quote the text) when binding parameters",
                 ));
             }
+            // A time with a time zone: MySQL ≥ 8.0.19 converts a value with an offset
+            // itself; before, it is given in the session's time zone (not UTC).
+            let offset_literal = self.profile.is_mysql() && self.profile.at_least(8, 0, 19);
+            let session_offset =
+                if !offset_literal && params.iter().any(|v| matches!(v, Value::DateTimeTz(_))) {
+                    let row = self
+                        .row(
+                            "SELECT TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW())",
+                            Vec::new(),
+                        )
+                        .await?;
+                    row.and_then(|r| r.get::<i64, _>(0))
+                        .and_then(|s| chrono::FixedOffset::east_opt(s as i32))
+                } else {
+                    None
+                };
             Some(
                 params
                     .iter()
-                    .map(|v| convert::to_param(v, &cs))
+                    .map(|v| match v {
+                        Value::DateTimeTz(dt) if offset_literal => Ok(MyValue::Bytes(
+                            dt.format("%Y-%m-%d %H:%M:%S%.6f%:z")
+                                .to_string()
+                                .into_bytes(),
+                        )),
+                        Value::DateTimeTz(dt) => match session_offset {
+                            Some(o) => convert::to_param(
+                                &Value::DateTime(dt.with_timezone(&o).naive_local()),
+                                &cs,
+                            ),
+                            None => convert::to_param(v, &cs),
+                        },
+                        _ => convert::to_param(v, &cs),
+                    })
                     .collect::<DbResult<Vec<_>>>()?,
             )
         };

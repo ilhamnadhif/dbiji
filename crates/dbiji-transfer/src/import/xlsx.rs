@@ -174,6 +174,14 @@ fn read_workbook(path: PathBuf, sheet: SheetSelector, tx: Sender<Msg>, skip_empt
             while let Some(c) = cells.next_cell().map_err(|e| format_error("XLSX", e))? {
                 let (r, col) = c.get_position();
                 if current != Some(r) {
+                    // Blank rows above the first cell count too (as in the other formats).
+                    if current.is_none() && !skip_empty {
+                        for _ in 0..r {
+                            if !em.row(Vec::new()) {
+                                return Ok(());
+                            }
+                        }
+                    }
                     if let Some(prev) = current {
                         if !em.row(std::mem::take(&mut row)) {
                             return Ok(());
@@ -250,6 +258,8 @@ pub struct XlsxSource {
     pending: VecDeque<Row>,
     done: bool,
     warnings: Vec<String>,
+    /// The warning about cells outside the columns was given.
+    cut_warned: bool,
 }
 
 impl XlsxSource {
@@ -266,7 +276,7 @@ impl XlsxSource {
             .name("dbiji-xlsx-reader".into())
             .spawn(move || read_workbook(path, sheet, tx, skip_empty))
             .map_err(|e| DbError::io(format!("Cannot start the XLSX reader: {e}")))?;
-        let mut src = XlsxSource { rx, columns: Vec::new(), first_col: 0, pending: VecDeque::new(), done: false, warnings: Vec::new() };
+        let mut src = XlsxSource { rx, columns: Vec::new(), first_col: 0, pending: VecDeque::new(), done: false, warnings: Vec::new(), cut_warned: false };
         // Read the header and a sample to determine the columns.
         let needed = options.skip_rows + usize::from(options.header) + options.sample_rows.max(1);
         let mut head: Vec<Row> = Vec::new();
@@ -316,8 +326,14 @@ impl XlsxSource {
         Ok(src)
     }
 
-    fn shape(&self, row: Row) -> Row {
+    fn shape(&mut self, row: Row) -> Row {
         let width = self.columns.len();
+        // The columns come from the header and the first rows: say so when later cells fall outside.
+        if !self.cut_warned && row.iter().skip(self.first_col + width).any(|v| !v.is_null()) {
+            self.cut_warned = true;
+            self.warnings
+                .push("Some rows have values to the right of the columns found in the header and the first rows; those cells were not imported (give them a header)".into());
+        }
         let mut out: Row = row.into_iter().skip(self.first_col).take(width).collect();
         out.resize(width, Value::Null);
         out

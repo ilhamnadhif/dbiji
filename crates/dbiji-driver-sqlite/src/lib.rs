@@ -137,6 +137,11 @@ impl SqliteDriver {
     pub async fn connect_sqlite(&self, params: &ConnectParams) -> DbResult<SqliteSession> {
         let cfg = open_config(params)?;
         let mode = cfg.mode;
+        let dialect = if cfg.foreign_keys {
+            Arc::clone(&self.dialect)
+        } else {
+            Arc::new(SqliteDialect::with_foreign_keys(false))
+        };
         let path =
             (!cfg.is_memory() && !cfg.path.starts_with("file:")).then(|| PathBuf::from(&cfg.path));
         let (tx, rx) = std::sync::mpsc::channel();
@@ -152,14 +157,7 @@ impl SqliteDriver {
         let (shared, info) = ready_rx.await.map_err(|_| {
             DbError::internal("The SQLite connection thread ended while connecting")
         })??;
-        Ok(SqliteSession::new(
-            tx,
-            shared,
-            info,
-            Arc::clone(&self.dialect),
-            mode,
-            path,
-        ))
+        Ok(SqliteSession::new(tx, shared, info, dialect, mode, path))
     }
 }
 
@@ -200,6 +198,15 @@ fn database_path(params: &ConnectParams) -> DbResult<String> {
             )
         })?;
     let p = raw.trim();
+    // `:memory:<key>`: one in-memory database shared by the sessions of one
+    // connection (SQLite shared cache); `:memory:` alone is private to its session.
+    if let Some(key) = p.strip_prefix(":memory:").filter(|k| !k.is_empty()) {
+        let key: String = key
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+            .collect();
+        return Ok(format!("file:dbiji-{key}?mode=memory&cache=shared"));
+    }
     Ok(if p == ":memory:" || p.starts_with("file:") {
         p.to_string()
     } else {
@@ -484,6 +491,27 @@ mod tests {
         let mut cfg = ConnectionConfig::new(DbKind::Sqlite, "t");
         cfg.file_path = Some(path.into());
         ConnectParams::from_config(&cfg, None)
+    }
+
+    #[tokio::test]
+    async fn keyed_memory_database_is_shared_by_sessions() {
+        let d = SqliteDriver::new();
+        let mut a = d.connect(&params(":memory:conn-1")).await.unwrap();
+        let mut b = d.connect(&params(":memory:conn-1")).await.unwrap();
+        let mut other = d.connect(&params(":memory:conn-2")).await.unwrap();
+        dbiji_core::driver::execute_update(a.as_mut(), "CREATE TABLE shared_t (x INTEGER)", &[])
+            .await
+            .unwrap();
+        assert!(
+            dbiji_core::driver::query_scalar(b.as_mut(), "SELECT count(*) FROM shared_t", &[])
+                .await
+                .is_ok()
+        );
+        assert!(
+            dbiji_core::driver::query_scalar(other.as_mut(), "SELECT count(*) FROM shared_t", &[])
+                .await
+                .is_err()
+        );
     }
 
     #[test]

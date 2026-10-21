@@ -35,7 +35,12 @@ impl QueryBuilderTab {
         if schema.schema.is_none() && schema.database.is_some() {
             schema.schema = live.current_schema.clone();
         }
-        let main = live.main.clone();
+        // The schema's own database: another database of the server has its own session.
+        let Some(main) = live.ensure_session(backend, schema.database.as_deref()) else {
+            ui.weak(tr("Opening a session…"));
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
+            return;
+        };
         live.meta.request_objects(backend, &main, &schema, ObjectKind::Table);
         live.meta.request_objects(backend, &main, &schema, ObjectKind::View);
         let mut chosen: Option<ObjectRef> = None;

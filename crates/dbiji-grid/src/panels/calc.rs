@@ -78,6 +78,8 @@ impl<'a> CalcPanel<'a> {
         if self.state.key.as_ref() != Some(&key) {
             self.state.stats = selection_stats(self.model, self.grid, MAX_CALC_CELLS);
             self.state.key = Some(key);
+            // Other cells: other rows (the mode, lengths come and go).
+            self.state.anchor = None;
         }
         let s = &self.state.stats;
         if s.count == 0 {
@@ -188,7 +190,7 @@ fn stats_table(ui: &mut Ui, rows: &[StatRow], state: &mut CalcPanelState) {
             table.request_focus();
             let m = ui.input(|i| i.modifiers);
             if m.shift
-                && let Some(a) = state.anchor
+                && let Some(a) = state.anchor.filter(|a| *a < rows.len())
             {
                 let (lo, hi) = (a.min(i), a.max(i));
                 state.selected = rows[lo..=hi].iter().map(|r| r.name.to_string()).collect();

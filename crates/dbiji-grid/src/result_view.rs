@@ -323,8 +323,10 @@ impl<'a> ResultViewer<'a> {
             state.toolbar.error_popup = Some(message);
         }
         // A failed fetch is shown over the result (a bar), not in a pop-up that stops the work.
+        // A new error (or the same one after a retry) shows again.
         if model.fetch.error != state.toolbar.seen_fetch_error {
             state.toolbar.seen_fetch_error = model.fetch.error.clone();
+            state.toolbar.dismissed_fetch_error = None;
         }
         if let Some(message) = state.toolbar.error_popup.clone() {
             error_popup(ui, id, &message, model, state, &mut actions);

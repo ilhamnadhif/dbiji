@@ -261,16 +261,18 @@ impl DdlGenerator for ClickHouseDdl {
             }
             out.extend(stmt);
         }
-        // New key columns are added in the ALTER that extends the key.
-        if let (Some(appended), Some(pk)) = (&key_append, &to.primary_key) {
+        // New key columns are added in the ALTER that extends the key, with the other new
+        // columns in their order (a column may be placed AFTER another new one).
+        if let Some(pk) = &to.primary_key
+            && key_append.is_some()
+        {
             let add_prefix = format!("ALTER TABLE {t} ADD COLUMN ");
-            let is_key_add = |s: &str| s.strip_prefix(&add_prefix).is_some_and(|rest| appended.iter().any(|c| rest.starts_with(&format!("{} ", ident(c)))));
-            let parts: Vec<String> = out.iter().filter(|s| is_key_add(s)).map(|s| s[format!("ALTER TABLE {t} ").len()..].to_string()).collect();
+            let is_add = |s: &str| s.starts_with(&add_prefix);
+            let parts: Vec<String> = out.iter().filter(|s| is_add(s)).map(|s| s[format!("ALTER TABLE {t} ").len()..].to_string()).collect();
             let modify = self.add_primary_key(to, pk);
             let combined = format!("ALTER TABLE {t} {}, {}", parts.join(", "), modify.strip_prefix(&format!("ALTER TABLE {t} ")).unwrap_or(&modify));
-            // In place of the first of them: later columns are added AFTER them.
-            let at = out.iter().position(|s| is_key_add(s)).unwrap_or(out.len());
-            out.retain(|s| !is_key_add(s));
+            let at = out.iter().position(|s| is_add(s)).unwrap_or(out.len());
+            out.retain(|s| !is_add(s));
             out.insert(at.min(out.len()), combined);
         }
         for i in &to_idx {
@@ -598,9 +600,10 @@ mod tests {
         to.columns.push(ColumnDef::new("note", "String"));
         to.primary_key = Some(KeyDef { name: None, columns: vec!["id".into(), "region".into()] });
         let sql = d.alter_table(&from, &to, &[]);
-        let key = sql.iter().position(|s| s.contains("ADD COLUMN region") && s.contains("MODIFY ORDER BY (id, region)"));
-        let note = sql.iter().position(|s| s.contains("ADD COLUMN note") && !s.contains("ORDER BY"));
-        assert!(key.is_some() && key < note, "{sql:#?}");
+        // All new columns in one ALTER with the key, in their order.
+        let combined = sql.iter().find(|s| s.contains("MODIFY ORDER BY (id, region)")).unwrap_or_else(|| panic!("{sql:#?}"));
+        assert!(combined.find("ADD COLUMN region") < combined.find("ADD COLUMN note"), "{combined}");
+        assert_eq!(sql.iter().filter(|s| s.contains("ADD COLUMN")).count(), 1, "{sql:#?}");
         // Another key change fails before anything is applied.
         let mut bad = from.clone();
         bad.columns.push(ColumnDef::new("note", "String"));

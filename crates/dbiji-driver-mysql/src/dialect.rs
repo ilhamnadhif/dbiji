@@ -309,9 +309,15 @@ impl Dialect for MySqlDialect {
             }
             Value::DateTimeTz(dt) => {
                 let utc = self.string_literal(&Value::DateTime(dt.naive_utc()).to_text());
-                format!(
-                    "COALESCE(CONVERT_TZ({utc}, '+00:00', @@session.time_zone), TIMESTAMPADD(SECOND, TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW()), {utc}))"
-                )
+                let offset = format!(
+                    "TIMESTAMPADD(SECOND, TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW()), {utc})"
+                );
+                // CONVERT_TZ leaves times outside the TIMESTAMP range unchanged.
+                if crate::session::in_timestamp_range(&dt.naive_utc()) {
+                    format!("COALESCE(CONVERT_TZ({utc}, '+00:00', @@session.time_zone), {offset})")
+                } else {
+                    offset
+                }
             }
             Value::Array(_) => self.string_literal(&value.to_json().to_string()),
             Value::Json(s) => self.string_literal(s),
@@ -565,6 +571,11 @@ mod tests {
         assert_eq!(
             d.literal(&Value::DateTimeTz(dt), None),
             "COALESCE(CONVERT_TZ('2024-01-02 03:00:00', '+00:00', @@session.time_zone), TIMESTAMPADD(SECOND, TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW()), '2024-01-02 03:00:00'))"
+        );
+        let old = chrono::DateTime::parse_from_rfc3339("1965-03-01T00:00:00+00:00").unwrap();
+        assert_eq!(
+            d.literal(&Value::DateTimeTz(old), None),
+            "TIMESTAMPADD(SECOND, TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW()), '1965-03-01 00:00:00')"
         );
         assert_eq!(d.placeholder(3), "?");
         let mut p = ServerProfile::new(Flavor::MySql, (8, 0, 36));

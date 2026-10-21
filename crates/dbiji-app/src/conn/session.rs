@@ -46,6 +46,8 @@ struct Shared {
     busy_since: Mutex<Option<Instant>>,
     /// Last use of the open cursor.
     cursor_used: Mutex<Instant>,
+    /// A task watches the open cursor for idleness (one per session).
+    cursor_watched: AtomicBool,
     /// Rollbacks done: results saved inside the transaction show stale rows after one.
     rollbacks: AtomicU64,
 }
@@ -101,6 +103,7 @@ impl SessionHandle {
                 tx: Mutex::new(TxState { mode, ..Default::default() }),
                 busy_since: Mutex::new(None),
                 cursor_used: Mutex::new(Instant::now()),
+                cursor_watched: AtomicBool::new(false),
                 rollbacks: AtomicU64::new(0),
             }),
         }
@@ -259,18 +262,28 @@ impl SessionHandle {
         let busy = self.busy();
         let res = async {
             let mut guard = self.lock().await;
+            let was_in_tx = guard.in_transaction();
             let mut cursor = guard.execute(sql, params, opts).await?;
             let header = cursor.next_result().await;
             let messages = cursor.take_messages();
             self.refresh_tx(guard.as_ref());
+            // A ROLLBACK typed in an editor ends the transaction like the Rollback button:
+            // results saved inside it reload.
+            if was_in_tx && !guard.in_transaction() && ends_with_rollback(sql) {
+                self.inner.rollbacks.fetch_add(1, Ordering::Relaxed);
+            }
             let header = header?;
             let token = self.inner.next_token.fetch_add(1, Ordering::Relaxed);
             // Store the cursor before releasing the session so no other
             // operation can slip in while the cursor owns the connection.
+            let rows = matches!(header, Some(ResultHeader::Rows(_)));
             *self.inner.cursor.lock().await = Some(OpenCursor { token, cursor });
             *self.inner.cursor_used.lock() = Instant::now();
             drop(guard);
-            self.watch_idle_cursor(token);
+            // Rows left to read hold the cursor open (an INSERT's is gone at once).
+            if rows {
+                self.watch_idle_cursor();
+            }
             Ok(Executed { token, header, messages })
         }
         .await;
@@ -329,10 +342,17 @@ impl SessionHandle {
         }
     }
 
-    /// Close the cursor `token` once it was not read for [`CURSOR_IDLE`]; the
-    /// result fetches its further rows by running the query again.
-    fn watch_idle_cursor(&self, token: u64) {
-        let Ok(rt) = tokio::runtime::Handle::try_current() else { return };
+    /// Close the open cursor once it was not read for [`CURSOR_IDLE`]; the result
+    /// fetches its further rows by running the query again. One task per session
+    /// watches whichever cursor is open, and ends when none is.
+    fn watch_idle_cursor(&self) {
+        if self.inner.cursor_watched.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        let Ok(rt) = tokio::runtime::Handle::try_current() else {
+            self.inner.cursor_watched.store(false, Ordering::Release);
+            return;
+        };
         let weak = self.downgrade();
         rt.spawn(async move {
             let mut wait = CURSOR_IDLE;
@@ -340,16 +360,21 @@ impl SessionHandle {
                 tokio::time::sleep(wait).await;
                 let Some(s) = weak.upgrade() else { return };
                 // Busy (a fetch is running): looked at again later.
-                let open = match s.inner.cursor.try_lock() {
-                    Ok(slot) => slot.as_ref().map(|c| c.token == token),
-                    Err(_) => Some(true),
+                let token = match s.inner.cursor.try_lock() {
+                    Ok(slot) => slot.as_ref().map(|c| c.token),
+                    Err(_) => {
+                        wait = Duration::from_secs(30);
+                        continue;
+                    }
                 };
-                if open != Some(true) {
+                let Some(token) = token else {
+                    s.inner.cursor_watched.store(false, Ordering::Release);
                     return;
-                }
+                };
                 let idle = s.inner.cursor_used.lock().elapsed();
                 if idle >= CURSOR_IDLE && !s.is_busy() {
                     s.close_cursor_token(token).await;
+                    s.inner.cursor_watched.store(false, Ordering::Release);
                     return;
                 }
                 wait = CURSOR_IDLE.saturating_sub(idle).max(Duration::from_secs(10));
@@ -441,10 +466,17 @@ impl SessionHandle {
         let mut total = 0u64;
         let mut failure = None;
         let mut results = Vec::with_capacity(stmts.len());
+        // How far the driver's row count can be trusted: SQL Server reports none with
+        // NOCOUNT and adds a trigger's; MySQL counts changed rows (an unchanged value is 0).
+        let (zero_means_missing, many_means_ambiguous) = match self.kind() {
+            DbKind::Postgres | DbKind::CockroachDb | DbKind::Sqlite | DbKind::DuckDb => (true, true),
+            DbKind::MySql | DbKind::MariaDb => (false, true),
+            _ => (false, false),
+        };
         for (sql, params) in stmts {
             let started = Instant::now();
             let checked = run_reading(guard.as_mut(), sql, params).await.and_then(|r| match r.rows {
-                Some(n) if n != 1 && expect_one.get(results.len()).copied().unwrap_or(false) => Err(if n == 0 {
+                Some(n) if expect_one.get(results.len()).copied().unwrap_or(false) && ((n == 0 && zero_means_missing) || (n > 1 && many_means_ambiguous)) => Err(if n == 0 {
                     DbError::query("The row was not found: it was changed or deleted since it was read. Refresh and edit it again.")
                 } else {
                     DbError::query(format!("The statement would change {n} rows instead of one: the key does not identify a single row."))
@@ -575,6 +607,12 @@ pub struct StatementResult {
 }
 
 /// Run `sql` to its end, keeping its first returned row and generated id.
+/// `sql` rolls the transaction back (`ROLLBACK`, `ABORT`, not `ROLLBACK TO SAVEPOINT`).
+fn ends_with_rollback(sql: &str) -> bool {
+    let upper = sql.to_ascii_uppercase();
+    upper.split(';').map(str::trim).filter(|s| !s.is_empty()).any(|s| (s.starts_with("ROLLBACK") || s.starts_with("ABORT")) && !s.contains(" TO "))
+}
+
 async fn run_reading(s: &mut dyn Session, sql: &str, params: &[Value]) -> DbResult<StatementResult> {
     let mut cursor = s.execute(sql, params, &ExecOptions::default()).await?;
     let mut out = StatementResult::default();
@@ -635,5 +673,19 @@ struct BusyGuard<'a>(&'a SessionHandle);
 impl Drop for BusyGuard<'_> {
     fn drop(&mut self) {
         self.0.mark_busy(false);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ends_with_rollback;
+
+    #[test]
+    fn typed_rollbacks() {
+        assert!(ends_with_rollback("rollback"));
+        assert!(ends_with_rollback("UPDATE t SET a = 1; ROLLBACK;"));
+        assert!(ends_with_rollback("ABORT"));
+        assert!(!ends_with_rollback("ROLLBACK TO SAVEPOINT s1"));
+        assert!(!ends_with_rollback("COMMIT"));
     }
 }

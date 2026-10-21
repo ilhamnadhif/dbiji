@@ -10,7 +10,7 @@ mod changes;
 mod editability;
 
 pub use changes::{CellValue, ChangeSet, ChangedValue, KeyValue, RowDelete, RowInsert, RowUpdate};
-pub use editability::{EditTarget, ReadOnlyReason, determine_editability, source_table};
+pub use editability::{EditTarget, ReadOnlyReason, determine_editability, has_duplicate_sources, source_table};
 
 use crate::expr::{EvalError, Expr, ExprError, RowValues};
 use crate::view::{JobPoll, RowBitSet, ViewContext, ViewIndex, ViewJob, ViewSpec};
@@ -1341,6 +1341,11 @@ impl ResultModel {
     /// True when there are unsaved changes.
     pub fn has_changes(&self) -> bool {
         !self.updates.is_empty() || !self.deleted.is_empty() || !self.inserted.is_empty()
+    }
+
+    /// Rows marked for deletion among the first `limit` of the store.
+    pub fn deleted_below(&self, limit: usize) -> usize {
+        self.deleted.iter().filter(|s| (**s as usize) < limit).count()
     }
 
     /// Counts of pending changes (rows).

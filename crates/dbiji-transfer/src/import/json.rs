@@ -503,6 +503,12 @@ pub struct JsonSource {
     unknown: Vec<String>,
 }
 
+/// Keys under which an API response puts its rows (`{"total": 2, "items": [...]}`).
+fn is_rows_key(key: &str) -> bool {
+    const KEYS: [&str; 14] = ["items", "data", "results", "result", "records", "rows", "values", "list", "entries", "hits", "content", "elements", "objects", "docs"];
+    KEYS.iter().any(|k| key.eq_ignore_ascii_case(k))
+}
+
 fn column_from_descriptor(v: &serde_json::Value, i: usize) -> ColumnMeta {
     match v {
         serde_json::Value::String(s) => ColumnMeta::new(s.clone(), "", DataKind::Text),
@@ -649,8 +655,11 @@ impl JsonSource {
                             let mut raw = vec![b'['];
                             self.stream.capture(&mut raw, 1)?;
                             let text = String::from_utf8_lossy(&raw).into_owned();
+                            // Only under a key APIs use for their rows: `{"id": 1, "orders": [{…}]}`
+                            // is one record with a nested array, not a wrapper.
+                            let rows_key = is_rows_key(&key);
                             members.push((key, Value::json(text)));
-                            if next == Some(b'{') && candidate.as_ref().is_none_or(|c| c.len() < raw.len()) {
+                            if next == Some(b'{') && rows_key && candidate.as_ref().is_none_or(|c| c.len() < raw.len()) {
                                 candidate = Some(raw);
                             }
                         }
@@ -833,6 +842,11 @@ mod tests {
         let (names, rows) = read(paged, JsonInputFormat::Auto).await;
         assert_eq!(names, vec!["id"]);
         assert_eq!(rows, vec![vec![Value::Int(1)], vec![Value::Int(2)]]);
+        // One record with a nested array of objects stays a record.
+        let one = r#"{"id": 1, "name": "x", "orders": [{"sku": "a"}, {"sku": "b"}]}"#;
+        let (names, rows) = read(one, JsonInputFormat::Auto).await;
+        assert_eq!(names, vec!["id", "name", "orders"]);
+        assert_eq!(rows.len(), 1);
         // A record with an array of objects in a JSON Lines stream stays a record.
         let nested = "{\"id\": 1, \"tags\": [{\"t\": 1}]}\n{\"id\": 2, \"tags\": []}\n";
         let (names, rows) = read(nested, JsonInputFormat::Auto).await;

@@ -2249,6 +2249,22 @@ pub fn object_at(src: &str, offset: usize, syntax: &SqlSyntax) -> Option<ObjectR
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn self_join_reads_the_table_twice() {
+        let reads = |sql: &str| {
+            analyze(sql, &SqlSyntax::ansi())
+                .tables
+                .iter()
+                .filter(|r| r.role == RefRole::Source && r.name == "users")
+                .count()
+        };
+        assert_eq!(
+            reads("SELECT a.id, b.name FROM users a JOIN users b ON b.id = a.parent"),
+            2
+        );
+        assert_eq!(reads("SELECT name, * FROM users WHERE id > 3"), 1);
+    }
     use crate::testutil::*;
 
     fn tables(a: &StatementAnalysis) -> Vec<(Option<&str>, &str, Option<&str>, RefRole)> {

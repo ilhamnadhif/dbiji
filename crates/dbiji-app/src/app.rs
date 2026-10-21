@@ -1622,8 +1622,14 @@ impl eframe::App for DbijiApp {
                     self.quit_confirmed = true;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                 }
-                Some(false) => self.confirm_quit = false,
-                None if modal.should_close() => self.confirm_quit = false,
+                Some(false) => {
+                    self.confirm_quit = false;
+                    self.updates.quit_cancelled();
+                }
+                None if modal.should_close() => {
+                    self.confirm_quit = false;
+                    self.updates.quit_cancelled();
+                }
                 None => {}
             }
         }

@@ -213,6 +213,11 @@ impl ResultPanel {
         self.save_job.is_some() || self.save_preview.is_some()
     }
 
+    /// The SQL preview of a save waits for a confirmation (shown with the result).
+    pub fn awaits_confirmation(&self) -> bool {
+        self.save_preview.is_some()
+    }
+
     pub fn sql(&self) -> &str {
         &self.src.sql
     }
@@ -283,7 +288,7 @@ impl ResultPanel {
             self.save_job = None;
             match r {
                 Ok((n, committed, inserted)) => {
-                    self.src.rows_deleted(self.model.pending_counts().deleted);
+                    self.src.rows_deleted(self.model.deleted_below(self.src.server_rows()));
                     self.model.apply_saved_with(&inserted);
                     self.saved_in_tx = (!committed).then(|| self.src.session.rollbacks());
                     if committed {
@@ -399,6 +404,21 @@ impl ResultPanel {
             find(obj)?.row_key_columns()
         };
         let mut e = determine_editability(self.model.columns(), key_lookup, read_only);
+        // A column of the table twice is fine (`SELECT name, * FROM t`) unless the query
+        // reads the table twice (`t a JOIN t b`): then a column cannot tell its row.
+        if let Ok(t) = &e
+            && self.table.is_none()
+            && dbiji_grid::model::has_duplicate_sources(self.model.columns(), &t.table.name)
+        {
+            let reads = dbiji_sql::analyze(&self.src.sql, live.dialect.syntax())
+                .tables
+                .iter()
+                .filter(|r| r.role == dbiji_sql::RefRole::Source && !r.is_cte && r.name.eq_ignore_ascii_case(&t.table.name))
+                .count();
+            if reads > 1 {
+                e = Err(ReadOnlyReason::MultipleTables);
+            }
+        }
         // "No unique key" because the table could not be read: say so (no virtual key needed).
         if e == Err(ReadOnlyReason::NoKey)
             && let Some(err) = lookup_error

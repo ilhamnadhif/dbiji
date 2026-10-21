@@ -34,6 +34,17 @@ use tokio::sync::{oneshot, watch};
 /// zone's DST rules; without the time zone tables a named zone gives NULL, and the
 /// current offset is used.
 pub(crate) const SESSION_TIME_SQL: &str = "CAST(COALESCE(CONVERT_TZ(?, '+00:00', @@session.time_zone), TIMESTAMPADD(SECOND, TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW()), ?)) AS CHAR)";
+/// A UTC time `?` with the session's current offset: `CONVERT_TZ` returns times
+/// outside the TIMESTAMP range (before 1970, after 2038) unchanged.
+pub(crate) const OFFSET_TIME_SQL: &str =
+    "CAST(TIMESTAMPADD(SECOND, TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW()), ?) AS CHAR)";
+
+/// Within MySQL's TIMESTAMP range, where `CONVERT_TZ` converts (UTC).
+pub(crate) fn in_timestamp_range(utc: &chrono::NaiveDateTime) -> bool {
+    let lo = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).and_then(|d| d.and_hms_opt(0, 0, 1));
+    let hi = chrono::NaiveDate::from_ymd_opt(2038, 1, 19).and_then(|d| d.and_hms_opt(3, 14, 7));
+    matches!((lo, hi), (Some(lo), Some(hi)) if *utc >= lo && *utc <= hi)
+}
 
 /// Where the connection currently is.
 enum Slot {
@@ -476,17 +487,19 @@ impl Session for MySqlSession {
                 utc.sort();
                 utc.dedup();
                 if !utc.is_empty() {
-                    let sql = format!("SELECT {}", vec![SESSION_TIME_SQL; utc.len()].join(", "));
-                    let args: Vec<MyValue> = utc
-                        .iter()
-                        .flat_map(|t| {
-                            let text = t.format("%Y-%m-%d %H:%M:%S%.6f").to_string();
-                            [
-                                MyValue::Bytes(text.clone().into_bytes()),
-                                MyValue::Bytes(text.into_bytes()),
-                            ]
-                        })
-                        .collect();
+                    let mut exprs = Vec::with_capacity(utc.len());
+                    let mut args: Vec<MyValue> = Vec::with_capacity(utc.len() * 2);
+                    for t in &utc {
+                        let text = t.format("%Y-%m-%d %H:%M:%S%.6f").to_string();
+                        if in_timestamp_range(t) {
+                            exprs.push(SESSION_TIME_SQL);
+                            args.push(MyValue::Bytes(text.clone().into_bytes()));
+                        } else {
+                            exprs.push(OFFSET_TIME_SQL);
+                        }
+                        args.push(MyValue::Bytes(text.into_bytes()));
+                    }
+                    let sql = format!("SELECT {}", exprs.join(", "));
                     if let Some(row) = self.row(&sql, args).await? {
                         for (i, t) in utc.iter().enumerate() {
                             if let Some(l) =

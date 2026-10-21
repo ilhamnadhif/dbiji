@@ -327,6 +327,11 @@ impl SqlEditorTab {
                 Err(e) => SessionSlot::Failed(e.full_text()),
             };
         }
+        // "Connection lost" ends once the connection is back (Reconnect): a new session.
+        let lost_text = tr("The connection to the server was lost: reconnect it (double-click it in the navigator).");
+        if matches!(&self.session, SessionSlot::Failed(m) if m == lost_text) && cx.conns.live(&conn).is_some_and(|l| !l.main.is_closed()) {
+            self.session = SessionSlot::None;
+        }
         if let SessionSlot::Ready(s) = &self.session {
             if s.is_closed() {
                 let lost = s.is_lost();
@@ -360,7 +365,7 @@ impl SqlEditorTab {
             let s = live.ensure_session(cx.backend, database.as_deref())?;
             // The shared session itself was lost: only a reconnect brings it back.
             if s.is_closed() {
-                self.session = SessionSlot::Failed(tr("The connection to the server was lost: reconnect it (double-click it in the navigator).").to_string());
+                self.session = SessionSlot::Failed(lost_text.to_string());
                 return None;
             }
             self.session = SessionSlot::Ready(s.clone());
@@ -1040,12 +1045,23 @@ impl SqlEditorTab {
         let Some(version) = self.close_after_save else { return };
         let mut saving = false;
         let mut left = false;
-        for r in &mut self.results {
+        let mut confirm: Option<usize> = None;
+        for (i, r) in self.results.iter_mut().enumerate() {
             if let ResultItem::Rows(p) = r {
                 p.poll(cx);
                 saving |= p.is_saving();
                 left |= p.has_changes();
+                if p.awaits_confirmation() && confirm.is_none() {
+                    confirm = Some(i);
+                }
             }
+        }
+        // A save preview shows with its result: bring that one up, or it waits for ever.
+        if let Some(i) = confirm
+            && !matches!(self.bottom, Bottom::Result(b) if b == i)
+        {
+            self.bottom = Bottom::Result(i);
+            self.show_results = true;
         }
         // Typed into while saving: the new text is not saved, the tab stays.
         let edited = self.editor.version() != version;

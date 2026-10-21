@@ -40,6 +40,8 @@ pub struct ResultSource {
     /// Rows of the cursor's result in the store (saved new rows are not), less the
     /// saved deletions: how far a re-executed query skips to continue.
     server_rows: usize,
+    /// The store's length when the running fetch started: what it adds are server rows.
+    fetch_store_len: usize,
     pub error: Option<DbError>,
     pub messages: Vec<ServerMessage>,
     pub executed_at: chrono::DateTime<chrono::Local>,
@@ -71,6 +73,7 @@ impl ResultSource {
             fetch_op: None,
             cancelled_op: None,
             server_rows: 0,
+            fetch_store_len: 0,
             error: None,
             messages: Vec::new(),
             executed_at: chrono::Local::now(),
@@ -122,6 +125,7 @@ impl ResultSource {
         }
         self.error = None;
         self.fetch_started = Some(Instant::now());
+        self.fetch_store_len = self.store.lock().len();
         self.fetch_op = op.as_ref().map(|o| o.id);
         let session = self.session.clone();
         let store = self.store.clone();
@@ -139,6 +143,8 @@ impl ResultSource {
         if let Some(job) = self.fetch_job.as_mut() {
             if let Some(res) = job.poll() {
                 self.fetch_job = None;
+                // Rows the fetch appended, also when it failed half way.
+                self.count_fetched();
                 match res {
                     Ok(b) => {
                         let mut columns = b.columns;
@@ -161,7 +167,6 @@ impl ResultSource {
                         }
                         self.exhausted = b.exhausted;
                         self.token = b.token;
-                        self.server_rows += b.added;
                         self.messages.extend(b.messages);
                         self.generation += 1;
                         if let Some(op) = self.fetch_op.take() {
@@ -188,6 +193,7 @@ impl ResultSource {
     pub fn cancel_fetch(&mut self) {
         if let Some(mut j) = self.fetch_job.take() {
             j.abort();
+            self.count_fetched();
             self.cancelled_op = self.fetch_op.take().or(self.cancelled_op);
         }
     }
@@ -197,9 +203,20 @@ impl ResultSource {
         self.cancelled_op.take()
     }
 
-    /// Saved deletions: a re-executed query no longer returns those rows.
+    /// Saved deletions of `n` server rows: a re-executed query no longer returns them.
     pub fn rows_deleted(&mut self, n: usize) {
         self.server_rows = self.server_rows.saturating_sub(n);
+    }
+
+    /// Rows of the store the server returned (not rows inserted by a save).
+    pub fn server_rows(&self) -> usize {
+        self.server_rows
+    }
+
+    fn count_fetched(&mut self) {
+        let now = self.store.lock().len();
+        self.server_rows += now.saturating_sub(self.fetch_store_len);
+        self.fetch_store_len = now;
     }
 
     /// Re-run the query from scratch.

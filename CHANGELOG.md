@@ -3,6 +3,22 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.19 — 2026-10-21
+
+### Fixed
+- Shift+click in the Calc table could crash DBiji after the selected cells changed.
+- Saving grid edits failed for no reason on SQL Server with SET NOCOUNT ON or a trigger ("the row was not found", "would change 2 rows"), and on MySQL when a value was saved unchanged: the row count check now applies only where the count can be trusted.
+- One-column CSV files lost a NULL in their last row (DBiji's own export writes NULL as an empty line).
+- A JSON file holding one object with an array of objects (`{"id": 1, "orders": [...]}`) was read as a wrapper of those objects; only keys such as items, data, results or records are taken as a wrapper now.
+- MySQL before 8.0.19 and MariaDB: times with a time zone before 1970 or after 2038 were not converted to the session's zone.
+- Migrations to DuckDB no longer draw the sequence for hours when ids are huge; above a million draws a message says how to set it.
+- `SELECT name, * FROM t` is editable again; only a real self-join (the table twice in FROM / JOIN) is read-only.
+- ClickHouse: adding key columns together with other new columns placed after them works.
+- A failed fetch shows its bar again after a retry fails the same way; rows no longer appear twice after "Fetch all" and Count; the query builder of another database lists that database's tables.
+- A SQL editor leaves "connection lost" by itself once the connection is back; closing it while a save preview waits in another result shows that result; a ROLLBACK typed in the editor reloads results saved inside the transaction.
+- Cancelling the quit after "Restart now" no longer installs the update at a later quit.
+- Fewer background tasks: one idle-cursor watcher per session instead of one per statement; CockroachDB results are not asked about generated columns.
+
 ## 0.3.18 — 2026-10-21
 
 ### Fixed

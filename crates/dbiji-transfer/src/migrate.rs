@@ -543,18 +543,28 @@ async fn migrate_table(
                     }
                 }
             }
-            // DuckDB: an auto-increment column draws from `<table>_<column>_seq`, which has no
-            // setval: it is drawn up to the largest copied id.
+            // DuckDB: an auto-increment column draws from `<table>_<column>_seq`, which can be
+            // neither restarted nor set: it is drawn up to the largest copied id, when that is
+            // a reasonable number of draws (ids in the billions would take hours).
             if dst_dialect.kind() == DbKind::DuckDb {
+                const MAX_DRAWS: i64 = 1_000_000;
                 for col in &identity {
                     let seq = ObjectRef::new(ObjectKind::Sequence, plan.target_ref.schema.clone(), format!("{}_{col}_seq", plan.target_ref.name));
-                    let sql = format!(
-                        "SELECT MAX(nextval({})) FROM range((SELECT COALESCE(MAX({}), 0) FROM {table_sql})::BIGINT)",
-                        dst_dialect.string_literal(&dst_dialect.qualified_ref(&seq)),
-                        dst_dialect.quote_ident(col)
-                    );
-                    if let Err(e) = writer.execute(&sql).await {
-                        writer.errors.push(RowError { row: 0, column: Some(col.clone()), message: format!("Cannot advance the sequence: {}", e.message) });
+                    let seq_lit = dst_dialect.string_literal(&dst_dialect.qualified_ref(&seq));
+                    let max = writer.query_i64(&format!("SELECT COALESCE(MAX({}), 0) FROM {table_sql}", dst_dialect.quote_ident(col))).await;
+                    let next = writer.query_i64(&format!("SELECT nextval({seq_lit})")).await;
+                    let message = match (max, next) {
+                        (Ok(Some(max)), Ok(Some(next))) if max >= next && max - next <= MAX_DRAWS => {
+                            writer.execute(&format!("SELECT MAX(nextval({seq_lit})) FROM range({})", max - next)).await.err().map(|e| e.message)
+                        }
+                        (Ok(Some(max)), Ok(Some(next))) if max >= next => {
+                            Some(format!("the sequence continues at {next}, below the copied ids (up to {max}): recreate it with START WITH {} before adding rows", max + 1))
+                        }
+                        (Err(e), _) | (_, Err(e)) => Some(e.message),
+                        _ => None,
+                    };
+                    if let Some(m) = message {
+                        writer.errors.push(RowError { row: 0, column: Some(col.clone()), message: format!("Cannot advance the sequence: {m}") });
                     }
                 }
             }

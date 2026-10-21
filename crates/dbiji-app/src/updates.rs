@@ -379,6 +379,14 @@ impl Updates {
         }
     }
 
+    /// The quit was cancelled (unsaved changes): "Restart" no longer installs on a later quit.
+    pub fn quit_cancelled(&mut self) {
+        #[cfg(target_os = "macos")]
+        {
+            self.install_on_quit = false;
+        }
+    }
+
     /// DBiji is quitting: start the installer of the update chosen with "Restart".
     pub fn install_on_exit(&mut self) {
         #[cfg(target_os = "macos")]

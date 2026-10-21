@@ -376,19 +376,19 @@ impl PgSession {
         if !missing.is_empty() {
             let oids: Vec<u32> = missing.iter().map(|k| k.0).collect();
             let nums: Vec<i16> = missing.iter().map(|k| k.1).collect();
-            let rows = self
-                .q(
-                    "SELECT k.relid::int8, k.attnum::int8, n.nspname::text, c.relname::text, a.attname::text, a.attnotnull, \
-                     (a.attidentity <> '' OR COALESCE(pg_catalog.to_jsonb(a) ->> 'attgenerated', '') <> '' OR (COALESCE(pg_catalog.pg_get_expr(d.adbin, d.adrelid), '') LIKE 'nextval(%' AND \
-                     EXISTS (SELECT 1 FROM pg_catalog.pg_depend od JOIN pg_catalog.pg_class oc ON oc.oid = od.objid AND oc.relkind = 'S' WHERE od.classid = 'pg_catalog.pg_class'::regclass AND od.refclassid = 'pg_catalog.pg_class'::regclass AND od.refobjid = a.attrelid AND od.refobjsubid = a.attnum AND od.deptype = 'a'))) \
-                     FROM unnest($1::oid[], $2::int2[]) AS k(relid, attnum) \
-                     JOIN pg_catalog.pg_class c ON c.oid = k.relid \
-                     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
-                     JOIN pg_catalog.pg_attribute a ON a.attrelid = k.relid AND a.attnum = k.attnum \
-                     LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum",
-                    &[P::Oids(&oids), P::Int2s(&nums)],
-                )
-                .await?;
+            // Generated (STORED) columns are PostgreSQL's (12+); CockroachDB is not asked.
+            let generated = if self.flavor == Flavor::Cockroach { "FALSE" } else { "COALESCE(pg_catalog.to_jsonb(a) ->> 'attgenerated', '') <> ''" };
+            let sql = format!(
+                "SELECT k.relid::int8, k.attnum::int8, n.nspname::text, c.relname::text, a.attname::text, a.attnotnull, \
+                 (a.attidentity <> '' OR {generated} OR (COALESCE(pg_catalog.pg_get_expr(d.adbin, d.adrelid), '') LIKE 'nextval(%' AND \
+                 EXISTS (SELECT 1 FROM pg_catalog.pg_depend od JOIN pg_catalog.pg_class oc ON oc.oid = od.objid AND oc.relkind = 'S' WHERE od.classid = 'pg_catalog.pg_class'::regclass AND od.refclassid = 'pg_catalog.pg_class'::regclass AND od.refobjid = a.attrelid AND od.refobjsubid = a.attnum AND od.deptype = 'a'))) \
+                 FROM unnest($1::oid[], $2::int2[]) AS k(relid, attnum) \
+                 JOIN pg_catalog.pg_class c ON c.oid = k.relid \
+                 JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
+                 JOIN pg_catalog.pg_attribute a ON a.attrelid = k.relid AND a.attnum = k.attnum \
+                 LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum"
+            );
+            let rows = self.q(&sql, &[P::Oids(&oids), P::Int2s(&nums)]).await?;
             for k in &missing {
                 self.source_cache.insert(*k, None);
             }

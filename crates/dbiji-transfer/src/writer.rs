@@ -210,6 +210,12 @@ impl<'a> BatchWriter<'a> {
         self.exec(sql, &[]).await.map(|_| ())
     }
 
+    /// The first value of `sql` as an integer, through the writer's session.
+    pub(crate) async fn query_i64(&mut self, sql: &str) -> DbResult<Option<i64>> {
+        let (_, rows) = dbiji_core::driver::query_all(&mut *self.session, sql, &[]).await?;
+        Ok(rows.first().and_then(|r| r.first()).and_then(|v| v.as_i64()))
+    }
+
     /// Remove all rows of `table`: `TRUNCATE` (falling back to `DELETE`), or
     /// `DELETE` inside the transaction for [`TransactionScope::Whole`].
     pub(crate) async fn clear_table(&mut self, table: &ObjectRef) -> DbResult<()> {

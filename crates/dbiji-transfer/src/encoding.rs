@@ -163,6 +163,9 @@ pub(crate) struct DecodingReader<R: Read> {
     /// Detection saw only ASCII so far: the first non-ASCII bytes decide
     /// between UTF-8 and windows-1252 (an accent after the first 64 KB).
     undecided: bool,
+    /// The chunk ends in an incomplete non-ASCII sequence that decides: it waits
+    /// for the next read, in front of it.
+    hold_tail: bool,
 }
 
 const RAW_CAPACITY: usize = 64 * 1024;
@@ -190,7 +193,10 @@ impl<R: Read> DecodingReader<R> {
         let head = &raw[..raw_len];
         let label = label.trim();
         let auto = label.is_empty() || label.eq_ignore_ascii_case("auto");
-        let undecided = auto && !eof && head.is_ascii();
+        // Only ASCII so far, or ASCII then a sequence cut by the read-ahead window
+        // (`caf\xe9` could be either): the next bytes decide.
+        let cut_after_ascii = matches!(std::str::from_utf8(head), Err(e) if e.error_len().is_none() && head[..e.valid_up_to()].is_ascii());
+        let undecided = auto && !eof && (head.is_ascii() || cut_after_ascii);
         let encoding = if let Some((enc, _)) = Encoding::for_bom(head) {
             enc
         } else if label.is_empty() || label.eq_ignore_ascii_case("auto") {
@@ -217,6 +223,7 @@ impl<R: Read> DecodingReader<R> {
             finished: false,
             had_errors: false,
             undecided,
+            hold_tail: false,
         })
     }
 
@@ -243,33 +250,54 @@ impl<R: Read> Read for DecodingReader<R> {
             if self.finished || buf.is_empty() {
                 return Ok(0);
             }
-            if self.raw_pos == self.raw_len && !self.eof {
+            if (self.raw_pos == self.raw_len || self.hold_tail) && !self.eof {
+                // A held tail moves to the front, the next bytes follow it.
+                let tail = self.raw_len - self.raw_pos;
+                self.raw.copy_within(self.raw_pos..self.raw_len, 0);
                 let n = loop {
-                    match self.inner.read(&mut self.raw) {
+                    match self.inner.read(&mut self.raw[tail..]) {
                         Ok(n) => break n,
                         Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
                         Err(e) => return Err(e),
                     }
                 };
                 self.raw_pos = 0;
-                self.raw_len = n;
+                self.raw_len = tail + n;
+                self.hold_tail = false;
                 if n == 0 {
                     self.eof = true;
                 }
             }
+            let mut end = self.raw_len;
             if self.undecided {
                 let chunk = &self.raw[self.raw_pos..self.raw_len];
                 if !chunk.is_ascii() {
                     // Everything before was ASCII (the same in both): switching loses nothing.
-                    self.undecided = false;
-                    if std::str::from_utf8(chunk).is_err_and(|e| e.error_len().is_some()) {
-                        self.encoding = WINDOWS_1252;
-                        self.decoder = WINDOWS_1252.new_decoder_without_bom_handling();
+                    match std::str::from_utf8(chunk) {
+                        Ok(_) => self.undecided = false,
+                        Err(e) if e.error_len().is_some() => {
+                            self.undecided = false;
+                            self.encoding = WINDOWS_1252;
+                            self.decoder = WINDOWS_1252.new_decoder_without_bom_handling();
+                        }
+                        // Cut at the end of the chunk: valid UTF-8 before it decides; else
+                        // the ASCII part is decoded and the tail waits for the next bytes.
+                        Err(e) if !chunk[..e.valid_up_to()].is_ascii() => self.undecided = false,
+                        Err(e) if !self.eof => {
+                            end = self.raw_pos + e.valid_up_to();
+                            self.hold_tail = true;
+                        }
+                        // An incomplete sequence at the end of the file is no UTF-8.
+                        Err(_) => {
+                            self.undecided = false;
+                            self.encoding = WINDOWS_1252;
+                            self.decoder = WINDOWS_1252.new_decoder_without_bom_handling();
+                        }
                     }
                 }
             }
             let last = self.eof && self.raw_pos == self.raw_len;
-            let (result, read, written, errors) = self.decoder.decode_to_utf8(&self.raw[self.raw_pos..self.raw_len], &mut self.out, last);
+            let (result, read, written, errors) = self.decoder.decode_to_utf8(&self.raw[self.raw_pos..end], &mut self.out, last);
             self.raw_pos += read;
             self.out_pos = 0;
             self.out_len = written;
@@ -308,6 +336,15 @@ mod tests {
         bytes.extend_from_slice(b"caf\xe9\n");
         let text = decode("auto", &bytes);
         assert!(text.ends_with("café\n"), "{}", &text[text.len() - 10..]);
+        // The accent is the last byte of a read: it waits for the next one.
+        let mut bytes = vec![b'a'; RAW_CAPACITY - 1];
+        bytes.extend_from_slice(b"\xe9t\xe9\n");
+        let text = decode("auto", &bytes);
+        assert!(text.ends_with("\u{e9}t\u{e9}\n"), "{:?}", &text[text.len() - 10..]);
+        // UTF-8 cut the same way stays UTF-8.
+        let mut bytes = vec![b'a'; RAW_CAPACITY - 1];
+        bytes.extend_from_slice("ét\n".as_bytes());
+        assert!(decode("auto", &bytes).ends_with("ét\n"));
     }
 
     #[test]

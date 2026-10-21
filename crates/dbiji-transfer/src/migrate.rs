@@ -14,7 +14,7 @@ use crate::source::{CursorSource, RowSource};
 use crate::writer::{BatchWriter, OnError, RowError, TableTarget, TransactionScope};
 use dbiji_core::ddl::{ForeignKeyDef, IndexDef, KeyDef, TableDef};
 use dbiji_core::driver::{Session, execute_update};
-use dbiji_core::{DataKind, DbError, DbKind, DbResult, Dialect, ErrorKind, ObjectRef};
+use dbiji_core::{DataKind, DbError, DbKind, DbResult, Dialect, ErrorKind, ObjectKind, ObjectRef};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -536,6 +536,21 @@ async fn migrate_table(
                         "SELECT setval(pg_get_serial_sequence({}, {}), MAX({})) FROM {table_sql}",
                         dst_dialect.string_literal(&table_sql),
                         dst_dialect.string_literal(col),
+                        dst_dialect.quote_ident(col)
+                    );
+                    if let Err(e) = writer.execute(&sql).await {
+                        writer.errors.push(RowError { row: 0, column: Some(col.clone()), message: format!("Cannot advance the sequence: {}", e.message) });
+                    }
+                }
+            }
+            // DuckDB: an auto-increment column draws from `<table>_<column>_seq`, which has no
+            // setval: it is drawn up to the largest copied id.
+            if dst_dialect.kind() == DbKind::DuckDb {
+                for col in &identity {
+                    let seq = ObjectRef::new(ObjectKind::Sequence, plan.target_ref.schema.clone(), format!("{}_{col}_seq", plan.target_ref.name));
+                    let sql = format!(
+                        "SELECT MAX(nextval({})) FROM range((SELECT COALESCE(MAX({}), 0) FROM {table_sql})::BIGINT)",
+                        dst_dialect.string_literal(&dst_dialect.qualified_ref(&seq)),
                         dst_dialect.quote_ident(col)
                     );
                     if let Err(e) = writer.execute(&sql).await {

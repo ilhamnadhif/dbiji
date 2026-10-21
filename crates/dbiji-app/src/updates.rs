@@ -196,8 +196,12 @@ pub struct Updates {
     pub found: Option<Release>,
     /// Data folder: where the installer leaves the outcome of an update.
     pub data_dir: Option<std::path::PathBuf>,
-    /// Quit now: the update was handed to the installer.
+    /// Quit now: the update is installed once DBiji has quit.
     pub restart: bool,
+    /// "Restart" was chosen: the installer starts when DBiji quits (not before the
+    /// quit is confirmed, and once).
+    #[cfg(target_os = "macos")]
+    install_on_quit: bool,
     check: Option<(Job<Result<CheckResult, String>>, bool)>,
     /// Set by `start`: the next frame decides what to show.
     started: bool,
@@ -372,6 +376,18 @@ impl Updates {
         {
             self.show_found(r);
             self.refresh = true;
+        }
+    }
+
+    /// DBiji is quitting: start the installer of the update chosen with "Restart".
+    pub fn install_on_exit(&mut self) {
+        #[cfg(target_os = "macos")]
+        if std::mem::take(&mut self.install_on_quit)
+            && let Install::Ready { prepared, .. } = &self.install
+            && let (Some(bundle), Some(dir)) = (crate::selfupdate::installed_bundle(), &self.data_dir)
+            && let Err(e) = crate::selfupdate::launch_installer(prepared, &bundle, dir)
+        {
+            tracing::warn!("the update installer did not start: {e}");
         }
     }
 
@@ -671,12 +687,13 @@ impl Updates {
             hide = true;
         }
         if restart && let Install::Ready { prepared, .. } = &self.install {
-            let launched = match (crate::selfupdate::installed_bundle(), &self.data_dir) {
-                (Some(bundle), Some(dir)) => crate::selfupdate::launch_installer(prepared, &bundle, dir),
+            let ready = match (crate::selfupdate::installed_bundle(), &self.data_dir) {
+                (Some(bundle), Some(_)) => crate::selfupdate::check_installable(prepared, &bundle),
                 _ => Err(tr("DBiji is not installed as an app").to_string()),
             };
-            match launched {
+            match ready {
                 Ok(()) => {
+                    self.install_on_quit = true;
                     self.restart = true;
                     hide = true;
                 }

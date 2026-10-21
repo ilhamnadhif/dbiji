@@ -412,6 +412,29 @@ impl DdlGenerator for MsSqlDdl {
         let self_ref = |fk: &ForeignKeyDef| fk.table.eq_ignore_ascii_case(&from.name) || fk.table.eq_ignore_ascii_case(&to.name);
         let referencing: Vec<&ForeignKeyDef> = cur.referenced_by.iter().filter(|fk| !self_ref(fk) && on_dropped_key(fk)).collect();
         let child = |fk: &ForeignKeyDef| TableDef::new(fk.schema.clone().or(cur.schema.clone()), fk.table.clone());
+        let renamed_col = |c: &String| pairs.iter().find(|(f, _)| f.name.eq_ignore_ascii_case(c)).map(|(_, tc)| tc.name.clone()).unwrap_or_else(|| c.clone());
+        let final_keys: Vec<Vec<String>> = to
+            .primary_key
+            .iter()
+            .chain(to.unique_keys.iter())
+            .map(|k| k.columns.clone())
+            .chain(secondary_indexes(to).filter(|i| i.unique).map(|i| i.columns.iter().map(|c| c.name.clone()).collect()))
+            .collect();
+        // Another table's foreign key that cannot be added back (its key is removed, or a key
+        // column changes type under it) would silently disappear: refuse the change instead.
+        let retyped = |c: &String| pairs.iter().any(|(f, tc)| f.name.eq_ignore_ascii_case(c) && f.data_type != tc.data_type);
+        let lost: Vec<String> = referencing
+            .iter()
+            .filter(|fk| {
+                let cols: Vec<String> = fk.ref_columns.iter().map(renamed_col).collect();
+                !final_keys.iter().any(|k| same_set(k, &cols)) || fk.ref_columns.iter().any(retyped)
+            })
+            .map(|fk| format!("{} ({})", fk.name.as_deref().unwrap_or("?"), fk.table))
+            .collect();
+        if !lost.is_empty() {
+            let msg = format!("Foreign keys of other tables reference a key this change removes or changes the type of: {}. Drop or change them first.", lost.join(", "));
+            out.insert(0, format!("THROW 50000, {}, 1", nstring(&msg)));
+        }
         for fk in &referencing {
             out.push(self.drop_foreign_key(&child(fk), fk));
         }
@@ -557,15 +580,7 @@ impl DdlGenerator for MsSqlDdl {
                 out.push(self.add_foreign_key(to, fk));
             }
         }
-        // Other tables' foreign keys on a key that exists again (columns renamed); one on a removed key stays dropped.
-        let renamed_col = |c: &String| pairs.iter().find(|(f, _)| f.name.eq_ignore_ascii_case(c)).map(|(_, tc)| tc.name.clone()).unwrap_or_else(|| c.clone());
-        let final_keys: Vec<Vec<String>> = to
-            .primary_key
-            .iter()
-            .chain(to.unique_keys.iter())
-            .map(|k| k.columns.clone())
-            .chain(secondary_indexes(to).filter(|i| i.unique).map(|i| i.columns.iter().map(|c| c.name.clone()).collect()))
-            .collect();
+        // Other tables' foreign keys on a key that exists again (columns renamed).
         for fk in &referencing {
             let mut nf = (*fk).clone();
             nf.ref_table = to.name.clone();
@@ -1071,12 +1086,21 @@ mod tests {
             ref_columns: vec!["id".into()],
             ..Default::default()
         });
+        from.columns[0] = ColumnDef::new("id", "nvarchar(10)").not_null();
         let mut to = from.clone();
-        to.columns[0].data_type = "bigint".into();
+        to.columns[0].collation = Some("Latin1_General_BIN2".into());
         let sql = d.alter_table(&from, &to, &[]);
         let pos = |p: &str| sql.iter().position(|s| s.contains(p)).unwrap_or_else(|| panic!("{p} in {sql:#?}"));
+        assert!(!sql[0].starts_with("THROW"), "{sql:#?}");
         assert!(pos("orders DROP CONSTRAINT [FK_orders_customers]") < pos("DROP CONSTRAINT [PK_customers]"), "{sql:#?}");
         assert!(pos("ADD CONSTRAINT [PK_customers]") < pos("orders ADD CONSTRAINT [FK_orders_customers]"), "{sql:#?}");
+        // The referencing column keeps its type: the foreign key could not be added back.
+        let mut retyped = from.clone();
+        retyped.columns[0].data_type = "nvarchar(20)".into();
+        assert!(d.alter_table(&from, &retyped, &[])[0].starts_with("THROW 50000"));
+        let mut no_key = from.clone();
+        no_key.primary_key = None;
+        assert!(d.alter_table(&from, &no_key, &[])[0].contains("FK_orders_customers (orders)"));
     }
 
     #[test]

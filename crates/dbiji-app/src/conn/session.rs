@@ -44,7 +44,15 @@ struct Shared {
     next_token: AtomicU64,
     tx: Mutex<TxState>,
     busy_since: Mutex<Option<Instant>>,
+    /// Last use of the open cursor.
+    cursor_used: Mutex<Instant>,
+    /// Rollbacks done: results saved inside the transaction show stale rows after one.
+    rollbacks: AtomicU64,
 }
+
+/// An open cursor not read for this long is closed: on the server it holds a
+/// snapshot and table locks (PostgreSQL: an ALTER of the table waits for it).
+const CURSOR_IDLE: Duration = Duration::from_secs(300);
 
 /// Cloneable handle to a session. All access goes through [`SessionHandle::lock`],
 /// which first closes any cursor left open on the session (the driver contract
@@ -52,6 +60,16 @@ struct Shared {
 #[derive(Clone)]
 pub struct SessionHandle {
     inner: Arc<Shared>,
+}
+
+/// A session that is not kept open by this reference (closed once its tabs drop it).
+#[derive(Clone)]
+pub struct WeakSession(std::sync::Weak<Shared>);
+
+impl WeakSession {
+    pub fn upgrade(&self) -> Option<SessionHandle> {
+        self.0.upgrade().map(|inner| SessionHandle { inner })
+    }
 }
 
 /// Result of [`SessionHandle::execute`].
@@ -82,12 +100,26 @@ impl SessionHandle {
                 next_token: AtomicU64::new(1),
                 tx: Mutex::new(TxState { mode, ..Default::default() }),
                 busy_since: Mutex::new(None),
+                cursor_used: Mutex::new(Instant::now()),
+                rollbacks: AtomicU64::new(0),
             }),
         }
     }
 
     pub fn kind(&self) -> DbKind {
         self.inner.kind
+    }
+
+    pub fn downgrade(&self) -> WeakSession {
+        WeakSession(Arc::downgrade(&self.inner))
+    }
+
+    /// Cancel a running statement, then close (Disconnect: a long query does not hold it up).
+    pub async fn cancel_and_close(&self) {
+        if self.is_busy() {
+            let _ = self.cancel().await;
+        }
+        self.close().await;
     }
 
     pub fn dialect(&self) -> Arc<dyn Dialect> {
@@ -138,6 +170,12 @@ impl SessionHandle {
 
     pub fn tx_state(&self) -> TxState {
         self.inner.tx.lock().clone()
+    }
+
+    /// An open transaction with changes (manual commit mode opens one for a SELECT too).
+    pub fn has_uncommitted_writes(&self) -> bool {
+        let tx = self.inner.tx.lock();
+        tx.in_transaction && tx.log.iter().any(|e| dbiji_sql::classify(&e.sql, self.inner.dialect.syntax()).is_write)
     }
 
     pub fn clear_tx_log(&self) {
@@ -230,7 +268,9 @@ impl SessionHandle {
             // Store the cursor before releasing the session so no other
             // operation can slip in while the cursor owns the connection.
             *self.inner.cursor.lock().await = Some(OpenCursor { token, cursor });
+            *self.inner.cursor_used.lock() = Instant::now();
             drop(guard);
+            self.watch_idle_cursor(token);
             Ok(Executed { token, header, messages })
         }
         .await;
@@ -264,6 +304,7 @@ impl SessionHandle {
         let res = match slot.as_mut() {
             Some(c) if c.token == token => match c.cursor.fetch(max).await {
                 Ok(rows) => {
+                    *self.inner.cursor_used.lock() = Instant::now();
                     let messages = c.cursor.take_messages();
                     Ok(FetchOutcome { exhausted: rows.len() < max, rows, messages })
                 }
@@ -286,6 +327,34 @@ impl SessionHandle {
             Some(c) if c.token == token => c.cursor.next_result().await.map_err(FetchError::Db),
             _ => Err(FetchError::CursorClosed),
         }
+    }
+
+    /// Close the cursor `token` once it was not read for [`CURSOR_IDLE`]; the
+    /// result fetches its further rows by running the query again.
+    fn watch_idle_cursor(&self, token: u64) {
+        let Ok(rt) = tokio::runtime::Handle::try_current() else { return };
+        let weak = self.downgrade();
+        rt.spawn(async move {
+            let mut wait = CURSOR_IDLE;
+            loop {
+                tokio::time::sleep(wait).await;
+                let Some(s) = weak.upgrade() else { return };
+                // Busy (a fetch is running): looked at again later.
+                let open = match s.inner.cursor.try_lock() {
+                    Ok(slot) => slot.as_ref().map(|c| c.token == token),
+                    Err(_) => Some(true),
+                };
+                if open != Some(true) {
+                    return;
+                }
+                let idle = s.inner.cursor_used.lock().elapsed();
+                if idle >= CURSOR_IDLE && !s.is_busy() {
+                    s.close_cursor_token(token).await;
+                    return;
+                }
+                wait = CURSOR_IDLE.saturating_sub(idle).max(Duration::from_secs(10));
+            }
+        });
     }
 
     /// Whether the cursor identified by `token` is still open.
@@ -339,20 +408,28 @@ impl SessionHandle {
     /// committed). Returns the total number of affected rows and whether the
     /// changes are already committed.
     pub async fn apply_changes(&self, stmts: &[(String, Vec<Value>)]) -> DbResult<(u64, bool)> {
-        self.apply_changes_reading(stmts).await.map(|a| (a.rows, a.committed))
+        self.apply_changes_reading(stmts, &[]).await.map(|a| (a.rows, a.committed))
     }
 
     /// [`apply_changes`](Self::apply_changes) that also keeps, per statement, the first
     /// row it returned (`INSERT … RETURNING`) and the generated id (MySQL).
-    pub async fn apply_changes_reading(&self, stmts: &[(String, Vec<Value>)]) -> DbResult<Applied> {
+    /// `expect_one[i]`: statement `i` must change exactly one row (a grid UPDATE / DELETE by
+    /// its key); otherwise the save fails and is undone (0: changed or deleted by someone
+    /// else; more: the key does not identify one row).
+    pub async fn apply_changes_reading(&self, stmts: &[(String, Vec<Value>)], expect_one: &[bool]) -> DbResult<Applied> {
         let mut guard = self.lock().await;
-        let manual = guard.transaction_mode() == TransactionMode::Manual;
+        // A transaction already open (manual commit, or BEGIN in an auto-commit editor):
+        // the statements join it and nothing is committed or rolled back for the user.
+        let in_tx = guard.in_transaction();
+        let manual = guard.transaction_mode() == TransactionMode::Manual || in_tx;
         if !manual {
             guard.set_transaction_mode(TransactionMode::Manual).await?;
         }
         // In the user's open transaction a failure must not leave the batch half applied:
         // the grid keeps every change pending, saving again would repeat the first ones.
-        let savepoint = match (manual, guard.dialect().kind()) {
+        // Without one, a savepoint would itself be the transaction (SQLite: RELEASE commits),
+        // and on failure the whole batch is rolled back instead.
+        let savepoint = match (in_tx, guard.dialect().kind()) {
             (false, _) | (_, dbiji_core::DbKind::DuckDb | dbiji_core::DbKind::ClickHouse) => None,
             (true, dbiji_core::DbKind::SqlServer) => Some(("SAVE TRANSACTION dbiji_save", "ROLLBACK TRANSACTION dbiji_save", None)),
             (true, _) => Some(("SAVEPOINT dbiji_save", "ROLLBACK TO SAVEPOINT dbiji_save", Some("RELEASE SAVEPOINT dbiji_save"))),
@@ -366,7 +443,15 @@ impl SessionHandle {
         let mut results = Vec::with_capacity(stmts.len());
         for (sql, params) in stmts {
             let started = Instant::now();
-            match run_reading(guard.as_mut(), sql, params).await {
+            let checked = run_reading(guard.as_mut(), sql, params).await.and_then(|r| match r.rows {
+                Some(n) if n != 1 && expect_one.get(results.len()).copied().unwrap_or(false) => Err(if n == 0 {
+                    DbError::query("The row was not found: it was changed or deleted since it was read. Refresh and edit it again.")
+                } else {
+                    DbError::query(format!("The statement would change {n} rows instead of one: the key does not identify a single row."))
+                }),
+                _ => Ok(r),
+            });
+            match checked {
                 Ok(r) => {
                     total += r.rows.unwrap_or(0);
                     self.log_tx(sql, started, r.rows, true);
@@ -390,12 +475,14 @@ impl SessionHandle {
         }
         let result = match failure {
             Some(e) => {
-                if !manual {
+                // Nothing of the user's was in the transaction: all of the batch goes.
+                if !in_tx && savepoint.is_none() {
                     let _ = guard.rollback().await;
                 }
                 Err(e)
             }
             None if !manual => guard.commit().await.map(|_| Applied { rows: total, committed: true, results }),
+            // Manual mode without a transaction before: it holds just this save, left open to commit.
             None => Ok(Applied { rows: total, committed: false, results }),
         };
         if !manual {
@@ -428,8 +515,14 @@ impl SessionHandle {
         self.refresh_tx(guard.as_ref());
         if r.is_ok() {
             self.inner.tx.lock().log.clear();
+            self.inner.rollbacks.fetch_add(1, Ordering::Relaxed);
         }
         r
+    }
+
+    /// Number of rollbacks done on the session.
+    pub fn rollbacks(&self) -> u64 {
+        self.inner.rollbacks.load(Ordering::Relaxed)
     }
 
     pub async fn ping(&self) -> DbResult<()> {

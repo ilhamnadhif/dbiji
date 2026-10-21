@@ -129,7 +129,7 @@ impl ChangeSet {
     pub fn save_statements(&self, dialect: &dyn Dialect) -> Vec<(String, Vec<Value>)> {
         let mut out = self.statements(dialect);
         if dialect.supports_returning() && !self.columns.is_empty() {
-            let cols: Vec<String> = self.columns.iter().map(|(_, n, _)| dialect.quote_ident(n)).collect();
+            let cols: Vec<String> = self.columns.iter().map(|(_, n, t)| dialect.returning_column(n, t)).collect();
             let returning = format!(" RETURNING {}", cols.join(", "));
             let first_insert = out.len() - self.inserts.len();
             for (sql, _) in &mut out[first_insert..] {

@@ -124,6 +124,7 @@ impl OpenConfig {
         self.path == ":memory:"
             || self.path.starts_with("file::memory:")
             || self.path.contains("mode=memory")
+            || self.path.contains("vfs=memdb")
     }
 }
 

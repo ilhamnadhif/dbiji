@@ -40,6 +40,7 @@ pub(crate) struct SourceInfo {
     pub table: String,
     pub column: String,
     pub not_null: bool,
+    /// Filled by the database: identity, serial or a generated (`STORED`) column.
     pub auto_increment: bool,
 }
 
@@ -378,7 +379,7 @@ impl PgSession {
             let rows = self
                 .q(
                     "SELECT k.relid::int8, k.attnum::int8, n.nspname::text, c.relname::text, a.attname::text, a.attnotnull, \
-                     (a.attidentity <> '' OR (COALESCE(pg_catalog.pg_get_expr(d.adbin, d.adrelid), '') LIKE 'nextval(%' AND \
+                     (a.attidentity <> '' OR COALESCE(pg_catalog.to_jsonb(a) ->> 'attgenerated', '') <> '' OR (COALESCE(pg_catalog.pg_get_expr(d.adbin, d.adrelid), '') LIKE 'nextval(%' AND \
                      EXISTS (SELECT 1 FROM pg_catalog.pg_depend od JOIN pg_catalog.pg_class oc ON oc.oid = od.objid AND oc.relkind = 'S' WHERE od.classid = 'pg_catalog.pg_class'::regclass AND od.refclassid = 'pg_catalog.pg_class'::regclass AND od.refobjid = a.attrelid AND od.refobjsubid = a.attnum AND od.deptype = 'a'))) \
                      FROM unnest($1::oid[], $2::int2[]) AS k(relid, attnum) \
                      JOIN pg_catalog.pg_class c ON c.oid = k.relid \
@@ -602,8 +603,10 @@ impl Session for PgSession {
     async fn set_transaction_mode(&mut self, mode: TransactionMode) -> DbResult<()> {
         if mode == TransactionMode::Auto && self.shared.in_tx() {
             let _g = self.acquire().await?;
-            self.batch("COMMIT").await?;
+            let r = self.batch("COMMIT").await;
+            // A failed COMMIT ends the transaction too.
             self.shared.set_in_tx(false);
+            r?;
         }
         self.mode = mode;
         Ok(())

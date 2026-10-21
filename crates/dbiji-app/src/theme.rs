@@ -113,17 +113,14 @@ pub fn apply_theme(ctx: &Context, choice: ThemeChoice, high_contrast: bool) {
     }
 }
 
-fn gray(v: u8) -> Color32 {
-    Color32::from_gray(v)
-}
-
 fn hex(rgb: u32) -> Color32 {
     Color32::from_rgb((rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8)
 }
 
 /// DBiji's palettes: near-black (light) / near-white (dark) text with a
 /// solid secondary colour instead of egui's translucent grey, calm neutral
-/// panels and a clear blue selection.
+/// panels and a clear blue selection. The dark one is a dim grey, not near
+/// black: less glare and softer contrast over long sessions.
 pub fn visuals(theme: Theme) -> Visuals {
     let dark = theme == Theme::Dark;
     let mut v = if dark { Visuals::dark() } else { Visuals::light() };
@@ -152,25 +149,25 @@ pub fn visuals(theme: Theme) -> Visuals {
     }
     let p = if dark {
         P {
-            text: hex(0xDFE1E5),
-            weak: hex(0x9DA2AB),
-            strong: hex(0xFFFFFF),
-            panel: hex(0x1E1F22),
-            window: hex(0x2B2D30),
-            field: hex(0x1A1B1E),
-            faint: hex(0x232428),
-            code: hex(0x2B2D30),
-            line: hex(0x393B40),
-            button: hex(0x2B2D30),
-            button_hover: hex(0x393B40),
-            button_active: hex(0x43454A),
-            border: hex(0x43454A),
-            border_hover: hex(0x5A5D63),
-            accent: hex(0x548AF7),
-            selection: hex(0x2E436E),
-            link: hex(0x6CA7FF),
-            warn: hex(0xE0A64B),
-            error: hex(0xF2766D),
+            text: hex(0xD6D8DC),
+            weak: hex(0xA0A4AC),
+            strong: hex(0xF3F4F6),
+            panel: hex(0x313338),
+            window: hex(0x383A40),
+            field: hex(0x2B2D31),
+            faint: hex(0x2F3136),
+            code: hex(0x383A40),
+            line: hex(0x45484E),
+            button: hex(0x3B3E44),
+            button_hover: hex(0x474A51),
+            button_active: hex(0x51545B),
+            border: hex(0x565A61),
+            border_hover: hex(0x6F737B),
+            accent: hex(0x5C8FF0),
+            selection: hex(0x3A5590),
+            link: hex(0x78ABFF),
+            warn: hex(0xE3AE5A),
+            error: hex(0xF07F76),
         }
     } else {
         P {
@@ -213,7 +210,7 @@ pub fn visuals(theme: Theme) -> Visuals {
     w.noninteractive.fg_stroke = Stroke::new(1.0, p.text);
     w.noninteractive.bg_stroke = Stroke::new(1.0, p.line);
     w.noninteractive.bg_fill = p.window;
-    w.noninteractive.weak_bg_fill = if dark { gray(0x26) } else { hex(0xEAEDF1) };
+    w.noninteractive.weak_bg_fill = if dark { hex(0x36383D) } else { hex(0xEAEDF1) };
     w.inactive.fg_stroke = Stroke::new(1.0, p.text);
     w.inactive.bg_fill = p.button;
     w.inactive.weak_bg_fill = p.button;

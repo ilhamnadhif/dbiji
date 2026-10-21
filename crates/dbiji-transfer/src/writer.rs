@@ -186,7 +186,11 @@ impl<'a> BatchWriter<'a> {
             let names: Vec<String> = self.target.columns.iter().map(|c| self.dialect.string_literal(&unquote_tsql(c))).collect();
             let when = format!("IF EXISTS (SELECT 1 FROM sys.identity_columns WHERE object_id = OBJECT_ID({table}) AND name IN ({}))", names.join(", "));
             let t = self.target.table_sql.clone();
-            self.exec(&format!("{when} SET IDENTITY_INSERT {t} ON"), &[]).await?;
+            if let Err(e) = self.exec(&format!("{when} SET IDENTITY_INSERT {t} ON"), &[]).await {
+                // The session is left as it was found.
+                self.abort().await;
+                return Err(e);
+            }
             self.identity_off = Some(format!("{when} SET IDENTITY_INSERT {t} OFF"));
         }
         Ok(())

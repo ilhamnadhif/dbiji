@@ -173,6 +173,21 @@ pub fn parse_connection_url(url: &str) -> DbResult<(ConnectionConfig, Option<Sec
     parse_network_url(kind, rest, scheme.as_deref().unwrap_or(""))
 }
 
+/// Where a `#fragment` starts: not a `#` inside `{…}` (JDBC `password={a#b}`) or
+/// before the `@` of the host (an unencoded `#` in a password).
+fn fragment_start(s: &str) -> usize {
+    let mut depth = 0usize;
+    for (i, c) in s.char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => depth = depth.saturating_sub(1),
+            '#' if depth == 0 && !s[i..].contains('@') => return i,
+            _ => {}
+        }
+    }
+    s.len()
+}
+
 fn parse_file_url(kind: DbKind, rest: &str) -> DbResult<(ConnectionConfig, Option<Secret>)> {
     let (path_part, query) = match rest.split_once('?') {
         Some((p, q)) => (p, Some(q)),
@@ -223,7 +238,7 @@ fn parse_network_url(
         DbError::config("The URL must have the form scheme://host[:port]/database")
     })?;
     // Fragment is ignored.
-    let rest = rest.split('#').next().unwrap_or("");
+    let rest = &rest[..fragment_start(rest)];
     // SQL Server style properties after ';'.
     let (main, semi_props) = match (kind, rest.split_once(';')) {
         (DbKind::SqlServer, Some((m, p))) => (m, Some(p)),
@@ -598,6 +613,15 @@ mod tests {
 
     fn parse(u: &str) -> (ConnectionConfig, Option<Secret>) {
         parse_connection_url(u).unwrap_or_else(|e| panic!("{u}: {e}"))
+    }
+
+    #[test]
+    fn hash_in_passwords_is_no_fragment() {
+        let (c, pw) = parse("postgres://bob:a#b@h/db#ignored");
+        assert_eq!(pw.unwrap().expose(), "a#b");
+        assert_eq!(c.host, "h");
+        assert_eq!(c.database.as_deref(), Some("db"));
+        assert_eq!(fragment_start("h;password={x#y}"), "h;password={x#y}".len());
     }
 
     #[test]

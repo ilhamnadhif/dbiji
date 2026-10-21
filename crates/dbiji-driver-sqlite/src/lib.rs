@@ -199,13 +199,14 @@ fn database_path(params: &ConnectParams) -> DbResult<String> {
         })?;
     let p = raw.trim();
     // `:memory:<key>`: one in-memory database shared by the sessions of one
-    // connection (SQLite shared cache); `:memory:` alone is private to its session.
+    // connection (memdb VFS: normal locking, unlike the shared cache whose table
+    // locks fail at once); `:memory:` alone is private to its session.
     if let Some(key) = p.strip_prefix(":memory:").filter(|k| !k.is_empty()) {
         let key: String = key
             .chars()
             .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
             .collect();
-        return Ok(format!("file:dbiji-{key}?mode=memory&cache=shared"));
+        return Ok(format!("file:/dbiji-{key}?vfs=memdb"));
     }
     Ok(if p == ":memory:" || p.starts_with("file:") {
         p.to_string()
@@ -309,7 +310,11 @@ fn open_config(params: &ConnectParams) -> DbResult<OpenConfig> {
 /// Path of the database file for the command line tool.
 fn tool_database(params: &ConnectParams) -> DbResult<String> {
     let path = database_path(params)?;
-    if path == ":memory:" || path.contains("mode=memory") || path.starts_with("file::memory:") {
+    if path == ":memory:"
+        || path.contains("mode=memory")
+        || path.contains("vfs=memdb")
+        || path.starts_with("file::memory:")
+    {
         return Err(DbError::unsupported(
             "An in-memory database cannot be handled by the sqlite3 tool; use the online backup instead",
         ));

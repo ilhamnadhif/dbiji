@@ -102,6 +102,8 @@ pub(crate) struct CsvParser<R: Read> {
     /// A blank line is a record with one empty field (one-column files: the
     /// CSV export writes a NULL as an empty line) instead of being skipped.
     pub(crate) keep_blank_lines: bool,
+    /// Blank lines read ahead (followed by data) still to be returned.
+    blank_pending: usize,
     /// Current line number (1-based).
     pub(crate) line: u64,
     pub(crate) unterminated_quotes: u64,
@@ -132,6 +134,7 @@ impl<R: Read> CsvParser<R> {
             comment: ascii_option(opts.comment_char, "comment character")?,
             trim: opts.trim,
             keep_blank_lines: false,
+            blank_pending: 0,
             line: 1,
             unterminated_quotes: 0,
         })
@@ -225,13 +228,28 @@ impl<R: Read> CsvParser<R> {
 
     /// Next record, or `None` at the end of the input. Blank lines and comment lines are skipped.
     pub(crate) fn read_record(&mut self) -> DbResult<Option<Vec<Field>>> {
+        let blank = || vec![Field { text: String::new(), quoted: false }];
+        if self.blank_pending > 0 {
+            self.blank_pending -= 1;
+            return Ok(Some(blank()));
+        }
         loop {
             match self.peek()? {
                 None => return Ok(None),
                 Some(b'\n' | b'\r') => {
                     self.eat_line_end()?;
                     if self.keep_blank_lines {
-                        return Ok(Some(vec![Field { text: String::new(), quoted: false }]));
+                        // Blank lines at the end of the file are no NULL values.
+                        let mut more = 0;
+                        while matches!(self.peek()?, Some(b'\n' | b'\r')) {
+                            self.eat_line_end()?;
+                            more += 1;
+                        }
+                        if self.peek()?.is_none() {
+                            return Ok(None);
+                        }
+                        self.blank_pending = more;
+                        return Ok(Some(blank()));
                     }
                     continue;
                 }
@@ -632,6 +650,10 @@ mod tests {
         let mut s = CsvSource::from_reader(std::io::Cursor::new(csv.as_bytes().to_vec()), CsvReadOptions::default()).unwrap();
         let rows = s.next_batch(10).await.unwrap();
         assert_eq!(rows, vec![vec![Value::text("a")], vec![Value::Null], vec![Value::text("b")]]);
+        // blank lines at the end are not rows
+        let csv = "note\na\n\n\nb\n\n\n";
+        let mut s = CsvSource::from_reader(std::io::Cursor::new(csv.as_bytes().to_vec()), CsvReadOptions::default()).unwrap();
+        assert_eq!(s.next_batch(10).await.unwrap(), vec![vec![Value::text("a")], vec![Value::Null], vec![Value::Null], vec![Value::text("b")]]);
         // several columns: blank lines are still skipped
         let csv = "a,b\n1,2\n\n3,4\n";
         let mut s = CsvSource::from_reader(std::io::Cursor::new(csv.as_bytes().to_vec()), CsvReadOptions::default()).unwrap();

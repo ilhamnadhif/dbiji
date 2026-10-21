@@ -32,13 +32,33 @@ fn ident_list(cols: &[String]) -> String {
     cols.iter().map(|c| quote_ident(c)).collect::<Vec<_>>().join(", ")
 }
 
-/// Quote a collation name. A plain name is one identifier, dots included
-/// (`en_US.utf8`); a schema qualified one comes quoted (`"public"."mycoll"`).
+/// Quote a collation name. A locale name is one identifier, dots included
+/// (`en_US.utf8`, `C.UTF-8`); a schema qualified one comes quoted (`"public"."mycoll"`)
+/// or typed as `myschema.mycoll`.
 fn collation_sql(c: &str) -> String {
     if c.contains('"') {
         return c.to_string();
     }
-    format!("\"{}\"", c)
+    let quote = |s: &str| format!("\"{}\"", s);
+    match c.split_once('.') {
+        Some((schema, name)) if !is_locale_name(schema, name) => format!("{}.{}", quote(schema), quote(name)),
+        _ => quote(c),
+    }
+}
+
+/// `en_US.utf8`, `de_DE.ISO-8859-1`, `C.UTF-8`, `POSIX.utf8`: a locale and an encoding.
+fn is_locale_name(prefix: &str, suffix: &str) -> bool {
+    let encoding = suffix.to_ascii_lowercase().replace(['-', '_'], "");
+    let encodings = ["utf8", "iso8859", "latin", "euc", "koi8", "cp125", "windows125", "gb", "big5", "sjis", "ascii", "ansi"];
+    let locale = prefix == "C"
+        || prefix == "POSIX"
+        || prefix.split_once('_').is_some_and(|(lang, country)| {
+            (2..=3).contains(&lang.len())
+                && lang.chars().all(|c| c.is_ascii_lowercase())
+                && !country.is_empty()
+                && country.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+        });
+    locale || encodings.iter().any(|e| encoding.starts_with(e))
 }
 
 /// `serial` type for an integer column with a `nextval` default.
@@ -1202,6 +1222,17 @@ fn map_clickhouse(raw: &str, kind: DataKind) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn collation_names() {
+        assert_eq!(collation_sql("en_US.utf8"), "\"en_US.utf8\"");
+        assert_eq!(collation_sql("C.UTF-8"), "\"C.UTF-8\"");
+        assert_eq!(collation_sql("de_DE.ISO-8859-1"), "\"de_DE.ISO-8859-1\"");
+        assert_eq!(collation_sql("myschema.mycoll"), "\"myschema\".\"mycoll\"");
+        assert_eq!(collation_sql("app.ci"), "\"app\".\"ci\"");
+        assert_eq!(collation_sql("\"public\".\"x\""), "\"public\".\"x\"");
+        assert_eq!(collation_sql("und-x-icu"), "\"und-x-icu\"");
+    }
     use std::collections::BTreeMap;
 
     fn sample_table() -> TableDef {

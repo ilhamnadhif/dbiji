@@ -146,15 +146,41 @@ fn is_builtin_type(t: &str) -> bool {
     let base = t.trim().to_ascii_lowercase();
     let base = base.strip_prefix("pg_catalog.").unwrap_or(&base);
     let base = base.trim_end_matches("[]").split('(').next().unwrap_or("").trim();
+    // Exact names: a user enum `region` or `price_range` is no built-in type.
+    let base = base.strip_suffix(" with time zone").or_else(|| base.strip_suffix(" without time zone")).unwrap_or(base).trim();
     is_plain_type(base)
-        || base.ends_with("range")
-        || base.ends_with("multirange")
-        || base.starts_with("time")
-        || base.starts_with("bit")
-        || base.starts_with("reg")
         || matches!(
             base,
-            "interval"
+            "int4range"
+                | "int8range"
+                | "numrange"
+                | "tsrange"
+                | "tstzrange"
+                | "daterange"
+                | "int4multirange"
+                | "int8multirange"
+                | "nummultirange"
+                | "tsmultirange"
+                | "tstzmultirange"
+                | "datemultirange"
+                | "time"
+                | "timetz"
+                | "timestamp"
+                | "timestamptz"
+                | "bit"
+                | "bit varying"
+                | "regclass"
+                | "regtype"
+                | "regproc"
+                | "regprocedure"
+                | "regoper"
+                | "regoperator"
+                | "regconfig"
+                | "regdictionary"
+                | "regnamespace"
+                | "regrole"
+                | "regcollation"
+                | "interval"
                 | "json"
                 | "jsonb"
                 | "uuid"
@@ -279,6 +305,29 @@ impl Dialect for PgDialect {
         let updates: Vec<String> = columns.iter().filter(|c| !key_columns.contains(c)).map(|c| format!("{c} = EXCLUDED.{c}")).collect();
         let action = if updates.is_empty() { "DO NOTHING".to_string() } else { format!("DO UPDATE SET {}", updates.join(", ")) };
         Some(format!("INSERT INTO {table} ({}) VALUES ({}) ON CONFLICT ({}) {action}", columns.join(", "), values.join(", "), key_columns.join(", ")))
+    }
+
+    // The new row comes back over the binary protocol: timestamptz in UTC, money
+    // without its symbol, tsvector / point / ltree / vector as bytes. As text they
+    // read like the rows of a query.
+    fn returning_column(&self, column: &str, type_name: &str) -> String {
+        let q = self.quote_ident(column);
+        match crate::types::kind_from_type_name(type_name) {
+            DataKind::DateTimeTz | DataKind::Decimal | DataKind::Other => format!("{q}::text AS {q}"),
+            _ => q,
+        }
+    }
+
+    fn returned_value(&self, type_name: &str, value: Value) -> Value {
+        let conv = match crate::types::kind_from_type_name(type_name) {
+            DataKind::DateTimeTz => crate::types::Conv::TimestampTz,
+            DataKind::Decimal if !type_name.eq_ignore_ascii_case("money") => crate::types::Conv::Numeric,
+            _ => return value,
+        };
+        match value.as_str() {
+            Some(s) => crate::decode::text_value(&conv, s),
+            None => value,
+        }
     }
 
     fn supports_returning(&self) -> bool {
@@ -493,6 +542,21 @@ mod tests {
     use chrono::NaiveDate;
 
     #[test]
+    fn returned_rows_read_like_query_rows() {
+        let d = PgDialect::new();
+        assert_eq!(d.returning_column("id", "int4"), "id");
+        assert_eq!(d.returning_column("at", "timestamptz"), "at::text AS at");
+        assert_eq!(d.returning_column("doc", "tsvector"), "doc::text AS doc");
+        match d.returned_value("timestamptz", Value::text("2026-10-21 05:12:31.9+07")) {
+            Value::DateTimeTz(t) => assert_eq!(t.offset().local_minus_utc(), 7 * 3600),
+            v => panic!("{v:?}"),
+        }
+        assert_eq!(d.returned_value("money", Value::text("$1,234.50")), Value::text("$1,234.50"));
+        assert_eq!(d.returned_value("numeric", Value::text("12.50")), Value::decimal("12.50"));
+        assert_eq!(d.returned_value("int4", Value::Int(3)), Value::Int(3));
+    }
+
+    #[test]
     fn quoting() {
         let d = PgDialect::new();
         assert_eq!(d.quote_ident("users"), "users");
@@ -518,6 +582,12 @@ mod tests {
         assert_eq!(d.literal(&Value::text("x"), Some("varchar(10)")), "'x'");
         // user types (enum, domain, extension): no cast, the column's type applies
         assert_eq!(d.literal(&Value::text("happy"), Some("Mood")), "'happy'");
+        for user in ["region", "price_range", "timezone_kind", "bitflag", "registration_status"] {
+            assert!(!is_builtin_type(user), "{user}");
+        }
+        for builtin in ["tstzrange", "timestamp(3) with time zone", "time without time zone", "regclass", "bit varying(8)", "int4[]"] {
+            assert!(is_builtin_type(builtin), "{builtin}");
+        }
         assert_eq!(d.literal(&Value::text("SRID=4326;POINT(1 2)"), Some("geometry")), "'SRID=4326;POINT(1 2)'");
         assert_eq!(d.literal(&Value::text("10.0.0.1"), Some("inet")), "'10.0.0.1'::inet");
         assert_eq!(d.literal(&Value::text("{1,2}"), Some("int4[]")), "'{1,2}'::int4[]");

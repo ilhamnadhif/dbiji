@@ -181,7 +181,7 @@ impl RunLog {
     /// are recorded as failed. Returns the number of runs closed.
     pub fn mark_interrupted(&self, current_pid: u32) -> DbResult<usize> {
         // A run of a process that still lives (a `--run-task` started by the OS scheduler) is not interrupted.
-        let stale: Vec<TaskRun> = self.runs()?.into_iter().filter(|r| r.status == RunStatus::Running && r.pid != current_pid && !process_alive(r.pid)).collect();
+        let stale: Vec<TaskRun> = self.runs()?.into_iter().filter(|r| r.status == RunStatus::Running && r.pid != current_pid && !run_process_alive(r.pid, r.started)).collect();
         for mut r in stale.iter().cloned() {
             let now = Utc::now();
             r.status = RunStatus::Failed;
@@ -201,6 +201,34 @@ impl RunLog {
             std::fs::remove_file(&p).map_err(|e| io_err("Cannot delete", &p, e))?;
         }
         Ok(())
+    }
+}
+
+/// The process of a run started at `started` still runs: `pid` lives and was not
+/// started after the run (after a reboot the number may belong to another process).
+fn run_process_alive(pid: u32, started: chrono::DateTime<Utc>) -> bool {
+    if !process_alive(pid) {
+        return false;
+    }
+    match process_start(pid) {
+        Some(t) => t <= started + chrono::Duration::minutes(2),
+        None => true,
+    }
+}
+
+/// When process `pid` started (`ps -o lstart`, local time), if known.
+fn process_start(pid: u32) -> Option<chrono::DateTime<Utc>> {
+    #[cfg(unix)]
+    {
+        let out = std::process::Command::new("ps").args(["-o", "lstart=", "-p", &pid.to_string()]).env("LC_ALL", "C").output().ok()?;
+        let text = String::from_utf8_lossy(&out.stdout).split_whitespace().collect::<Vec<_>>().join(" ");
+        let naive = chrono::NaiveDateTime::parse_from_str(&text, "%a %b %d %H:%M:%S %Y").ok()?;
+        naive.and_local_timezone(chrono::Local).earliest().map(|t| t.with_timezone(&Utc))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        None
     }
 }
 
@@ -231,6 +259,15 @@ mod tests {
 
     fn task(name: &str) -> TaskDef {
         TaskDef::new(name, TaskKind::Shell { command: "true".into() })
+    }
+
+    #[test]
+    fn reused_process_numbers_are_not_alive() {
+        let me = std::process::id();
+        let started = process_start(me).expect("ps reports this process");
+        assert!(run_process_alive(me, started));
+        // A run older than this process: its number now belongs to another one.
+        assert!(!run_process_alive(me, started - Duration::hours(1)));
     }
 
     #[test]

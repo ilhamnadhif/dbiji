@@ -10,6 +10,34 @@ notes of a new version once after it was updated (Help → What's new).
 - A data tab or SQL editor result whose session was lost saves and loads through a new session instead of failing with "connection closed" until the tab is opened again; a session of another database is opened again too.
 - New rows show the values the database gave them right after **Save**: a generated id (serial, identity, auto increment) and column defaults (they stayed NULL until a refresh). PostgreSQL, SQLite, DuckDB and MariaDB return the row (`RETURNING`); MySQL and SQL Server read it back by its key.
 - Security: certificate checks of TLS connections no longer accept distrusted intermediate certificates (rustls-webpki 0.103.16, webpki-roots 1.0.10).
+- Uncommitted transactions are no longer lost without asking: Disconnect, Reconnect and Disconnect all ask first (or open the pending transactions), closing a SQL editor whose own session has uncommitted changes asks too, and Drop… refuses while a session of the connection has uncommitted writes (it commits its DDL in manual commit mode).
+- A SQL editor whose session was lost tells when uncommitted changes were rolled back, gets its schema and transaction mode back on the new session, and shows "reconnect" instead of retrying for ever when the connection itself was lost. A failed COMMIT when switching back to auto-commit is reported (PostgreSQL also stopped showing the transaction as open).
+- Closing a tab with unsaved changes asks first (data tabs, object editors); reloading, filtering, sorting or navigating a result with pending changes asks before discarding them. Saving twice, editing or pasting while a save runs is no longer possible.
+- Saving grid changes: an UPDATE / DELETE that matches no row or several rows fails instead of reporting success; in auto-commit a failed save is rolled back whole. A self-join result (`users a JOIN users b`) is read-only instead of editing the wrong row; a result whose table definition cannot be read says so instead of "no unique key".
+- Scrolling a result after saving no longer skips rows; a result whose columns changed (ALTER, another statement) is editable again with its new columns; cancelled fetches leave the operations list; a server-side filter or sort of a query ending in a `-- comment` works.
+- An open cursor not read for 5 minutes is closed (it held a snapshot and table locks: an ALTER of the table waited).
+- Database nodes: New SQL editor, New schema, Backup / Restore and Query builder use that database instead of the default one; Refresh of a database reloads only it; the navigator shows tables created or dropped by a script in any schema; revealing an object picks the one of the right database.
+- Connections that failed to connect stay red; two connection dialogs no longer share one window; applying a URL keeps SSH, colour, filters and the other settings; the update installer starts only once DBiji really quits.
+- MySQL: dropping a partition runs `ALTER TABLE … DROP PARTITION` (it ran `DROP TABLE` with the partition's name) and its data opens as `t PARTITION (p)`; moving the primary key to a new column while dropping the old one works; imports split very wide VARCHAR tables (row size limit) by turning the longest columns into TEXT.
+- SQL Server: an ALTER that would silently lose another table's foreign key (key removed or retyped) is refused before anything runs; queries with `OPTION (…)` / `FOR XML` are no longer wrapped into invalid SQL.
+- ClickHouse: extending the sorting key adds its new columns in the same ALTER (ClickHouse requires it), and an unsupported key change fails before the other changes are applied.
+- SQLite: in-memory databases shared by the sessions of a connection use the memdb VFS (no more "table is locked" between an editor and a data tab).
+- SQL: `MERGE JOIN` hints and unrelated `*read_only*` settings no longer count as writes on read-only connections; turning a read-only setting on is no write; MySQL routines and triggers whose body is a single `IF … END IF` split correctly.
+- Imports: JSON with metadata before the array (`{"total": 2, "items": [...]}`), blank lines at the end of one-column CSV files, and a failing SQL Server identity insert that left the session in manual commit.
+- Shell commands before connecting: a helper left running in the background (`ssh -fN`, VPN) is no longer killed by a closed output pipe. Connection URLs with `#` in a password or in `{…}` values are read whole.
+- Diagnostics replace connection names, hosts and users as whole words only.
+- F5 with the navigator in use refreshes the navigator, not the active tab; ⌘W in a pop-up (Export, Backup …) closes the pop-up instead of the tab behind it, and no shortcut reaches the tabs while a question is open; Ctrl+Tab moves on in split layouts.
+- An object editor shows the table as it is after the designer applied changes or a Refresh. ER "Edit table" opens the table designer.
+- Rolling back a transaction reloads the results whose edits were saved inside it (they showed the rolled-back values). Typed text in the Value panel no longer goes to another row after a refresh, and Set NULL shows the NULL.
+- "Save password" on an "Ask every time" connection stops asking. "Hide in navigator" no longer revives the old patterns of a filter that was switched off.
+- PostgreSQL: a saved new row shows timestamptz in the session time zone, money with its symbol and tsvector / point / vector as text (not UTC or bytes); generated (`STORED`) columns are filled by the database when duplicating a row; casts no longer treat user types named like `region` or `price_range` as built-in; a collation typed as `myschema.mycoll` works.
+- MySQL before 8.0.19 and MariaDB: times with a time zone are converted by the server with its daylight saving rules (they could be one hour off), in one query per statement.
+- SQL Server: queries with `OPTION (MAXRECURSION n)` can be counted and paged.
+- Migrations to DuckDB advance the auto-increment sequences past the copied ids. Imports detect a windows-1252 file whose first accent is cut by a read. A task run left "Running" before a reboot is closed even when its process number was reused.
+
+### Changed
+- The dark theme is a softer grey instead of near black, easier on the eyes over long sessions (panels, grid and editor backgrounds, borders and text adjusted together).
+- The navigator rows are more compact: more of the tree fits in the sidebar.
 
 ## 0.3.12 — 2026-10-21
 

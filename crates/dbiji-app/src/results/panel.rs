@@ -39,6 +39,13 @@ struct SpatialView {
     column: usize,
 }
 
+/// Something that reloads the rows, waiting for "discard the pending changes?".
+enum Deferred {
+    Refresh,
+    Query { where_clause: Option<String>, order_by: Option<String> },
+    Navigate(Location),
+}
+
 /// Previous location of a table data view (FK navigation history).
 #[derive(Clone)]
 struct Location {
@@ -64,6 +71,12 @@ pub struct ResultPanel {
     save_preview: Option<String>,
     /// Rows saved, committed, and the values the database gave the new rows.
     save_job: Option<Job<DbResult<SaveOutcome>>>,
+    /// `src.columns_version` the model was built with.
+    columns_seen: u64,
+    /// Saved inside an open transaction: the session's rollback count then.
+    saved_in_tx: Option<u64>,
+    /// A reload asked while edits are pending (it would discard them).
+    confirm_discard: Option<Deferred>,
     refs_job: Option<(usize, Vec<Value>, Job<DbResult<(Vec<ColumnMeta>, Vec<Row>)>>)>,
     virtual_key_dialog: Option<(ObjectRef, Vec<bool>)>,
     mode: Mode,
@@ -167,6 +180,9 @@ impl ResultPanel {
             relations: Vec::new(),
             save_preview: None,
             save_job: None,
+            columns_seen: 0,
+            saved_in_tx: None,
+            confirm_discard: None,
             refs_job: None,
             virtual_key_dialog: None,
             mode: Mode::Grid,
@@ -187,9 +203,14 @@ impl ResultPanel {
         self.model.has_changes()
     }
 
-    /// Edits are being saved.
+    /// Id of the connection the result belongs to.
+    pub fn conn(&self) -> &str {
+        &self.conn
+    }
+
+    /// Edits are being saved (or their preview waits for a confirmation).
     pub fn is_saving(&self) -> bool {
-        self.save_job.is_some()
+        self.save_job.is_some() || self.save_preview.is_some()
     }
 
     pub fn sql(&self) -> &str {
@@ -206,6 +227,12 @@ impl ResultPanel {
 
     /// Keep the grid model in sync with the fetch job.
     pub(crate) fn poll(&mut self, cx: &mut AppContext) {
+        if let Some(op) = self.src.take_cancelled_op() {
+            cx.ops.finish(op, crate::ops::OpState::Cancelled);
+            if self.fetch_op == Some(op) {
+                self.fetch_op = None;
+            }
+        }
         if let Some((op, res)) = self.src.poll() {
             let state = match res {
                 Ok(n) => crate::ops::OpState::Succeeded(trf("{} rows", &[&n])),
@@ -215,6 +242,16 @@ impl ResultPanel {
             if self.fetch_op == Some(op) {
                 self.fetch_op = None;
             }
+        }
+        // A new store (refresh, requery), or other columns (foreign key navigation, ALTER):
+        // the model follows; other columns need their editability resolved again.
+        if self.columns_seen != self.src.columns_version {
+            self.columns_seen = self.src.columns_version;
+            self.editability = None;
+            self.foreign_keys.clear();
+            self.model.reset(self.src.columns.clone(), self.src.store.clone());
+            self.chart = None;
+            self.spatial = None;
         }
         if !Arc::ptr_eq(self.model.store(), &self.src.store) {
             self.model.reset(self.src.columns.clone(), self.src.store.clone());
@@ -246,7 +283,9 @@ impl ResultPanel {
             self.save_job = None;
             match r {
                 Ok((n, committed, inserted)) => {
+                    self.src.rows_deleted(self.model.pending_counts().deleted);
                     self.model.apply_saved_with(&inserted);
+                    self.saved_in_tx = (!committed).then(|| self.src.session.rollbacks());
                     if committed {
                         cx.toasts.success(trf("Saved: {} row(s) changed", &[&n]));
                     } else {
@@ -254,6 +293,23 @@ impl ResultPanel {
                     }
                 }
                 Err(e) => cx.toasts.error(tr("Cannot save the changes"), Some(e.full_text())),
+            }
+        }
+        // Saved inside a transaction that was rolled back since: the rows shown are no
+        // longer in the database. A commit ends the watch.
+        if let Some(r) = self.saved_in_tx
+            && self.save_job.is_none()
+        {
+            let session = self.src.session.clone();
+            if session.rollbacks() != r {
+                self.saved_in_tx = None;
+                if self.has_changes() || !self.src.rerun_safe {
+                    self.status = Some((tr("The transaction was rolled back: refresh to see the current rows.").to_string(), true));
+                } else {
+                    self.refresh(cx);
+                }
+            } else if !session.tx_state().in_transaction {
+                self.saved_in_tx = None;
             }
         }
         let mut done = Vec::new();
@@ -283,7 +339,8 @@ impl ResultPanel {
 
     /// Work out which table the result can be edited in, its keys and foreign keys.
     fn resolve_editability(&mut self, cx: &mut AppContext) {
-        if self.editability.is_some() {
+        // Not before the columns of a new query arrived (they decide the table and key).
+        if self.editability.is_some() || (self.src.is_fetching() && self.src.row_count() == 0) {
             return;
         }
         let read_only = cx.conns.config(&self.conn).is_some_and(|c| c.read_only);
@@ -308,11 +365,13 @@ impl ResultPanel {
         let Some(live) = cx.conns.live_mut(&self.conn) else { return };
         let mut defs: HashMap<(Option<String>, String), Arc<TableDef>> = HashMap::new();
         let mut waiting = false;
+        let mut lookup_error: Option<String> = None;
         for t in tables.iter().take(4) {
             // Keys are read in the table's own database: another one does not see them.
             let Some(session) = live.ensure_session(backend, t.database.as_deref()) else {
-                let failed = t.database.as_ref().is_some_and(|d| matches!(live.db_sessions.get(d), Some(crate::backend::Loadable::Failed(_))));
-                waiting |= !failed;
+                let failed = live.session_error(t.database.as_deref());
+                waiting |= failed.is_none();
+                lookup_error = lookup_error.or(failed);
                 continue;
             };
             live.meta.request_table_def(backend, &session, t);
@@ -320,7 +379,7 @@ impl ResultPanel {
                 Some(crate::backend::Loadable::Loaded(d)) => {
                     defs.insert((t.schema.clone(), t.name.to_lowercase()), d.clone());
                 }
-                Some(crate::backend::Loadable::Failed(_)) => {}
+                Some(crate::backend::Loadable::Failed(e)) => lookup_error = lookup_error.or(Some(e.full_text())),
                 _ => waiting = true,
             }
         }
@@ -339,7 +398,13 @@ impl ResultPanel {
             }
             find(obj)?.row_key_columns()
         };
-        let e = determine_editability(self.model.columns(), key_lookup, read_only);
+        let mut e = determine_editability(self.model.columns(), key_lookup, read_only);
+        // "No unique key" because the table could not be read: say so (no virtual key needed).
+        if e == Err(ReadOnlyReason::NoKey)
+            && let Some(err) = lookup_error
+        {
+            e = Err(ReadOnlyReason::Custom(trf("Read-only: the table definition could not be read: {}", &[&err])));
+        }
         // Foreign keys of the (first) source table, mapped to result columns.
         let col_index =
             |name: &str| -> Option<usize> { self.model.columns().iter().position(|c| c.source.as_ref().map(|s| s.column.as_str()).unwrap_or(&c.name).eq_ignore_ascii_case(name)) };
@@ -397,8 +462,9 @@ impl ResultPanel {
                 let mut cols = vec![d.quote_ident(&key_col)];
                 cols.extend(dict.description_columns.iter().map(|c| d.quote_ident(c)));
                 let sql = d.limit_query(&format!("SELECT {} FROM {}", cols.join(", "), d.qualified_ref(&link.ref_table)), 20_000, 0);
-                // The result's own session: it is connected to the table's database.
-                let s = self.src.session.clone();
+                // The shared session of the table's database (the result's own session would
+                // lose its open cursor); not open yet: no dictionary this time.
+                let Some(s) = live.ensure_session(backend, link.ref_table.database.as_deref()) else { continue };
                 let col = link.columns[0];
                 self.dict_jobs.push((
                     col,
@@ -441,7 +507,8 @@ impl ResultPanel {
                 if self.where_clause.is_none() && self.order_by.is_none() {
                     return self.base_sql.clone();
                 }
-                let mut sql = format!("SELECT * FROM ({base}) dbiji_q");
+                // On its own line: a query ending in a `-- comment` would comment out the `)`.
+                let mut sql = format!("SELECT * FROM (\n{base}\n) dbiji_q");
                 if let Some(w) = &self.where_clause {
                     sql.push_str(" WHERE ");
                     sql.push_str(w);
@@ -512,11 +579,12 @@ impl ResultPanel {
                     self.src.count_total(backend, d);
                 }
             }
-            GridAction::Refresh => {
-                self.src.refresh(backend, Self::fetch_size(cx));
-                self.executed = Instant::now();
-            }
+            GridAction::Refresh => self.run_or_confirm(Deferred::Refresh, cx),
             GridAction::SaveChanges => {
+                // One save at a time: a second one would run the same statements again.
+                if self.save_job.is_some() {
+                    return;
+                }
                 let Some(d) = self.dialect(cx) else { return };
                 let confirm = cx.conns.type_of(&self.conn).confirm_data_change;
                 if confirm {
@@ -534,21 +602,13 @@ impl ResultPanel {
             | GridAction::SaveDefaultFilter
             | GridAction::ClearFilterText => {}
             GridAction::OpenValuePanel { .. } | GridAction::AutoRefreshChanged(_) => {}
-            GridAction::ServerQueryChanged { where_clause, order_by } => {
-                if let Some(w) = where_clause {
-                    self.where_clause = Some(w).filter(|w| !w.trim().is_empty());
-                }
-                if let Some(o) = order_by {
-                    self.order_by = Some(o).filter(|o| !o.trim().is_empty());
-                }
-                self.requery(cx);
-            }
+            GridAction::ServerQueryChanged { where_clause, order_by } => self.run_or_confirm(Deferred::Query { where_clause, order_by }, cx),
             GridAction::NavigateForeignKey { link, values } => {
                 let Some(d) = self.dialect(cx) else { return };
                 let w = Self::where_for(d.as_ref(), &link.ref_columns, &values);
                 let target = Location { table: link.ref_table.clone(), where_clause: Some(w) };
                 if self.table.is_some() {
-                    self.navigate(cx, target, true);
+                    self.run_or_confirm(Deferred::Navigate(target), cx);
                 } else {
                     cx.push(AppCommand::OpenTab(Box::new(crate::results::data_tab::TableDataTab::new(self.conn.clone(), target.table, target.where_clause))));
                 }
@@ -557,10 +617,15 @@ impl ResultPanel {
                 let (Some(rel), Some(d)) = (self.relations.get(relation).cloned(), self.dialect(cx)) else { return };
                 let w = Self::where_for(d.as_ref(), &rel.columns, &values);
                 let sql = d.select_table(&rel.table, None, Some(&w), None, Some(200));
-                // The result's own session: it is connected to the table's database.
-                let s = self.src.session.clone();
+                // The shared session of that database (the result's own one would lose its cursor).
+                let backend = cx.backend;
+                let Some(s) = cx.conns.live_mut(&self.conn).and_then(|l| l.ensure_session(backend, rel.table.database.as_deref())) else {
+                    self.status = Some((tr("Opening a session…").to_string(), false));
+                    return;
+                };
                 self.refs_job = Some((relation, values, backend.spawn(async move { s.query_all(&sql, &[]).await })));
             }
+            GridAction::PasteRequested if self.save_job.is_some() => {}
             GridAction::PasteRequested => match read_clipboard() {
                 Some(text) => {
                     if let Err(e) = dbiji_grid::DataGrid::paste_text(&mut self.model, &mut self.view.grid, &text) {
@@ -641,7 +706,9 @@ impl ResultPanel {
         let returning = d.supports_returning() && !cs.columns.is_empty();
         let mssql = d.kind() == dbiji_core::DbKind::SqlServer;
         let mut reads: Vec<ReadBack> = Vec::new();
-        for ins in &cs.inserts {
+        // Without RETURNING each new row costs a query: only so many are read back.
+        const MAX_READ_BACK: usize = 500;
+        for ins in cs.inserts.iter().take(if returning { usize::MAX } else { MAX_READ_BACK }) {
             let Some(stmt) = cs.insert_statement(ins.id) else { continue };
             if mssql && !returning {
                 stmts[stmt].0.push_str("; SELECT CAST(SCOPE_IDENTITY() AS BIGINT)");
@@ -654,16 +721,23 @@ impl ResultPanel {
                     let given = ins.values.iter().find(|v| v.column == k).map(|v| v.value.value_or_null().clone());
                     Some((name.clone(), type_name.clone(), given))
                 })
-                .collect();
+                .collect::<Vec<_>>();
+            // A key column left out must be the generated one (the id of LAST_INSERT_ID / SCOPE_IDENTITY).
+            let generated_key =
+                cs.key_columns.iter().filter(|&&k| !ins.values.iter().any(|v| v.column == k)).all(|&k| self.model.column_meta(k).and_then(|m| m.auto_increment) != Some(false));
+            if !returning && !generated_key {
+                continue;
+            }
             reads.push(ReadBack { id: ins.id, stmt, key });
         }
         let columns = cs.columns.clone();
         let table = cs.table.clone();
         let s = self.src.session.clone();
+        let expect_one: Vec<bool> = (0..stmts.len()).map(|i| i < cs.deletes.len() + cs.updates.len()).collect();
         self.save_job = Some(cx.backend.spawn(async move {
-            let applied = s.apply_changes_reading(&stmts).await?;
+            let applied = s.apply_changes_reading(&stmts, &expect_one).await?;
             let mut inserted: HashMap<u64, Vec<(usize, Value)>> = HashMap::new();
-            let as_values = |row: &Row| columns.iter().zip(row).map(|((c, _, _), v)| (*c, v.clone())).collect::<Vec<_>>();
+            let as_values = |row: &Row| columns.iter().zip(row).map(|((c, _, t), v)| (*c, d.returned_value(t, v.clone()))).collect::<Vec<_>>();
             for rb in &reads {
                 let result = applied.results.get(rb.stmt);
                 if returning {
@@ -683,6 +757,72 @@ impl ResultPanel {
             }
             Ok((applied.rows, applied.committed, inserted))
         }));
+    }
+
+    /// Reload the rows (Refresh), asking first when edits are pending.
+    pub fn refresh(&mut self, cx: &mut AppContext) {
+        self.run_or_confirm(Deferred::Refresh, cx);
+    }
+
+    /// Reloading replaces the rows and drops the pending edits: ask first.
+    fn run_or_confirm(&mut self, d: Deferred, cx: &mut AppContext) {
+        if self.model.has_changes() {
+            self.confirm_discard = Some(d);
+        } else {
+            self.run_deferred(d, cx);
+        }
+    }
+
+    fn run_deferred(&mut self, d: Deferred, cx: &mut AppContext) {
+        match d {
+            Deferred::Refresh => {
+                self.src.refresh(cx.backend, Self::fetch_size(cx));
+                self.executed = Instant::now();
+            }
+            Deferred::Query { where_clause, order_by } => {
+                if let Some(w) = where_clause {
+                    self.where_clause = Some(w).filter(|w| !w.trim().is_empty());
+                }
+                if let Some(o) = order_by {
+                    self.order_by = Some(o).filter(|o| !o.trim().is_empty());
+                }
+                self.requery(cx);
+            }
+            Deferred::Navigate(to) => self.navigate(cx, to, true),
+        }
+    }
+
+    fn confirm_discard_ui(&mut self, ui: &Ui, cx: &mut AppContext) {
+        if self.confirm_discard.is_none() {
+            return;
+        }
+        let mut decided: Option<bool> = None;
+        let n = self.model.change_set().map(|c| c.len()).unwrap_or(0);
+        let modal = egui::Modal::new(egui::Id::new(("confirm_discard", &self.conn, &self.title))).show(ui.ctx(), |ui| {
+            ui.heading(tr("Unsaved changes"));
+            ui.label(trf("Reloading the rows discards the {} pending change(s). Save them first to keep them.", &[&n]));
+            ui.horizontal(|ui| {
+                if ui.button(RichText::new(tr("Discard and reload")).color(crate::theme::error_color(ui.visuals().dark_mode))).clicked() {
+                    decided = Some(true);
+                }
+                if ui.button(tr("Cancel")).clicked() {
+                    decided = Some(false);
+                }
+            });
+        });
+        if decided.is_none() && modal.should_close() {
+            decided = Some(false);
+        }
+        match decided {
+            Some(true) => {
+                self.model.discard_changes();
+                if let Some(d) = self.confirm_discard.take() {
+                    self.run_deferred(d, cx);
+                }
+            }
+            Some(false) => self.confirm_discard = None,
+            None => {}
+        }
     }
 
     /// Save pending edits (shortcut ⌘S in the grid).
@@ -885,6 +1025,7 @@ impl ResultPanel {
     }
 
     pub fn ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
+        self.confirm_discard_ui(ui, cx);
         if !self.settings_applied {
             self.settings_applied = true;
             let r = &cx.settings.results;
@@ -900,7 +1041,9 @@ impl ResultPanel {
         self.resolve_editability(cx);
         if self.table.is_some() && (!self.back.is_empty() || !self.forward.is_empty()) {
             ui.horizontal(|ui| {
-                if ui.add_enabled(!self.back.is_empty(), egui::Button::new(dbiji_icons::ic(icon::ARROW_LEFT))).on_hover_text(tr("Back")).clicked()
+                // Not with pending edits: moving to another table would discard them.
+                let free = !self.model.has_changes();
+                if ui.add_enabled(free && !self.back.is_empty(), egui::Button::new(dbiji_icons::ic(icon::ARROW_LEFT))).on_hover_text(tr("Back")).clicked()
                     && let Some(loc) = self.back.pop()
                 {
                     if let Some(t) = &self.table {
@@ -908,7 +1051,7 @@ impl ResultPanel {
                     }
                     self.navigate(cx, loc, false);
                 }
-                if ui.add_enabled(!self.forward.is_empty(), egui::Button::new(dbiji_icons::ic(icon::ARROW_RIGHT))).on_hover_text(tr("Forward")).clicked()
+                if ui.add_enabled(free && !self.forward.is_empty(), egui::Button::new(dbiji_icons::ic(icon::ARROW_RIGHT))).on_hover_text(tr("Forward")).clicked()
                     && let Some(loc) = self.forward.pop()
                 {
                     if let Some(t) = &self.table {
@@ -935,7 +1078,8 @@ impl ResultPanel {
                     fetch_more_threshold: Self::fetch_size(cx),
                     sql_table_name: self.table.as_ref().map(|t| t.name.clone()),
                     dialect,
-                    allow_editing: !cx.conns.config(&self.conn).is_some_and(|c| c.read_only),
+                    // Not while a save runs: edits made then would be marked saved with it.
+                    allow_editing: !cx.conns.config(&self.conn).is_some_and(|c| c.read_only) && self.save_job.is_none(),
                     record_hide_empty: cx.settings.results.record_hide_empty,
                     ..Default::default()
                 };

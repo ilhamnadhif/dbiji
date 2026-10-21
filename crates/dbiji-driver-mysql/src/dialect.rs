@@ -302,13 +302,16 @@ impl Dialect for MySqlDialect {
             _ => {}
         }
         match value {
-            // With its offset where MySQL converts it (8.0.19+), else as UTC.
+            // With its offset where MySQL converts it (8.0.19+), else converted from UTC
+            // into the session's time zone by the server (as parameters are).
             Value::DateTimeTz(dt) if self.profile.is_mysql() && self.profile.at_least(8, 0, 19) => {
                 self.string_literal(&dt.format("%Y-%m-%d %H:%M:%S%.6f%:z").to_string())
             }
             Value::DateTimeTz(dt) => {
-                let v = Value::DateTime(dt.naive_utc());
-                self.string_literal(&v.to_text())
+                let utc = self.string_literal(&Value::DateTime(dt.naive_utc()).to_text());
+                format!(
+                    "COALESCE(CONVERT_TZ({utc}, '+00:00', @@session.time_zone), TIMESTAMPADD(SECOND, TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW()), {utc}))"
+                )
             }
             Value::Array(_) => self.string_literal(&value.to_json().to_string()),
             Value::Json(s) => self.string_literal(s),
@@ -561,7 +564,7 @@ mod tests {
         let dt = chrono::DateTime::parse_from_rfc3339("2024-01-02T10:00:00+07:00").unwrap();
         assert_eq!(
             d.literal(&Value::DateTimeTz(dt), None),
-            "'2024-01-02 03:00:00'"
+            "COALESCE(CONVERT_TZ('2024-01-02 03:00:00', '+00:00', @@session.time_zone), TIMESTAMPADD(SECOND, TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW()), '2024-01-02 03:00:00'))"
         );
         assert_eq!(d.placeholder(3), "?");
         let mut p = ServerProfile::new(Flavor::MySql, (8, 0, 36));

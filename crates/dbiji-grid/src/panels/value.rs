@@ -40,6 +40,9 @@ pub struct ValuePanelState {
     /// Wrap long lines.
     pub wrap: bool,
     edit_key: Option<CellKey>,
+    /// The row store the text was read from: after a refresh a row key (a
+    /// store index) names another record, so typed text is not kept.
+    edit_store: usize,
     edit_text: String,
     edit_dirty: bool,
     error: Option<String>,
@@ -179,9 +182,11 @@ impl<'a> ValuePanel<'a> {
         match mode {
             ValueMode::Text | ValueMode::Auto => {
                 // New rows or a dictionary change the generation: typed text of the same cell stays.
-                let same_cell = state.edit_key.as_ref().map(|k| (&k.0, k.1)) == key.as_ref().map(|k| (&k.0, k.1));
-                if state.edit_key != key && !(same_cell && state.edit_dirty) {
+                let store = std::sync::Arc::as_ptr(model.store()) as usize;
+                let same_cell = state.edit_store == store && state.edit_key.as_ref().map(|k| (&k.0, k.1)) == key.as_ref().map(|k| (&k.0, k.1));
+                if state.edit_key != key && !(same_cell && state.edit_dirty) || state.edit_store != store {
                     state.edit_key = key;
+                    state.edit_store = store;
                     state.edit_text = text_for(&value, kind);
                     state.edit_dirty = false;
                     state.error = None;
@@ -217,10 +222,15 @@ impl<'a> ValuePanel<'a> {
                             state.edit_text = text_for(&value, kind);
                             state.edit_dirty = false;
                         }
-                        if ui.button(tr("Set NULL")).clicked()
-                            && let Err(e) = model.set_null(row, col)
-                        {
-                            state.error = Some(e);
+                        if ui.button(tr("Set NULL")).clicked() {
+                            match model.set_null(row, col) {
+                                // The text shows the cell again (typed text is gone).
+                                Ok(()) => {
+                                    state.edit_dirty = false;
+                                    state.edit_key = None;
+                                }
+                                Err(e) => state.error = Some(e),
+                            }
                         }
                     } else if let Some(r) = model.read_only_reason() {
                         ui.weak(r.short_label());

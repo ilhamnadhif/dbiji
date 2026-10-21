@@ -442,7 +442,8 @@ impl Splitter<'_> {
         (0..i).rev().find(|&j| !self.tokens[j].is_trivia())
     }
 
-    /// Token `i` starts a statement of a routine body (after `;`, BEGIN, THEN, ELSE, DO ...).
+    /// Token `i` starts a statement of a routine body (after `;`, BEGIN, THEN, ELSE, DO ...),
+    /// or the body itself (`FOR EACH ROW IF …`, `… DETERMINISTIC IF …`, `READS SQL DATA IF …`).
     fn statement_position(&self, i: usize) -> bool {
         match self.prev_sig(i) {
             None => true,
@@ -450,9 +451,22 @@ impl Splitter<'_> {
                 matches!(
                     self.tokens[j].kind,
                     TokenKind::Semicolon | TokenKind::Delimiter
-                ) || ["BEGIN", "THEN", "ELSE", "DO", "LOOP", "REPEAT"]
-                    .iter()
-                    .any(|w| self.word(j, w))
+                ) || [
+                    "BEGIN",
+                    "THEN",
+                    "ELSE",
+                    "DO",
+                    "LOOP",
+                    "REPEAT",
+                    "ROW",
+                    "DETERMINISTIC",
+                    "SQL",
+                    "DATA",
+                    "DEFINER",
+                    "INVOKER",
+                ]
+                .iter()
+                .any(|w| self.word(j, w))
             }
         }
     }
@@ -788,7 +802,9 @@ impl Splitter<'_> {
         } else if self.word(i, "IF") {
             // `IF (a > 0) THEN`, `IF EXISTS (…) THEN`, `IF NOT done THEN` open a block;
             // `IF(a, b, c)` in an expression and `DROP … IF EXISTS` do not.
-            self.statement_position(i) && self.lookahead(i, "THEN")
+            // A bare condition (`IF done THEN`) opens one anywhere, as before.
+            (self.statement_position(i) || (!next_paren && !next_is("EXISTS") && !next_is("NOT")))
+                && self.lookahead(i, "THEN")
         } else if self.word(i, "WHILE") || self.word(i, "FOR") {
             self.lookahead(i, "DO")
         } else if self.word(i, "REPEAT") {
@@ -919,6 +935,12 @@ mod tests {
         assert_eq!(t.len(), 2, "{t:#?}");
         assert!(t[0].ends_with("SELECT 4; END"), "{}", t[0]);
         assert_eq!(t[1], "SELECT 5");
+        // A body that is one IF, without BEGIN.
+        let src = "CREATE TRIGGER t3 BEFORE INSERT ON t FOR EACH ROW IF (NEW.a > 0) THEN SET NEW.b = 1; END IF;\nCREATE FUNCTION f(x INT) RETURNS INT DETERMINISTIC IF x > 0 THEN RETURN 1; END IF;\nSELECT 6;";
+        let t = texts(src, &mysql());
+        assert_eq!(t.len(), 3, "{t:#?}");
+        assert!(t[0].ends_with("END IF"), "{}", t[0]);
+        assert_eq!(t[2], "SELECT 6");
     }
 
     #[test]

@@ -32,10 +32,11 @@ pub fn collect(dock: &DockState<Tab>, conns: &ConnectionManager) -> Vec<PendingT
         if s.is_closed() || out.iter().any(|p| p.session.same(&s)) {
             return;
         }
-        let tx = s.tx_state();
-        if !tx.in_transaction {
+        // Only reads (manual commit mode opens a transaction for a SELECT too): nothing to lose.
+        if !s.has_uncommitted_writes() {
             return;
         }
+        let tx = s.tx_state();
         let conn_name = conns.config(conn).map(|c| c.name.clone()).unwrap_or_else(|| conn.to_string());
         out.push(PendingTx { conn: conn.to_string(), conn_name, owner, statements: tx.log.len(), since: tx.log.first().map(|e| e.at), session: s });
     };

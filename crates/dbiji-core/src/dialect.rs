@@ -6,7 +6,7 @@ use crate::admin::MaintenanceOp;
 use crate::config::DbKind;
 use crate::ddl::*;
 use crate::keywords;
-use crate::meta::ObjectRef;
+use crate::meta::{ObjectKind, ObjectRef};
 use crate::value::{DataKind, Value};
 use std::collections::BTreeMap;
 
@@ -243,7 +243,15 @@ pub trait Dialect: Send + Sync + 'static {
             Some(c) if !c.is_empty() => c.iter().map(|c| self.quote_ident(c)).collect::<Vec<_>>().join(", "),
             _ => "*".to_string(),
         };
-        let mut sql = format!("SELECT {cols} FROM {}", self.qualified_ref(table));
+        // A MySQL partition is read through its table: `t PARTITION (p0)`.
+        let from = match (&table.kind, &table.table) {
+            (ObjectKind::Partition, Some(parent)) if matches!(self.kind(), DbKind::MySql | DbKind::MariaDb) => {
+                let t = ObjectRef::table(table.schema.clone(), parent.clone()).with_database(table.database.clone());
+                format!("{} PARTITION ({})", self.qualified_ref(&t), self.quote_ident(&table.name))
+            }
+            _ => self.qualified_ref(table),
+        };
+        let mut sql = format!("SELECT {cols} FROM {from}");
         if let Some(w) = where_clause.filter(|w| !w.trim().is_empty()) {
             sql.push_str(" WHERE ");
             sql.push_str(w);
@@ -267,6 +275,20 @@ pub trait Dialect: Send + Sync + 'static {
 
     fn supports_returning(&self) -> bool {
         false
+    }
+
+    /// `column` (of type `type_name`) in an INSERT's `RETURNING` list. A protocol may
+    /// return some types in another form than a query's rows: they come back as text,
+    /// read by [`returned_value`](Self::returned_value).
+    fn returning_column(&self, column: &str, type_name: &str) -> String {
+        let _ = type_name;
+        self.quote_ident(column)
+    }
+
+    /// A value of a `RETURNING` list as a query of the column would show it.
+    fn returned_value(&self, type_name: &str, value: Value) -> Value {
+        let _ = type_name;
+        value
     }
 
     fn truncate_table(&self, table: &ObjectRef) -> String {

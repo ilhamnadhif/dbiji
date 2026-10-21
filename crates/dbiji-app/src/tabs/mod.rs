@@ -106,6 +106,12 @@ pub trait TabView: Any {
         false
     }
 
+    /// The tab asks about its unsaved changes itself in [`on_close`](Self::on_close);
+    /// for the others the application asks before closing a dirty tab.
+    fn prompts_on_close(&self) -> bool {
+        false
+    }
+
     /// Called before closing; return false to keep the tab open (e.g. to ask
     /// about unsaved changes — the tab then shows its own confirmation).
     fn on_close(&mut self, cx: &mut AppContext) -> bool {
@@ -126,11 +132,18 @@ pub trait TabView: Any {
 pub struct Tab {
     pub id: u64,
     pub view: Box<dyn TabView>,
+    /// The user chose to discard its unsaved changes: close without asking.
+    pub force_close: bool,
 }
 
 impl Tab {
     pub fn new(id: u64, view: Box<dyn TabView>) -> Self {
-        Tab { id, view }
+        Tab { id, view, force_close: false }
+    }
+
+    /// Closing it would lose unsaved changes the tab does not ask about itself.
+    pub fn needs_close_confirm(&self) -> bool {
+        !self.force_close && !self.view.prompts_on_close() && self.view.is_dirty()
     }
 }
 
@@ -139,6 +152,8 @@ pub struct DockViewer<'a, 'b> {
     pub cx: &'a mut AppContext<'b>,
     /// Tab ids that the user asked to close but which vetoed (dirty).
     pub close_vetoed: Vec<u64>,
+    /// Dirty tabs whose closing the application must confirm.
+    pub close_confirm: Vec<u64>,
     pub active_tab: Option<u64>,
     /// For the tab titles (a coloured icon and the title).
     pub style: std::sync::Arc<egui::Style>,
@@ -246,6 +261,10 @@ impl egui_dock::TabViewer for DockViewer<'_, '_> {
     }
 
     fn on_close(&mut self, tab: &mut Tab) -> egui_dock::tab_viewer::OnCloseResponse {
+        if tab.needs_close_confirm() {
+            self.close_confirm.push(tab.id);
+            return egui_dock::tab_viewer::OnCloseResponse::Ignore;
+        }
         if tab.view.on_close(self.cx) {
             egui_dock::tab_viewer::OnCloseResponse::Close
         } else {
@@ -284,6 +303,10 @@ pub trait EmbeddedView {
     }
     fn focus_context(&self) -> crate::keys::ActionContext {
         crate::keys::ActionContext::Global
+    }
+    /// The view's own session (its open transaction is listed in Pending transactions).
+    fn transaction_session(&self) -> Option<crate::conn::session::SessionHandle> {
+        None
     }
 }
 

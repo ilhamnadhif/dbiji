@@ -31,6 +31,10 @@ pub fn route(app: &mut DbijiApp, _ctx: &egui::Context, cmd: AppCommand) {
         AppCommand::HideInNavigator { connection, object } => {
             let update = |f: &mut dbiji_core::config::ObjectFilters| {
                 let nf = crate::nav::name_filter_mut(f, object.kind);
+                // A filter the user switched off starts over: its old patterns would hide other objects.
+                if !nf.enabled {
+                    *nf = Default::default();
+                }
                 if !nf.exclude.contains(&object.name) {
                     nf.exclude.push(object.name.clone());
                 }

@@ -115,6 +115,12 @@ pub fn determine_editability(columns: &[ColumnMeta], key_lookup: impl Fn(&Object
     }
     let table = source_table(columns)?;
     let column_names: Vec<Option<String>> = columns.iter().map(|c| c.source.as_ref().filter(|s| s.table == table.name).map(|s| s.column.clone())).collect();
+    // A column of the table twice: a self-join (`users a JOIN users b`) whose
+    // columns cannot tell which of the two rows they belong to.
+    let sourced: Vec<&str> = column_names.iter().flatten().map(String::as_str).collect();
+    if sourced.iter().enumerate().any(|(i, c)| sourced[..i].contains(c)) {
+        return Err(ReadOnlyReason::MultipleTables);
+    }
     let key_names = key_lookup(&table).filter(|k| !k.is_empty()).ok_or(ReadOnlyReason::NoKey)?;
     let mut key_columns = Vec::with_capacity(key_names.len());
     for k in &key_names {
@@ -175,6 +181,9 @@ mod tests {
         let mut join = cols();
         join.push(ColumnMeta::new("total", "int", DataKind::Int).with_source(src("orders", "total")));
         assert_eq!(determine_editability(&join, pk, false), Err(ReadOnlyReason::MultipleTables));
+        let mut self_join = cols();
+        self_join.push(ColumnMeta::new("name", "text", DataKind::Text).with_source(src("users", "name")));
+        assert_eq!(determine_editability(&self_join, pk, false), Err(ReadOnlyReason::MultipleTables));
         assert_eq!(determine_editability(&cols(), |_| None, false), Err(ReadOnlyReason::NoKey));
         assert_eq!(determine_editability(&cols(), |_| Some(vec![]), false), Err(ReadOnlyReason::NoKey));
         // Key column missing from the result.

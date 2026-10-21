@@ -12,7 +12,7 @@ use dbiji_core::registry::DriverRegistry;
 use dbiji_core::{DbError, DbKind, DbResult, Dialect, Secret};
 use meta::MetadataCache;
 use session::SessionHandle;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -86,7 +86,7 @@ pub struct LiveConnection {
     pub db_sessions: HashMap<String, Loadable<SessionHandle>>,
     /// Sessions opened for tabs (editors, data tabs): closed on disconnect too,
     /// so that none keeps running with the old settings, transactions or locks.
-    tab_sessions: Arc<parking_lot::Mutex<Vec<SessionHandle>>>,
+    tab_sessions: Arc<parking_lot::Mutex<Vec<crate::conn::session::WeakSession>>>,
     /// A ping of `main` after another session of the connection was lost (is the
     /// server gone or just that session?).
     health_probe: Option<Job<DbResult<()>>>,
@@ -210,8 +210,8 @@ impl LiveConnection {
         // session of another database is opened again on its next use.
         let mut lost = {
             let mut list = self.tab_sessions.lock();
-            let n = list.iter().filter(|s| s.is_lost()).count();
-            list.retain(|s| !s.is_closed());
+            let n = list.iter().filter_map(|w| w.upgrade()).filter(|s| s.is_lost()).count();
+            list.retain(|w| w.upgrade().is_some_and(|s| !s.is_closed()));
             n
         };
         self.db_sessions.retain(|_, l| match l.get() {
@@ -250,9 +250,10 @@ impl LiveConnection {
             let mut s = driver.connect(&params).await?;
             init_session(s.as_mut(), &cfg, &params).await?;
             let handle = SessionHandle::new(s, label, database);
+            // Weak: a session its tab dropped (closed while opening) closes instead of staying open.
             let mut list = tab_sessions.lock();
-            list.retain(|s| !s.is_closed());
-            list.push(handle.clone());
+            list.retain(|w| w.upgrade().is_some_and(|s| !s.is_closed()));
+            list.push(handle.downgrade());
             Ok(handle)
         })
     }
@@ -413,6 +414,8 @@ pub struct ConnectionManager {
     live: HashMap<String, LiveConnection>,
     connecting: HashMap<String, Job<DbResult<Connected>>>,
     failed: HashMap<String, String>,
+    /// Connect errors already reported (their connection stays red until it connects).
+    failed_shown: HashSet<String>,
     pub secrets: Arc<dyn SecretSource>,
     pub net: Arc<dyn NetConnector>,
     pub pgpass: Option<Arc<dyn Fn(&str, u16, &str, &str) -> Option<Secret> + Send + Sync>>,
@@ -430,6 +433,7 @@ impl ConnectionManager {
             live: HashMap::new(),
             connecting: HashMap::new(),
             failed: HashMap::new(),
+            failed_shown: HashSet::new(),
             secrets,
             net,
             pgpass: None,
@@ -618,6 +622,7 @@ impl ConnectionManager {
         let net = self.net.clone();
         let pgpass = self.pgpass.clone();
         self.failed.remove(id);
+        self.failed_shown.remove(id);
         self.connecting.insert(id.to_string(), backend.spawn(connect_task(driver, cfg, conn_type, creds, net, pgpass)));
         Ok(())
     }
@@ -669,6 +674,7 @@ impl ConnectionManager {
                         self.just_connected.push(id);
                     }
                     Err(e) => {
+                        self.failed_shown.remove(&id);
                         self.failed.insert(id, e.full_text());
                     }
                 }
@@ -685,11 +691,13 @@ impl ConnectionManager {
 
     /// Take the connect error of `id` (shown once by the UI).
     pub fn take_error(&mut self, id: &str) -> Option<String> {
-        self.failed.remove(id)
+        let e = self.failed.get(id).cloned();
+        self.failed_shown.insert(id.to_string());
+        e
     }
 
     pub fn errors(&self) -> Vec<(String, String)> {
-        self.failed.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+        self.failed.iter().filter(|(k, _)| !self.failed_shown.contains(*k)).map(|(k, v)| (k.clone(), v.clone())).collect()
     }
 
     /// Disconnect, closing all sessions in the background.
@@ -697,15 +705,15 @@ impl ConnectionManager {
         if let Some(live) = self.live.remove(id) {
             let after = live.config.init.shell_after_disconnect.clone();
             backend.spawn_detached(async move {
-                live.main.close().await;
+                live.main.cancel_and_close().await;
                 for s in live.db_sessions.values() {
                     if let Some(s) = s.get() {
-                        s.close().await;
+                        s.cancel_and_close().await;
                     }
                 }
-                let tab_sessions: Vec<SessionHandle> = std::mem::take(&mut *live.tab_sessions.lock());
+                let tab_sessions: Vec<SessionHandle> = std::mem::take(&mut *live.tab_sessions.lock()).iter().filter_map(|w| w.upgrade()).collect();
                 for s in tab_sessions {
-                    s.close().await;
+                    s.cancel_and_close().await;
                 }
                 drop(live.tunnel);
                 if let Some(cmd) = after.filter(|c| !c.trim().is_empty())

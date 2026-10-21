@@ -138,7 +138,11 @@ impl ImportMapping {
                 nullable: true,
             })
             .collect();
-        ImportMapping { target, create_table: true, columns, ..Default::default() }
+        let mut mapping = ImportMapping { target, create_table: true, columns, ..Default::default() };
+        if matches!(dialect.kind(), DbKind::MySql | DbKind::MariaDb) {
+            fit_mysql_row_size(&mut mapping.columns);
+        }
+        mapping
     }
 
     /// Mapping into an existing table: source columns are matched to table
@@ -162,6 +166,25 @@ impl ImportMapping {
         let target = ObjectRef::table(table.schema.clone(), table.name.clone());
         let key_columns = table.row_key().map(|k| k.columns.clone()).unwrap_or_default();
         ImportMapping { target, columns, key_columns, ..Default::default() }
+    }
+}
+
+/// MySQL rejects a table whose VARCHARs exceed 65535 bytes per row (4 bytes a
+/// character in utf8mb4): the longest ones become TEXT, stored off the row.
+fn fit_mysql_row_size(columns: &mut [ColumnMapping]) {
+    const LIMIT: usize = 60_000;
+    let varchar = |t: &str| -> Option<usize> {
+        let t = t.trim();
+        let rest = t.get(..8).filter(|p| p.eq_ignore_ascii_case("varchar(")).map(|_| &t[8..])?;
+        rest.strip_suffix(')')?.trim().parse().ok()
+    };
+    loop {
+        let sizes: Vec<(usize, usize)> = columns.iter().enumerate().filter_map(|(i, c)| varchar(&c.target_type).map(|n| (i, n))).collect();
+        if sizes.iter().map(|(_, n)| n * 4 + 2).sum::<usize>() <= LIMIT {
+            return;
+        }
+        let Some(&(i, _)) = sizes.iter().max_by_key(|(_, n)| *n) else { return };
+        columns[i].target_type = "TEXT".into();
     }
 }
 
@@ -480,4 +503,21 @@ pub async fn run_import_job(job: ImportJob, factory: Arc<dyn SessionFactory>, pr
     progress.item_finished(&name);
     let _ = session.close().await;
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mysql_row_size_fits() {
+        let mut cols: Vec<ColumnMapping> =
+            (0..40).map(|i| ColumnMapping { source_index: i, target_name: format!("c{i}"), target_type: "VARCHAR(1000)".into(), ..Default::default() }).collect();
+        cols.push(ColumnMapping { target_type: "BIGINT".into(), ..Default::default() });
+        fit_mysql_row_size(&mut cols);
+        let text = cols.iter().filter(|c| c.target_type == "TEXT").count();
+        assert!(text > 0 && text < 40);
+        assert_eq!(cols[40].target_type, "BIGINT");
+        assert!((40 - text) * 4002 <= 60_000);
+    }
 }

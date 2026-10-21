@@ -285,13 +285,18 @@ fn outcome_file(data_dir: &Path) -> PathBuf {
 /// Starts a helper that waits for this process to exit, swaps in the new app
 /// (asking for an administrator password when needed), and opens it. The
 /// caller then quits the app.
-pub fn launch_installer(prepared: &Prepared, bundle: &Path, data_dir: &Path) -> Result<(), String> {
-    // Another copy may have been installed meanwhile.
+/// The update can replace `bundle` (another copy may have been installed meanwhile).
+pub fn check_installable(prepared: &Prepared, bundle: &Path) -> Result<(), String> {
     if let Some(installed) = plist_value(bundle, "CFBundleShortVersionString")
         && !crate::updates::is_newer(&prepared.version, &installed)
     {
         return Err(format!("DBiji {installed} is already installed; quit DBiji and open it again"));
     }
+    Ok(())
+}
+
+pub fn launch_installer(prepared: &Prepared, bundle: &Path, data_dir: &Path) -> Result<(), String> {
+    check_installable(prepared, bundle)?;
     let status = outcome_file(data_dir);
     dbiji_config::paths::ensure_private_dir(data_dir).map_err(|e| e.to_string())?;
     let mut swap: Vec<OsString> = if user_can_replace(bundle) {

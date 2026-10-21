@@ -117,11 +117,26 @@ fn identifying_words(conns: &[ConnectionConfig]) -> Vec<(String, String)> {
     words
 }
 
+/// Replace whole words only (a database `app` leaves "application" alone), in one
+/// pass: a stand-in (`<host 1>`) is not searched again.
 fn redact(text: &str, words: &[(String, String)]) -> String {
-    let mut out = text.to_string();
-    for (w, stand_in) in words {
-        if out.contains(w.as_str()) {
-            out = out.replace(w.as_str(), stand_in);
+    let is_word = |c: char| c.is_alphanumeric() || c == '_';
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < text.len() {
+        let rest = &text[i..];
+        let before_ok = !text[..i].chars().next_back().is_some_and(is_word);
+        let hit = before_ok.then(|| words.iter().find(|(w, _)| rest.starts_with(w.as_str()) && !rest[w.len()..].chars().next().is_some_and(is_word))).flatten();
+        match hit {
+            Some((w, stand_in)) => {
+                out.push_str(stand_in);
+                i += w.len();
+            }
+            None => {
+                let c = rest.chars().next().unwrap_or_default();
+                out.push(c);
+                i += c.len_utf8();
+            }
         }
     }
     out
@@ -176,6 +191,8 @@ mod tests {
     fn masks_and_collects_without_identifying_data() {
         assert_eq!(mask_url_credentials("see https://bob:s3cret@api.example.com/v1 and postgres://h/db"), "see https://***@api.example.com/v1 and postgres://h/db");
         assert_eq!(mask_url_credentials("no url here: a@b"), "no url here: a@b");
+        let words = vec![("app".to_string(), "<database 1>".to_string()), ("host".to_string(), "<user 1>".to_string())];
+        assert_eq!(redact("app: application on host", &words), "<database 1>: application on <user 1>");
 
         let root = std::env::temp_dir().join(format!("dbiji-diag-{}", uuid::Uuid::new_v4().simple()));
         let paths = dbiji_config::AppPaths::with_root(&root);

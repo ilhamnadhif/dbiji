@@ -516,6 +516,10 @@ pub struct SelectShape {
     pub has_offset: bool,
     /// FOR XML / JSON / BROWSE or OPTION(...) present.
     pub has_trailer: bool,
+    /// FOR XML / JSON / BROWSE present.
+    pub has_for: bool,
+    /// Byte offset of the top-level `OPTION (…)` (the statement's last clause).
+    pub option_at: Option<usize>,
     /// UNION / EXCEPT / INTERSECT at top level.
     pub has_set_op: bool,
     /// `SELECT ... INTO`.
@@ -535,6 +539,8 @@ pub fn select_shape(sql: &str) -> SelectShape {
         has_top: false,
         has_offset: false,
         has_trailer: false,
+        has_for: false,
+        option_at: None,
         has_set_op: false,
         has_into: false,
         top_insert_at: None,
@@ -566,7 +572,14 @@ pub fn select_shape(sql: &str) -> SelectShape {
             }
             "ORDER" if toks.get(i + 1).is_some_and(|n| n.is("BY")) => shape.order_by = Some(t.start),
             "OFFSET" => shape.has_offset = true,
-            "FOR" | "OPTION" => shape.has_trailer = true,
+            "FOR" => {
+                shape.has_trailer = true;
+                shape.has_for = true;
+            }
+            "OPTION" => {
+                shape.has_trailer = true;
+                shape.option_at = Some(t.start);
+            }
             "UNION" | "EXCEPT" | "INTERSECT" => shape.has_set_op = true,
             "INTO" if seen_main_select => shape.has_into = true,
             _ => {}

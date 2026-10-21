@@ -209,6 +209,10 @@ impl Dialect for MsSqlDialect {
         if !shape.is_select {
             return inner.to_string();
         }
+        // `OPTION (MAXRECURSION n)` belongs to the whole statement: after the limited query.
+        if let Some(at) = shape.option_at.filter(|_| !shape.has_for) {
+            return format!("{}\n{}", self.limit_query(inner[..at].trim_end(), limit, offset), &inner[at..]);
+        }
         let simple = !shape.has_top && !shape.has_offset && !shape.has_trailer && !shape.has_into;
         if simple && shape.order_by.is_some() {
             return format!("{inner}\nOFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY");
@@ -220,7 +224,9 @@ impl Dialect for MsSqlDialect {
         {
             return format!("{} TOP ({limit}){}", &inner[..at], &inner[at..]);
         }
-        if shape.has_into {
+        // `SELECT … INTO`, and `OPTION (…)` / `FOR XML` that no derived table may hold:
+        // as written (the cursor fetches only the rows shown).
+        if shape.has_into || shape.has_trailer {
             return inner.to_string();
         }
         // `WITH a AS (…) SELECT …`: the CTEs stay in front, the main SELECT is wrapped.
@@ -231,6 +237,9 @@ impl Dialect for MsSqlDialect {
     fn count_query(&self, sql: &str) -> String {
         let inner = ansi::strip_trailing_semicolon(sql);
         let shape = sqltext::select_shape(inner);
+        if let Some(at) = shape.option_at.filter(|_| !shape.has_for) {
+            return format!("{}\n{}", self.count_query(inner[..at].trim_end()), &inner[at..]);
+        }
         // ORDER BY is not allowed in a derived table without TOP/OFFSET
         let body = match shape.order_by {
             Some(pos) if !shape.has_top && !shape.has_offset && !shape.has_trailer => inner[..pos].trim_end(),
@@ -525,6 +534,14 @@ mod tests {
         assert_eq!(d.limit_query("SELECT a FROM t ORDER BY a;", 10, 20), "SELECT a FROM t ORDER BY a\nOFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY");
         assert_eq!(d.limit_query("SELECT DISTINCT a FROM t", 5, 0), "SELECT DISTINCT TOP (5) a FROM t");
         assert_eq!(d.limit_query("SELECT a FROM t", 5, 10), "SELECT * FROM (SELECT a FROM t) dbiji_q ORDER BY (SELECT NULL) OFFSET 10 ROWS FETCH NEXT 5 ROWS ONLY");
+        assert_eq!(d.limit_query("SELECT a FROM t OPTION (RECOMPILE)", 5, 0), "SELECT TOP (5) a FROM t\nOPTION (RECOMPILE)");
+        let rec = "WITH n AS (SELECT 1 AS i UNION ALL SELECT i + 1 FROM n WHERE i < 500) SELECT i FROM n OPTION (MAXRECURSION 1000)";
+        assert_eq!(
+            d.count_query(rec),
+            "WITH n AS (SELECT 1 AS i UNION ALL SELECT i + 1 FROM n WHERE i < 500) SELECT COUNT_BIG(*) FROM (SELECT i FROM n) dbiji_cnt\nOPTION (MAXRECURSION 1000)"
+        );
+        assert!(d.limit_query(rec, 5, 10).ends_with("FETCH NEXT 5 ROWS ONLY\nOPTION (MAXRECURSION 1000)"));
+        assert_eq!(d.limit_query("SELECT a FROM t FOR XML AUTO", 5, 0), "SELECT a FROM t FOR XML AUTO");
         assert_eq!(d.limit_query("SELECT TOP 3 a FROM t ORDER BY a", 5, 0).matches("dbiji_q").count(), 1);
         assert_eq!(d.limit_query("EXEC sp_who", 5, 0), "EXEC sp_who");
         assert_eq!(d.count_query("SELECT a FROM t ORDER BY a"), "SELECT COUNT_BIG(*) FROM (SELECT a FROM t) dbiji_cnt");

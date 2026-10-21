@@ -128,6 +128,8 @@ pub struct Navigator {
     dark: bool,
     /// Navigator preferences (copied from the settings every frame).
     prefs: dbiji_config::settings::NavigatorSettings,
+    /// The last click was in the navigator: Refresh (F5) is its own, not the active tab's.
+    pub has_focus: bool,
 }
 
 /// Text next to a connection: `user@host:port/db`, or for a database file
@@ -251,10 +253,18 @@ impl Navigator {
     /// Select the pending revealed object when its row is there.
     fn finish_reveal(&mut self) {
         let Some((conn, obj, until)) = self.pending_reveal.clone() else { return };
-        let found = self.rows.iter().find(|r| match &r.node {
-            NavNode::Object { conn: c, obj: o } => *c == conn && o.kind == obj.kind && o.name == obj.name && o.schema == obj.schema,
+        let same = |r: &&Row, db_exact: bool| match &r.node {
+            NavNode::Object { conn: c, obj: o } => {
+                *c == conn
+                    && o.kind == obj.kind
+                    && o.name == obj.name
+                    && o.schema == obj.schema
+                    && (o.database == obj.database || (!db_exact && (o.database.is_none() || obj.database.is_none())))
+            }
             _ => false,
-        });
+        };
+        // The same database first; a reference without one means the default database.
+        let found = self.rows.iter().find(|r| same(r, true)).or_else(|| self.rows.iter().find(|r| same(r, false)));
         if let Some(r) = found {
             self.selected = Some(r.node.clone());
             self.scroll_to_selected = true;
@@ -1049,7 +1059,8 @@ impl Navigator {
             return;
         }
 
-        let row_h = ui.text_style_height(&egui::TextStyle::Body) + 6.0;
+        // Compact rows (no gap between them): more of the tree fits in the sidebar.
+        let row_h = ui.text_style_height(&egui::TextStyle::Body) + 5.0;
         let rows = std::mem::take(&mut self.rows);
         let mut clicked: Option<(usize, bool)> = None; // (row, double)
         let mut toggled: Option<usize> = None;
@@ -1064,6 +1075,7 @@ impl Navigator {
             sa = sa.vertical_scroll_offset((i as f32 * row_h - 80.0).max(0.0));
         }
         let dark = ui.visuals().dark_mode;
+        let item_gap = std::mem::replace(&mut ui.spacing_mut().item_spacing.y, 0.0);
         sa.show_rows(ui, row_h, rows.len(), |ui, range| {
             for i in range {
                 let r = &rows[i];
@@ -1174,6 +1186,7 @@ impl Navigator {
                 resp.context_menu(|ui| self.context_menu(ui, cx, &node));
             }
         });
+        ui.spacing_mut().item_spacing.y = item_gap;
         let _ = context;
         if let Some(i) = toggled {
             self.toggle(&rows[i].node, cx);
@@ -1188,6 +1201,13 @@ impl Navigator {
         }
         self.rows = rows;
         self.keyboard(ui, cx);
+    }
+
+    /// Follow where the user clicks: the navigator, or somewhere else.
+    pub fn track_focus(&mut self, ui: &Ui) {
+        if ui.input(|i| i.pointer.any_pressed()) {
+            self.has_focus = ui.ui_contains_pointer();
+        }
     }
 
     fn toggle(&mut self, node: &NavNode, cx: &mut AppContext) {
@@ -1237,6 +1257,7 @@ impl Navigator {
     pub fn selected_schema(&self) -> Option<SchemaRef> {
         match self.selected.as_ref()? {
             NavNode::Schema { schema, .. } | NavNode::KindFolder { schema, .. } => Some(schema.clone()),
+            NavNode::Database { db, .. } => Some(SchemaRef { database: Some(db.clone()), schema: None }),
             NavNode::Object { obj, .. } | NavNode::Child { obj, .. } => Some(obj.schema_ref()),
             NavNode::ChildFolder { parent, .. } => Some(parent.schema_ref()),
             _ => None,
@@ -1255,6 +1276,8 @@ impl Navigator {
             NavNode::Object { obj, .. } | NavNode::Child { obj, .. } => (Some(obj.clone()), None),
             NavNode::ChildFolder { parent, .. } => (Some(parent.clone()), None),
             NavNode::Schema { schema, .. } | NavNode::KindFolder { schema, .. } => (None, Some(schema.clone())),
+            // That database (its schema list too), not the whole connection.
+            NavNode::Database { db, .. } => (None, Some(SchemaRef { database: Some(db.clone()), schema: None })),
             _ => (None, None),
         };
         commands.push(AppCommand::RefreshMetadata { connection: conn, object, schema });
@@ -1266,16 +1289,9 @@ impl Navigator {
         }
         let nodes: Vec<usize> = self.rows.iter().enumerate().filter(|(_, r)| r.kind == RowKind::Node).map(|(i, _)| i).collect();
         let cur = self.selected.as_ref().and_then(|s| self.rows.iter().position(|r| &r.node == s));
-        let (down, up, left, right, enter, f5) = ui.input(|i| {
-            (
-                i.key_pressed(Key::ArrowDown),
-                i.key_pressed(Key::ArrowUp),
-                i.key_pressed(Key::ArrowLeft),
-                i.key_pressed(Key::ArrowRight),
-                i.key_pressed(Key::Enter),
-                i.key_pressed(Key::F5),
-            )
-        });
+        // F5 (Refresh) comes through the keymap: `App::dispatch_action`.
+        let (down, up, left, right, enter) =
+            ui.input(|i| (i.key_pressed(Key::ArrowDown), i.key_pressed(Key::ArrowUp), i.key_pressed(Key::ArrowLeft), i.key_pressed(Key::ArrowRight), i.key_pressed(Key::Enter)));
         // Copy the name / drop: only with the pointer over the navigator.
         let pointer_here = ui.ui_contains_pointer();
         let (copy, delete) = ui.input(|i| {
@@ -1308,9 +1324,6 @@ impl Navigator {
             }
             if enter {
                 self.activate(&node, cx);
-            }
-            if f5 {
-                self.refresh_selected(cx);
             }
             if copy {
                 let name = match &node {
@@ -1445,11 +1458,11 @@ impl Navigator {
             NavNode::Database { conn, db } => {
                 let schema = SchemaRef { database: Some(db.clone()), schema: None };
                 if item(ui, icon::FILE_SQL, tr("New SQL editor"), &crate::keys::label(cx.keymap, crate::keys::Action::NewSqlEditor)).clicked() {
-                    cx.push(AppCommand::NewSqlEditor { connection: Some(conn.clone()), schema: Some(schema), text: None });
+                    cx.push(AppCommand::NewSqlEditor { connection: Some(conn.clone()), schema: Some(schema.clone()), text: None });
                     ui.close();
                 }
                 create_menu_items(ui, cx, conn, Some(db.clone()));
-                ui.menu_button((dbiji_icons::ic(icon::WRENCH), tr("Tools")), |ui| tools_menu(ui, cx, conn, None));
+                ui.menu_button((dbiji_icons::ic(icon::WRENCH), tr("Tools")), |ui| tools_menu(ui, cx, conn, Some(schema.clone())));
             }
             NavNode::Schema { conn, schema } | NavNode::KindFolder { conn, schema, .. } => {
                 if item(ui, icon::FILE_SQL, tr("New SQL editor"), &crate::keys::label(cx.keymap, crate::keys::Action::NewSqlEditor)).clicked() {

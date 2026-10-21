@@ -7,6 +7,7 @@
 
 use dbiji_core::{DbError, DbResult, ErrorKind, Secret};
 use std::process::{ExitStatus, Stdio};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::process::Command;
@@ -99,13 +100,15 @@ fn shell_command(command: &str) -> Command {
     }
 }
 
-async fn read_capped<R: AsyncRead + Unpin>(reader: Option<R>, out: &mut Vec<u8>) {
+/// Read `reader` to its end into `out` (what exceeds [`MAX_CAPTURE`] is read and dropped).
+async fn read_capped<R: AsyncRead + Unpin>(reader: Option<R>, out: Arc<Mutex<Zeroizing<Vec<u8>>>>) {
     let Some(mut reader) = reader else { return };
     let mut buf = Zeroizing::new([0u8; 8192]);
     loop {
         match reader.read(&mut buf[..]).await {
             Ok(0) | Err(_) => break,
             Ok(n) => {
+                let mut out = out.lock().unwrap_or_else(|e| e.into_inner());
                 let room = MAX_CAPTURE.saturating_sub(out.len());
                 out.extend_from_slice(&buf[..n.min(room)]);
             }
@@ -128,39 +131,34 @@ async fn run_capture(command: &str, timeout: Duration) -> DbResult<CommandOutput
         .spawn()
         .map_err(|e| DbError::io(format!("Cannot start the shell command: {e}")))?;
     let pid = child.id();
-    let stdout_pipe = child.stdout.take();
-    let stderr_pipe = child.stderr.take();
-    let mut stdout = Zeroizing::new(Vec::new());
-    let mut stderr = Vec::new();
+    let stdout_buf = Arc::new(Mutex::new(Zeroizing::new(Vec::new())));
+    let stderr_buf = Arc::new(Mutex::new(Zeroizing::new(Vec::new())));
+    // Read in tasks of their own that outlive this call: a helper the command
+    // started in the background (`vpn-up &`, `ssh -fN …`) keeps the pipes open,
+    // and would die of SIGPIPE writing to them once nobody reads.
+    let mut out_task = tokio::spawn(read_capped(child.stdout.take(), stdout_buf.clone()));
+    let mut err_task = tokio::spawn(read_capped(child.stderr.take(), stderr_buf.clone()));
 
     let result = tokio::time::timeout(timeout, async {
-        // Done when the command exits: a helper it started in the background
-        // (`vpn-up &`, `ssh -fN …`) may keep the pipes open long after.
-        let mut reading = std::pin::pin!(async {
-            tokio::join!(
-                read_capped(stdout_pipe, &mut stdout),
-                read_capped(stderr_pipe, &mut stderr)
-            );
-        });
-        let mut read_all = false;
-        let status = loop {
-            tokio::select! {
-                _ = &mut reading, if !read_all => read_all = true,
-                s = child.wait() => break s,
-            }
-        };
-        if !read_all {
-            let _ = tokio::time::timeout(Duration::from_millis(500), &mut reading).await;
-        }
+        // Done when the command exits, with what it printed until shortly after.
+        let status = child.wait().await;
+        let _ = tokio::time::timeout(Duration::from_millis(500), async {
+            let _ = (&mut out_task).await;
+            let _ = (&mut err_task).await;
+        })
+        .await;
         status
     })
     .await;
+    let take = |b: &Arc<Mutex<Zeroizing<Vec<u8>>>>| {
+        std::mem::take(&mut *b.lock().unwrap_or_else(|e| e.into_inner()))
+    };
 
     match result {
         Ok(Ok(status)) => Ok(CommandOutput {
             status,
-            stdout,
-            stderr,
+            stdout: take(&stdout_buf),
+            stderr: take(&stderr_buf).to_vec(),
         }),
         Ok(Err(e)) => Err(DbError::io(format!(
             "Waiting for the shell command failed: {e}"

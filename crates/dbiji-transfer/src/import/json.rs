@@ -259,7 +259,18 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// The whole captured value as one record.
     fn record(&mut self) -> Result<Record, String> {
+        let rec = self.item()?;
+        self.ws();
+        if self.i != self.b.len() {
+            return Err(self.err("unexpected trailing characters"));
+        }
+        Ok(rec)
+    }
+
+    /// One record at the position (an element of an array).
+    fn item(&mut self) -> Result<Record, String> {
         self.ws();
         let rec = match self.peek() {
             Some(b'{') => {
@@ -316,10 +327,6 @@ impl<'a> Parser<'a> {
             }
             _ => Record::Scalar(self.value()?),
         };
-        self.ws();
-        if self.i != self.b.len() {
-            return Err(self.err("unexpected trailing characters"));
-        }
         Ok(rec)
     }
 }
@@ -474,7 +481,11 @@ impl<R: BufRead> Stream<R> {
 
 enum Mode {
     Lines,
-    Array { first: bool },
+    Array {
+        first: bool,
+    },
+    /// The records of a wrapper's array read along with the wrapper.
+    Buffered,
     Done,
 }
 
@@ -487,6 +498,7 @@ pub struct JsonSource {
     columns: Vec<ColumnMeta>,
     index: HashMap<String, usize>,
     pending: VecDeque<Row>,
+    buffered: VecDeque<Record>,
     buf: Vec<u8>,
     unknown: Vec<String>,
 }
@@ -520,7 +532,16 @@ impl JsonSource {
     pub fn from_reader(reader: impl Read + Send + 'static, options: JsonReadOptions) -> DbResult<Self> {
         let decoded = DecodingReader::new(Box::new(reader) as Box<dyn Read + Send>, &options.encoding)?;
         let stream = Stream { r: BufReader::with_capacity(64 * 1024, decoded), line: 1 };
-        let mut src = JsonSource { stream, mode: Mode::Done, columns: Vec::new(), index: HashMap::new(), pending: VecDeque::new(), buf: Vec::new(), unknown: Vec::new() };
+        let mut src = JsonSource {
+            stream,
+            mode: Mode::Done,
+            columns: Vec::new(),
+            index: HashMap::new(),
+            pending: VecDeque::new(),
+            buffered: VecDeque::new(),
+            buf: Vec::new(),
+            unknown: Vec::new(),
+        };
         let mut first_record: Option<Record> = None;
         let mut declared: Option<Vec<ColumnMeta>> = None;
         match (options.format, src.stream.skip_ws()?) {
@@ -576,10 +597,28 @@ impl JsonSource {
     fn open_object(&mut self, declared: &mut Option<Vec<ColumnMeta>>) -> DbResult<Option<Record>> {
         self.stream.bump()?;
         let mut members: Vec<(String, Value)> = Vec::new();
+        // The largest array of objects after other members (`{"total":2,"items":[{..}]}`).
+        let mut candidate: Option<Vec<u8>> = None;
         loop {
             match self.stream.skip_ws()? {
                 Some(b'}') => {
                     self.stream.bump()?;
+                    // The whole document is this object: a wrapper of the array, not a JSON Lines record.
+                    if let Some(raw) = candidate
+                        && self.stream.skip_ws()?.is_none()
+                    {
+                        let mut p = Parser { b: &raw, i: 1 };
+                        loop {
+                            p.ws();
+                            match p.peek() {
+                                Some(b']') | None => break,
+                                Some(b',') => p.i += 1,
+                                _ => self.buffered.push_back(p.item().map_err(|e| self.stream.error(e))?),
+                            }
+                        }
+                        self.mode = Mode::Buffered;
+                        return Ok(None);
+                    }
                     self.mode = Mode::Lines;
                     return Ok(Some(Record::Object(members)));
                 }
@@ -611,6 +650,9 @@ impl JsonSource {
                             self.stream.capture(&mut raw, 1)?;
                             let text = String::from_utf8_lossy(&raw).into_owned();
                             members.push((key, Value::json(text)));
+                            if next == Some(b'{') && candidate.as_ref().is_none_or(|c| c.len() < raw.len()) {
+                                candidate = Some(raw);
+                            }
                         }
                         _ => {
                             let mut raw = Vec::new();
@@ -629,6 +671,13 @@ impl JsonSource {
     fn next_record(&mut self) -> DbResult<Option<Record>> {
         match self.mode {
             Mode::Done => return Ok(None),
+            Mode::Buffered => {
+                let rec = self.buffered.pop_front();
+                if rec.is_none() {
+                    self.mode = Mode::Done;
+                }
+                return Ok(rec);
+            }
             Mode::Lines => {
                 if self.stream.skip_ws()?.is_none() {
                     self.mode = Mode::Done;
@@ -779,6 +828,16 @@ mod tests {
         let wrapped = r#"{"users": [{"id": 1}, {"id": 2}]}"#;
         let (_, rows) = read(wrapped, JsonInputFormat::Auto).await;
         assert_eq!(rows, vec![vec![Value::Int(1)], vec![Value::Int(2)]]);
+        // Metadata before the array.
+        let paged = r#"{"total": 2, "items": [{"id": 1}, {"id": 2}], "next": null}"#;
+        let (names, rows) = read(paged, JsonInputFormat::Auto).await;
+        assert_eq!(names, vec!["id"]);
+        assert_eq!(rows, vec![vec![Value::Int(1)], vec![Value::Int(2)]]);
+        // A record with an array of objects in a JSON Lines stream stays a record.
+        let nested = "{\"id\": 1, \"tags\": [{\"t\": 1}]}\n{\"id\": 2, \"tags\": []}\n";
+        let (names, rows) = read(nested, JsonInputFormat::Auto).await;
+        assert_eq!(names, vec!["id", "tags"]);
+        assert_eq!(rows.len(), 2);
         let layout = r#"{"table": "t", "columns": [{"name": "id", "type": "int4", "kind": "int"}, "name"], "rows": [[1, "a"], [2, null]]}"#;
         let opts = JsonReadOptions::default();
         let mut s = JsonSource::from_reader(std::io::Cursor::new(layout.as_bytes().to_vec()), opts).unwrap();

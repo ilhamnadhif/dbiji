@@ -256,10 +256,15 @@ pub(crate) fn classify_tokens(src: &str, tokens: &[Token], syntax: &SqlSyntax) -
             match t.kind {
                 TokenKind::LParen => depth += 1,
                 TokenKind::RParen => depth -= 1,
+                // `a INNER MERGE JOIN b` is a join hint, no MERGE statement.
                 _ if depth == 0
                     && LATER_WRITE_STARTS
                         .iter()
-                        .any(|w| t.text(src).eq_ignore_ascii_case(w)) =>
+                        .any(|w| t.text(src).eq_ignore_ascii_case(w))
+                    && !(t.text(src).eq_ignore_ascii_case("MERGE")
+                        && sig
+                            .get(k + 1)
+                            .is_some_and(|n| n.text(src).eq_ignore_ascii_case("JOIN"))) =>
                 {
                     let later = Sig { src, t: &sig[k..] }.classify(0, 0);
                     if later.is_write {
@@ -821,9 +826,33 @@ impl<'a> Sig<'a> {
         let global = self.any(n, &["GLOBAL", "PERSIST", "PERSIST_ONLY", "PASSWORD"])
             || self.text(n).to_ascii_lowercase().starts_with("@@global")
             || self.text(n).to_ascii_lowercase().starts_with("@@persist");
-        // `SET default_transaction_read_only = off`, `SET SESSION transaction_read_only = 0`
-        let read_only_setting =
-            (n..self.t.len()).any(|k| self.text(k).to_ascii_lowercase().contains("read_only"));
+        // `SET default_transaction_read_only = off`, `SET SESSION transaction_read_only = 0`:
+        // turning a read-only setting off (a value that is not plainly "on" counts as off).
+        const READ_ONLY: [&str; 5] = [
+            "default_transaction_read_only",
+            "transaction_read_only",
+            "tx_read_only",
+            "read_only",
+            "super_read_only",
+        ];
+        let read_only_setting = (n..self.t.len()).any(|k| {
+            let name = self.text(k).trim_matches(['`', '"']).to_ascii_lowercase();
+            let name = name
+                .rsplit('.')
+                .next()
+                .unwrap_or("")
+                .trim_start_matches('@');
+            if !READ_ONLY.contains(&name) {
+                return false;
+            }
+            let v = if self.text(k + 1) == "=" || self.w(k + 1, "TO") {
+                k + 2
+            } else {
+                k + 1
+            };
+            let value = self.text(v).trim_matches(['\'', '"']).to_ascii_lowercase();
+            !matches!(value.as_str(), "on" | "1" | "true" | "yes")
+        });
         let mut i = StatementInfo::new(K::Set, first);
         i.is_write = global || read_only_setting;
         i
@@ -993,8 +1022,12 @@ mod tests {
             assert!(t(sql).is_write, "{sql}");
         }
         assert!(!t("SELECT a FROM t WHERE b IN (SELECT b FROM u)").is_write);
+        assert!(!t("SELECT * FROM a INNER MERGE JOIN b ON a.id = b.id").is_write);
         assert!(c("SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE").is_write);
         assert!(c("SET default_transaction_read_only = off").is_write);
+        assert!(cm("SET SESSION transaction_read_only = 0").is_write);
+        assert!(!c("SET default_transaction_read_only = on").is_write);
+        assert!(!c("SET my_app.read_only_mode = 'x'").is_write);
         assert!(c("BEGIN READ WRITE").is_write);
         assert!(c("START TRANSACTION READ WRITE").is_write);
         assert!(cm("SET SESSION TRANSACTION READ WRITE").is_write);

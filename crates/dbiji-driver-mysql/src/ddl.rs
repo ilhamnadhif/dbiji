@@ -805,6 +805,20 @@ impl DdlGenerator for MySqlDdl {
                         .any(|c| added.iter().any(|a| &a.name == c));
                     if on_added && keeps_columns(old_pk) {
                         pk_after_columns = Some(sql);
+                    } else if on_added {
+                        // The old key goes with its dropped columns (or is dropped now when some
+                        // stay); the new one waits for its added column.
+                        let all_dropped = old_pk
+                            .columns
+                            .iter()
+                            .all(|c| dropped.iter().any(|d| &d.name == c));
+                        if !all_dropped {
+                            out.push(self.drop_primary_key(to, old_pk));
+                        }
+                        pk_after_columns = Some(format!(
+                            "ALTER TABLE {t} ADD {}",
+                            self.pk_clause(to, new_pk)
+                        ));
                     } else {
                         out.push(sql);
                     }
@@ -2005,6 +2019,42 @@ mod tests {
         assert_eq!(
             ddl().alter_table(&from, &to, &[]),
             vec!["ALTER TABLE `t` DROP PRIMARY KEY, ADD PRIMARY KEY (`a`, `b`)"]
+        );
+    }
+
+    #[test]
+    fn pk_moved_to_an_added_column_replacing_the_old_one() {
+        let mut from = TableDef::new(None, "t");
+        from.columns = vec![
+            ColumnDef::new("a", "int").not_null(),
+            ColumnDef::new("v", "int"),
+        ];
+        from.primary_key = Some(KeyDef {
+            name: None,
+            columns: vec!["a".into()],
+        });
+        let mut to = from.clone();
+        to.columns = vec![
+            ColumnDef::new("v", "int"),
+            ColumnDef::new("id", "bigint").not_null(),
+        ];
+        to.primary_key = Some(KeyDef {
+            name: None,
+            columns: vec!["id".into()],
+        });
+        let sql = ddl().alter_table(&from, &to, &[]);
+        let pos = |p: &str| {
+            sql.iter()
+                .position(|s| s.contains(p))
+                .unwrap_or_else(|| panic!("{p} in {sql:#?}"))
+        };
+        assert!(
+            pos("ADD COLUMN `id`") < pos("ADD PRIMARY KEY (`id`)"),
+            "{sql:#?}"
+        );
+        assert!(
+            !sql.iter().any(|s| s.contains("DROP PRIMARY KEY")),
+            "{sql:#?}"
         );
     }
 

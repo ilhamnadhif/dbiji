@@ -22,6 +22,8 @@ pub struct MetadataCache {
     pub catalog: HashMap<(&'static str, CatalogContext), Loadable<Vec<CatalogRow>>>,
     /// Incremented whenever any entry finishes loading; consumers rebuild derived data.
     pub generation: u64,
+    /// Counts the clears (refresh, DDL): open object editors reload after one.
+    pub invalidations: u64,
 }
 
 fn db_key(db: Option<&str>) -> String {
@@ -67,7 +69,7 @@ impl MetadataCache {
 
     /// Forget everything (refresh).
     pub fn clear(&mut self) {
-        *self = MetadataCache { generation: self.generation + 1, ..Default::default() };
+        *self = MetadataCache { generation: self.generation + 1, invalidations: self.invalidations + 1, ..Default::default() };
     }
 
     /// Forget one schema's objects and snapshot.
@@ -77,6 +79,26 @@ impl MetadataCache {
         self.snapshots.remove(schema);
         self.table_defs.retain(|o, _| o.schema_ref() != *schema);
         self.generation += 1;
+        self.invalidations += 1;
+    }
+
+    /// Forget a whole database: its schema list, objects and snapshots (a script's
+    /// DDL may change any schema, or create a database). `current` is the
+    /// connection's database, which references name either way (`None` or by name).
+    pub fn clear_database(&mut self, database: Option<&str>, current: Option<&str>) {
+        let norm = |d: Option<&str>| d.filter(|d| !d.is_empty() && Some(*d) != current).map(str::to_string);
+        let db = norm(database);
+        let same = |s: &SchemaRef| norm(s.database.as_deref()) == db;
+        self.objects.retain(|(s, _), _| !same(s));
+        self.children.retain(|(o, _), _| !same(&o.schema_ref()));
+        self.snapshots.retain(|s, _| !same(s));
+        self.table_defs.retain(|o, _| !same(&o.schema_ref()));
+        self.schemas.retain(|k, _| norm(Some(k)) != db);
+        if !self.databases.is_loading() {
+            self.databases = Loadable::NotLoaded;
+        }
+        self.generation += 1;
+        self.invalidations += 1;
     }
 
     pub fn clear_object(&mut self, obj: &ObjectRef) {
@@ -84,6 +106,7 @@ impl MetadataCache {
         self.table_defs.remove(obj);
         self.snapshots.remove(&obj.schema_ref());
         self.generation += 1;
+        self.invalidations += 1;
     }
 
     pub fn request_databases(&mut self, backend: &Backend, session: &SessionHandle) {

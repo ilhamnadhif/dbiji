@@ -29,6 +29,11 @@ pub fn drop_sql(d: &dyn Dialect, o: &ObjectRef, cascade: bool) -> String {
     };
     let cascade_sfx = if cascade { " CASCADE" } else { "" };
     match o.kind {
+        // A MySQL partition is no table: `DROP TABLE p0` would drop a table of that name.
+        ObjectKind::Partition if matches!(d.kind(), dbiji_core::DbKind::MySql | dbiji_core::DbKind::MariaDb) => {
+            let table = ObjectRef::table(o.schema.clone(), o.table.clone().unwrap_or_default()).with_database(o.database.clone());
+            format!("ALTER TABLE {} DROP PARTITION {}", d.qualified_ref(&table), d.quote_ident(&o.name))
+        }
         ObjectKind::Table | ObjectKind::ForeignTable | ObjectKind::Partition => ddl.drop_table(o.schema.as_deref(), &o.name, cascade),
         ObjectKind::View | ObjectKind::MaterializedView => {
             let v = ViewDef { schema: o.schema.clone(), name: o.name.clone(), materialized: o.kind == ObjectKind::MaterializedView, ..Default::default() };
@@ -88,6 +93,8 @@ impl DropDialog {
         // Each object is dropped in its own database (another database of the server has its own session).
         let sessions: Vec<Option<SessionHandle>> =
             self.objects.iter().map(|o| if o.kind == ObjectKind::Database { Some(live.main.clone()) } else { live.ensure_session(backend, o.database.as_deref()) }).collect();
+        // A session that failed to open: its error instead of waiting for ever.
+        let session_error = self.objects.iter().zip(&sessions).filter(|(_, s)| s.is_none()).find_map(|(o, _)| live.session_error(o.database.as_deref()));
         let opening = sessions.iter().any(Option::is_none);
         let read_only = live.config.read_only;
         let statements: Vec<String> = self.objects.iter().map(|o| drop_sql(dialect.as_ref(), o, self.cascade)).collect();
@@ -106,7 +113,9 @@ impl DropDialog {
             if read_only {
                 crate::widgets::error_box(ui, tr("The connection is read-only."));
             }
-            if opening {
+            if let Some(e) = &session_error {
+                crate::widgets::error_box(ui, e);
+            } else if opening {
                 ui.weak(tr("Opening a session…"));
                 ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
             }
@@ -119,10 +128,26 @@ impl DropDialog {
                     let work: Vec<(String, SessionHandle)> = statements.iter().cloned().zip(sessions.iter().flatten().cloned()).collect();
                     self.error = None;
                     self.job = Some(backend.spawn(async move {
+                        // The sessions are shared: other uncommitted work would be committed with the drop.
+                        if work.iter().any(|(_, s)| s.has_uncommitted_writes()) {
+                            return Err(dbiji_core::DbError::config(tr(
+                                "The session has uncommitted changes (another tab, the data editor): commit or roll them back before dropping objects.",
+                            )));
+                        }
                         let mut n = 0;
                         for (sql, s) in &work {
                             s.execute_update(sql, &[]).await.map_err(|e| e.with_context(sql.clone()))?;
                             n += 1;
+                        }
+                        // In manual commit mode the drop would stay in an open transaction (holding its locks).
+                        let mut done: Vec<&SessionHandle> = Vec::new();
+                        for (_, s) in &work {
+                            if !done.iter().any(|d| d.same(s)) {
+                                done.push(s);
+                                if s.tx_state().in_transaction {
+                                    s.commit().await?;
+                                }
+                            }
                         }
                         Ok(n)
                     }));

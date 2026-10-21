@@ -89,6 +89,8 @@ impl TableDataView {
             && !p.src.session.same(&session)
         {
             p.src.session = session.clone();
+            // Its cursor was on the lost session (a token there may name another cursor here).
+            p.src.token = None;
         }
         if !self.started {
             self.start(cx, session.clone());
@@ -123,6 +125,10 @@ impl EmbeddedView for TableDataView {
         self.panel.as_ref().is_some_and(|p| p.has_changes())
     }
 
+    fn transaction_session(&self) -> Option<crate::conn::session::SessionHandle> {
+        self.panel.as_ref().map(|p| p.src.session.clone())
+    }
+
     fn on_action(&mut self, action: crate::keys::Action, cx: &mut AppContext) -> bool {
         use crate::keys::Action as A;
         let Some(p) = self.panel.as_mut() else { return false };
@@ -136,7 +142,7 @@ impl EmbeddedView for TableDataView {
                 true
             }
             A::Refresh => {
-                p.src.refresh(cx.backend, cx.settings.results.effective_fetch_size() as usize);
+                p.refresh(cx);
                 true
             }
             A::Export => {
@@ -184,6 +190,10 @@ impl TabView for TableDataTab {
     }
     fn is_dirty(&self) -> bool {
         EmbeddedView::is_dirty(&self.view)
+    }
+    /// A manual commit session's saved edits wait in its transaction: listed in Pending transactions.
+    fn transaction_session(&self) -> Option<crate::conn::session::SessionHandle> {
+        EmbeddedView::transaction_session(&self.view)
     }
     fn ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
         self.view.ui(ui, cx);

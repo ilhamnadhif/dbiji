@@ -79,6 +79,8 @@ impl Dialogs {
     pub fn new_connection(&mut self, kind: Option<dbiji_core::DbKind>, folder: Option<String>, _conns: &ConnectionManager, default_view: dbiji_core::config::NavigatorView) {
         let mut d = ConnectionDialog::new(kind, folder);
         d.cfg.navigator_view = default_view;
+        // One new-connection dialog: asking again starts it over (another database type).
+        self.connection.retain(|d| !d.is_new);
         self.connection.push(d);
     }
 
@@ -132,6 +134,7 @@ impl Dialogs {
             || self.drop.is_some()
             || !self.prompts.is_empty()
             || self.import.is_some()
+            || self.create_db.is_some()
             || !self.connection.is_empty()
     }
 
@@ -297,11 +300,16 @@ impl Dialogs {
                             }
                         }
                     }
-                    if let Some(cfg) = cx.conns.config_mut(&p.conn_id)
-                        && !cfg.save_password
-                    {
-                        cfg.save_password = true;
-                        cx.push(AppCommand::SaveConnections);
+                    if let Some(cfg) = cx.conns.config_mut(&p.conn_id) {
+                        // "Ask every time" with a saved password would keep asking: it is used from now on.
+                        let ask = matches!(cfg.auth, dbiji_core::config::AuthMethod::Prompt) && creds.password.is_some();
+                        if !cfg.save_password || ask {
+                            cfg.save_password = true;
+                            if ask {
+                                cfg.auth = dbiji_core::config::AuthMethod::Password;
+                            }
+                            cx.push(AppCommand::SaveConnections);
+                        }
                     }
                 }
                 self.ready.push((p.conn_id.clone(), creds));

@@ -509,6 +509,8 @@ fn menus_actions_commands_and_dialogs() {
     frames(&mut h, 2);
     click(&mut h, "New connection…");
     wait(&mut h, "connection dialog", |h| has(h, "SQLite"));
+    // A new window settles its size in its first frames.
+    frames(&mut h, 5);
     pause(&mut h);
     h.query_all_by_label_contains("SQLite").last().unwrap().click();
     frames(&mut h, 3);
@@ -672,10 +674,21 @@ fn settings_grid_menu_and_editor_helpers() {
     click(&mut h, "Filter by value");
     let eq = labels(&h).into_iter().find(|l| l.starts_with("id = ")).unwrap_or_else(|| panic!("{:?}", labels(&h)));
     click(&mut h, &eq);
-    wait(&mut h, "filtered", |h| rows_label(h).starts_with("Data grid, 1 rows"));
+    // The menu sweep left pending edits: reloading asks first, and discarding them
+    // drops the new row the filter may name.
+    let discarded = has(&h, "Discard and reload");
+    let mut all = all;
+    if discarded {
+        click(&mut h, "Discard and reload");
+    }
+    wait(&mut h, "filtered", |h| rows_label(h).starts_with("Data grid, 1 rows") || (discarded && rows_label(h).starts_with("Data grid, 0 rows")));
     no_errors(&mut h, "filter by value");
     click(&mut h, egui_phosphor::regular::X);
-    wait(&mut h, "filter cleared", |h| rows_label(h).split(',').nth(1).unwrap_or_default() == all);
+    wait(&mut h, "filter cleared", |h| {
+        let n = rows_label(h).split(',').nth(1).unwrap_or_default().to_string();
+        if discarded { n.trim().split(' ').next().and_then(|c| c.parse::<usize>().ok()).is_some_and(|c| c > 1) } else { n == all }
+    });
+    all = rows_label(&h).split(',').nth(1).unwrap_or_default().to_string();
     no_errors(&mut h, "clear filter");
 
     // Column menu (▾ in the header): order, disable the order, filters.

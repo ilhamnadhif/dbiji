@@ -43,6 +43,8 @@ pub struct ObjectEditorTab {
     /// Virtual model of the table being edited (virtual key, dictionary, virtual columns).
     vmodel: Option<dbiji_config::VirtualTable>,
     new_vcol: (String, String),
+    /// Metadata clears seen: after another one (designer Apply, Refresh) the pages reload.
+    invalidations: Option<u64>,
 }
 
 impl ObjectEditorTab {
@@ -61,6 +63,7 @@ impl ObjectEditorTab {
             data: None,
             vmodel: None,
             new_vcol: (String::new(), String::new()),
+            invalidations: None,
         }
     }
 
@@ -460,6 +463,11 @@ impl TabView for ObjectEditorTab {
         self.obj.name.clone()
     }
 
+    /// The Data page's session (its transaction in manual commit mode).
+    fn transaction_session(&self) -> Option<crate::conn::session::SessionHandle> {
+        self.data.as_ref().and_then(|d| d.transaction_session())
+    }
+
     fn icon(&self) -> &'static str {
         crate::nav::kind_icon(self.obj.kind)
     }
@@ -495,6 +503,11 @@ impl TabView for ObjectEditorTab {
             });
             return;
         }
+        let seen = cx.conns.live(&self.conn).map(|l| l.meta.invalidations);
+        if self.invalidations.is_some() && self.invalidations != seen {
+            self.refresh();
+        }
+        self.invalidations = seen;
         ui.horizontal(|ui| {
             ui.label(RichText::new(format!("{} {}", crate::nav::kind_icon(self.obj.kind), self.obj.display_path())).strong());
             ui.separator();

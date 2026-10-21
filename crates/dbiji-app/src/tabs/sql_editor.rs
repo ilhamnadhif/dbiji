@@ -133,6 +133,8 @@ pub struct SqlEditorTab {
     tx_job: Option<(bool, Job<DbResult<()>>)>,
     /// The chosen schema being applied to the session.
     schema_job: Option<(String, Job<DbResult<()>>)>,
+    /// Transaction mode of a lost session, set again on the session replacing it.
+    restore_mode: Option<TransactionMode>,
     results: Vec<ResultItem>,
     bottom: Bottom,
     stats: Vec<StatRow>,
@@ -155,8 +157,13 @@ pub struct SqlEditorTab {
     catalog_generation: Option<(u64, SchemaRef)>,
     user_words: HashSet<String>,
     close_prompt: bool,
+    /// Closing rolls back the uncommitted changes of its own session: asking first.
+    close_tx_prompt: bool,
+    /// The user agreed to roll them back.
+    close_tx_ok: bool,
     /// "Save" in the close prompt: the result edits are being saved, then the tab closes.
-    close_after_save: bool,
+    /// Close once the result edits are saved, unless the script changed since (its version then).
+    close_after_save: Option<u64>,
     ddl_executed: bool,
     last_run: Option<(Instant, Duration)>,
     terminal: bool,
@@ -235,6 +242,7 @@ impl SqlEditorTab {
             explain_job: None,
             tx_job: None,
             schema_job: None,
+            restore_mode: None,
             results: Vec::new(),
             bottom: Bottom::Output,
             stats: Vec::new(),
@@ -254,7 +262,9 @@ impl SqlEditorTab {
             catalog_generation: None,
             user_words: HashSet::new(),
             close_prompt: false,
-            close_after_save: false,
+            close_tx_prompt: false,
+            close_tx_ok: false,
+            close_after_save: None,
             ddl_executed: false,
             last_run: None,
             terminal: console,
@@ -319,8 +329,20 @@ impl SqlEditorTab {
         }
         if let SessionSlot::Ready(s) = &self.session {
             if s.is_closed() {
+                let lost = s.is_lost();
+                let tx = s.tx_state();
+                let had_writes = s.has_uncommitted_writes();
                 self.session = SessionSlot::None;
-                self.log("WARNING", tr("The session was closed; a new one is opened for the next statement."));
+                // The new session gets the chosen schema and transaction mode again.
+                self.pending_schema = true;
+                self.restore_mode = Some(tx.mode);
+                if lost && had_writes {
+                    let title = tr("The connection was lost: the uncommitted changes were rolled back by the server.");
+                    self.log("ERROR", title);
+                    cx.toasts.error(title, None);
+                } else {
+                    self.log("WARNING", tr("The session was closed; a new one is opened for the next statement."));
+                }
             } else {
                 return Some(s.clone());
             }
@@ -336,6 +358,11 @@ impl SqlEditorTab {
             None
         } else {
             let s = live.ensure_session(cx.backend, database.as_deref())?;
+            // The shared session itself was lost: only a reconnect brings it back.
+            if s.is_closed() {
+                self.session = SessionSlot::Failed(tr("The connection to the server was lost: reconnect it (double-click it in the navigator).").to_string());
+                return None;
+            }
             self.session = SessionSlot::Ready(s.clone());
             Some(s)
         }
@@ -779,7 +806,9 @@ impl SqlEditorTab {
                     if self.ddl_executed
                         && let Some(c) = &self.conn
                     {
-                        cx.push(AppCommand::RefreshMetadata { connection: c.clone(), object: None, schema: self.schema.clone() });
+                        // DDL may touch any schema of the database (CREATE SCHEMA, other.t, ...).
+                        let database = self.schema.as_ref().and_then(|s| s.database.clone());
+                        cx.push(AppCommand::RefreshMetadata { connection: c.clone(), object: None, schema: Some(SchemaRef { database, schema: None }) });
                     }
                 }
             }
@@ -988,6 +1017,12 @@ impl SqlEditorTab {
 
     fn set_tx_mode(&mut self, cx: &mut AppContext, mode: TransactionMode) {
         let Some(s) = self.session(cx) else { return };
+        // Leaving manual mode commits the open transaction: its failure is reported like a Commit's.
+        if mode == TransactionMode::Auto && s.tx_state().in_transaction {
+            let job = cx.backend.spawn(async move { s.set_transaction_mode(mode).await });
+            self.tx_job = Some((true, job));
+            return;
+        }
         cx.backend.spawn_detached(async move {
             let _ = s.set_transaction_mode(mode).await;
         });
@@ -1002,9 +1037,7 @@ impl SqlEditorTab {
     /// Close the tab once the result edits saved from the close prompt are saved;
     /// a failed save keeps it open (the error is shown).
     fn poll_close_after_save(&mut self, ui: &Ui, cx: &mut AppContext) {
-        if !self.close_after_save {
-            return;
-        }
+        let Some(version) = self.close_after_save else { return };
         let mut saving = false;
         let mut left = false;
         for r in &mut self.results {
@@ -1014,14 +1047,16 @@ impl SqlEditorTab {
                 left |= p.has_changes();
             }
         }
+        // Typed into while saving: the new text is not saved, the tab stays.
+        let edited = self.editor.version() != version;
         if saving {
             ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
             return;
         }
-        self.close_after_save = false;
+        self.close_after_save = None;
         // Saved inside an open transaction (manual commit): closing would lose it; the tab stays to commit.
         let in_tx = matches!(&self.session, SessionSlot::Ready(s) if s.tx_state().in_transaction);
-        if !left && !in_tx {
+        if !left && !in_tx && !edited {
             self.editor.mark_saved();
             if let Some(id) = self.tab_id {
                 cx.push(AppCommand::CloseTab(id));
@@ -1582,7 +1617,7 @@ impl SqlEditorTab {
                             }
                         }
                         if saving {
-                            self.close_after_save = true;
+                            self.close_after_save = Some(self.editor.version());
                         } else {
                             self.editor.mark_saved();
                             if let Some(id) = self.tab_id {
@@ -1605,6 +1640,33 @@ impl SqlEditorTab {
                 }
                 None if close || modal.should_close() => self.close_prompt = false,
                 None => {}
+            }
+        }
+        if self.close_tx_prompt {
+            let mut decided: Option<bool> = None;
+            let modal = egui::Modal::new(egui::Id::new(("close_editor_tx", self.editor.id()))).show(ui.ctx(), |ui| {
+                ui.heading(tr("Uncommitted transaction"));
+                ui.label(trf("\"{}\" has uncommitted changes; closing it rolls them back.", &[&self.title]));
+                ui.horizontal(|ui| {
+                    if ui.button(RichText::new(tr("Roll back and close")).color(crate::theme::error_color(ui.visuals().dark_mode))).clicked() {
+                        decided = Some(true);
+                    }
+                    if ui.button(tr("Cancel")).clicked() {
+                        decided = Some(false);
+                    }
+                });
+            });
+            if decided.is_none() && modal.should_close() {
+                decided = Some(false);
+            }
+            if let Some(close) = decided {
+                self.close_tx_prompt = false;
+                if close {
+                    self.close_tx_ok = true;
+                    if let Some(id) = self.tab_id {
+                        cx.push(AppCommand::CloseTab(id));
+                    }
+                }
             }
         }
     }
@@ -1779,7 +1841,7 @@ impl TabView for SqlEditorTab {
             }
             A::Refresh => {
                 if let Some(p) = self.active_panel() {
-                    p.src.refresh(cx.backend, cx.settings.results.effective_fetch_size() as usize);
+                    p.refresh(cx);
                 } else {
                     return false;
                 }
@@ -1798,9 +1860,21 @@ impl TabView for SqlEditorTab {
         true
     }
 
+    fn prompts_on_close(&self) -> bool {
+        true
+    }
+
     fn on_close(&mut self, cx: &mut AppContext) -> bool {
         if self.is_dirty() {
             self.close_prompt = true;
+            return false;
+        }
+        if !self.close_tx_ok
+            && let SessionSlot::Ready(s) = &self.session
+            && s.has_uncommitted_writes()
+            && !self.conn.as_ref().and_then(|c| cx.conns.live(c)).is_some_and(|l| l.main.same(s) || l.db_sessions.values().any(|d| d.get().is_some_and(|d| d.same(s))))
+        {
+            self.close_tx_prompt = true;
             return false;
         }
         if let Some(e) = &self.exec {
@@ -1869,14 +1943,30 @@ impl TabView for SqlEditorTab {
             let session = self.session(cx);
             // Results of a session that was lost save and fetch through the new one.
             if let Some(s) = &session {
+                // Only a lost session of the same connection and database: a session closed on
+                // purpose (the editor switched database or connection) keeps its results there.
+                let conn = self.conn.clone().unwrap_or_default();
                 for r in &mut self.results {
                     if let ResultItem::Rows(p) = r
-                        && p.src.session.is_closed()
+                        && p.src.session.is_lost()
                         && !p.src.session.same(s)
+                        && p.conn() == conn
+                        && p.src.session.database() == s.database()
                     {
                         p.src.session = s.clone();
+                        p.src.token = None;
+                        // A writing statement is not run again to read on.
+                        if !p.src.rerun_safe {
+                            p.src.exhausted = true;
+                        }
                     }
                 }
+            }
+            if let Some(s) = &session
+                && let Some(mode) = self.restore_mode.take()
+                && s.tx_state().mode != mode
+            {
+                self.set_tx_mode(cx, mode);
             }
             if let Some(s) = session
                 && self.pending_schema

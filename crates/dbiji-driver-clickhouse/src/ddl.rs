@@ -188,6 +188,26 @@ impl DdlGenerator for ClickHouseDdl {
         }
         let t = tname(to);
         let (pairs, dropped, added) = match_columns(from, to, renamed);
+        // The sorting key: ClickHouse only appends columns added by the same ALTER.
+        let mut key_append: Option<Vec<String>> = None;
+        if from.primary_key != to.primary_key
+            && let Some(pk) = &to.primary_key
+        {
+            let old = key_columns(from);
+            let appended = pk.columns.get(old.len()..).unwrap_or(&[]);
+            if pk.columns.starts_with(&old) && !appended.is_empty() && appended.iter().all(|c| added.iter().any(|a| &a.name == c)) {
+                key_append = Some(appended.to_vec());
+            } else {
+                // Before any other change: nothing is applied half way.
+                out.insert(
+                    0,
+                    format!(
+                        "SELECT throwIf(1, {})",
+                        string_literal("ClickHouse can only append new columns to the sorting key (ORDER BY); create a new table with the new key and copy the data")
+                    ),
+                );
+            }
+        }
 
         let from_idx: Vec<&IndexDef> = skipping_indexes(from).collect();
         let to_idx: Vec<&IndexDef> = skipping_indexes(to).collect();
@@ -241,6 +261,18 @@ impl DdlGenerator for ClickHouseDdl {
             }
             out.extend(stmt);
         }
+        // New key columns are added in the ALTER that extends the key.
+        if let (Some(appended), Some(pk)) = (&key_append, &to.primary_key) {
+            let add_prefix = format!("ALTER TABLE {t} ADD COLUMN ");
+            let is_key_add = |s: &str| s.strip_prefix(&add_prefix).is_some_and(|rest| appended.iter().any(|c| rest.starts_with(&format!("{} ", ident(c)))));
+            let parts: Vec<String> = out.iter().filter(|s| is_key_add(s)).map(|s| s[format!("ALTER TABLE {t} ").len()..].to_string()).collect();
+            let modify = self.add_primary_key(to, pk);
+            let combined = format!("ALTER TABLE {t} {}, {}", parts.join(", "), modify.strip_prefix(&format!("ALTER TABLE {t} ")).unwrap_or(&modify));
+            // In place of the first of them: later columns are added AFTER them.
+            let at = out.iter().position(|s| is_key_add(s)).unwrap_or(out.len());
+            out.retain(|s| !is_key_add(s));
+            out.insert(at.min(out.len()), combined);
+        }
         for i in &to_idx {
             if !from_idx.iter().any(|x| same_index(x, i) && x.method == i.method) {
                 out.push(self.create_index(to, i));
@@ -249,21 +281,6 @@ impl DdlGenerator for ClickHouseDdl {
         for c in &to.checks {
             if !from.checks.contains(c) {
                 out.push(self.add_check(to, c));
-            }
-        }
-        if from.primary_key != to.primary_key
-            && let Some(pk) = &to.primary_key
-        {
-            let old = key_columns(from);
-            // ClickHouse only allows appending (new) columns to the sorting key;
-            // any other change fails here instead of being skipped silently.
-            if pk.columns.starts_with(&old) && pk.columns.len() > old.len() {
-                out.push(self.add_primary_key(to, pk));
-            } else {
-                out.push(format!(
-                    "SELECT throwIf(1, {})",
-                    string_literal("ClickHouse can only append new columns to the sorting key (ORDER BY); create a new table with the new key and copy the data")
-                ));
             }
         }
         if from.comment != to.comment {
@@ -571,6 +588,25 @@ fn default_kind_type(kind: DataKind) -> String {
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
+
+    #[test]
+    fn sorting_key_extension_adds_its_columns_in_the_same_alter() {
+        let d = ClickHouseDdl::new();
+        let from = sample();
+        let mut to = from.clone();
+        to.columns.push(ColumnDef::new("region", "String").not_null());
+        to.columns.push(ColumnDef::new("note", "String"));
+        to.primary_key = Some(KeyDef { name: None, columns: vec!["id".into(), "region".into()] });
+        let sql = d.alter_table(&from, &to, &[]);
+        let key = sql.iter().position(|s| s.contains("ADD COLUMN region") && s.contains("MODIFY ORDER BY (id, region)"));
+        let note = sql.iter().position(|s| s.contains("ADD COLUMN note") && !s.contains("ORDER BY"));
+        assert!(key.is_some() && key < note, "{sql:#?}");
+        // Another key change fails before anything is applied.
+        let mut bad = from.clone();
+        bad.columns.push(ColumnDef::new("note", "String"));
+        bad.primary_key = Some(KeyDef { name: None, columns: vec!["name".into()] });
+        assert!(d.alter_table(&from, &bad, &[])[0].starts_with("SELECT throwIf"));
+    }
 
     fn sample() -> TableDef {
         let mut t = TableDef::new(Some("app".into()), "events");

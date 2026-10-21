@@ -30,6 +30,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::sync::{oneshot, watch};
 
+/// A UTC time `?` (given twice) in the session's time zone. `CONVERT_TZ` knows the
+/// zone's DST rules; without the time zone tables a named zone gives NULL, and the
+/// current offset is used.
+pub(crate) const SESSION_TIME_SQL: &str = "CAST(COALESCE(CONVERT_TZ(?, '+00:00', @@session.time_zone), TIMESTAMPADD(SECOND, TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW()), ?)) AS CHAR)";
+
 /// Where the connection currently is.
 enum Slot {
     /// Available.
@@ -455,21 +460,50 @@ impl Session for MySqlSession {
                 ));
             }
             // A time with a time zone: MySQL ≥ 8.0.19 converts a value with an offset
-            // itself; before, it is given in the session's time zone (not UTC).
+            // itself; before (and MariaDB), it is given in the session's time zone, as
+            // that zone had it at that instant (DST), converted by the server in one query.
             let offset_literal = self.profile.is_mysql() && self.profile.at_least(8, 0, 19);
-            let session_offset =
-                if !offset_literal && params.iter().any(|v| matches!(v, Value::DateTimeTz(_))) {
-                    let row = self
-                        .row(
-                            "SELECT TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW())",
-                            Vec::new(),
-                        )
-                        .await?;
-                    row.and_then(|r| r.get::<i64, _>(0))
-                        .and_then(|s| chrono::FixedOffset::east_opt(s as i32))
-                } else {
-                    None
-                };
+            let mut local: std::collections::HashMap<chrono::NaiveDateTime, chrono::NaiveDateTime> =
+                std::collections::HashMap::new();
+            if !offset_literal {
+                let mut utc: Vec<chrono::NaiveDateTime> = params
+                    .iter()
+                    .filter_map(|v| match v {
+                        Value::DateTimeTz(dt) => Some(dt.naive_utc()),
+                        _ => None,
+                    })
+                    .collect();
+                utc.sort();
+                utc.dedup();
+                if !utc.is_empty() {
+                    let sql = format!("SELECT {}", vec![SESSION_TIME_SQL; utc.len()].join(", "));
+                    let args: Vec<MyValue> = utc
+                        .iter()
+                        .flat_map(|t| {
+                            let text = t.format("%Y-%m-%d %H:%M:%S%.6f").to_string();
+                            [
+                                MyValue::Bytes(text.clone().into_bytes()),
+                                MyValue::Bytes(text.into_bytes()),
+                            ]
+                        })
+                        .collect();
+                    if let Some(row) = self.row(&sql, args).await? {
+                        for (i, t) in utc.iter().enumerate() {
+                            if let Some(l) =
+                                row.get::<Option<String>, _>(i).flatten().and_then(|s| {
+                                    chrono::NaiveDateTime::parse_from_str(
+                                        &s,
+                                        "%Y-%m-%d %H:%M:%S%.f",
+                                    )
+                                    .ok()
+                                })
+                            {
+                                local.insert(*t, l);
+                            }
+                        }
+                    }
+                }
+            }
             Some(
                 params
                     .iter()
@@ -479,11 +513,8 @@ impl Session for MySqlSession {
                                 .to_string()
                                 .into_bytes(),
                         )),
-                        Value::DateTimeTz(dt) => match session_offset {
-                            Some(o) => convert::to_param(
-                                &Value::DateTime(dt.with_timezone(&o).naive_local()),
-                                &cs,
-                            ),
+                        Value::DateTimeTz(dt) => match local.get(&dt.naive_utc()) {
+                            Some(l) => convert::to_param(&Value::DateTime(*l), &cs),
                             None => convert::to_param(v, &cs),
                         },
                         _ => convert::to_param(v, &cs),

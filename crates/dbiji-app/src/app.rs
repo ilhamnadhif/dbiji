@@ -57,6 +57,10 @@ pub struct DbijiApp {
     exit_at: Option<Instant>,
     /// The window was asked to close while tabs had unsaved changes.
     confirm_quit: bool,
+    /// Connections to disconnect (and reconnect) once their uncommitted transactions are confirmed.
+    confirm_disconnect: Option<(Vec<String>, bool)>,
+    /// Dirty tabs waiting for "discard and close?" (the first is asked).
+    close_confirm: Vec<u64>,
     quit_confirmed: bool,
     /// "Generate SQL" requests waiting for the table definition.
     pending_generate: Vec<(String, dbiji_core::ObjectRef, String)>,
@@ -74,6 +78,8 @@ pub struct DbijiApp {
     pub popups: Vec<Tab>,
     /// Bring this pop-up to the front (opened again while open).
     raise_popup: Option<u64>,
+    /// The pop-up last clicked in (or just opened): shortcuts are its own.
+    popup_focus: Option<u64>,
     /// The native application menu (About, Check for Updates…, Quit).
     #[cfg(target_os = "macos")]
     pub app_menu: Option<crate::macmenu::AppMenu>,
@@ -118,11 +124,14 @@ impl DbijiApp {
             linked_tab: None,
             script_counter: 0,
             confirm_quit: false,
+            confirm_disconnect: None,
+            close_confirm: Vec::new(),
             quit_confirmed: false,
             bench_workload: None,
             updates: Default::default(),
             popups: Vec::new(),
             raise_popup: None,
+            popup_focus: None,
             #[cfg(target_os = "macos")]
             app_menu: None,
             existing_install: false,
@@ -148,11 +157,13 @@ impl DbijiApp {
                 && let Some(t) = self.popups.iter().find(|t| t.view.dedupe_key().as_deref() == Some(key.as_str()))
             {
                 self.raise_popup = Some(t.id);
+                self.popup_focus = Some(t.id);
                 return t.id;
             }
             let id = self.next_tab_id;
             self.next_tab_id += 1;
             self.popups.push(Tab::new(id, view));
+            self.popup_focus = Some(id);
             return id;
         }
         if let Some(key) = view.dedupe_key()
@@ -191,13 +202,21 @@ impl DbijiApp {
     }
 
     /// Close a tab or pop-up (it may veto, e.g. to ask about unsaved changes).
+    /// A vetoing tab stays where it is.
     pub fn close_tab(&mut self, id: u64) {
         let popup = self.popups.iter().position(|t| t.id == id);
         let tab = match popup {
-            Some(i) => Some(self.popups.remove(i)),
-            None => self.dock.find_tab_from(|t| t.id == id).and_then(|path| self.dock.remove_tab(path)),
+            Some(i) => self.popups.get_mut(i),
+            None => self.dock.iter_all_tabs_mut().find(|(_, t)| t.id == id).map(|(_, t)| t),
         };
-        if let Some(mut tab) = tab {
+        let Some(tab) = tab else { return };
+        if tab.needs_close_confirm() {
+            if !self.close_confirm.contains(&id) {
+                self.close_confirm.push(id);
+            }
+            return;
+        }
+        {
             let mut cx = AppContext {
                 backend: &self.backend,
                 conns: &mut self.conns,
@@ -212,12 +231,127 @@ impl DbijiApp {
                 popup: false,
             };
             if !tab.view.on_close(&mut cx) {
-                // put it back
-                match popup {
-                    Some(i) => self.popups.insert(i.min(self.popups.len()), tab),
-                    None => self.dock.push_to_focused_leaf(tab),
+                return;
+            }
+        }
+        match popup {
+            Some(i) => {
+                self.popups.remove(i);
+            }
+            None => {
+                if let Some(path) = self.dock.find_tab_from(|t| t.id == id) {
+                    self.dock.remove_tab(path);
                 }
             }
+        }
+    }
+
+    /// "Discard the unsaved changes of … and close?" for the first waiting tab.
+    fn close_confirm_ui(&mut self, ctx: &egui::Context) {
+        let Some(&id) = self.close_confirm.first() else { return };
+        let title = self.popups.iter().chain(self.dock.iter_all_tabs().map(|(_, t)| t)).find(|t| t.id == id).map(|t| t.view.title());
+        let Some(title) = title else {
+            self.close_confirm.remove(0);
+            return;
+        };
+        let mut decided: Option<bool> = None;
+        let modal = egui::Modal::new(egui::Id::new(("confirm_close", id))).show(ctx, |ui| {
+            ui.heading(tr("Unsaved changes"));
+            ui.label(dbiji_core::trf("\"{}\" has unsaved changes; closing it discards them.", &[&title]));
+            ui.horizontal(|ui| {
+                if ui.button(RichText::new(tr("Discard and close")).color(crate::theme::error_color(ui.visuals().dark_mode))).clicked() {
+                    decided = Some(true);
+                }
+                if ui.button(tr("Cancel")).clicked() {
+                    decided = Some(false);
+                }
+            });
+        });
+        if decided.is_none() && modal.should_close() {
+            decided = Some(false);
+        }
+        if let Some(close) = decided {
+            self.close_confirm.remove(0);
+            if close {
+                if let Some(t) = self.popups.iter_mut().chain(self.dock.iter_all_tabs_mut().map(|(_, t)| t)).find(|t| t.id == id) {
+                    t.force_close = true;
+                }
+                self.close_tab(id);
+            }
+        }
+    }
+
+    /// Disconnect (and reconnect), asking first when a session of the connection has
+    /// uncommitted changes: closing it rolls them back.
+    fn disconnect_checked(&mut self, ids: Vec<String>, reconnect: bool) {
+        let pending = crate::pending_tx::collect(&self.dock, &self.conns);
+        let (ask, now): (Vec<String>, Vec<String>) = ids.into_iter().partition(|id| pending.iter().any(|p| &p.conn == id));
+        for id in now {
+            self.finish_disconnect(&id, reconnect);
+        }
+        if !ask.is_empty() {
+            let c = self.confirm_disconnect.get_or_insert_with(|| (Vec::new(), reconnect));
+            for id in ask {
+                if !c.0.contains(&id) {
+                    c.0.push(id);
+                }
+            }
+        }
+    }
+
+    fn finish_disconnect(&mut self, id: &str, reconnect: bool) {
+        self.conns.disconnect(&self.backend, id);
+        if reconnect {
+            self.request_connect(id);
+        }
+    }
+
+    fn confirm_disconnect_ui(&mut self, ctx: &egui::Context) {
+        let Some((ids, reconnect)) = self.confirm_disconnect.clone() else { return };
+        let pending: Vec<_> = crate::pending_tx::collect(&self.dock, &self.conns).into_iter().filter(|p| ids.contains(&p.conn)).collect();
+        let mut decided: Option<bool> = None;
+        let mut review = false;
+        if pending.is_empty() {
+            // Committed or rolled back meanwhile (Review transactions): nothing is lost any more.
+            decided = Some(true);
+        } else {
+            let modal = egui::Modal::new(egui::Id::new("confirm_disconnect")).show(ctx, |ui| {
+                ui.heading(tr("Uncommitted transactions"));
+                ui.label(tr("Disconnecting rolls back the uncommitted changes of:"));
+                for p in pending.iter().take(10) {
+                    ui.label(format!("• {} — {}", p.conn_name, p.owner));
+                }
+                ui.horizontal(|ui| {
+                    if ui.button(tr("Review transactions")).clicked() {
+                        review = true;
+                    }
+                    let label = if reconnect { tr("Roll back and reconnect") } else { tr("Roll back and disconnect") };
+                    if ui.button(RichText::new(label).color(crate::theme::error_color(ui.visuals().dark_mode))).clicked() {
+                        decided = Some(true);
+                    }
+                    if ui.button(tr("Cancel")).clicked() {
+                        decided = Some(false);
+                    }
+                });
+            });
+            if modal.should_close() && decided.is_none() && !review {
+                decided = Some(false);
+            }
+        }
+        // The review window cannot be used under the modal: the question closes (disconnect again after).
+        if review {
+            self.pending_tx.open = true;
+            decided = Some(false);
+        }
+        match decided {
+            Some(true) => {
+                self.confirm_disconnect = None;
+                for id in &ids {
+                    self.finish_disconnect(id, reconnect);
+                }
+            }
+            Some(false) => self.confirm_disconnect = None,
+            None => {}
         }
     }
 
@@ -269,12 +403,9 @@ impl DbijiApp {
                 }
             }
             AppCommand::Connect(id) => self.request_connect(&id),
-            AppCommand::Disconnect(id) => self.conns.disconnect(&self.backend, &id),
-            AppCommand::Reconnect(id) => {
-                self.conns.disconnect(&self.backend, &id);
-                self.request_connect(&id);
-            }
-            AppCommand::DisconnectAll => self.conns.disconnect_all(&self.backend),
+            AppCommand::Disconnect(id) => self.disconnect_checked(vec![id], false),
+            AppCommand::Reconnect(id) => self.disconnect_checked(vec![id], true),
+            AppCommand::DisconnectAll => self.disconnect_checked(self.conns.live_ids(), false),
             AppCommand::NewConnection { kind, folder } => self.dialogs.new_connection(kind, folder, &self.conns, self.settings.navigator.default_view),
             AppCommand::EditConnection(id) => self.dialogs.edit_connection(&id, &self.conns),
             AppCommand::DuplicateConnection(id) => match self.conns.store.duplicate(&id) {
@@ -479,6 +610,8 @@ impl DbijiApp {
                 if let Some(live) = self.conns.live_mut(&connection) {
                     match (object, schema) {
                         (Some(o), _) => live.meta.clear_object(&o),
+                        // A database without a schema: all of it.
+                        (None, Some(s)) if s.schema.is_none() => live.meta.clear_database(s.database.as_deref(), live.current_database.as_deref()),
                         (None, Some(s)) => live.meta.clear_schema(&s),
                         (None, None) => {
                             live.meta.clear();
@@ -493,7 +626,8 @@ impl DbijiApp {
 
     /// Keyboard shortcuts of the focused context (active tab) and global ones.
     fn shortcuts(&mut self, ctx: &egui::Context) {
-        if self.dialogs.captures_keyboard() {
+        // Modal questions take the keyboard.
+        if self.dialogs.captures_keyboard() || self.confirm_quit || self.confirm_disconnect.is_some() || !self.close_confirm.is_empty() {
             return;
         }
         let context = self.dock.find_active_focused().map(|(_, t)| t.view.focus_context()).unwrap_or(crate::keys::ActionContext::Global);
@@ -512,7 +646,24 @@ impl DbijiApp {
     /// Run an action: the active tab gets the first chance, then the global handler.
     pub fn dispatch_action(&mut self, ctx: &egui::Context, action: crate::keys::Action) {
         use crate::keys::Action as A;
-        let handled = match self.dock.find_active_focused() {
+        // Working in the navigator: Refresh reloads its selection, not the active tab.
+        if action == A::Refresh
+            && self.show_nav
+            && self.nav.has_focus
+            && let Some(node) = self.nav.selected.clone()
+        {
+            self.nav.refresh_node(&node, &mut self.commands);
+            return;
+        }
+        // Working in a pop-up: Close closes it, and the tab behind gets no shortcut.
+        let in_popup = self.popup_focus.filter(|id| self.popups.iter().any(|t| t.id == *id));
+        if let Some(id) = in_popup
+            && action == A::CloseTab
+        {
+            self.close_tab(id);
+            return;
+        }
+        let handled = match self.dock.find_active_focused().filter(|_| in_popup.is_none()) {
             Some((_, tab)) => {
                 let mut cx = AppContext {
                     backend: &self.backend,
@@ -585,7 +736,7 @@ impl DbijiApp {
             }
             A::CommandPalette | A::OpenDatabaseObject => Some(AppCommand::ShowPalette),
             A::OpenHistory => Some(AppCommand::OpenHistory),
-            A::OpenErDiagram => match (conn, self.nav.selected_schema()) {
+            A::OpenErDiagram => match (conn, self.nav.selected_schema().filter(|s| s.schema.is_some() || s.database.is_none())) {
                 (Some(c), Some(s)) => Some(AppCommand::OpenErDiagram { connection: c, schema: s, tables: Vec::new() }),
                 _ => {
                     self.toasts.info(tr("Select a schema in the navigator first."));
@@ -638,8 +789,10 @@ impl DbijiApp {
         let pos = self.active_tab.and_then(|a| ids.iter().position(|i| *i == a)).unwrap_or(0);
         let next = if forward { (pos + 1) % ids.len() } else { (pos + ids.len() - 1) % ids.len() };
         let id = ids[next];
+        // Its pane gets the focus too: the next Ctrl+Tab continues from it (splits).
         if let Some(path) = self.dock.find_tab_from(|t| t.id == id) {
-            let _ = self.dock.set_active_tab(path);
+            self.focus_tab_path(path);
+            self.active_tab = Some(id);
         }
     }
 
@@ -1465,6 +1618,8 @@ impl eframe::App for DbijiApp {
                 None => {}
             }
         }
+        self.confirm_disconnect_ui(&ctx);
+        self.close_confirm_ui(&ctx);
         // Files dropped on the window: scripts open in editors, database files as connections.
         let dropped: Vec<std::path::PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).filter(|p| !p.as_os_str().is_empty()).collect());
         for path in dropped {
@@ -1501,8 +1656,10 @@ impl eframe::App for DbijiApp {
                 ui.separator();
                 if self.show_project {
                     self.project.ui(ui, &mut cx);
+                    self.nav.has_focus = false;
                 } else {
                     self.nav.ui(ui, &mut cx);
+                    self.nav.track_focus(ui);
                 }
             });
         }
@@ -1514,12 +1671,19 @@ impl eframe::App for DbijiApp {
             }
         }
         egui::CentralPanel::default().frame(egui::Frame::new()).show(ui, |ui| {
-            let mut viewer = DockViewer { cx: &mut cx, close_vetoed: Vec::new(), active_tab: self.active_tab, style: ui.style().clone() };
+            let mut viewer = DockViewer { cx: &mut cx, close_vetoed: Vec::new(), close_confirm: Vec::new(), active_tab: self.active_tab, style: ui.style().clone() };
             DockArea::new(&mut self.dock).style(egui_dock::Style::from_egui(ui.style().as_ref())).show_leaf_collapse_buttons(false).show_inside(ui, &mut viewer);
+            for id in viewer.close_confirm {
+                if !self.close_confirm.contains(&id) {
+                    self.close_confirm.push(id);
+                }
+            }
         });
         // Wizards and actions in pop-up windows over the tabs.
         let center = ctx.content_rect().center();
         let raise = self.raise_popup.take();
+        let pressed = ctx.input(|i| i.pointer.any_pressed().then(|| i.pointer.interact_pos()).flatten());
+        let mut clicked_popup = None;
         for tab in &mut self.popups {
             let mut open = true;
             let size = tab.view.popup_size().unwrap_or(egui::vec2(720.0, 520.0));
@@ -1549,15 +1713,23 @@ impl eframe::App for DbijiApp {
                     cx.popup = false;
                     cx.current_tab = None;
                 });
-            if let Some(shown) = shown
+            if let Some(shown) = &shown
                 && raise == Some(tab.id)
             {
                 ctx.move_to_top(shown.response.layer_id);
+            }
+            if let (Some(p), Some(shown)) = (pressed, &shown)
+                && shown.response.rect.contains(p)
+            {
+                clicked_popup = Some(tab.id);
             }
             // Closed by its button, or done (the toast told the result).
             if !open || tab.view.take_done() {
                 cx.commands.push(AppCommand::CloseTab(tab.id));
             }
+        }
+        if pressed.is_some() {
+            self.popup_focus = clicked_popup;
         }
 
         self.dialogs.show(&ctx, &mut cx);
@@ -1628,6 +1800,7 @@ impl eframe::App for DbijiApp {
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.save_session();
+        self.updates.install_on_exit();
         if let Some(s) = self.services.scheduler.clone() {
             self.backend.block_on(async move { s.shutdown(std::time::Duration::from_secs(3)).await });
         }

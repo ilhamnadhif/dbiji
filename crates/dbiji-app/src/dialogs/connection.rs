@@ -185,6 +185,8 @@ impl ConnectionDialog {
         let mut open = self.open;
         let mut close = false;
         egui::Window::new(format!("{} {}", icon::PLUGS_CONNECTED, title))
+            // Its own window per connection: two dialogs with the same title share no state.
+            .id(egui::Id::new(("conn_dlg", &self.cfg.id)))
             .open(&mut open)
             .collapsible(false)
             .resizable(true)
@@ -435,14 +437,28 @@ impl ConnectionDialog {
                 ui.add(egui::TextEdit::singleline(&mut self.url).hint_text("postgres://user@host:5432/db").desired_width(380.0));
                 if ui.button(tr("Apply")).clicked() {
                     match crate::urls::parse(&self.url) {
-                        Ok((mut cfg, pw)) => {
-                            cfg.id = self.cfg.id.clone();
-                            if cfg.name.is_empty() || !self.cfg.name.is_empty() {
-                                cfg.name = if self.cfg.name.is_empty() { cfg.host.clone() } else { self.cfg.name.clone() };
+                        Ok((cfg, pw)) => {
+                            // What a URL says; SSH, colours, filters and the other settings stay.
+                            if self.is_new || cfg.kind == self.cfg.kind {
+                                self.cfg.kind = cfg.kind;
                             }
-                            cfg.folder = self.cfg.folder.clone();
-                            cfg.connection_type = self.cfg.connection_type.clone();
-                            self.cfg = cfg;
+                            if self.cfg.name.is_empty() {
+                                self.cfg.name = if cfg.name.is_empty() { cfg.host.clone() } else { cfg.name.clone() };
+                            }
+                            self.cfg.host = cfg.host;
+                            self.cfg.port = cfg.port;
+                            self.cfg.database = cfg.database;
+                            if cfg.user.is_some() {
+                                self.cfg.user = cfg.user;
+                            }
+                            if cfg.file_path.is_some() {
+                                self.cfg.file_path = cfg.file_path;
+                            }
+                            if cfg.ssl != dbiji_core::config::SslConfig::default() {
+                                self.cfg.ssl = cfg.ssl;
+                            }
+                            self.cfg.read_only |= cfg.read_only;
+                            self.cfg.properties.extend(cfg.properties);
                             if let Some(pw) = pw {
                                 self.password = pw.expose().to_string();
                             }

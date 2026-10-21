@@ -2694,3 +2694,19 @@ Cannot use schema {}	Tidak dapat memakai schema {}
 The table was created, the statements after the failing one were not run; it is shown as it is now.	Tabel sudah dibuat, statement setelah yang gagal tidak dijalankan; tabel ditampilkan sesuai keadaannya sekarang.
 The session has uncommitted changes (another tab, the data editor): commit or roll them back before changing the table.	Sesi masih punya perubahan yang belum di-commit (tab lain, editor data): commit atau rollback dulu sebelum mengubah tabel.
 The connection to the server was lost: double-click to reconnect	Koneksi ke server terputus: klik dua kali untuk menyambung ulang
+The session has uncommitted changes (another tab, the data editor): commit or roll them back before dropping objects.	Sesi masih punya perubahan yang belum di-commit (tab lain, editor data): commit atau rollback dulu sebelum menghapus objek.
+Uncommitted transactions	Transaksi yang belum di-commit
+Disconnecting rolls back the uncommitted changes of:	Memutus koneksi akan me-rollback perubahan yang belum di-commit dari:
+Roll back and reconnect	Rollback dan sambung ulang
+Roll back and disconnect	Rollback dan putuskan
+Discard and close	Buang dan tutup
+"{}" has unsaved changes; closing it discards them.	"{}" punya perubahan yang belum disimpan; menutupnya akan membuang perubahan itu.
+Reloading the rows discards the {} pending change(s). Save them first to keep them.	Memuat ulang baris akan membuang {} perubahan yang tertunda. Simpan dulu untuk mempertahankannya.
+Discard and reload	Buang dan muat ulang
+The connection was lost: the uncommitted changes were rolled back by the server.	Koneksi terputus: perubahan yang belum di-commit di-rollback oleh server.
+The connection to the server was lost: reconnect it (double-click it in the navigator).	Koneksi ke server terputus: sambungkan ulang (klik dua kali di navigator).
+Uncommitted transaction	Transaksi belum di-commit
+"{}" has uncommitted changes; closing it rolls them back.	"{}" punya perubahan yang belum di-commit; menutupnya akan me-rollback perubahan itu.
+Roll back and close	Rollback dan tutup
+Read-only: the table definition could not be read: {}	Hanya-baca: definisi tabel tidak bisa dibaca: {}
+The transaction was rolled back: refresh to see the current rows.	Transaksi di-rollback: refresh untuk melihat baris yang sebenarnya.

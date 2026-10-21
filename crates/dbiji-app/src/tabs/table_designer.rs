@@ -896,7 +896,7 @@ impl TableDesignerTab {
             return;
         };
         // The DDL is committed: other uncommitted work on this (shared) session would be committed with it.
-        if session.tx_state().in_transaction {
+        if session.has_uncommitted_writes() {
             self.exec_error = Some(tr("The session has uncommitted changes (another tab, the data editor): commit or roll them back before changing the table.").to_string());
             return;
         }
@@ -1967,6 +1967,10 @@ impl TabView for TableDesignerTab {
         if self.exec.is_some() {
             ui.ctx().request_repaint_after(Duration::from_millis(100));
         }
+    }
+
+    fn prompts_on_close(&self) -> bool {
+        true
     }
 
     fn on_close(&mut self, _cx: &mut AppContext) -> bool {

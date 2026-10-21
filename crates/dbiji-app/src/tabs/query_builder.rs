@@ -30,7 +30,11 @@ impl QueryBuilderTab {
     fn picker(&mut self, ui: &mut Ui, cx: &mut AppContext) {
         let backend = cx.backend;
         let Some(live) = cx.conns.live_mut(&self.conn) else { return };
-        let schema = self.schema.clone().unwrap_or_else(|| SchemaRef::new(live.current_database.clone(), live.current_schema.clone()));
+        let mut schema = self.schema.clone().unwrap_or_else(|| SchemaRef::new(live.current_database.clone(), live.current_schema.clone()));
+        // A database chosen without a schema: its default one.
+        if schema.schema.is_none() && schema.database.is_some() {
+            schema.schema = live.current_schema.clone();
+        }
         let main = live.main.clone();
         live.meta.request_objects(backend, &main, &schema, ObjectKind::Table);
         live.meta.request_objects(backend, &main, &schema, ObjectKind::View);

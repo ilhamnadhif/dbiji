@@ -26,6 +26,8 @@ pub struct ErTab {
     dirty: bool,
     snapshot: Option<Arc<SchemaSnapshot>>,
     refresh_pending: bool,
+    /// Tables were added to or removed from the diagram: a refresh keeps that choice.
+    curated: bool,
 }
 
 impl ErTab {
@@ -35,7 +37,19 @@ impl ErTab {
             [t] => t.clone(),
             _ => format!("{} (+{})", tables[0], tables.len() - 1),
         };
-        ErTab { conn, schema, tables, diagram: None, state: ErViewState::default(), saved_name: None, name_edit: name, dirty: false, snapshot: None, refresh_pending: false }
+        ErTab {
+            conn,
+            schema,
+            tables,
+            diagram: None,
+            state: ErViewState::default(),
+            saved_name: None,
+            name_edit: name,
+            dirty: false,
+            snapshot: None,
+            refresh_pending: false,
+            curated: false,
+        }
     }
 
     /// Open a diagram saved in the project.
@@ -44,6 +58,8 @@ impl ErTab {
         t.name_edit = name.clone();
         t.saved_name = Some(name);
         t.diagram = Some(diagram);
+        // Its tables are the saved ones.
+        t.curated = true;
         t
     }
 
@@ -118,8 +134,17 @@ impl ErTab {
     fn handle(&mut self, ev: ErEvent, cx: &mut AppContext) {
         let dialect = cx.conns.live(&self.conn).map(|l| l.dialect.clone());
         match ev {
-            ErEvent::OpenTable(k) | ErEvent::EditTable(k) => {
+            ErEvent::OpenTable(k) => {
                 cx.push(AppCommand::OpenObject { connection: self.conn.clone(), object: self.object_of(&k), page: ObjectPage::Properties });
+            }
+            // A view has no designer: its properties.
+            ErEvent::EditTable(k) => {
+                let object = self.object_of(&k);
+                cx.push(if object.kind == ObjectKind::Table {
+                    AppCommand::EditTable { connection: self.conn.clone(), table: object }
+                } else {
+                    AppCommand::OpenObject { connection: self.conn.clone(), object, page: ObjectPage::Properties }
+                });
             }
             ErEvent::ViewData(k) => cx.push(AppCommand::OpenObject { connection: self.conn.clone(), object: self.object_of(&k), page: ObjectPage::Data }),
             ErEvent::GenerateDdl(keys) => {
@@ -140,6 +165,7 @@ impl ErTab {
                 if let Some(d) = self.diagram.as_mut() {
                     d.remove_tables(&keys.into_iter().collect());
                     self.dirty = true;
+                    self.curated = true;
                 }
             }
             ErEvent::AddRelatedTables(k) => {
@@ -160,6 +186,7 @@ impl ErTab {
                 let keys: Vec<String> = related.iter().map(|n| dbiji_visual::er::table_key(snap.schema.as_deref(), n)).collect();
                 let model = ErModel::from_snapshot(&snap, Some(&keys));
                 let added = d.add_model(model);
+                self.curated = true;
                 if !added.is_empty() {
                     self.dirty = true;
                 }
@@ -267,7 +294,16 @@ impl TabView for ErTab {
                     let model = self.build_model(&snap);
                     self.diagram = Some(ErDiagram::new(self.name_edit.clone(), model));
                 } else if self.refresh_pending {
-                    let model = self.build_model(&snap);
+                    // The tables now on the diagram (added or removed since it opened),
+                    // or the whole schema for a diagram of the schema left as it was.
+                    let curated = !self.tables.is_empty() || self.curated;
+                    let model = match &self.diagram {
+                        Some(d) if curated => {
+                            let keys: Vec<String> = d.model.tables.iter().map(|t| t.key.clone()).collect();
+                            ErModel::from_snapshot(&snap, Some(&keys))
+                        }
+                        _ => self.build_model(&snap),
+                    };
                     if let Some(d) = self.diagram.as_mut() {
                         d.refresh_model(model);
                     }

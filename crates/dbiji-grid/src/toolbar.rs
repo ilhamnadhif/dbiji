@@ -46,6 +46,9 @@ pub struct ToolbarState {
     /// The fetch error that already popped up (once each).
     #[serde(skip)]
     pub(crate) seen_fetch_error: Option<String>,
+    /// The fetch error the user closed (its bar over the result stays hidden).
+    #[serde(skip)]
+    pub(crate) dismissed_fetch_error: Option<String>,
     #[serde(skip)]
     rt: ToolbarRuntime,
 }
@@ -206,16 +209,18 @@ impl<'a> FilterBar<'a> {
         ui.horizontal(|ui| {
             // Where filter and order apply: re-run on the server, or the fetched rows.
             let mut client = grid.mode == DataMode::Client;
-            let hint = tr("Sort and filter fetched rows in DBiji (client) or re-run the query with WHERE / ORDER BY (server)");
+            // Each button says what it does: the words alone mean little to a new user.
+            let server_hint = tr("Server: the database filters and sorts. The query runs again with your WHERE / ORDER BY, over all rows of the table.");
+            let client_hint = tr("Client: DBiji filters and sorts the rows already fetched, without asking the database. Fast, but only those rows.");
             ui.scope(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
                 let stroke = ui.visuals().widgets.noninteractive.bg_stroke;
                 let left = egui::CornerRadius { nw: 4, sw: 4, ne: 0, se: 0 };
                 let right = egui::CornerRadius { nw: 0, sw: 0, ne: 4, se: 4 };
-                if ui.add(Button::new(tr("Server")).selected(!client).corner_radius(left).stroke(stroke)).on_hover_text(hint).clicked() {
+                if ui.add(Button::new(tr("Server")).selected(!client).corner_radius(left).stroke(stroke)).on_hover_text(server_hint).clicked() {
                     client = false;
                 }
-                if ui.add(Button::new(tr("Client")).selected(client).corner_radius(right).stroke(stroke)).on_hover_text(hint).clicked() {
+                if ui.add(Button::new(tr("Client")).selected(client).corner_radius(right).stroke(stroke)).on_hover_text(client_hint).clicked() {
                     client = true;
                 }
             });
@@ -439,16 +444,18 @@ impl<'a> ResultToolbar<'a> {
             }
             // Save stands out while there is something to save.
             let save = if pending > 0 {
-                let accent = ui.visuals().selection.stroke.color;
-                let text = if ui.visuals().dark_mode { egui::Color32::BLACK } else { egui::Color32::WHITE };
-                Button::new(RichText::new(format!("{} {} ({pending})", icon::FLOPPY_DISK, tr("Save"))).color(text)).fill(accent)
+                let v = ui.visuals();
+                Button::new(RichText::new(format!("{} {} ({pending})", icon::FLOPPY_DISK, tr("Save"))).color(v.strong_text_color()).strong())
+                    .fill(v.selection.bg_fill)
+                    .stroke(egui::Stroke::new(1.0, v.hyperlink_color))
             } else {
                 Button::new(dbiji_icons::ic(icon::FLOPPY_DISK))
             };
             if ui.add_enabled(pending > 0, save).on_hover_text(trf("Save {} pending change(s) (Cmd+S)", &[&pending])).clicked() {
                 actions.push(GridAction::SaveChanges);
             }
-            let cancel = ui.add_enabled(pending > 0, Button::new(dbiji_icons::ic(icon::X_CIRCLE))).on_hover_text(tr("Discard pending changes"));
+            let discard = if pending > 0 { Button::new(RichText::new(format!("{} {}", icon::X_CIRCLE, tr("Discard")))) } else { Button::new(dbiji_icons::ic(icon::X_CIRCLE)) };
+            let cancel = ui.add_enabled(pending > 0, discard).on_hover_text(tr("Discard pending changes"));
             if cancel.clicked() {
                 state.rt.confirm_discard = true;
             }
@@ -503,31 +510,6 @@ impl<'a> ResultToolbar<'a> {
                 Some(_) => actions.push(GridAction::ShowSpatial),
                 None => {}
             }
-            group_separator(ui);
-            // --- side panels
-            let open_count = state.open_panels.len();
-            let label = if open_count > 0 { format!("{} {} ({open_count})", icon::SIDEBAR_SIMPLE, tr("Panels")) } else { format!("{} {}", icon::SIDEBAR_SIMPLE, tr("Panels")) };
-            let resp =
-                ui.add(Button::new(label).selected(open_count > 0 && !state.panels_hidden)).on_hover_text(tr("Side panels: value, metadata, grouping, calculations, references"));
-            Popup::menu(&resp).show(|ui| {
-                for (p, ic, tip) in [
-                    (PanelKind::Value, icon::EYE, tr("Value panel")),
-                    (PanelKind::Metadata, icon::INFO, tr("Metadata")),
-                    (PanelKind::Grouping, icon::STACK, tr("Grouping")),
-                    (PanelKind::Calc, icon::CALCULATOR, tr("Calc")),
-                    (PanelKind::References, icon::TREE_STRUCTURE, tr("References")),
-                ] {
-                    let open = state.is_panel_open(p);
-                    if ui.add(Button::new(format!("{ic}  {tip}")).right_text(if open { icon::CHECK } else { "" })).clicked() {
-                        state.set_panel_open(p, !open);
-                        if !open {
-                            state.panels_hidden = false;
-                        }
-                        actions.push(GridAction::TogglePanel(p));
-                        ui.close();
-                    }
-                }
-            });
             // --- right: fetch buttons, status, messages (right to left)
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let fetching = model.fetch.fetching;

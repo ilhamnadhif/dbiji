@@ -232,6 +232,7 @@ pub(super) fn show(model: &mut ResultModel, state: &mut DataGridState, options: 
         focused: false,
     };
     f.selection_before = f.state.rt.selection.clone();
+    f.fit_headers(&ui.painter().clone());
 
     let (body, header, rownums) = f.interact(ui);
     for cmd in std::mem::take(&mut f.state.rt.pending) {

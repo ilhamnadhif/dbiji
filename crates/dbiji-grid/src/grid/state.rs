@@ -133,6 +133,8 @@ pub(crate) struct Runtime {
     pub auto_view_len: usize,
     /// Store that length belongs to (a refresh brings a new store).
     pub view_store: usize,
+    /// The column names whose headers were fitted (a hash): new columns get a header wide enough.
+    pub headers_fitted: u64,
     pub last_selection_label: String,
     /// Geometry of the last frame: body, header, row numbers, row height.
     pub last_geometry: Option<(egui::Rect, egui::Rect, egui::Rect, f32)>,

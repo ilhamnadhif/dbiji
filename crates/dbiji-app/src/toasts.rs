@@ -88,8 +88,9 @@ impl Toasts {
         }
         let dark = ctx.theme() == egui::Theme::Dark;
         let mut close: Option<usize> = None;
-        // Above the status bar and the result toolbar (row count, fetch buttons).
-        egui::Area::new(Id::new("dbiji_toasts")).anchor(Align2::RIGHT_BOTTOM, egui::vec2(-16.0, -76.0)).order(egui::Order::Foreground).show(ctx, |ui| {
+        // Centred above the status bar and the result toolbar: not over the side panels'
+        // buttons (Value: Apply, Set NULL) or the fetch buttons at the right.
+        egui::Area::new(Id::new("dbiji_toasts")).anchor(Align2::CENTER_BOTTOM, egui::vec2(0.0, -76.0)).order(egui::Order::Foreground).show(ctx, |ui| {
             ui.set_max_width(380.0);
             for (i, t) in self.items.iter().enumerate().rev() {
                 let (glyph, color) = match t.kind {

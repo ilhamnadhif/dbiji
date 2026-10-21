@@ -905,6 +905,36 @@ impl GridFrame<'_> {
         self.autosize_with(&painter, col);
     }
 
+    /// Columns still at their default width get room for their whole name (with
+    /// the key / link icon, sort and menu zones): "category_id" is not cut to "category…".
+    /// Widths the user set or a saved layout restored are kept.
+    pub fn fit_headers(&mut self, painter: &egui::Painter) {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        for c in 0..self.model.column_count() {
+            self.model.column_name(c).hash(&mut h);
+        }
+        let key = h.finish();
+        if self.state.rt.headers_fitted == key {
+            return;
+        }
+        self.state.rt.headers_fitted = key;
+        for col in 0..self.model.column_count() {
+            let name = self.model.column_name(col).to_string();
+            let kind = self.model.column_meta(col).map(|m| m.kind).unwrap_or(dbiji_core::DataKind::Other);
+            let current = self.state.column_width(col);
+            if (current - super::state::default_width(&name, kind)).abs() > 0.5 {
+                continue;
+            }
+            let needed = self.measure(painter, &name) + 2.0 * super::frame::PAD + super::input::SORT_ZONE + super::input::MENU_ZONE + 22.0;
+            if needed > current {
+                self.state.set_column_width(col, needed.min(super::state::MAX_AUTO_WIDTH));
+                // The geometry of this frame still has the old width.
+                self.ctx.request_repaint();
+            }
+        }
+    }
+
     /// Text width with the grid font.
     pub fn measure(&mut self, painter: &egui::Painter, text: &str) -> f32 {
         match self.state.rt.glyphs.measure(painter, text) {

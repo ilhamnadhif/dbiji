@@ -157,6 +157,28 @@ pub struct DockViewer<'a, 'b> {
     pub active_tab: Option<u64>,
     /// For the tab titles (a coloured icon and the title).
     pub style: std::sync::Arc<egui::Style>,
+    /// Titles that several tabs share, with what tells them apart (see [`tab_suffixes`]).
+    pub suffixes: std::collections::HashMap<u64, String>,
+}
+
+/// Tabs with the same title ("product" of two connections) get what tells them
+/// apart after it: the connection's name, or schema@database within one connection.
+pub fn tab_suffixes<'t>(tabs: impl Iterator<Item = &'t Tab>, conns: &crate::conn::ConnectionManager) -> std::collections::HashMap<u64, String> {
+    let mut by_title: std::collections::HashMap<String, Vec<(u64, Option<TabLocation>)>> = std::collections::HashMap::new();
+    for t in tabs {
+        by_title.entry(t.view.title()).or_default().push((t.id, tab_location(t.view.as_ref(), conns)));
+    }
+    let mut out = std::collections::HashMap::new();
+    for same in by_title.into_values().filter(|v| v.len() > 1) {
+        let conns_differ = same.iter().map(|(_, l)| l.as_ref().map(|l| l.conn.clone())).collect::<std::collections::HashSet<_>>().len() > 1;
+        for (id, loc) in same {
+            let suffix = loc.and_then(|l| if conns_differ { Some(l.name) } else { l.place });
+            if let Some(s) = suffix {
+                out.insert(id, s);
+            }
+        }
+    }
+    out
 }
 
 /// Where a tab works: its connection and database / schema (main toolbar,
@@ -208,6 +230,9 @@ impl egui_dock::TabViewer for DockViewer<'_, '_> {
     fn title(&mut self, tab: &mut Tab) -> WidgetText {
         let dirty = if tab.view.is_dirty() { "● " } else { "" };
         let mut title = format!(" {dirty}{}", tab.view.title());
+        if let Some(s) = self.suffixes.get(&tab.id) {
+            title = format!("{title} · {s}");
+        }
         if title.chars().count() > 46 {
             title = title.chars().take(44).collect::<String>() + "…";
         }

@@ -1350,6 +1350,30 @@ impl SqlEditorTab {
             }
         }
         ui.separator();
+        // A running statement in the results, where one waits for it: what runs, for
+        // how long, and Cancel.
+        if let Some(e) = &self.exec {
+            let what = match e.current {
+                Some(c) if e.total > 1 => trf("Running statement {} of {}…", &[&(c + 1), &e.total]),
+                _ => tr("Running…").to_string(),
+            };
+            let elapsed = crate::widgets::format_duration(e.started.elapsed());
+            let mut cancel = false;
+            egui::Frame::new().fill(ui.visuals().faint_bg_color).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label(what);
+                    ui.weak(elapsed);
+                    let stop = RichText::new(format!("{} {}", icon::STOP, tr("Cancel"))).color(crate::theme::error_color(ui.visuals().dark_mode));
+                    let keys = crate::keys::label(cx.keymap, Action::CancelQuery);
+                    cancel = ui.button(stop).on_hover_text(format!("{} ({keys})", crate::keys::action_label(Action::CancelQuery))).clicked();
+                });
+            });
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(250));
+            if cancel {
+                self.cancel(cx);
+            }
+        }
         match self.bottom {
             Bottom::Result(i) => match self.results.get_mut(i) {
                 Some(ResultItem::Rows(p)) => p.ui(ui, cx),

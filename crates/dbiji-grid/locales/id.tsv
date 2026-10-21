@@ -388,3 +388,8 @@ Show panels	Tampilkan panel
 Close panel	Tutup panel
 Numbers ({})	Angka ({})
 Range	Rentang
+Function	Fungsi
+Mode	Modus
+{} (×{})	{} (×{})
+Server: the database filters and sorts. The query runs again with your WHERE / ORDER BY, over all rows of the table.	Server: database yang memfilter dan mengurutkan. Query dijalankan ulang dengan WHERE / ORDER BY Anda, atas semua baris tabel.
+Client: DBiji filters and sorts the rows already fetched, without asking the database. Fast, but only those rows.	Client: DBiji memfilter dan mengurutkan baris yang sudah diambil, tanpa bertanya ke database. Cepat, tapi hanya baris itu.

@@ -191,7 +191,8 @@ impl<'a> ValuePanel<'a> {
                     state.edit_dirty = false;
                     state.error = None;
                 }
-                ScrollArea::both().auto_shrink([false, false]).max_height(ui.available_height() - 36.0).show(ui, |ui| {
+                // As tall as the text (up to the panel): Apply / Revert / Set NULL right below it.
+                ScrollArea::both().auto_shrink([false, true]).max_height(ui.available_height() - 36.0).show(ui, |ui| {
                     let te = TextEdit::multiline(&mut state.edit_text)
                         .desired_width(if state.wrap { ui.available_width() } else { f32::INFINITY })
                         .desired_rows(8)

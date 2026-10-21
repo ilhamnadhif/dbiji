@@ -3,6 +3,21 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.16 — 2026-10-21
+
+### Changed
+- The Calc panel is a plain table (function, value) like DBeaver's, drawn like the result grid, with Mode (the most frequent value and how often it occurs) added; a click on a row copies its value.
+- Panel tabs never break into letters: when they do not fit, the other tabs show their icon only (the name on hover). The panels are no longer framed; the "Panels" button of the result toolbar is gone (the strip at the right edge opens and closes them).
+- Value panel: Apply, Revert and Set NULL sit right below the text, not at the bottom of the panel.
+- Notifications appear centred above the status bar instead of over the side panels' buttons at the right.
+- With pending changes the result toolbar shows "Save (n)" in the selection colour and "Discard" (Save was glaring white in the dark theme).
+- A new column is wide enough for its whole name ("category_id" was cut to "category…"); widths you set are kept.
+- The navigator's toolbar has plain icons for the frequent actions; New folder, the properties panel and Link with editor are in "⋯".
+- A failed fetch shows its error in a bar above the result (selectable, Copy, ×) instead of a pop-up that stops the work.
+- Server / Client in the filter bar each say what they do on hover.
+- A running SQL editor shows, above its results, which statement runs, for how long, and a Cancel button.
+- Tabs with the same title tell what separates them: "product · prod" and "product · dev", or schema@database within one connection.
+
 ## 0.3.15 — 2026-10-21
 
 ### Changed

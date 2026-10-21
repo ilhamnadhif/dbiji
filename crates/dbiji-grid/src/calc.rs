@@ -2,7 +2,7 @@
 
 use crate::view::sort_cmp;
 use dbiji_core::Value;
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 /// Aggregates over a set of cells.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -31,6 +31,8 @@ pub struct CalcStats {
     pub min_len: Option<usize>,
     /// Longest text length (characters) among text cells.
     pub max_len: Option<usize>,
+    /// The most frequent non-NULL value (the first one seen on a tie) and how often it occurs.
+    pub mode: Option<(String, usize)>,
     /// Only the first `limit` cells were analysed.
     pub truncated: bool,
 }
@@ -70,7 +72,8 @@ fn numeric(v: &Value) -> Option<(f64, Option<i128>)> {
 /// Compute statistics over at most `limit` values.
 pub fn compute_stats<'a>(values: impl IntoIterator<Item = &'a Value>, limit: usize) -> CalcStats {
     let mut s = CalcStats::default();
-    let mut distinct: HashSet<(u8, String)> = HashSet::new();
+    // Each distinct value: how often, and when first seen (ties of the mode go to the first).
+    let mut distinct: HashMap<(u8, String), (usize, usize)> = HashMap::new();
     let mut nums: Vec<f64> = Vec::new();
     let mut int_sum: Option<i128> = Some(0);
     let mut sum = 0.0f64;
@@ -87,7 +90,8 @@ pub fn compute_stats<'a>(values: impl IntoIterator<Item = &'a Value>, limit: usi
             s.nulls += 1;
             continue;
         }
-        distinct.insert((variant_tag(v), v.to_text().into_owned()));
+        let seen = distinct.len();
+        distinct.entry((variant_tag(v), v.to_text().into_owned())).or_insert((0, seen)).0 += 1;
         if let Some((f, exact)) = numeric(v) {
             s.numeric_count += 1;
             sum += f;
@@ -120,6 +124,7 @@ pub fn compute_stats<'a>(values: impl IntoIterator<Item = &'a Value>, limit: usi
         }
     }
     s.distinct = distinct.len();
+    s.mode = distinct.into_iter().max_by(|a, b| a.1.0.cmp(&b.1.0).then(b.1.1.cmp(&a.1.1))).map(|((_, text), (n, _))| (text, n));
     if num_min.is_some() {
         s.min = num_min;
         s.max = num_max;
@@ -167,7 +172,11 @@ mod tests {
         assert_eq!(s.median, Some(2.0));
         assert_eq!(s.min, Some(Value::Int(1)));
         assert_eq!(s.max, Some(Value::Int(10)));
+        assert_eq!(s.mode, Some(("2".to_string(), 2)));
         assert!(!s.truncated);
+        // A tie goes to the value seen first.
+        let s = compute_stats(&[Value::text("b"), Value::text("a")], usize::MAX);
+        assert_eq!(s.mode, Some(("b".to_string(), 1)));
     }
 
     #[test]

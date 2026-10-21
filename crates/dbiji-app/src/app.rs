@@ -1671,7 +1671,8 @@ impl eframe::App for DbijiApp {
             }
         }
         egui::CentralPanel::default().frame(egui::Frame::new()).show(ui, |ui| {
-            let mut viewer = DockViewer { cx: &mut cx, close_vetoed: Vec::new(), close_confirm: Vec::new(), active_tab: self.active_tab, style: ui.style().clone() };
+            let suffixes = crate::tabs::tab_suffixes(self.dock.iter_all_tabs().map(|(_, t)| t), cx.conns);
+            let mut viewer = DockViewer { cx: &mut cx, close_vetoed: Vec::new(), close_confirm: Vec::new(), active_tab: self.active_tab, style: ui.style().clone(), suffixes };
             DockArea::new(&mut self.dock).style(egui_dock::Style::from_egui(ui.style().as_ref())).show_leaf_collapse_buttons(false).show_inside(ui, &mut viewer);
             for id in viewer.close_confirm {
                 if !self.close_confirm.contains(&id) {

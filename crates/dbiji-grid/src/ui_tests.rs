@@ -49,6 +49,18 @@ impl Viewer {
         })
     }
 
+    /// Centre of the first text input holding `text`.
+    fn find_input(&self, text: &str) -> Option<Pos2> {
+        let update = self.output.accesskit_update.as_ref()?;
+        update.nodes.iter().find_map(|(_, n)| {
+            if !matches!(n.role(), egui::accesskit::Role::TextInput | egui::accesskit::Role::MultilineTextInput) || !n.value().or(n.label()).is_some_and(|l| l.contains(text)) {
+                return None;
+            }
+            let b = n.bounds()?;
+            Some(Pos2::new(((b.x0 + b.x1) / 2.0) as f32, ((b.y0 + b.y1) / 2.0) as f32))
+        })
+    }
+
     fn click(&mut self, p: Pos2) {
         self.frame(vec![Event::PointerMoved(p)]);
         self.frame(vec![press(p, PointerButton::Primary, Modifiers::NONE)]);
@@ -170,7 +182,7 @@ fn value_panel_edits_active_cell() {
     v.frame(vec![]);
     v.frame(vec![]);
     // Focus the editor and type.
-    let editor = v.find("name 2").expect("value editor");
+    let editor = v.find_input("name 2").expect("value editor");
     v.click(editor);
     v.frame(vec![crate::test_support::key(egui::Key::End, Modifiers::NONE)]);
     v.frame(vec![Event::Text("!".into())]);

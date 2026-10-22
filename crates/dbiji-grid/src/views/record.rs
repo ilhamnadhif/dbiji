@@ -446,7 +446,8 @@ fn rows_table(
                 }
                 for (j, &r) in rows.iter().enumerate() {
                     let (rect, _) = ui.allocate_exact_size(egui::vec2(widths[j], row_h), egui::Sense::hover());
-                    let fill = if active_row == Some(r) && !single { theme.header_selected_bg } else { theme.header_bg };
+                    // The shown row's header is "selected", as in DBeaver.
+                    let fill = if single || active_row == Some(r) { theme.header_selected_bg } else { theme.header_bg };
                     ui.painter().rect_filled(rect, 0.0, fill);
                     ui.painter().vline(rect.left(), rect.y_range(), egui::Stroke::new(1.0, theme.line));
                     ui.painter().text(rect.left_center() + egui::vec2(8.0, 0.0), egui::Align2::LEFT_CENTER, trf("Row #{}", &[&(r + 1)]), body.clone(), theme.header_text);
@@ -479,10 +480,13 @@ fn rows_table(
                             clicked_field = Some((c, egui::Modifiers::NONE));
                         }
                         lead_resp.context_menu(|ui| copy_menu(ui, &mut copy));
-                        let stripe = if i % 2 == 1 { theme.stripe } else { theme.bg };
+                        // As DBeaver: the names in the header's colour (the current field's
+                        // as a selected header), the values in one colour.
                         let hovered = ui.input(|inp| inp.pointer.hover_pos()).is_some_and(|p| p.y >= lead_rect.top() && p.y < lead_rect.bottom() && ui.clip_rect().contains(p));
-                        let row_fill = if hovered { crate::theme::mix(stripe, theme.text, 0.06) } else { stripe };
-                        ui.painter().rect_filled(lead_rect, 0.0, if field_picked { theme.selection } else { row_fill });
+                        let hover = |c: egui::Color32| if hovered { crate::theme::mix(c, theme.text, 0.06) } else { c };
+                        let row_fill = hover(theme.record_bg);
+                        let current = field_picked || anchor.is_some_and(|(_, ac)| ac == c);
+                        ui.painter().rect_filled(lead_rect, 0.0, hover(if current { theme.header_selected_bg } else { theme.header_bg }));
                         let p = ui.painter();
                         let mut x = lead_rect.left() + 6.0;
                         if key_cols.contains(&c) {
@@ -495,7 +499,7 @@ fn rows_table(
                         }
                         x += 18.0;
                         let name_rect = egui::Rect::from_min_max(egui::pos2(x, lead_rect.top()), egui::pos2(lead_rect.right() - 6.0, lead_rect.bottom()));
-                        let mut name_text = RichText::new(&name).color(theme.weak);
+                        let mut name_text = RichText::new(&name).color(theme.header_text);
                         if model.is_virtual_column(c) {
                             name_text = name_text.italics();
                         }

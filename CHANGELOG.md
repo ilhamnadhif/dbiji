@@ -3,6 +3,11 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.27 — 2026-10-22
+
+### Changed
+- The record view has DBeaver's colours: the column names on the header's blue-grey with white text, the current field and the "Row #" header grey-violet, the values in one colour without stripes. Selected column headers of the grid are grey-violet too (dark theme).
+
 ## 0.3.26 — 2026-10-22
 
 ### Added

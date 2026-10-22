@@ -27,6 +27,8 @@ pub struct GridTheme {
     pub header_selected_bg: Color32,
     /// Row numbers.
     pub rownum_text: Color32,
+    /// Values of the record view (one colour, no stripes).
+    pub record_bg: Color32,
     /// Normal text.
     pub text: Color32,
     /// Weak text (NULL, defaults, descriptions).
@@ -70,9 +72,11 @@ impl GridTheme {
             line: if dark { mix(bg, Color32::BLACK, 0.17) } else { mix(bg, text, 0.12) },
             header_bg: mix(header_base, bg, 0.25),
             header_text: v.strong_text_color(),
-            header_selected_bg: mix(header_base, v.selection.bg_fill, 0.45),
+            // DBeaver's grey-violet in the dark theme (selected headers, the record view's field).
+            header_selected_bg: if dark { Color32::from_rgb(0x5F, 0x5F, 0x6F) } else { mix(header_base, v.selection.bg_fill, 0.45) },
             // White on the dark blue-grey header (as in DBeaver), grey on the light one.
             rownum_text: if dark { v.strong_text_color() } else { v.weak_text_color() },
+            record_bg: if dark { mix(bg, text, 0.053) } else { bg },
             text,
             weak: v.weak_text_color(),
             selection: v.selection.bg_fill.gamma_multiply(if dark { 0.55 } else { 0.45 }),

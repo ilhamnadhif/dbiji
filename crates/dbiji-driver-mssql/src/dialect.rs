@@ -242,10 +242,14 @@ impl Dialect for MsSqlDialect {
     }
 
     fn count_query(&self, sql: &str) -> String {
+        self.aggregate_query(sql, "COUNT_BIG(*)")
+    }
+
+    fn aggregate_query(&self, sql: &str, select_list: &str) -> String {
         let inner = ansi::strip_trailing_semicolon(sql);
         let shape = sqltext::select_shape(inner);
         if let Some(at) = shape.option_at.filter(|_| !shape.has_for) {
-            return format!("{}\n{}", self.count_query(inner[..at].trim_end()), &inner[at..]);
+            return format!("{}\n{}", self.aggregate_query(inner[..at].trim_end(), select_list), &inner[at..]);
         }
         // ORDER BY is not allowed in a derived table without TOP/OFFSET
         let body = match shape.order_by {
@@ -254,7 +258,7 @@ impl Dialect for MsSqlDialect {
         };
         // `WITH a AS (…) SELECT …`: the CTEs stay in front, the main SELECT is counted.
         let (ctes, main) = body.split_at(shape.cte_main_at.unwrap_or(0).min(body.len()));
-        format!("{ctes}SELECT COUNT_BIG(*) FROM ({main}) dbiji_cnt")
+        format!("{ctes}SELECT {select_list} FROM ({main}) dbiji_cnt")
     }
 
     fn select_table(&self, table: &ObjectRef, columns: Option<&[String]>, where_clause: Option<&str>, order_by: Option<&str>, limit: Option<u64>) -> String {

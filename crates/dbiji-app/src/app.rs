@@ -1131,7 +1131,7 @@ impl DbijiApp {
         if self.conns.time_zone != self.settings.general.time_zone {
             self.conns.time_zone = self.settings.general.time_zone;
             for id in self.conns.live_ids() {
-                if self.conns.config(&id).is_some_and(|c| matches!(c.kind, dbiji_core::DbKind::Postgres | dbiji_core::DbKind::MySql | dbiji_core::DbKind::MariaDb)) {
+                if self.conns.config(&id).is_some_and(|c| c.kind != dbiji_core::DbKind::Sqlite) {
                     self.commands.push(AppCommand::Reconnect(id));
                 }
             }

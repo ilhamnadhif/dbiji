@@ -534,17 +534,18 @@ fn sessions_use_the_computer_time_zone() {
     let tz = dbiji_app::conn::session_time_zone(TimeZoneChoice::System).unwrap();
     for (name, url) in servers() {
         let (sql, expected) = match name {
-            "postgres" => ("SHOW TimeZone", tz.name.clone()),
+            "postgres" | "cockroach" => ("SHOW TimeZone", tz.name.clone()),
             "mysql" | "mariadb" => ("SELECT @@session.time_zone", tz.offset.clone()),
             _ => continue,
         };
         let h = H::new(&url);
         assert_eq!(h.query(sql)[0][0], expected, "{name}");
+        let pg = name == "postgres" || name == "cockroach";
         let own = H::new_with(&url, |c| {
-            let key = if name == "postgres" { "timezone" } else { "time_zone" };
-            c.properties.insert(key.into(), if name == "postgres" { "UTC".into() } else { "+00:00".into() });
+            let key = if pg { "timezone" } else { "time_zone" };
+            c.properties.insert(key.into(), if pg { "UTC".into() } else { "+00:00".into() });
         });
-        assert_eq!(own.query(sql)[0][0], if name == "postgres" { "UTC" } else { "+00:00" }, "{name}: the connection's own time zone");
+        assert_eq!(own.query(sql)[0][0], if pg { "UTC" } else { "+00:00" }, "{name}: the connection's own time zone");
     }
 }
 
@@ -569,4 +570,77 @@ fn cancel_stops_a_slow_query_on_the_server() {
     }
     assert!(t0.elapsed() < Duration::from_secs(5), "{:?}", t0.elapsed());
     assert_eq!(h.query("SELECT 1")[0][0], "1", "the session still works");
+}
+
+/// SQL Server (`datetimeoffset`), ClickHouse (`DateTime`) and DuckDB
+/// (`timestamptz`) show the same instant in the computer's time zone too.
+#[test]
+fn other_servers_show_dates_in_the_computer_time_zone() {
+    use chrono::TimeZone;
+    let instant = chrono::Utc.with_ymd_and_hms(2024, 1, 2, 3, 4, 5).unwrap();
+    let local = instant.with_timezone(&chrono::Local);
+    let with_offset = dbiji_core::Value::DateTimeTz(local.fixed_offset()).to_text().into_owned();
+    let naive = local.format("%Y-%m-%d %H:%M:%S").to_string();
+    let mut cases = Vec::new();
+    // DuckDB is an optional feature of the build.
+    if dbiji_app::driver_registry().get(dbiji_core::DbKind::DuckDb).is_some() {
+        cases.push(("duckdb", "duckdb://:memory:".to_string(), "SELECT TIMESTAMPTZ '2024-01-02 03:04:05+00'", with_offset.clone()));
+    }
+    if let Some(url) = std::env::var("DBIJI_TEST_MSSQL").ok().filter(|u| !u.trim().is_empty()) {
+        cases.push(("mssql", url, "SELECT CAST('2024-01-02T03:04:05+00:00' AS datetimeoffset)", with_offset.clone()));
+    }
+    if let Some(url) = std::env::var("DBIJI_TEST_CLICKHOUSE").ok().filter(|u| !u.trim().is_empty()) {
+        cases.push(("clickhouse", url.replacen("http://", "clickhouse://", 1), "SELECT toDateTime(1704164645)", naive.clone()));
+    }
+    for (name, url, sql, expected) in cases {
+        let h = H::new(&url);
+        assert_eq!(h.query(sql)[0][0], expected, "{name}");
+    }
+}
+
+/// "Statistics of the whole column" asks the server about all rows of the
+/// query, not only the fetched page.
+#[test]
+fn whole_column_statistics() {
+    let mssql = std::env::var("DBIJI_TEST_MSSQL").ok().filter(|u| !u.trim().is_empty()).map(|u| ("mssql", u));
+    for (name, url) in servers().into_iter().filter(|(n, _)| matches!(*n, "sqlite" | "postgres" | "mysql")).chain(mssql) {
+        let mut h = H::new(&url);
+        let table = format!("dbiji_stats_{}", &uuid::Uuid::new_v4().simple().to_string()[..8]);
+        h.sql(&format!("CREATE TABLE {table} (id INT PRIMARY KEY, city VARCHAR(10))"));
+        h.sql(&format!("INSERT INTO {table} VALUES (1, 'Bandung'), (2, 'Medan'), (3, 'Bandung'), (4, NULL), (5, 'Ambon')"));
+        let mut view = TableDataView::new(h.id.clone(), ObjectRef::table(None, table.clone()), None);
+        h.until(&mut view, "rows", |v| v.panel.as_ref().is_some_and(|p| p.model.row_count() == 5));
+        {
+            let mut cx = AppContext {
+                backend: &h.backend,
+                conns: &mut h.cm,
+                services: &h.services,
+                settings: &mut h.settings,
+                commands: &mut h.commands,
+                toasts: &mut h.toasts,
+                ops: &mut h.ops,
+                keymap: &h.keymap,
+                tab_active: true,
+                current_tab: Some(1),
+                popup: false,
+            };
+            view.panel.as_mut().unwrap().handle_for_tests(dbiji_grid::GridAction::ColumnStatistics { column: 1 }, &mut cx);
+        }
+        let toast = {
+            let t0 = Instant::now();
+            loop {
+                h.frame(&mut view);
+                if let Some(t) = h.toasts.take_log().into_iter().find(|t| t.title.starts_with("Statistics of")) {
+                    break t;
+                }
+                assert!(t0.elapsed() < Duration::from_secs(20), "[{name}] no statistics");
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        };
+        let detail = toast.detail.unwrap_or_default();
+        assert!(detail.contains("Rows: 5 · NULLs: 1 · Distinct: 3"), "[{name}] {detail}");
+        assert!(detail.contains("Min: Ambon · Max: Medan"), "[{name}] {detail}");
+        drop(view);
+        h.sql(&format!("DROP TABLE {table}"));
+    }
 }

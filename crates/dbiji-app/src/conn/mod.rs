@@ -319,17 +319,19 @@ pub struct SessionTimeZone {
     pub name: String,
     /// `+07:00`.
     pub offset: String,
+    /// The computer's zone (else UTC): for drivers that convert values themselves.
+    pub local: bool,
 }
 
 /// The session time zone of `choice`; `None` keeps the server's.
 pub fn session_time_zone(choice: TimeZoneChoice) -> Option<SessionTimeZone> {
     match choice {
         TimeZoneChoice::Server => None,
-        TimeZoneChoice::Utc => Some(SessionTimeZone { name: "UTC".into(), offset: "+00:00".into() }),
+        TimeZoneChoice::Utc => Some(SessionTimeZone { name: "UTC".into(), offset: "+00:00".into(), local: false }),
         TimeZoneChoice::System => {
             let secs = chrono::Local::now().offset().local_minus_utc();
             let name = iana_time_zone::get_timezone().ok().filter(|n| n.contains('/') || n == "UTC").unwrap_or_else(|| posix_zone(secs));
-            Some(SessionTimeZone { name, offset: format_offset(secs) })
+            Some(SessionTimeZone { name, offset: format_offset(secs), local: true })
         }
     }
 }
@@ -391,12 +393,17 @@ fn zone_abbreviation() -> Option<String> {
 }
 
 /// Set the session time zone on `params` unless the connection's driver
-/// properties set one. PostgreSQL, MySQL and MariaDB only: the others have
-/// no session time zone (SQL Server, SQLite) or show the server's.
+/// properties set one: a zone name for PostgreSQL, CockroachDB and ClickHouse
+/// (23.6+), an offset for MySQL / MariaDB; SQL Server and DuckDB convert
+/// their `datetimeoffset` / `timestamptz` values (`local` or `utc`). SQLite
+/// has no time zone.
 pub fn apply_time_zone(params: &mut ConnectParams, tz: &SessionTimeZone) {
+    let convert = if tz.local { "local" } else { "utc" };
     let (key, value, names): (&str, &str, &[&str]) = match params.kind {
-        DbKind::Postgres => ("timezone", &tz.name, &["timezone"]),
+        DbKind::Postgres | DbKind::CockroachDb => ("timezone", &tz.name, &["timezone"]),
         DbKind::MySql | DbKind::MariaDb => ("time_zone", &tz.offset, &["time_zone", "timezone", "servertimezone"]),
+        DbKind::ClickHouse => ("time_zone", &tz.name, &["time_zone", "setting.session_timezone"]),
+        DbKind::SqlServer | DbKind::DuckDb => ("time_zone", convert, &["time_zone"]),
         _ => return,
     };
     if params.properties.keys().any(|k| names.contains(&k.to_ascii_lowercase().as_str())) {
@@ -977,7 +984,7 @@ mod tests {
         assert_eq!(session_time_zone(TimeZoneChoice::Utc).unwrap().name, "UTC");
         let system = session_time_zone(TimeZoneChoice::System).unwrap();
         assert!(system.offset.len() == 6 && !system.name.is_empty(), "{system:?}");
-        let tz = SessionTimeZone { name: "Asia/Jakarta".into(), offset: "+07:00".into() };
+        let tz = SessionTimeZone { name: "Asia/Jakarta".into(), offset: "+07:00".into(), local: true };
         let params = |kind: DbKind, props: &[(&str, &str)]| {
             let mut p = ConnectParams::from_config(&ConnectionConfig::new(kind, "x"), None);
             p.properties.extend(props.iter().map(|(k, v)| (k.to_string(), v.to_string())));
@@ -989,7 +996,11 @@ mod tests {
         // The connection's own time zone wins; others have no session time zone.
         assert_eq!(params(DbKind::MySql, &[("serverTimezone", "UTC")]).len(), 1);
         assert_eq!(params(DbKind::Postgres, &[("TimeZone", "UTC")]).get("TimeZone").map(String::as_str), Some("UTC"));
-        assert!(params(DbKind::SqlServer, &[]).is_empty() && params(DbKind::Sqlite, &[]).is_empty());
+        assert_eq!(params(DbKind::CockroachDb, &[]).get("timezone").map(String::as_str), Some("Asia/Jakarta"));
+        assert_eq!(params(DbKind::ClickHouse, &[]).get("time_zone").map(String::as_str), Some("Asia/Jakarta"));
+        assert_eq!(params(DbKind::SqlServer, &[]).get("time_zone").map(String::as_str), Some("local"));
+        assert_eq!(params(DbKind::DuckDb, &[]).get("time_zone").map(String::as_str), Some("local"));
+        assert!(params(DbKind::Sqlite, &[]).is_empty());
     }
 
     async fn sqlite_session(label: &str) -> SessionHandle {

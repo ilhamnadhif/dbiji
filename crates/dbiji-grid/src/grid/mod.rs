@@ -205,6 +205,12 @@ pub enum GridAction {
     CancelFetch,
     /// Run a `COUNT(*)` and set `model.fetch.total_count`.
     CountTotal,
+    /// Count, NULLs, distinct values, min and max of a column over the whole
+    /// query (not only the fetched rows).
+    ColumnStatistics {
+        /// The column.
+        column: usize,
+    },
     /// Re-run the query (manual or auto refresh).
     Refresh,
     /// Save pending changes: show `model.change_preview_sql`, execute

@@ -198,7 +198,7 @@ async fn type_conversions_text_and_binary() {
 async fn geometry_types() {
     for srv in servers() {
         let mut s = srv.connect().await;
-        let srid = if srv.is_mariadb() {
+        let srid = if srv.is_mariadb() || srv.is_mysql57(&s) {
             "ST_GeomFromText('POINT(1 2)', 4326)"
         } else {
             "ST_GeomFromText('POINT(1 2)', 4326, 'axis-order=long-lat')"
@@ -785,7 +785,8 @@ async fn warnings_are_reported() {
         // update results with warnings
         let mut c = s
             .execute(
-                "SET @x = CAST('1.5x' AS DECIMAL(5,2))",
+                // Warns on MySQL 5.7, 8 and MariaDB alike.
+                "SET @x = 1/0",
                 &[],
                 &ExecOptions::default(),
             )

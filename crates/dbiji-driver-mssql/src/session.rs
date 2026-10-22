@@ -231,6 +231,7 @@ impl SqlServerSession {
             refresh_state: !self.suppress_refresh && (self.mode == TransactionMode::Manual || sqltext::touches_session_state(sql)),
             tag: sqltext::first_keyword(sql),
             notice: self.reconnect_notice.take(),
+            zone: crate::types::Zone::of(self.params.property("time_zone")),
         };
         Ok(self.start(client, stmt))
     }

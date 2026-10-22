@@ -152,6 +152,34 @@ fn numeric_text(n: Numeric) -> String {
     s
 }
 
+/// Time zone `datetimeoffset` values are shown in (SQL Server has no session
+/// time zone; DBiji shows dates in the computer's by default).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Zone {
+    Local,
+    Utc,
+}
+
+impl Zone {
+    /// From the `time_zone` property: `local` or `utc`.
+    pub fn of(property: Option<&str>) -> Option<Zone> {
+        match property.map(str::to_ascii_lowercase).as_deref() {
+            Some("local") => Some(Zone::Local),
+            Some("utc") => Some(Zone::Utc),
+            _ => None,
+        }
+    }
+}
+
+/// `v` with a `datetimeoffset` moved to `zone` (the same instant).
+pub fn in_zone(v: Value, zone: Option<Zone>) -> Value {
+    match (v, zone) {
+        (Value::DateTimeTz(dt), Some(Zone::Local)) => Value::DateTimeTz(dt.with_timezone(&chrono::Local).fixed_offset()),
+        (Value::DateTimeTz(dt), Some(Zone::Utc)) => Value::DateTimeTz(dt.with_timezone(&chrono::Utc).fixed_offset()),
+        (v, _) => v,
+    }
+}
+
 /// Convert one cell. `ct` is the declared column type (used for `money`,
 /// which tiberius decodes as `f64`, and for `sql_variant`).
 pub fn convert(data: ColumnData<'static>, ct: ColumnType) -> Value {

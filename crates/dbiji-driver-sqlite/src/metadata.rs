@@ -219,6 +219,34 @@ fn schema_size(conn: &Connection, schema: &str) -> Option<i64> {
 }
 
 /// Row estimates from `sqlite_stat1` (table → rows).
+/// Database files up to this size get their tables' sizes: `dbstat` reads
+/// every page, too slow for a large file.
+const SIZES_UP_TO: i64 = 256 * 1024 * 1024;
+
+/// Bytes of each table with its indexes (lower-case table name), from the
+/// `dbstat` virtual table; empty for a large database file.
+fn table_sizes(conn: &Connection, schema: &str) -> HashMap<String, i64> {
+    let q = quote_ident(schema);
+    let pragma = |name: &str| {
+        conn.query_row(&format!("PRAGMA {q}.{name}"), [], |r| r.get::<_, i64>(0))
+            .unwrap_or(0)
+    };
+    if pragma("page_count") * pragma("page_size") > SIZES_UP_TO {
+        return HashMap::new();
+    }
+    let sql = format!(
+        "SELECT coalesce(m.tbl_name, d.name), SUM(d.pgsize) FROM dbstat(?1) d \
+         LEFT JOIN {schema_table} m ON m.name = d.name GROUP BY 1",
+        schema_table = schema_table(schema),
+    );
+    query(conn, &sql, &[&schema], |r| {
+        (text(r, 0).to_ascii_lowercase(), int(r, 1))
+    })
+    .unwrap_or_default()
+    .into_iter()
+    .collect()
+}
+
 fn stat1_estimates(conn: &Connection, schema: &str) -> HashMap<String, i64> {
     let mut out = HashMap::new();
     let has = conn
@@ -910,6 +938,7 @@ pub(crate) fn list_objects(
         ObjectKind::Table => {
             let list = table_list(conn, &schema);
             let estimates = stat1_estimates(conn, &schema);
+            let sizes = table_sizes(conn, &schema);
             for r in rows.iter().filter(|r| r.kind == "table") {
                 let key = r.name.to_ascii_lowercase();
                 let (ty, wr, strict, _) = list
@@ -923,6 +952,7 @@ pub(crate) fn list_objects(
                 let mut info = object_info(ObjectKind::Table, &schema, &r.name);
                 info.is_system = system;
                 info.row_estimate = estimates.get(&key).copied();
+                info.size_bytes = sizes.get(&key).copied();
                 let mut detail = Vec::new();
                 if ty == "virtual" {
                     let module = r

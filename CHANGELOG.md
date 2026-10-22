@@ -3,6 +3,19 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.28 — 2026-10-22
+
+### Fixed
+- MySQL 5.7: connecting failed with "TLS error: HandshakeFailure" in the default SSL mode (Prefer). MySQL 5.7 offers only DHE ciphers, which DBiji's TLS library does not support; Prefer now goes on without TLS, as the mysql client does, and Require explains why it fails.
+
+### Added
+- "Statistics of the whole column" in a column's menu: rows, NULLs, distinct values, the smallest and the largest over all rows of the query, computed by the server (the header's tooltip covers the fetched rows).
+- Table sizes in the navigator for SQLite (database files up to 256 MB) and DuckDB database files.
+
+### Changed
+- The time zone setting also applies to CockroachDB and ClickHouse 23.6+ sessions, and to SQL Server `datetimeoffset` and DuckDB `timestamptz` values.
+- CI tests on the oldest supported servers too (PostgreSQL 11, MySQL 5.7, MariaDB 10.6, SQL Server 2017) and uses the Node 24 versions of its actions.
+
 ## 0.3.27 — 2026-10-22
 
 ### Changed

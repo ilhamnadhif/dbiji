@@ -16,7 +16,7 @@ jobs:
   lint:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -33,7 +33,7 @@ jobs:
         os: [ubuntu-24.04, macos-14]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Linux GUI dependencies
         if: runner.os == 'Linux'
@@ -51,16 +51,6 @@ jobs:
           POSTGRES_PASSWORD: dbiji
           POSTGRES_DB: dbiji
         ports: ["55432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U dbiji" --health-interval 5s --health-timeout 5s --health-retries 20
-      # The oldest PostgreSQL DBiji supports: catalog columns of newer versions fail here.
-      postgres11:
-        image: postgres:11
-        env:
-          POSTGRES_USER: dbiji
-          POSTGRES_PASSWORD: dbiji
-          POSTGRES_DB: dbiji
-        ports: ["55411:5432"]
         options: >-
           --health-cmd "pg_isready -U dbiji" --health-interval 5s --health-timeout 5s --health-retries 20
       mssql:
@@ -103,7 +93,7 @@ jobs:
       DBIJI_TEST_COCKROACH: cockroachdb://root@127.0.0.1:26257/defaultdb?sslmode=disable
       DBIJI_TEST_MSSQL: sqlserver://sa:Dbiji_test1@127.0.0.1:51433/master
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Linux GUI dependencies and DB client tools
         run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libgl1-mesa-dev libwayland-dev libxcb1-dev libxcursor-dev libxrandr-dev libxi-dev libgtk-3-dev postgresql-client default-mysql-client
@@ -117,16 +107,67 @@ jobs:
           cargo test -p dbiji-driver-postgres -p dbiji-driver-mysql -p dbiji-driver-sqlite
           -p dbiji-driver-clickhouse -p dbiji-driver-duckdb -p dbiji-driver-mssql -p dbiji-transfer
           -p dbiji-compare -p dbiji-tasks -p dbiji-app -- --test-threads=4
-      - name: The PostgreSQL tests on PostgreSQL 11
+
+  # The oldest server versions DBiji supports: catalog columns, syntax or TLS
+  # ciphers of newer versions fail here (PostgreSQL 11's attgenerated, MySQL
+  # 5.7's DHE-only TLS).
+  integration-oldest:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:11
+        env:
+          POSTGRES_USER: dbiji
+          POSTGRES_PASSWORD: dbiji
+          POSTGRES_DB: dbiji
+        ports: ["55411:5432"]
+        options: >-
+          --health-cmd "pg_isready -U dbiji" --health-interval 5s --health-timeout 5s --health-retries 20
+      mysql:
+        image: mysql:5.7
+        env:
+          MYSQL_ROOT_PASSWORD: dbiji
+          MYSQL_DATABASE: dbiji
+        ports: ["53357:3306"]
+        options: >-
+          --health-cmd "mysqladmin ping -pdbiji" --health-interval 5s --health-timeout 5s --health-retries 30
+      mariadb:
+        image: mariadb:10.6
+        env:
+          MARIADB_ROOT_PASSWORD: dbiji
+          MARIADB_DATABASE: dbiji
+        ports: ["53316:3306"]
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized" --health-interval 5s --health-timeout 5s --health-retries 30
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2017-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: Dbiji_test1
+        ports: ["51417:1433"]
+        options: >-
+          --health-cmd "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P Dbiji_test1 -Q 'SELECT 1' -b -o /dev/null"
+          --health-interval 10s --health-timeout 10s --health-retries 30
+    env:
+      DBIJI_TEST_PG: postgres://dbiji:dbiji@127.0.0.1:55411/dbiji
+      DBIJI_TEST_MYSQL: mysql://root:dbiji@127.0.0.1:53357/dbiji
+      DBIJI_TEST_MARIADB: mariadb://root:dbiji@127.0.0.1:53316/dbiji
+      DBIJI_TEST_MSSQL: sqlserver://sa:Dbiji_test1@127.0.0.1:51417/master
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Linux GUI dependencies and DB client tools
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libgl1-mesa-dev libwayland-dev libxcb1-dev libxcursor-dev libxrandr-dev libxi-dev libgtk-3-dev postgresql-client default-mysql-client
+      - uses: Swatinem/rust-cache@v2
+      - name: Driver and end-to-end tests on the oldest servers
         run: >-
-          env -u DBIJI_TEST_MYSQL -u DBIJI_TEST_MARIADB -u DBIJI_TEST_CLICKHOUSE -u DBIJI_TEST_COCKROACH -u DBIJI_TEST_MSSQL
-          DBIJI_TEST_PG=postgres://dbiji:dbiji@127.0.0.1:55411/dbiji
-          cargo test -p dbiji-driver-postgres -p dbiji-transfer -p dbiji-app -- --test-threads=4
+          cargo test -p dbiji-driver-postgres -p dbiji-driver-mysql -p dbiji-driver-mssql -p dbiji-transfer
+          -p dbiji-compare -p dbiji-tasks -p dbiji-app -- --test-threads=4
 
   audit:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo install cargo-audit --locked
       - run: cargo audit
@@ -134,7 +175,7 @@ jobs:
   benchmarks:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Build release
@@ -146,7 +187,7 @@ jobs:
           test "$size" -lt 41943040
       - name: Headless benchmarks (startup, memory, grid, editor)
         run: target/release/dbiji --bench all --bench-report bench.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: benchmarks
           path: bench.json
@@ -155,17 +196,17 @@ jobs:
   # Homebrew cask here, once the tests passed.
   bundle:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [unit-tests, integration]
+    needs: [unit-tests, integration, integration-oldest]
     runs-on: macos-14
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
       - run: scripts/bundle-macos.sh --universal
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dmg
           path: |

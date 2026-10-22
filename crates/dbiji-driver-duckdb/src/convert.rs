@@ -23,6 +23,8 @@ pub(crate) enum Conv {
     Json,
     Uuid,
     TimestampTz,
+    /// `TIMESTAMP WITH TIME ZONE` in the computer's time zone (property `time_zone` = `local`).
+    TimestampTzLocal,
     Nested,
 }
 
@@ -361,6 +363,9 @@ pub(crate) fn convert(v: ValueRef<'_>, conv: Conv) -> Value {
         ValueRef::Decimal(d) => Value::decimal(d.to_string()),
         ValueRef::Timestamp(unit, t) => match timestamp(unit, t) {
             Some(dt) if conv == Conv::TimestampTz => Value::DateTimeTz(dt.and_utc().fixed_offset()),
+            Some(dt) if conv == Conv::TimestampTzLocal => {
+                Value::DateTimeTz(dt.and_utc().with_timezone(&chrono::Local).fixed_offset())
+            }
             Some(dt) => Value::DateTime(dt),
             None => infinite_text(t),
         },
@@ -558,6 +563,16 @@ mod tests {
             Conv::TimestampTz,
         );
         assert_eq!(tz.to_text(), "1970-01-01 00:00:00+00");
+        // Property `time_zone` = `local`: the same instant in the computer's zone.
+        let local = convert(
+            ValueRef::Timestamp(TimeUnit::Microsecond, 0),
+            Conv::TimestampTzLocal,
+        );
+        let expected = chrono::DateTime::from_timestamp(0, 0)
+            .unwrap()
+            .with_timezone(&chrono::Local)
+            .fixed_offset();
+        assert_eq!(local, Value::DateTimeTz(expected));
         assert_eq!(
             convert(
                 ValueRef::Timestamp(TimeUnit::Microsecond, i64::MAX),

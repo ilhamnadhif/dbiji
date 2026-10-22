@@ -217,6 +217,47 @@ struct TableRow {
     sql: Option<String>,
 }
 
+/// Tables of a schema whose sizes are read (one storage query each).
+const SIZED_TABLES: usize = 50;
+
+/// Bytes of the blocks each table's data takes in a database file (by name);
+/// none for in-memory databases and for schemas with many tables.
+fn table_sizes(w: &Worker, db: &str, schema: &str, tables: &[TableRow]) -> HashMap<String, i64> {
+    let mut out = HashMap::new();
+    if tables.len() > SIZED_TABLES {
+        return out;
+    }
+    let block = w
+        .query_map(
+            "SELECT block_size FROM pragma_database_size() WHERE lower(database_name) = lower(?)",
+            &[&db],
+            |r| int(r, 0),
+        )
+        .ok()
+        .and_then(|v| v.into_iter().next().flatten())
+        .unwrap_or(0);
+    if block <= 0 {
+        return out;
+    }
+    for t in tables.iter().filter(|t| !t.temporary) {
+        let target = format!(
+            "{}.{}.{}",
+            quote_ident(db),
+            quote_ident(schema),
+            quote_ident(&t.name)
+        );
+        let blocks = w
+            .query_map("SELECT count(DISTINCT block_id) FROM pragma_storage_info(?) WHERE persistent AND block_id >= 0", &[&target], |r| int(r, 0))
+            .ok()
+            .and_then(|v| v.into_iter().next().flatten())
+            .unwrap_or(0);
+        if blocks > 0 {
+            out.insert(t.name.clone(), blocks * block);
+        }
+    }
+    out
+}
+
 fn load_tables(
     w: &Worker,
     db: &String,
@@ -1016,17 +1057,22 @@ pub(crate) fn list_objects(
         ObjectInfo::new(ctx.obj(k, &db, &schema, table, name))
     };
     Ok(match kind {
-        ObjectKind::Table => load_tables(w, &db, Some(&schema), None)?
-            .into_iter()
-            .map(|t| {
-                let mut o = info(ObjectKind::Table, None, &t.name).with_comment(t.comment);
-                o.row_estimate = t.estimated;
-                if t.temporary {
-                    o.detail = Some("temporary".into());
-                }
-                o
-            })
-            .collect(),
+        ObjectKind::Table => {
+            let tables = load_tables(w, &db, Some(&schema), None)?;
+            let sizes = table_sizes(w, &db, &schema, &tables);
+            tables
+                .into_iter()
+                .map(|t| {
+                    let mut o = info(ObjectKind::Table, None, &t.name).with_comment(t.comment);
+                    o.row_estimate = t.estimated;
+                    o.size_bytes = sizes.get(&t.name).copied();
+                    if t.temporary {
+                        o.detail = Some("temporary".into());
+                    }
+                    o
+                })
+                .collect()
+        }
         ObjectKind::View => view_rows(w, &db, &schema, None)?
             .into_iter()
             .map(|(name, _, comment, _)| info(ObjectKind::View, None, &name).with_comment(comment))

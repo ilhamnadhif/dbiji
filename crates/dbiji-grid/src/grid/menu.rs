@@ -429,6 +429,15 @@ impl GridFrame<'_> {
             self.state.set_column_visible(col, false);
             ui.close();
         }
+        // The header's tooltip summarises the fetched rows; this asks the server.
+        if !self.model.is_virtual_column(col)
+            && item(ui, icon::CHART_BAR, tr("Statistics of the whole column"), None)
+                .on_hover_text(tr("Rows, NULLs, distinct values, the smallest and the largest, over all rows of the query"))
+                .clicked()
+        {
+            self.actions.push(GridAction::ColumnStatistics { column: col });
+            ui.close();
+        }
         ui.menu_button(format!("{}  {}", icon::COLUMNS, tr("Columns")), |ui| {
             if ui.button(tr("Show all")).clicked() {
                 self.state.show_all_columns();

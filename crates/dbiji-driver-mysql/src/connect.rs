@@ -420,11 +420,15 @@ pub async fn open_connection(params: &ConnectParams) -> DbResult<Opened> {
     let opts: Opts = base.clone().ssl_opts(ssl).into();
     match open(opts.clone(), params).await {
         Ok(conn) => Ok(Opened { conn, opts, tls }),
-        Err(e) if mode == SslMode::Prefer && is_no_tls_error(&e) => {
+        // Prefer: without TLS when the server has none, or none DBiji can use
+        // (MySQL 5.7 builds offer only DHE ciphers, rustls only ECDHE), as
+        // the mysql client's PREFERRED does.
+        Err(e) if mode == SslMode::Prefer && e.kind == dbiji_core::ErrorKind::Tls => {
             tracing::debug!(
-                "server {}:{} has no TLS support, falling back to a plain connection",
+                "TLS to {}:{} failed ({}), falling back to a plain connection",
                 params.host,
-                params.port
+                params.port,
+                e.message
             );
             let plain: Opts = base.ssl_opts(None::<SslOpts>).into();
             let conn = open(plain.clone(), params).await?;
@@ -434,12 +438,11 @@ pub async fn open_connection(params: &ConnectParams) -> DbResult<Opened> {
                 tls: false,
             })
         }
+        Err(e) if e.kind == dbiji_core::ErrorKind::Tls && e.message.contains("HandshakeFailure") => Err(e.with_hint(
+            "The server offers no TLS cipher DBiji can use (MySQL 5.7 offers only DHE ciphers). Use the SSL mode Prefer or Disable, or enable ECDHE ciphers (ssl_cipher) on the server.",
+        )),
         Err(e) => Err(e),
     }
-}
-
-fn is_no_tls_error(e: &DbError) -> bool {
-    e.kind == dbiji_core::ErrorKind::Tls && e.message.contains("does not support TLS")
 }
 
 /// Kills statements of one server connection through short-lived side
@@ -632,8 +635,9 @@ mod tests {
             mysql_async::Error::Driver(mysql_async::DriverError::NoClientSslFlagFromServer),
             None,
         );
-        assert!(is_no_tls_error(&e));
-        assert!(!is_no_tls_error(&DbError::tls("certificate expired")));
+        // A server without TLS is a TLS error: Prefer goes on without it (as
+        // after a failed handshake).
+        assert_eq!(e.kind, dbiji_core::ErrorKind::Tls);
     }
 
     #[test]

@@ -71,6 +71,8 @@ pub struct ResultPanel {
     save_preview: Option<String>,
     /// Rows saved, committed, and the values the database gave the new rows.
     save_job: Option<Job<DbResult<SaveOutcome>>>,
+    /// Statistics of a whole column (its name) being computed by the server.
+    column_stats: Option<(String, Job<DbResult<Vec<Value>>>)>,
     /// `src.columns_version` the model was built with.
     columns_seen: u64,
     /// Saved inside an open transaction: the session's rollback count then.
@@ -183,6 +185,7 @@ impl ResultPanel {
             relations: Vec::new(),
             save_preview: None,
             save_job: None,
+            column_stats: None,
             columns_seen: 0,
             saved_in_tx: None,
             confirm_discard: None,
@@ -287,6 +290,17 @@ impl ResultPanel {
                 self.status = Some((e.full_text(), true));
             }
             crate::backend::Loadable::NotLoaded => self.model.fetch.counting = false,
+        }
+        if let Some((name, job)) = self.column_stats.as_mut()
+            && let Some(r) = job.poll()
+        {
+            let title = trf("Statistics of {}", &[name]);
+            match r {
+                Ok(v) => cx.toasts.push(crate::toasts::ToastKind::Info, title, Some(column_stats_text(&v))),
+                Err(e) => cx.toasts.error(title, Some(e.full_text())),
+            }
+            self.status = None;
+            self.column_stats = None;
         }
         if let Some(j) = self.save_job.as_mut()
             && let Some(r) = j.poll()
@@ -604,6 +618,27 @@ impl ResultPanel {
             GridAction::CountTotal => {
                 if let Some(d) = self.dialect(cx) {
                     self.src.count_total(backend, d);
+                }
+            }
+            GridAction::ColumnStatistics { column } => {
+                if let Some(d) = self.dialect(cx)
+                    && self.column_stats.is_none()
+                {
+                    let name = self.model.column_name(column).to_string();
+                    let c = d.quote_ident(&name);
+                    let full = d.aggregate_query(&self.src.sql, &format!("COUNT(*), COUNT({c}), COUNT(DISTINCT {c}), MIN({c}), MAX({c})"));
+                    // Types without DISTINCT, MIN or MAX (json, xml, bytea …): counts only.
+                    let counts = d.aggregate_query(&self.src.sql, &format!("COUNT(*), COUNT({c})"));
+                    let (session, params) = (self.src.session.clone(), self.src.params.clone());
+                    let job = backend.spawn(async move {
+                        let rows = match session.query_all(&full, &params).await {
+                            Ok((_, rows)) => rows,
+                            Err(_) => session.query_all(&counts, &params).await?.1,
+                        };
+                        rows.into_iter().next().ok_or_else(|| dbiji_core::DbError::query("The statistics query returned no row"))
+                    });
+                    self.column_stats = Some((name, job));
+                    self.status = Some((tr("Computing the column's statistics…").to_string(), false));
                 }
             }
             GridAction::Refresh => self.run_or_confirm(Deferred::Refresh, cx),
@@ -1208,4 +1243,23 @@ impl ResultPanel {
     pub fn handle_for_tests(&mut self, action: GridAction, cx: &mut AppContext) {
         self.handle(action, cx);
     }
+}
+
+/// The statistics of a whole column: `COUNT(*)`, `COUNT(c)` and, where the
+/// type has them, `COUNT(DISTINCT c)`, `MIN(c)`, `MAX(c)`.
+fn column_stats_text(v: &[Value]) -> String {
+    let int = |i: usize| v.get(i).and_then(Value::as_i64);
+    let short = |i: usize| {
+        let t = v.get(i).map(|x| if x.is_null() { "NULL".to_string() } else { x.to_text().into_owned() }).unwrap_or_default();
+        if t.chars().count() > 60 { t.chars().take(60).collect::<String>() + "…" } else { t }
+    };
+    let (rows, values) = (int(0).unwrap_or(0), int(1).unwrap_or(0));
+    let mut text = format!("{}: {rows} · {}: {}", tr("Rows"), tr("NULLs"), rows - values);
+    if let Some(d) = int(2) {
+        text.push_str(&format!(" · {}: {d}", tr("Distinct")));
+    }
+    if v.len() >= 5 {
+        text.push_str(&format!("\n{}: {} · {}: {}", tr("Min"), short(3), tr("Max"), short(4)));
+    }
+    text
 }

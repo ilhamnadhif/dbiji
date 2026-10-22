@@ -115,6 +115,40 @@ async fn driver_trait_connect() {
 #[tokio::test]
 async fn tls_require_and_prefer() {
     for srv in servers() {
+        let old = {
+            let s = srv.connect().await;
+            srv.is_mysql57(&s)
+        };
+        if !srv.has_tls().await {
+            // No TLS on the server: Require fails, Prefer connects without it.
+            let e = srv
+                .try_connect(&srv.with_ssl(SslMode::Require))
+                .await
+                .err()
+                .expect("Require without server TLS");
+            assert_eq!(e.kind, ErrorKind::Tls, "{}", e.full_text());
+            let s = srv.connect_with(&srv.with_ssl(SslMode::Prefer)).await;
+            assert!(!s.is_tls());
+            continue;
+        }
+        if old {
+            // MySQL 5.7 offers only DHE ciphers, rustls none of them: Require fails
+            // with a hint, Prefer goes on without TLS (as the mysql client).
+            let e = srv
+                .try_connect(&srv.with_ssl(SslMode::Require))
+                .await
+                .err()
+                .expect("Require cannot use TLS");
+            assert_eq!(e.kind, ErrorKind::Tls, "{}", e.full_text());
+            assert!(
+                e.hint.as_deref().is_some_and(|h| h.contains("Prefer")),
+                "{}",
+                e.full_text()
+            );
+            let s = srv.connect_with(&srv.with_ssl(SslMode::Prefer)).await;
+            assert!(!s.is_tls());
+            continue;
+        }
         for mode in [SslMode::Require, SslMode::Prefer] {
             let p = srv.with_ssl(mode);
             let mut s = srv.connect_with(&p).await;
@@ -204,7 +238,9 @@ async fn auth_errors_and_caching_sha2() {
         // over plain TCP caching_sha2_password needs the RSA key exchange.
         let user = format!("dbiji_u_{}", suffix());
         let mut admin = srv.connect().await;
-        let plugin = if srv.is_mariadb() {
+        // MySQL 5.7: no TLS DBiji can use (see `tls_require_and_prefer`); some servers have none.
+        let old = srv.is_mysql57(&admin) || !srv.has_tls().await;
+        let plugin = if srv.is_mariadb() || old {
             "mysql_native_password"
         } else {
             "caching_sha2_password"
@@ -216,7 +252,12 @@ async fn auth_errors_and_caching_sha2() {
         };
         exec(&mut admin, &create).await;
         let result = async {
-            for mode in [SslMode::Disable, SslMode::Disable, SslMode::Require] {
+            let modes: &[SslMode] = if old {
+                &[SslMode::Disable, SslMode::Disable]
+            } else {
+                &[SslMode::Disable, SslMode::Disable, SslMode::Require]
+            };
+            for &mode in modes {
                 let mut up = srv.with_ssl(mode);
                 up.user = Some(user.clone());
                 up.password = Some("Pw-123-xyz".into());

@@ -18,6 +18,7 @@ use std::sync::Arc;
 /// * `session_timeout` – HTTP session timeout in seconds (default 3600, lowered
 ///   automatically to the server's `max_session_timeout`);
 /// * `compression` – `true` to request gzip compressed responses;
+/// * `time_zone` – `DateTime` values in this zone (`session_timezone`, ClickHouse 23.6+);
 /// * `setting.<name>` – any ClickHouse setting sent with every query.
 pub struct ClickHouseDriver {
     info: DriverInfo,

@@ -552,3 +552,41 @@ async fn databases_and_schemas() {
     assert!(schemas.iter().any(|x| x.name == "main" && x.is_current));
     close(s).await;
 }
+
+/// Tables of a database file list the space their data takes; the computer's
+/// time zone is used for `timestamptz` when the connection asks for it.
+#[tokio::test]
+async fn table_sizes_and_local_time() {
+    use dbiji_core::meta::{ObjectKind, SchemaRef};
+    let dir = tempfile::tempdir().unwrap();
+    let path = file_in(dir.path(), "sizes.duckdb");
+    let mut s = DuckDbDriver::new()
+        .connect_duckdb(&params(&path, &[("time_zone", "local")]))
+        .await
+        .unwrap();
+    dbiji_core::driver::execute_update(
+        &mut s,
+        "CREATE TABLE big AS SELECT range AS id, 'row ' || range AS name FROM range(200000)",
+        &[],
+    )
+    .await
+    .unwrap();
+    dbiji_core::driver::execute_update(&mut s, "CHECKPOINT", &[])
+        .await
+        .unwrap();
+    let tables = s
+        .list_objects(&SchemaRef::schema("main"), ObjectKind::Table)
+        .await
+        .unwrap();
+    let big = tables.iter().find(|t| t.obj.name == "big").unwrap();
+    assert!(big.size_bytes.is_some_and(|b| b > 100_000), "{big:?}");
+    let (_, rows) =
+        dbiji_core::driver::query_all(&mut s, "SELECT TIMESTAMPTZ '1970-01-01 00:00:00+00'", &[])
+            .await
+            .unwrap();
+    let local = chrono::DateTime::from_timestamp(0, 0)
+        .unwrap()
+        .with_timezone(&chrono::Local)
+        .fixed_offset();
+    assert_eq!(rows[0][0], Value::DateTimeTz(local));
+}

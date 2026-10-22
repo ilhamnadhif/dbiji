@@ -234,7 +234,13 @@ pub trait Dialect: Send + Sync + 'static {
 
     /// Query returning the row count of `sql`.
     fn count_query(&self, sql: &str) -> String {
-        format!("SELECT COUNT(*) FROM ({}) dbiji_cnt", ansi::strip_trailing_semicolon(sql))
+        self.aggregate_query(sql, "COUNT(*)")
+    }
+
+    /// Query returning `select_list` (aggregates such as `COUNT(*)`) over the
+    /// rows of `sql`, which are `dbiji_cnt` in it.
+    fn aggregate_query(&self, sql: &str, select_list: &str) -> String {
+        format!("SELECT {select_list} FROM ({}) dbiji_cnt", ansi::strip_trailing_semicolon(sql))
     }
 
     /// `SELECT` for browsing a table in the data editor.

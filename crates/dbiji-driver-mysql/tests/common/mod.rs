@@ -27,6 +27,44 @@ impl Server {
         self.kind == DbKind::MariaDb
     }
 
+    /// MySQL before 8.0 (5.7): no CTEs, CHECK constraints, descending,
+    /// functional or invisible keys and columns, caching_sha2, EXPLAIN
+    /// FORMAT=TREE, and only DHE TLS ciphers.
+    pub fn is_mysql57(&self, s: &MySqlSession) -> bool {
+        !self.is_mariadb() && s.server_info().version_number.0 < 8
+    }
+
+    /// Descending keys are kept (MySQL 8, MariaDB 10.8); older servers ignore `DESC`.
+    pub fn has_desc_keys(&self, s: &MySqlSession) -> bool {
+        let v = s.server_info().version_number;
+        if self.is_mariadb() {
+            (v.0, v.1) >= (10, 8)
+        } else {
+            v.0 >= 8
+        }
+    }
+
+    /// The server has TLS set up (MariaDB 10.x images have none). `have_ssl`
+    /// is gone in MySQL 8.4: there the certificate tells.
+    pub async fn has_tls(&self) -> bool {
+        let mut s = self.connect_with(&self.with_ssl(SslMode::Disable)).await;
+        let rows = query(
+            &mut s,
+            "SHOW VARIABLES WHERE Variable_name IN ('have_ssl', 'ssl_cert')",
+        )
+        .await;
+        let _ = s.close().await;
+        let var = |name: &str| {
+            rows.iter()
+                .find(|r| r[0].to_text() == name)
+                .map(|r| r[1].to_text().into_owned())
+        };
+        match var("have_ssl") {
+            Some(v) => v == "YES",
+            None => var("ssl_cert").is_some_and(|c| !c.is_empty()),
+        }
+    }
+
     /// Parameters with another TLS mode.
     pub fn with_ssl(&self, mode: SslMode) -> ConnectParams {
         let mut p = self.params.clone();
@@ -259,7 +297,8 @@ pub async fn run(
     r
 }
 
-/// CTE producing `n` = 0 .. 10^digits - 1 (works on MySQL 8 and MariaDB 10.2+).
+/// Rows `n` = 0 .. 10^digits - 1 from derived tables of digits (no CTE:
+/// MySQL 5.7 has none).
 pub fn numbers_sql(digits: usize, pad: usize) -> String {
     let d = "SELECT 0 AS x UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 \
              UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9";
@@ -272,8 +311,8 @@ pub fn numbers_sql(digits: usize, pad: usize) -> String {
         .join(" + ");
     let from = names
         .iter()
-        .map(|n| format!("dg {n}"))
+        .map(|n| format!("({d}) {n}"))
         .collect::<Vec<_>>()
         .join(" CROSS JOIN ");
-    format!("WITH dg AS ({d}) SELECT {expr} AS n, REPEAT('x', {pad}) AS pad FROM {from}")
+    format!("SELECT {expr} AS n, REPEAT('x', {pad}) AS pad FROM {from}")
 }

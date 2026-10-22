@@ -78,6 +78,8 @@ pub(crate) struct OpenConfig {
     pub settings: Vec<(String, String)>,
     pub mode: TransactionMode,
     pub show_system_objects: bool,
+    /// `TIMESTAMP WITH TIME ZONE` values in the computer's time zone.
+    pub local_time: bool,
 }
 
 impl OpenConfig {
@@ -438,6 +440,7 @@ pub(crate) fn run(
         mode: cfg.mode,
         in_tx: false,
         show_system_objects: cfg.show_system_objects,
+        local_time: cfg.local_time,
     };
     if ready.send(Ok((Arc::clone(&shared), info))).is_err() {
         return;
@@ -532,6 +535,7 @@ pub(crate) struct Worker {
     /// report the transaction state, so the driver tracks it).
     pub in_tx: bool,
     pub show_system_objects: bool,
+    pub local_time: bool,
 }
 
 impl Worker {
@@ -930,7 +934,14 @@ impl Worker {
                 drop(stmt);
                 return fail(self, err, header_reply);
             }
-            let (mut columns, convs) = Self::describe(&stmt);
+            let (mut columns, mut convs) = Self::describe(&stmt);
+            if self.local_time {
+                for (c, _) in &mut convs {
+                    if *c == Conv::TimestampTz {
+                        *c = Conv::TimestampTzLocal;
+                    }
+                }
+            }
             if let Some(src) = &source {
                 Self::apply_sources(span.text, &mut columns, src);
             }
@@ -1145,6 +1156,7 @@ mod tests {
             settings: Vec::new(),
             mode: TransactionMode::Auto,
             show_system_objects: false,
+            local_time: false,
         };
         let before = open_instances();
         let (a, ca) = open_shared(&cfg).unwrap();

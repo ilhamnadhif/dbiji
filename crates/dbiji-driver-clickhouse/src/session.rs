@@ -168,6 +168,18 @@ impl ClickHouseSession {
             version: probe.version.clone(),
             session_id: Some(transport.session_id.clone()),
         };
+        // The `time_zone` property: DateTime values in that zone (session_timezone
+        // came with 23.6; older servers refuse the setting, so it is not sent).
+        let mut timezone = probe.timezone;
+        if let Some(tz) = params.property("time_zone").filter(|z| !z.is_empty())
+            && !probe.minimal
+            && (info.version_number.0, info.version_number.1) >= (23, 6)
+        {
+            let mut settings = transport.settings();
+            settings.push(("session_timezone".into(), tz.to_string()));
+            transport.set_settings(settings);
+            timezone = Some(tz.to_string());
+        }
         let transport = Arc::new(transport);
         let active = Arc::new(ActiveQuery::default());
         let cancel = Arc::new(ClickHouseCancelHandle { transport: transport.clone(), active: active.clone() });
@@ -182,7 +194,7 @@ impl ClickHouseSession {
             cancel,
             closed: false,
             minimal: probe.minimal,
-            timezone: probe.timezone,
+            timezone,
         })
     }
 

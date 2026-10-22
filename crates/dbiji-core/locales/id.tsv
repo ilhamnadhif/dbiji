@@ -2752,3 +2752,7 @@ Time zone	Zona waktu
 Of the first {} rows	Dari {} baris pertama
 Loaded rows	Baris dimuat
 Stop the query	Hentikan query
+Computing the column's statistics…	Menghitung statistik kolom…
+Rows, NULLs, distinct values, the smallest and the largest, over all rows of the query	Baris, NULL, nilai unik, terkecil dan terbesar, dari semua baris query
+Statistics of the whole column	Statistik seluruh kolom
+Statistics of {}	Statistik {}

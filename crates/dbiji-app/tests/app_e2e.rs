@@ -103,7 +103,9 @@ fn execute_fetch_count_and_metadata() {
         let insert = if is_pg {
             format!("INSERT INTO {table} SELECT g, 'row ' || g, g * 1.5 FROM generate_series(1, 1000) g")
         } else {
-            format!("INSERT INTO {table} WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 1000) SELECT n, CONCAT('row ', n), n * 1.5 FROM seq")
+            // No CTE: MySQL 5.7 has none.
+            let d = "(SELECT 0 AS x UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9)";
+            format!("INSERT INTO {table} SELECT n, CONCAT('row ', n), n * 1.5 FROM (SELECT a.x + 10 * b.x + 100 * c.x + 1 AS n FROM {d} a CROSS JOIN {d} b CROSS JOIN {d} c) seq")
         };
         let select = format!("SELECT * FROM {table} ORDER BY id");
         let events = run_script(&backend, &cm, &id, &[&create, &insert, &select]);

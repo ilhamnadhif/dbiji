@@ -198,12 +198,13 @@ async fn navigator_metadata() {
             .map(String::from)
             .collect::<Vec<_>>()
         );
+        let desc = if srv.has_desc_keys(&s) { " DESC" } else { "" };
         assert!(idx.iter().any(|i| {
             i.obj.name == "idx_body_prefix"
                 && i.detail
                     .as_deref()
                     .unwrap()
-                    .contains("body(10), created DESC")
+                    .contains(&format!("body(10), created{desc}"))
         }));
         assert!(
             idx.iter()
@@ -243,7 +244,7 @@ async fn navigator_metadata() {
             .await
             .unwrap();
         assert!(
-            names(&checks).contains(&"chk_qty".to_string()),
+            srv.is_mysql57(&s) || names(&checks).contains(&"chk_qty".to_string()),
             "[{}] {:?}",
             srv.name,
             names(&checks)
@@ -354,9 +355,11 @@ async fn definitions_and_ddl() {
             (fk.on_delete, fk.on_update),
             (FkAction::Cascade, FkAction::Restrict)
         );
+        // MySQL 5.7 parses CHECK constraints and drops them.
         assert!(
-            t.checks.iter().any(|c| c.name.as_deref() == Some("chk_qty")
-                && c.expression.replace('`', "") == "qty >= 0"),
+            srv.is_mysql57(&s)
+                || t.checks.iter().any(|c| c.name.as_deref() == Some("chk_qty")
+                    && c.expression.replace('`', "") == "qty >= 0"),
             "{:?}",
             t.checks
         );
@@ -366,7 +369,7 @@ async fn definitions_and_ddl() {
             .find(|i| i.name == "idx_body_prefix")
             .unwrap();
         assert_eq!(ix.columns[0].name, "body(10)");
-        assert!(ix.columns[1].descending);
+        assert_eq!(ix.columns[1].descending, srv.has_desc_keys(&s));
         assert_eq!(
             t.indexes
                 .iter()
@@ -556,6 +559,7 @@ async fn definitions_and_ddl() {
                 "FOREIGN KEY",
                 "fk_child_parent",
             ),
+            // (MySQL 5.7 drops CHECK constraints: skipped below.)
             (
                 ddl(ObjectKind::CheckConstraint, "chk_qty", Some("child")),
                 "CHECK",
@@ -577,6 +581,9 @@ async fn definitions_and_ddl() {
                 db.name.as_str(),
             ),
         ] {
+            if o.kind == ObjectKind::CheckConstraint && srv.is_mysql57(&s) {
+                continue;
+            }
             let text = s
                 .object_ddl(&o)
                 .await
@@ -835,16 +842,19 @@ async fn ddl_round_trip() {
         let db2 = TestDb::create(&srv).await;
         let mut s = db1.session().await;
         create_objects(&srv, &mut s).await;
-        let functional = if srv.is_mariadb() {
+        let old = srv.is_mysql57(&s);
+        let functional = if srv.is_mariadb() || old {
             ""
         } else {
             ", KEY idx_lower ((lower(label)), id DESC)"
         };
+        // Invisible columns: MySQL 8 and MariaDB.
+        let invisible = if old { "" } else { " INVISIBLE" };
         exec(
             &mut s,
             &format!(
                 "CREATE TABLE geo (id INT PRIMARY KEY, pt POINT NOT NULL, label VARCHAR(50) COLLATE utf8mb4_bin, \
-                 hidden INT DEFAULT 7 INVISIBLE, SPATIAL KEY sp_pt (pt){functional}) ROW_FORMAT=DYNAMIC"
+                 hidden INT DEFAULT 7{invisible}, SPATIAL KEY sp_pt (pt){functional}) ROW_FORMAT=DYNAMIC"
             ),
         )
         .await;
@@ -877,7 +887,7 @@ async fn ddl_round_trip() {
         );
         assert_eq!(
             geo.options.get("invisible:hidden").map(String::as_str),
-            Some("1")
+            (!old).then_some("1")
         );
         assert_eq!(
             geo.column("hidden")
@@ -885,7 +895,7 @@ async fn ddl_round_trip() {
                 .as_deref(),
             Some("7")
         );
-        if !srv.is_mariadb() {
+        if !srv.is_mariadb() && !old {
             let idx = geo
                 .indexes
                 .iter()

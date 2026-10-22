@@ -119,6 +119,8 @@ pub(crate) struct Statement {
     pub tag: Option<String>,
     /// Message delivered before the results (e.g. a reconnect warning).
     pub notice: Option<ServerMessage>,
+    /// `datetimeoffset` values in this zone (property `time_zone`: `local` or `utc`).
+    pub zone: Option<crate::types::Zone>,
 }
 
 /// What the task gives back to the session.
@@ -533,7 +535,7 @@ async fn stream_results(
                 }
             }
             Some(Ok(Item::Row(r))) => {
-                let row: Row = r.into_iter().zip(types.iter()).map(|(d, t)| convert(d, *t)).collect();
+                let row: Row = r.into_iter().zip(types.iter()).map(|(d, t)| crate::types::in_zone(convert(d, *t), stmt.zone)).collect();
                 batch.push(row);
                 if batch.len() >= BATCH_ROWS {
                     let full = std::mem::replace(&mut batch, Vec::with_capacity(BATCH_ROWS));

@@ -26,6 +26,7 @@
 //! | `max_memory` | memory limit, e.g. `4GB` |
 //! | `autoload_extensions` | allow DuckDB to install and load known extensions on demand (default `false`) |
 //! | `show_system_objects` | list internal tables, views and schemas (default `false`) |
+//! | `time_zone` | `local`: `TIMESTAMP WITH TIME ZONE` values in the computer's time zone (default UTC) |
 //! | `setting.<name>` | any other DuckDB configuration option, e.g. `setting.default_order` = `DESC` |
 
 // `DbError` (defined by dbiji-core, 144 bytes) is the error type of the whole
@@ -240,6 +241,7 @@ fn open_config(params: &ConnectParams) -> DbResult<OpenConfig> {
             TransactionMode::Manual
         },
         show_system_objects: bool_property(params, "show_system_objects", false)?,
+        local_time: property(params, "time_zone").is_some_and(|z| z.eq_ignore_ascii_case("local")),
     })
 }
 

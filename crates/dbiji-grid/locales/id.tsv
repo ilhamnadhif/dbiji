@@ -405,3 +405,5 @@ Of the first {} rows	Dari {} baris pertama
 Time zone	Zona waktu
 Loaded rows	Baris dimuat
 Stop the query	Hentikan query
+Rows, NULLs, distinct values, the smallest and the largest, over all rows of the query	Baris, NULL, nilai unik, terkecil dan terbesar, dari semua baris query
+Statistics of the whole column	Statistik seluruh kolom

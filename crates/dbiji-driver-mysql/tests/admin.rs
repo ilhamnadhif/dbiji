@@ -51,7 +51,7 @@ async fn explain_plans() {
             tables.contains(&"ea".to_string()) && tables.contains(&"eb".to_string()),
             "{tables:?}"
         );
-        if srv.is_mariadb() {
+        if srv.is_mariadb() || srv.is_mysql57(&s) {
             assert!(!plan.text.is_empty());
         } else {
             assert!(
@@ -60,32 +60,38 @@ async fn explain_plans() {
                 plan.text
             );
         }
-        let analyzed = s.explain(sql, true).await.unwrap();
-        assert!(analyzed.analyzed);
-        let mut actual = 0;
-        analyzed.roots[0].walk(0, &mut |n, _| {
-            if n.actual_rows.is_some() || n.actual_total_ms.is_some() {
-                actual += 1;
-            }
-        });
-        assert!(
-            actual > 0,
-            "[{}] no actual values: {:#?}",
-            srv.name,
-            analyzed.roots
-        );
-        assert!(analyzed.execution_ms.is_some());
-        // ANALYZE of a data change is rolled back (multi-table form works on both)
-        let dml = "UPDATE ea a JOIN eb b ON b.a_id = a.id SET a.v = 'changed'";
-        let p = s.explain(dml, true).await.unwrap();
-        assert!(p.analyzed);
-        assert_eq!(
-            query(&mut s, "SELECT COUNT(*) FROM ea WHERE v = 'changed'").await[0][0],
-            Value::Int(0),
-            "[{}]",
-            srv.name
-        );
-        assert!(!s.in_transaction());
+        // EXPLAIN ANALYZE came with MySQL 8.0.18: refused with that reason before.
+        if srv.is_mysql57(&s) {
+            let e = s.explain(sql, true).await.unwrap_err();
+            assert_eq!(e.kind, ErrorKind::Unsupported, "{}", e.full_text());
+        } else {
+            let analyzed = s.explain(sql, true).await.unwrap();
+            assert!(analyzed.analyzed);
+            let mut actual = 0;
+            analyzed.roots[0].walk(0, &mut |n, _| {
+                if n.actual_rows.is_some() || n.actual_total_ms.is_some() {
+                    actual += 1;
+                }
+            });
+            assert!(
+                actual > 0,
+                "[{}] no actual values: {:#?}",
+                srv.name,
+                analyzed.roots
+            );
+            assert!(analyzed.execution_ms.is_some());
+            // ANALYZE of a data change is rolled back (multi-table form works on both)
+            let dml = "UPDATE ea a JOIN eb b ON b.a_id = a.id SET a.v = 'changed'";
+            let p = s.explain(dml, true).await.unwrap();
+            assert!(p.analyzed);
+            assert_eq!(
+                query(&mut s, "SELECT COUNT(*) FROM ea WHERE v = 'changed'").await[0][0],
+                Value::Int(0),
+                "[{}]",
+                srv.name
+            );
+            assert!(!s.in_transaction());
+        }
         // plain EXPLAIN of DML
         let p = s
             .explain("DELETE FROM ea WHERE id = 1", false)

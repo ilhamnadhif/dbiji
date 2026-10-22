@@ -675,15 +675,18 @@ impl GridFrame<'_> {
             return;
         }
         let center = self.geo.body.center();
-        let row = Rect::from_center_size(center, vec2(160.0, 24.0));
-        ui.scope_builder(egui::UiBuilder::new().max_rect(row).layout(egui::Layout::left_to_right(egui::Align::Center)), |ui| {
-            ui.add(egui::Spinner::new().size(16.0));
-            ui.label(egui::RichText::new(tr("Fetching…")).color(self.theme.weak));
-        });
+        // The spinner and "Fetching…" as one line, centred; Cancel centred under it.
+        let text = egui::WidgetText::from(egui::RichText::new(tr("Fetching…"))).into_galley(ui, None, f32::INFINITY, egui::TextStyle::Body);
+        let (spin, gap) = (14.0, 8.0);
+        let left = center.x - (spin + gap + text.size().x) / 2.0;
+        ui.put(Rect::from_center_size(pos2(left + spin / 2.0, center.y), vec2(spin, spin)), egui::Spinner::new().size(spin).color(self.theme.weak));
+        let text_rect = Rect::from_min_size(pos2(left + spin + gap, center.y - text.size().y / 2.0), text.size());
+        ui.put(text_rect, egui::Label::new(egui::RichText::new(tr("Fetching…")).color(self.theme.weak)).selectable(false));
         if running >= CANCEL_AFTER {
-            let at = Rect::from_center_size(center + vec2(0.0, 32.0), vec2(96.0, 24.0));
-            let cancel = egui::Button::new((dbiji_icons::ic(egui_phosphor::regular::X_CIRCLE), tr("Cancel")));
-            if ui.put(at, cancel).on_hover_text(tr("Stop the query")).clicked() {
+            let label = egui::WidgetText::from(tr("Cancel")).into_galley(ui, None, f32::INFINITY, egui::TextStyle::Button);
+            let size = vec2(label.size().x + 2.0 * ui.spacing().button_padding.x + 16.0, ui.spacing().interact_size.y + 2.0);
+            let at = Rect::from_center_size(pos2(center.x, center.y + 30.0), size);
+            if ui.put(at, egui::Button::new(tr("Cancel"))).on_hover_text(tr("Stop the query")).clicked() {
                 self.actions.push(GridAction::CancelFetch);
             }
         } else {

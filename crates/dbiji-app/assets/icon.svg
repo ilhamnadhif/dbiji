@@ -1,26 +1,43 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#23907f"/>
-      <stop offset="1" stop-color="#0d3b38"/>
-    </linearGradient>
-    <linearGradient id="leaf" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#c6f27a"/>
-      <stop offset="1" stop-color="#46a84a"/>
+    <linearGradient id="bg" x1="0.3" y1="0" x2="0.7" y2="1">
+      <stop offset="0" stop-color="#178d7d"/>
+      <stop offset="1" stop-color="#065a50"/>
     </linearGradient>
     <linearGradient id="body" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#e9e4d4"/>
-      <stop offset="0.5" stop-color="#fbf8ef"/>
-      <stop offset="1" stop-color="#ddd6c2"/>
+      <stop offset="0" stop-color="#e6e9e1"/>
+      <stop offset="0.45" stop-color="#fbfbf6"/>
+      <stop offset="1" stop-color="#dfe3da"/>
+    </linearGradient>
+    <linearGradient id="top" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#eef0e9"/>
+    </linearGradient>
+    <linearGradient id="leaf" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#bdf088"/>
+      <stop offset="1" stop-color="#4caf4f"/>
+    </linearGradient>
+    <linearGradient id="stem" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7fd35e"/>
+      <stop offset="1" stop-color="#5bbf52"/>
     </linearGradient>
   </defs>
   <rect x="72" y="72" width="880" height="880" rx="196" fill="url(#bg)"/>
-  <path d="M272 470 v270 a240 82 0 0 0 480 0 v-270 z" fill="url(#body)"/>
-  <ellipse cx="512" cy="470" rx="240" ry="82" fill="#fbf8ef"/>
-  <path d="M282 560 a230 80 0 0 0 460 0" fill="none" stroke="#23907f" stroke-width="20"/>
-  <path d="M282 650 a230 80 0 0 0 460 0" fill="none" stroke="#23907f" stroke-width="20"/>
-  <ellipse cx="512" cy="470" rx="240" ry="82" fill="none" stroke="#23907f" stroke-width="20"/>
-  <path d="M512 468 C 506 400 520 330 566 282" fill="none" stroke="#5cb84a" stroke-width="26" stroke-linecap="round"/>
-  <path d="M566 282 C 640 214 742 222 770 252 C 722 330 626 344 566 282 Z" fill="url(#leaf)"/>
-  <path d="M524 360 C 470 296 372 284 336 316 C 374 386 470 400 524 360 Z" fill="url(#leaf)"/>
+
+  <!-- Two database cylinders. -->
+  <g id="cylinder">
+    <path d="M248 517 v268 a126 54 0 0 0 252 0 v-268 z" fill="url(#body)"/>
+    <path d="M254 605 a120 50 0 0 0 240 0" fill="none" stroke="#178d7d" stroke-width="16"/>
+    <path d="M254 695 a120 50 0 0 0 240 0" fill="none" stroke="#178d7d" stroke-width="16"/>
+    <ellipse cx="374" cy="517" rx="126" ry="54" fill="url(#top)"/>
+  </g>
+  <use href="#cylinder" x="276"/>
+
+  <!-- Two sprouts whose stems cross: a seed (biji) growing from the data. -->
+  <path d="M396 506 C 420 468, 476 438, 504 392 C 516 372, 524 362, 540 352" fill="none" stroke="url(#stem)" stroke-width="20" stroke-linecap="round"/>
+  <path d="M628 506 C 604 468, 548 438, 520 392 C 508 372, 500 362, 484 352" fill="none" stroke="url(#stem)" stroke-width="20" stroke-linecap="round"/>
+  <path d="M536 356 C 562 300, 650 262, 728 270 C 702 334, 612 376, 536 356 Z" fill="url(#leaf)"/>
+  <path d="M536 356 Q 626 322, 728 270 C 702 334, 612 376, 536 356 Z" fill="#3f9e45" fill-opacity="0.45"/>
+  <path d="M488 356 C 462 300, 374 262, 296 270 C 322 334, 412 376, 488 356 Z" fill="url(#leaf)"/>
+  <path d="M488 356 Q 398 322, 296 270 C 322 334, 412 376, 488 356 Z" fill="#3f9e45" fill-opacity="0.45"/>
 </svg>

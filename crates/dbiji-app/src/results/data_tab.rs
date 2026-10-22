@@ -23,11 +23,16 @@ pub struct TableDataView {
     pub panel: Option<ResultPanel>,
     error: Option<String>,
     started: bool,
+    /// When the first query started (a slow one offers Cancel).
+    started_at: Option<std::time::Instant>,
 }
+
+/// A first query running this long offers Cancel (as the grid's fetches).
+const CANCEL_AFTER: std::time::Duration = std::time::Duration::from_secs(1);
 
 impl TableDataView {
     pub fn new(conn: String, table: ObjectRef, where_clause: Option<String>) -> Self {
-        TableDataView { conn, table, where_clause, order_by: None, session: AdminSession::default(), exec: None, panel: None, error: None, started: false }
+        TableDataView { conn, table, where_clause, order_by: None, session: AdminSession::default(), exec: None, panel: None, error: None, started: false, started_at: None }
     }
 
     /// The error that stopped loading the data, if any.
@@ -49,6 +54,7 @@ impl TableDataView {
         let plan = StmtPlan { index: 0, original: sql.clone(), range: 0..sql.len(), sql, is_write: false, client: None };
         let opts = ExecOpts { fetch_size: cx.settings.results.effective_fetch_size() as usize, store_budget: cx.settings.results.store_budget_bytes(), ..Default::default() };
         self.exec = Some(Execution::start(cx.backend, session, vec![plan], opts, None));
+        self.started_at = Some(std::time::Instant::now());
         self.started = true;
     }
 
@@ -75,6 +81,10 @@ impl TableDataView {
         }
         if exec.is_finished() {
             self.exec = None;
+            // Cancelled before the first rows: say so (with Retry) instead of "Reading data…".
+            if self.panel.is_none() && self.error.is_none() {
+                self.error = Some(tr("The query was cancelled.").to_string());
+            }
         }
     }
 
@@ -107,10 +117,28 @@ impl TableDataView {
         match self.panel.as_mut() {
             Some(p) => p.ui(ui, cx),
             None => {
-                ui.horizontal(|ui| {
-                    ui.spinner();
-                    ui.weak(tr("Reading data…"));
-                });
+                // A spinner and "Reading data…" centred, Cancel under it once it takes long.
+                let center = ui.available_rect_before_wrap().center();
+                let weak = ui.visuals().weak_text_color();
+                let text = egui::WidgetText::from(tr("Reading data…")).into_galley(ui, None, f32::INFINITY, egui::TextStyle::Body);
+                let (spin, gap) = (14.0, 8.0);
+                let left = center.x - (spin + gap + text.size().x) / 2.0;
+                ui.put(egui::Rect::from_center_size(egui::pos2(left + spin / 2.0, center.y), egui::vec2(spin, spin)), egui::Spinner::new().size(spin).color(weak));
+                let text_rect = egui::Rect::from_min_size(egui::pos2(left + spin + gap, center.y - text.size().y / 2.0), text.size());
+                ui.put(text_rect, egui::Label::new(egui::RichText::new(tr("Reading data…")).color(weak)).selectable(false));
+                let running = self.started_at.map(|t| t.elapsed()).unwrap_or_default();
+                if let Some(exec) = &self.exec {
+                    if running >= CANCEL_AFTER {
+                        let label = egui::WidgetText::from(tr("Cancel")).into_galley(ui, None, f32::INFINITY, egui::TextStyle::Button);
+                        let size = egui::vec2(label.size().x + 2.0 * ui.spacing().button_padding.x + 16.0, ui.spacing().interact_size.y + 2.0);
+                        let at = egui::Rect::from_center_size(egui::pos2(center.x, center.y + 30.0), size);
+                        if ui.put(at, egui::Button::new(tr("Cancel"))).on_hover_text(tr("Stop the query")).clicked() {
+                            exec.cancel(cx.backend);
+                        }
+                    } else {
+                        ui.ctx().request_repaint_after(CANCEL_AFTER - running);
+                    }
+                }
             }
         }
     }

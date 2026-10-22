@@ -505,16 +505,6 @@ impl<'a> ResultToolbar<'a> {
             // --- right: fetch buttons, status, messages (right to left)
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let fetching = model.fetch.fetching;
-                // A long fetch (fetch all, a slow query) can be stopped here too.
-                if let Some(running) = model.fetch.fetching_for() {
-                    if running >= crate::grid::CANCEL_AFTER {
-                        if ui.button((dbiji_icons::ic(icon::X_CIRCLE), tr("Cancel"))).on_hover_text(tr("Stop the query")).clicked() {
-                            actions.push(GridAction::CancelFetch);
-                        }
-                    } else {
-                        ui.ctx().request_repaint_after(crate::grid::CANCEL_AFTER - running);
-                    }
-                }
                 if ui.add_enabled(!model.fetch.counting, Button::new(dbiji_icons::ic(icon::HASH))).on_hover_text(tr("Calculate total row count")).clicked() {
                     actions.push(GridAction::CountTotal);
                 }
@@ -524,6 +514,18 @@ impl<'a> ResultToolbar<'a> {
                     }
                     if ui.add_enabled(!fetching, Button::new(dbiji_icons::ic(icon::CARET_DOUBLE_DOWN))).on_hover_text(tr("Fetch next page")).clicked() {
                         actions.push(GridAction::FetchMore);
+                    }
+                }
+                // A long fetch (fetch all, a slow query) stops with the icon next to
+                // "fetching…" (not a second "Cancel" beside Save / Cancel).
+                if let Some(running) = model.fetch.fetching_for() {
+                    if running >= crate::grid::CANCEL_AFTER {
+                        let stop = Button::new(RichText::new(icon::STOP_CIRCLE).color(ui.visuals().error_fg_color)).frame_when_inactive(false);
+                        if ui.add(stop).on_hover_text(tr("Stop the query")).clicked() {
+                            actions.push(GridAction::CancelFetch);
+                        }
+                    } else {
+                        ui.ctx().request_repaint_after(crate::grid::CANCEL_AFTER - running);
                     }
                 }
                 let mut status = status_text(model);

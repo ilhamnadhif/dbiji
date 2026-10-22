@@ -459,7 +459,7 @@ fn rows_table(
             let mut draw = |ui: &mut Ui, list: &[usize]| {
                 for &i in list {
                     let c = columns[i];
-                    ui.horizontal(|ui| {
+                    let row = ui.horizontal(|ui| {
                         let (lead_rect, lead_resp) = ui.allocate_exact_size(egui::vec2(lead_w, row_h), egui::Sense::click());
                         let name = model.column_name(c).to_string();
                         let field_picked = rows.iter().all(|&r| picked.contains(&(r, c)));
@@ -585,6 +585,9 @@ fn rows_table(
                             }
                         }
                     });
+                    // A line under each field, over its name and its values (as the grid's rows).
+                    let r = row.response.rect;
+                    ui.painter().hline(r.left()..=r.left() + lead_w + widths.iter().sum::<f32>(), r.bottom() - 0.5, egui::Stroke::new(1.0, theme.line));
                 }
             };
             if !pinned.is_empty() && !rest.is_empty() {

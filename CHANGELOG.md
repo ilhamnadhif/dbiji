@@ -3,6 +3,16 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.29 — 2026-10-22
+
+### Changed
+- A new app icon: two database cylinders with crossing sprouts on teal.
+- The record view has a line under every field, over its name and its values, as the grid's rows.
+- A slow fetch shows its spinner, text and Cancel centred over the grid; the result toolbar has a stop icon next to "fetching…" instead of a second "Cancel" beside Save / Cancel. Opening a table or view whose query is slow shows the same centred spinner with Cancel.
+
+### Fixed
+- Cancelling the first query of a table's data tab left "Reading data…" forever; it now says the query was cancelled and offers Retry.
+
 ## 0.3.28 — 2026-10-22
 
 ### Fixed

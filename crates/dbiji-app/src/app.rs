@@ -53,6 +53,8 @@ pub struct DbijiApp {
     /// Exit after the first frame (startup benchmark).
     pub exit_after_first_frame: bool,
     active_tab: Option<u64>,
+    /// Title last given to the window.
+    window_title: String,
     /// Benchmark mode: quit after this instant.
     exit_at: Option<Instant>,
     /// The window was asked to close while tabs had unsaved changes.
@@ -118,6 +120,7 @@ impl DbijiApp {
             first_frame: true,
             exit_after_first_frame: false,
             active_tab: None,
+            window_title: "DBiji".into(),
             exit_at: std::env::var("DBIJI_BENCH_EXIT_AFTER_SECS").ok().and_then(|v| v.parse::<u64>().ok()).map(|s| Instant::now() + std::time::Duration::from_secs(s)),
             pending_generate: Vec::new(),
             pending_routines: Vec::new(),
@@ -1710,6 +1713,13 @@ impl eframe::App for DbijiApp {
             });
         }
         self.active_tab = self.dock.find_active_focused().map(|(_, t)| t.id);
+        // The window is named after the active tab, as in DBeaver ("DBiji - orders"):
+        // windows are told apart in the Dock, Mission Control and ⌘-Tab.
+        let title = self.dock.find_active_focused().map(|(_, t)| format!("DBiji - {}", t.view.title())).unwrap_or_else(|| "DBiji".into());
+        if title != self.window_title {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+            self.window_title = title;
+        }
         if cx.settings.navigator.link_with_editor && self.active_tab != self.linked_tab {
             self.linked_tab = self.active_tab;
             if let Some((conn, obj)) = self.dock.find_active_focused().and_then(|(_, t)| t.view.navigator_object()) {

@@ -88,8 +88,12 @@ pub struct RecordViewState {
     cache: Option<RecordCache>,
     /// Take the keyboard focus on the next frame (opened with Tab).
     focus_request: bool,
-    /// Cell picked in the table: (row, column).
-    picked: Option<(usize, usize)>,
+    /// Cells picked in the table: (row, column). A click picks one, ⇧-click a
+    /// block from the anchor, ⌘-click adds or removes one; a column name picks
+    /// the column in every shown row.
+    picked: Vec<(usize, usize)>,
+    /// Where a ⇧-click block starts.
+    pick_anchor: Option<(usize, usize)>,
     /// Widths set by the user: per row (side by side), of the single row's
     /// value column ([`SINGLE`]), and of the column-name column.
     widths: std::collections::BTreeMap<usize, f32>,
@@ -235,7 +239,7 @@ impl<'a> RecordView<'a> {
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(RichText::new(format!("{}  {}", icon::KEYBOARD, tr("Tab: grid · ← →: rows · ⌘C: copy"))).small().weak())
-                        .on_hover_text(tr("Tab: back to the grid · ← →: previous / next row · ⌘C: copy the picked value"));
+                        .on_hover_text(tr("Tab: back to the grid · ← →: previous / next row. Click a value or a column name to select it, ⇧-click or ⌘-click to select more; ⌘C copies the selection, right-click copies it with the column names."));
                     if !state.column_filter.trim().is_empty() {
                         let needle = state.column_filter.to_lowercase();
                         let shown = grid.visible_columns().into_iter().filter(|&c| model.column_name(c).to_lowercase().contains(&needle)).count();
@@ -324,7 +328,9 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
                 actions.push(state.prefs(options));
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(RichText::new(format!("{}  {}", icon::KEYBOARD, tr("Tab: grid · ⌘C: copy"))).small().weak()).on_hover_text(tr("Select one row to see it as a record"));
+                ui.label(RichText::new(format!("{}  {}", icon::KEYBOARD, tr("Tab: grid · ⌘C: copy"))).small().weak()).on_hover_text(tr(
+                    "Click a value or a column name to select it, ⇧-click or ⌘-click to select more; ⌘C copies the selection, right-click copies it with the column names.",
+                ));
                 let needle = state.column_filter.trim().to_lowercase();
                 if !needle.is_empty() {
                     let shown = grid.visible_columns().into_iter().filter(|&c| model.column_name(c).to_lowercase().contains(&needle)).count();
@@ -369,16 +375,22 @@ fn rows_table(
     state.hidden_empty = named.len() - keep.len();
     let columns: Vec<usize> = keep.iter().map(|&i| named[i]).collect();
     let values: Vec<Vec<Shown>> = all_values.iter().map(|vs| keep.iter().filter_map(|&i| vs.get(i).cloned()).collect()).collect();
-    let text_of = |r: usize, i: usize| values.get(r).and_then(|vs| vs.get(i)).map(|(v, ..)| if v.is_null() { String::new() } else { v.to_text().into_owned() });
+    // Text of the value of row `r`, column `c`.
+    let text_of = |r: usize, c: usize| -> Option<String> {
+        let (j, i) = (rows.iter().position(|x| *x == r)?, columns.iter().position(|x| *x == c)?);
+        values.get(j).and_then(|vs| vs.get(i)).map(|(v, ..)| if v.is_null() { String::new() } else { v.to_text().into_owned() })
+    };
+    // Key columns stay at the top while the others scroll: the order shown.
+    let (pinned, rest): (Vec<usize>, Vec<usize>) = (0..columns.len()).partition(|&i| key_cols.contains(&columns[i]));
+    let order: Vec<usize> = pinned.iter().chain(&rest).map(|&i| columns[i]).collect();
+    // Copy (⌘C, or the context menu with the column names) and select all (⌘A).
+    let mut copy: Option<bool> = None;
     if focus.has_focus() && state.editing.is_none() {
-        let copy = ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Copy)));
-        if copy
-            && let Some((r, c)) = state.picked
-            && let (Some(ri), Some(ci)) = (rows.iter().position(|x| *x == r), columns.iter().position(|x| *x == c))
-            && let Some(t) = text_of(ri, ci)
-        {
-            ui.ctx().copy_text(t);
-            actions.push(GridAction::Notify { message: tr("Value copied").to_string(), error: false });
+        if ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Copy))) {
+            copy = Some(false);
+        }
+        if ui.input(|i| i.modifiers.command && i.key_pressed(Key::A)) {
+            state.picked = order.iter().flat_map(|&c| rows.iter().map(move |&r| (r, c))).collect();
         }
     }
     let body = egui::TextStyle::Body.resolve(ui.style());
@@ -410,9 +422,15 @@ fn rows_table(
     let editable = model.is_editable() && options.allow_editing;
     let mut commit: Option<(usize, usize, String)> = None;
     let mut open_value: Option<(usize, usize)> = None;
-    let mut picked = state.picked;
+    let picked = state.picked.clone();
+    // The cell a ⇧-click block starts from has the border (as the grid's active cell).
+    let anchor = state.pick_anchor.filter(|a| picked.contains(a)).or_else(|| picked.first().copied());
     let mut toggled: Option<(usize, usize, bool)> = None;
     let mut select: Option<(usize, usize)> = None;
+    // Clicks on a value / a column name, with the modifiers held.
+    let mut clicked_cell: Option<(usize, usize, egui::Modifiers)> = None;
+    let mut clicked_field: Option<(usize, egui::Modifiers)> = None;
+    let mods = ui.input(|i| i.modifiers);
     ScrollArea::horizontal().auto_shrink([false, false]).show(ui, |ui| {
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
@@ -436,14 +454,13 @@ fn rows_table(
                     }
                 }
             });
-            // Key columns stay at the top while the others scroll.
-            let (pinned, rest): (Vec<usize>, Vec<usize>) = (0..columns.len()).partition(|&i| key_cols.contains(&columns[i]));
             let mut draw = |ui: &mut Ui, list: &[usize]| {
                 for &i in list {
                     let c = columns[i];
                     ui.horizontal(|ui| {
-                        let (lead_rect, lead_resp) = ui.allocate_exact_size(egui::vec2(lead_w, row_h), egui::Sense::hover());
+                        let (lead_rect, lead_resp) = ui.allocate_exact_size(egui::vec2(lead_w, row_h), egui::Sense::click());
                         let name = model.column_name(c).to_string();
+                        let field_picked = rows.iter().all(|&r| picked.contains(&(r, c)));
                         lead_resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, &name));
                         // The column's type, and why it has a marker, on hover.
                         let mut tip = type_of(c);
@@ -452,11 +469,19 @@ fn rows_table(
                         } else if model.foreign_key_for_column(c).is_some() {
                             tip = format!("{tip}\n{}", tr("References another table"));
                         }
-                        lead_resp.on_hover_text(tip);
+                        let lead_resp = lead_resp.on_hover_text(tip);
+                        if lead_resp.clicked() {
+                            clicked_field = Some((c, mods));
+                            focus.request_focus();
+                        }
+                        if lead_resp.secondary_clicked() && !field_picked {
+                            clicked_field = Some((c, egui::Modifiers::NONE));
+                        }
+                        lead_resp.context_menu(|ui| copy_menu(ui, &mut copy));
                         let stripe = if i % 2 == 1 { theme.stripe } else { theme.bg };
                         let hovered = ui.input(|inp| inp.pointer.hover_pos()).is_some_and(|p| p.y >= lead_rect.top() && p.y < lead_rect.bottom() && ui.clip_rect().contains(p));
                         let row_fill = if hovered { crate::theme::mix(stripe, theme.text, 0.06) } else { stripe };
-                        ui.painter().rect_filled(lead_rect, 0.0, row_fill);
+                        ui.painter().rect_filled(lead_rect, 0.0, if field_picked { theme.selection } else { row_fill });
                         let p = ui.painter();
                         let mut x = lead_rect.left() + 6.0;
                         if key_cols.contains(&c) {
@@ -489,11 +514,11 @@ fn rows_table(
                                 continue;
                             }
                             let (rect, resp) = ui.allocate_exact_size(egui::vec2(widths[j], row_h), egui::Sense::click());
-                            let is_picked = picked == Some((r, c));
+                            let is_picked = picked.contains(&(r, c));
                             let fill = if is_picked { theme.selection } else { row_fill };
                             ui.painter().rect_filled(rect, 0.0, fill);
                             ui.painter().vline(rect.left(), rect.y_range(), egui::Stroke::new(1.0, theme.line));
-                            if is_picked {
+                            if anchor == Some((r, c)) {
                                 ui.painter().rect_stroke(rect.shrink(1.0), 2.0, egui::Stroke::new(1.5, theme.active_border), egui::StrokeKind::Inside);
                             }
                             let inner = rect.shrink2(egui::vec2(8.0, 0.0));
@@ -518,8 +543,7 @@ fn rows_table(
                                 box_resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Checkbox, can_edit, on, &label));
                                 let box_resp = if can_edit { box_resp.on_hover_text(tr("Click the box to change the value")) } else { box_resp };
                                 if box_resp.clicked() {
-                                    picked = Some((r, c));
-                                    select = Some((r, c));
+                                    clicked_cell = Some((r, c, egui::Modifiers::NONE));
                                     focus.request_focus();
                                     if can_edit {
                                         toggled = Some((r, c, !on));
@@ -533,10 +557,13 @@ fn rows_table(
                             };
                             let resp = if can_edit && !boolean { resp.on_hover_text(tr("Double-click to edit")) } else { resp };
                             if resp.clicked() {
-                                picked = Some((r, c));
-                                select = Some((r, c));
+                                clicked_cell = Some((r, c, mods));
                                 focus.request_focus();
                             }
+                            if resp.secondary_clicked() && !is_picked {
+                                clicked_cell = Some((r, c, egui::Modifiers::NONE));
+                            }
+                            resp.context_menu(|ui| copy_menu(ui, &mut copy));
                             if resp.double_clicked() && !boolean {
                                 let multi = matches!(v, Value::Text(s) if s.contains('\n')) || matches!(v, Value::Bytes(_));
                                 if can_edit && !multi {
@@ -565,7 +592,81 @@ fn rows_table(
             }
         });
     });
-    state.picked = picked;
+    // The picked cells follow the clicks.
+    let order_ref = &order;
+    let block = |a: (usize, usize), b: (usize, usize)| -> Vec<(usize, usize)> {
+        let rp = |r: usize| rows.iter().position(|x| *x == r);
+        let fp = |c: usize| order_ref.iter().position(|x| *x == c);
+        match (rp(a.0), rp(b.0), fp(a.1), fp(b.1)) {
+            (Some(r0), Some(r1), Some(f0), Some(f1)) => (f0.min(f1)..=f0.max(f1)).flat_map(|f| (r0.min(r1)..=r0.max(r1)).map(move |j| (rows[j], order_ref[f]))).collect(),
+            _ => vec![b],
+        }
+    };
+    let add = |picked: &mut Vec<(usize, usize)>, cells: Vec<(usize, usize)>| {
+        for cell in cells {
+            if !picked.contains(&cell) {
+                picked.push(cell);
+            }
+        }
+    };
+    if let Some((r, c, m)) = clicked_cell {
+        if m.shift
+            && let Some(a) = state.pick_anchor
+        {
+            if !m.command {
+                state.picked.clear();
+            }
+            add(&mut state.picked, block(a, (r, c)));
+        } else if m.command {
+            match state.picked.iter().position(|p| *p == (r, c)) {
+                Some(k) => {
+                    state.picked.remove(k);
+                }
+                None => state.picked.push((r, c)),
+            }
+            state.pick_anchor = Some((r, c));
+        } else {
+            state.picked = vec![(r, c)];
+            state.pick_anchor = Some((r, c));
+            select = Some((r, c));
+        }
+    }
+    if let Some((c, m)) = clicked_field
+        && let (Some(&first), Some(&last)) = (rows.first(), rows.last())
+    {
+        let cells: Vec<(usize, usize)> = rows.iter().map(|&r| (r, c)).collect();
+        if m.shift
+            && let Some(a) = state.pick_anchor
+        {
+            if !m.command {
+                state.picked.clear();
+            }
+            add(&mut state.picked, block((first, a.1), (last, c)));
+        } else if m.command {
+            if cells.iter().all(|x| state.picked.contains(x)) {
+                state.picked.retain(|x| !cells.contains(x));
+            } else {
+                add(&mut state.picked, cells);
+            }
+            state.pick_anchor = Some((first, c));
+        } else {
+            state.picked = cells;
+            state.pick_anchor = Some((first, c));
+        }
+    }
+    if let Some(names) = copy {
+        let shown: Vec<(usize, usize)> = state.picked.iter().copied().filter(|(r, c)| rows.contains(r) && order.contains(c)).collect();
+        if !shown.is_empty() {
+            let text = if shown.len() == 1 && !names {
+                text_of(shown[0].0, shown[0].1).unwrap_or_default()
+            } else {
+                picked_text(&shown, rows, &order, names.then_some(|c: usize| model.column_name(c).to_string()), text_of)
+            };
+            ui.ctx().copy_text(text);
+            let message = if shown.len() == 1 { tr("Value copied").to_string() } else { trf("Copied {} cell(s)", &[&shown.len()]) };
+            actions.push(GridAction::Notify { message, error: false });
+        }
+    }
     // One row: the grid's active cell follows (side by side it would drop the other rows).
     if let (true, Some((r, c))) = (single, select) {
         grid.select_cell(r, c);
@@ -590,5 +691,54 @@ fn rows_table(
     }
     if let Some((r, c)) = open_value {
         actions.push(GridAction::OpenValuePanel { row: r, col: c });
+    }
+}
+
+/// Copy items of a value's / a column name's context menu: `copy` becomes
+/// `Some(with column names)`.
+fn copy_menu(ui: &mut Ui, copy: &mut Option<bool>) {
+    if ui.button(format!("{}  {}", icon::COPY, tr("Copy"))).clicked() {
+        *copy = Some(false);
+        ui.close();
+    }
+    if ui.button(format!("{}  {}", icon::COPY_SIMPLE, tr("Copy with column names"))).clicked() {
+        *copy = Some(true);
+        ui.close();
+    }
+}
+
+/// The picked cells as tab-separated text laid out as shown: a line per
+/// column (in `order`), a value per row, empty between picked cells; the
+/// column name first with `name_of`. Values with tabs, line breaks or quotes
+/// are quoted (as spreadsheets read them).
+fn picked_text(picked: &[(usize, usize)], rows: &[usize], order: &[usize], name_of: Option<impl Fn(usize) -> String>, text_of: impl Fn(usize, usize) -> Option<String>) -> String {
+    let quote = |t: String| if t.contains(['\t', '\n', '\r', '"']) { format!("\"{}\"", t.replace('"', "\"\"")) } else { t };
+    let out_rows: Vec<usize> = rows.iter().copied().filter(|r| picked.iter().any(|p| p.0 == *r)).collect();
+    let mut lines = Vec::new();
+    for &c in order.iter().filter(|&&c| picked.iter().any(|p| p.1 == c)) {
+        let mut fields = Vec::new();
+        if let Some(name) = &name_of {
+            fields.push(quote(name(c)));
+        }
+        for &r in &out_rows {
+            fields.push(if picked.contains(&(r, c)) { quote(text_of(r, c).unwrap_or_default()) } else { String::new() });
+        }
+        lines.push(fields.join("\t"));
+    }
+    lines.join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::picked_text;
+
+    #[test]
+    fn picked_cells_copy_as_shown() {
+        let text = |r: usize, c: usize| Some(if (r, c) == (2, 3) { "a\tb".to_string() } else { format!("v{r}{c}") });
+        let picked = [(1, 1), (2, 1), (2, 3)];
+        let names = |c: usize| ["id", "name", "flag", "category"][c].to_string();
+        // A line per column, a value per row, empty where a cell was not picked.
+        assert_eq!(picked_text(&picked, &[1, 2], &[0, 1, 2, 3], None::<fn(usize) -> String>, text), "v11\tv21\n\t\"a\tb\"");
+        assert_eq!(picked_text(&picked, &[1, 2], &[0, 1, 2, 3], Some(names), text), "name\tv11\tv21\ncategory\t\t\"a\tb\"");
     }
 }

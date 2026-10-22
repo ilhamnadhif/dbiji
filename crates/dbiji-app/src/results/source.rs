@@ -143,6 +143,13 @@ impl ResultSource {
         if let Some(job) = self.fetch_job.as_mut() {
             if let Some(res) = job.poll() {
                 self.fetch_job = None;
+                // The first page of a new run (refresh, server filter): its time is the query's.
+                if self.server_rows == 0
+                    && self.fetch_store_len == 0
+                    && let Some(t) = self.fetch_started
+                {
+                    self.exec_duration = t.elapsed();
+                }
                 // Rows the fetch appended, also when it failed half way.
                 self.count_fetched();
                 match res {

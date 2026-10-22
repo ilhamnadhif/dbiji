@@ -528,8 +528,7 @@ impl GridFrame<'_> {
 
     /// Auto-size `col` using a painter for measurement.
     pub fn autosize_with(&mut self, painter: &egui::Painter, col: usize) {
-        let header = self.model.column_name(col).to_string();
-        let mut w = self.measure(painter, &header) + 2.0 * super::frame::PAD + super::input::SORT_ZONE + super::input::MENU_ZONE + 4.0;
+        let mut w = self.header_width(painter, col);
         let rows = self.geo.visible_rows(self.state.rt.scroll_y);
         let fmt = self.options.format.clone();
         let prepared = crate::format::PreparedFormat::new(&fmt, self.state.column_format(col));

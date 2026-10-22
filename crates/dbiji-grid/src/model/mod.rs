@@ -33,6 +33,8 @@ pub struct FetchState {
     pub counting: bool,
     /// Query execution / fetch time.
     pub elapsed: Option<Duration>,
+    /// When the query ran (shown in the status: how current the rows are).
+    pub fetched_at: Option<chrono::DateTime<chrono::Local>>,
     /// Last fetch error, shown in the status line.
     pub error: Option<String>,
 }

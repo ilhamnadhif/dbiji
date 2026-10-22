@@ -490,7 +490,14 @@ impl GridFrame<'_> {
             }
             let is_virtual = self.model.is_virtual_column(col);
             let mut left = r.left() + PAD;
-            // Key / FK icons.
+            // Type icon (DBeaver's 123 / AZ), then key / FK icons.
+            if let Some(ti) = kind_icon(self.model.column_kind(col))
+                && r.width() > 64.0
+            {
+                let small = FontId::new(self.font.size * 0.85, self.font.family.clone());
+                let ir = painter.text(pos2(left, r.center().y), Align2::LEFT_CENTER, ti, small, theme.weak);
+                left = ir.right() + 4.0;
+            }
             let icon = if key_cols.contains(&col) {
                 Some((egui_phosphor::regular::KEY, theme.warn))
             } else if self.model.foreign_key_for_column(col).is_some() {
@@ -662,6 +669,30 @@ impl GridFrame<'_> {
             ui.add(egui::Label::new(egui::RichText::new(text).monospace()).wrap());
         });
     }
+}
+
+/// Small icon of a column's kind in its header; `None` for other types.
+pub(crate) fn kind_icon(kind: DataKind) -> Option<&'static str> {
+    use egui_phosphor::regular as i;
+    Some(match kind {
+        DataKind::Bool => i::TOGGLE_LEFT,
+        DataKind::Int | DataKind::Float | DataKind::Decimal => i::HASH,
+        DataKind::Text => i::TEXT_T,
+        DataKind::Enum => i::TAG,
+        DataKind::Binary | DataKind::Bit => i::BINARY,
+        DataKind::Date => i::CALENDAR_BLANK,
+        DataKind::Time | DataKind::TimeTz => i::CLOCK,
+        DataKind::DateTime | DataKind::DateTimeTz => i::CALENDAR_DOTS,
+        DataKind::Interval => i::HOURGLASS,
+        DataKind::Uuid => i::FINGERPRINT,
+        DataKind::Json => i::BRACKETS_CURLY,
+        DataKind::Xml => i::CODE,
+        DataKind::Array => i::BRACKETS_SQUARE,
+        DataKind::Geometry => i::MAP_PIN,
+        DataKind::Network => i::NETWORK,
+        DataKind::Range => i::ARROWS_LEFT_RIGHT,
+        DataKind::Other => return None,
+    })
 }
 
 /// Place text with the fast path, falling back to egui layout.

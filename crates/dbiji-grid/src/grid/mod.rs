@@ -74,6 +74,8 @@ pub struct GridOptions {
     pub striped: bool,
     /// Row height; `None` derives it from the font.
     pub row_height: Option<f32>,
+    /// Derived row heights leave little space around the text (more rows on screen).
+    pub compact_rows: bool,
     /// Cell font; `None` uses the body text style.
     pub font: Option<egui::FontId>,
     /// Emit [`GridAction::FetchMore`] when the last visible row is this close to the end.
@@ -112,6 +114,7 @@ impl Default for GridOptions {
             show_row_numbers: true,
             striped: true,
             row_height: None,
+            compact_rows: true,
             font: None,
             fetch_more_threshold: 200,
             dialect: None,

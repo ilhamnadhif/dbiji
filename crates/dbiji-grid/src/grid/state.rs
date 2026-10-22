@@ -44,6 +44,8 @@ impl Default for ColumnState {
 pub const MIN_COLUMN_WIDTH: f32 = 24.0;
 /// Maximum column width set by auto-sizing.
 pub const MAX_AUTO_WIDTH: f32 = 480.0;
+/// Maximum width a column gets from its first values (longer texts are cut).
+pub const MAX_INITIAL_WIDTH: f32 = 360.0;
 
 /// Default width for a column from its name and kind.
 pub fn default_width(name: &str, kind: DataKind) -> f32 {
@@ -134,8 +136,11 @@ pub(crate) struct Runtime {
     pub auto_view_len: usize,
     /// Store that length belongs to (a refresh brings a new store).
     pub view_store: usize,
-    /// The column names whose headers were fitted (a hash): new columns get a header wide enough.
-    pub headers_fitted: u64,
+    /// What the column widths were last fitted for (a hash of the names, key /
+    /// link columns and whether there were rows).
+    pub columns_fitted: u64,
+    /// Widths set by fitting, by column name: a column still at it was not sized by the user.
+    pub auto_widths: std::collections::HashMap<String, f32>,
     pub last_selection_label: String,
     /// Geometry of the last frame: body, header, row numbers, row height.
     pub last_geometry: Option<(egui::Rect, egui::Rect, egui::Rect, f32)>,

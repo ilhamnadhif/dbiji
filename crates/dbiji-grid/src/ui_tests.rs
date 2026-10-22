@@ -28,9 +28,14 @@ impl Viewer {
     }
 
     fn frame(&mut self, events: Vec<Event>) {
+        self.frame_with(events, Modifiers::NONE);
+    }
+
+    /// A frame with `modifiers` held.
+    fn frame_with(&mut self, events: Vec<Event>, modifiers: Modifiers) {
         let mut actions = Vec::new();
         let (model, state, options) = (&mut self.model, &mut self.state, &self.options);
-        self.output = self.ui.run(events, Modifiers::NONE, |ui| {
+        self.output = self.ui.run(events, modifiers, |ui| {
             actions = ResultViewer::new(model, state, options).show(ui).actions;
         });
         self.actions = actions;
@@ -334,4 +339,41 @@ fn calc_values_copy() {
     let button = bounds.map(|b| egui::pos2(b.x1 as f32 - 14.0, ((b.y0 + b.y1) / 2.0) as f32)).expect("distinct row");
     v.click(button);
     assert_eq!(copied(&v).as_deref(), Some("1"));
+}
+
+#[test]
+fn record_view_picks_several_values_and_copies_them() {
+    let mut v = Viewer::new(editable_model(5));
+    v.state.grid.select_cell(1, 0);
+    v.state.grid.selection_mut().extend_to(crate::grid::CellPos::new(2, 0));
+    v.state.toolbar.view = ResultViewKind::Record;
+    v.frame(vec![]);
+    v.frame(vec![]);
+    let lead = |v: &Viewer, name: &str| -> Pos2 {
+        let update = v.output.accesskit_update.as_ref().expect("accesskit");
+        update
+            .nodes
+            .iter()
+            .find_map(|(_, n)| {
+                let b = n.bounds()?;
+                (n.label().or(n.value()) == Some(name)).then(|| Pos2::new(((b.x0 + b.x1) / 2.0) as f32, ((b.y0 + b.y1) / 2.0) as f32))
+            })
+            .unwrap_or_else(|| panic!("no column name {name}"))
+    };
+    // A column name picks it in both rows; ⌘-click on another adds it.
+    let name = lead(&v, "name");
+    v.click(name);
+    let flag = lead(&v, "flag");
+    v.frame(vec![Event::PointerMoved(flag)]);
+    let cmd = Modifiers::COMMAND;
+    v.frame_with(vec![press(flag, PointerButton::Primary, cmd)], cmd);
+    v.frame_with(vec![release(flag, PointerButton::Primary, cmd)], cmd);
+    v.frame(vec![Event::Copy]);
+    let copied = v.output.commands.iter().find_map(|c| match c {
+        egui::OutputCommand::CopyText(t) => Some(t.clone()),
+        _ => None,
+    });
+    assert_eq!(copied.as_deref(), Some("name 1\tname 2\nfalse\ttrue"));
+    // The rows shown side by side stay selected in the grid.
+    assert_eq!(v.state.grid.selected_rows(5, 10), vec![1, 2]);
 }

@@ -3,6 +3,18 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.21 — 2026-10-22
+
+### Added
+- Record view: several values can be selected and copied together. Click a value, ⇧-click for a block, ⌘-click to add or remove one, click a column name to select it in every row shown, ⌘A for all; ⌘C copies them laid out as shown, and the context menu copies them with the column names.
+
+### Changed
+- Result grids show more rows: rows are more compact by default (Settings → Results → Row height: Compact or Normal).
+- Columns fit their header and their first values when a result opens, as in DBeaver (timestamps and e-mail addresses are no longer cut, short columns take less room); widths you set yourself are kept.
+- Column headers show a small icon of the column's type (number, text, date, JSON …); hovering a header shows its database type.
+- Result toolbar: Refresh has a label, Save and Cancel form a group of their own next to it with their labels, and the status shows when the rows were fetched; after a refresh it shows the new run's time.
+- The window title names the active tab ("DBiji - orders"), so DBiji windows can be told apart in ⌘-Tab and Mission Control.
+
 ## 0.3.20 — 2026-10-22
 
 ### Fixed

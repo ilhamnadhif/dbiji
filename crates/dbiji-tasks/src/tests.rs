@@ -431,7 +431,8 @@ async fn interrupted_runs_are_closed_at_start() {
     let h = harness(SchedulerOptions::default(), &[]);
     let t = h.store.create(shell("x")).unwrap();
     let mut stale = TaskRun::start(&t, Trigger::Schedule, Utc::now(), None);
-    stale.pid = std::process::id().wrapping_add(7);
+    // No process has this id (pid + 7 could be another test binary running in parallel).
+    stale.pid = u32::MAX;
     h.log.record(&stale).unwrap();
     h.sched.start().unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await;

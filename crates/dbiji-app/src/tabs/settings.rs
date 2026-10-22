@@ -5,7 +5,7 @@ use crate::command::AppCommand;
 use crate::cx::AppContext;
 use crate::keys::{Action, IS_MAC, Keymap, Shortcut};
 use crate::tabs::TabView;
-use dbiji_config::settings::{AiEffort, AiProvider, BlankLineDelimiter, KeywordCase, NavigatorSort, ResultsLayout, SecretBackend, SortFilterMode, Theme};
+use dbiji_config::settings::{AiEffort, AiProvider, BlankLineDelimiter, KeywordCase, NavigatorSort, ResultsLayout, RowDensity, SecretBackend, SortFilterMode, Theme};
 use dbiji_config::{KeymapPreset, SecretsManager};
 use dbiji_core::config::{ConnectionType, NavigatorView};
 use dbiji_core::i18n::Locale;
@@ -325,6 +325,7 @@ impl SettingsTab {
             c |= row(ui, tr("Results position"), |ui| {
                 combo(ui, "set_layout", &mut r.layout, &[(ResultsLayout::Bottom, tr("Below the editor")), (ResultsLayout::Right, tr("Right of the editor"))])
             });
+            c |= row(ui, tr("Row height"), |ui| combo(ui, "set_density", &mut r.row_density, &[(RowDensity::Compact, tr("Compact")), (RowDensity::Normal, tr("Normal"))]));
             c |= row(ui, tr("Sorting and filtering"), |ui| {
                 combo(ui, "set_sortmode", &mut r.sort_filter_mode, &[(SortFilterMode::Server, tr("On the server (re-query)")), (SortFilterMode::Client, tr("On fetched rows"))])
             });

@@ -166,6 +166,7 @@ impl ResultPanel {
         model.fetch.has_more = src.has_more();
         model.fetch.fetching = src.is_fetching();
         model.fetch.elapsed = Some(src.exec_duration);
+        model.fetch.fetched_at = Some(src.executed_at);
         let view = ResultViewState::new(&model);
         ResultPanel {
             conn,
@@ -272,6 +273,8 @@ impl ResultPanel {
         }
         self.model.fetch.fetching = self.src.is_fetching();
         self.model.fetch.has_more = self.src.has_more();
+        self.model.fetch.elapsed = Some(self.src.exec_duration);
+        self.model.fetch.fetched_at = Some(self.src.executed_at);
         self.model.fetch.error = self.src.error.as_ref().map(|e| e.full_text());
         match &self.src.total_count {
             crate::backend::Loadable::Loaded(n) => {
@@ -1149,6 +1152,7 @@ impl ResultPanel {
                 let options = GridOptions {
                     format: cx.settings.results.format.clone(),
                     show_row_numbers: cx.settings.results.show_row_numbers,
+                    compact_rows: cx.settings.results.row_density == dbiji_config::settings::RowDensity::Compact,
                     fetch_more_threshold: Self::fetch_size(cx),
                     sql_table_name: self.table.as_ref().map(|t| t.name.clone()),
                     dialect,

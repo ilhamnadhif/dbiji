@@ -374,6 +374,17 @@ pub enum ResultsLayout {
     Right,
 }
 
+/// Height of the rows of result grids.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RowDensity {
+    /// Little space around the text: more rows on screen.
+    #[default]
+    Compact,
+    /// More space between rows.
+    Normal,
+}
+
 /// Where grid sorting / filtering runs by default.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -404,6 +415,9 @@ pub struct ResultsSettings {
     pub max_result_tabs: u32,
     /// Show row numbers in grids.
     pub show_row_numbers: bool,
+    /// Height of grid rows.
+    #[serde(deserialize_with = "lenient")]
+    pub row_density: RowDensity,
     /// Default place where sorting / filtering runs.
     #[serde(deserialize_with = "lenient")]
     pub sort_filter_mode: SortFilterMode,
@@ -429,6 +443,7 @@ impl Default for ResultsSettings {
             open_each_query_in_new_tab: false,
             max_result_tabs: 10,
             show_row_numbers: true,
+            row_density: RowDensity::Compact,
             sort_filter_mode: SortFilterMode::Server,
             auto_refresh_secs: 0,
             store_memory_limit_mb: 48,

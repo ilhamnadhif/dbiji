@@ -441,3 +441,24 @@ fn copied_null_pastes_back_as_its_own_row() {
     assert_eq!(h.model.cell(5, 1), Some(Value::text("name 0")));
     assert_eq!(h.model.cell(6, 1), Some(Value::Null));
 }
+
+#[test]
+fn columns_fit_header_and_first_values_until_sized_by_hand() {
+    let long = "2024-07-30 19:18:46.838 +0700 and some more text";
+    let mut m = editable_model(10);
+    m.set_value(3, 1, Value::text(long)).unwrap();
+    let mut h = GridHarness::new(m);
+    h.frame(vec![]);
+    h.frame(vec![]);
+    // "flag" (booleans) is no wider than its header needs; "name" fits its longest value.
+    let header_only = h.state.column_width(2);
+    assert!(header_only < crate::grid::state::default_width("flag", dbiji_core::DataKind::Bool) + 40.0, "{header_only}");
+    let name = h.state.column_width(1);
+    assert!(name > crate::grid::state::default_width("name", dbiji_core::DataKind::Text), "{name}");
+    assert!(name <= crate::grid::state::MAX_INITIAL_WIDTH);
+    // A width set by hand is kept when the rows change.
+    h.state.set_column_width(1, 90.0);
+    h.model.set_value(4, 1, Value::text(format!("{long} {long}"))).unwrap();
+    h.frame(vec![]);
+    assert_eq!(h.state.column_width(1), 90.0);
+}

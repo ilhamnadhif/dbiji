@@ -692,6 +692,10 @@ fn settings_grid_menu_and_editor_helpers() {
     no_errors(&mut h, "clear filter");
 
     // Column menu (▾ in the header): order, disable the order, filters.
+    // The "Generated SQL" window of the menu sweep would cover the header.
+    if has(&h, "Close window") {
+        click(&mut h, "Close window");
+    }
     let column_menu = |h: &mut H| {
         pause(h);
         h.query_all_by_label("Column menu: id").next().unwrap_or_else(|| panic!("no ▾ for id: {:?}", labels(h))).click();

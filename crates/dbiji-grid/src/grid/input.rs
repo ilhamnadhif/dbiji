@@ -206,6 +206,17 @@ impl GridFrame<'_> {
             && resize_target(self, p.x).is_some()
         {
             ui.ctx().set_cursor_icon(CursorIcon::ResizeHorizontal);
+        } else if let Some(p) = hover
+            && matches!(self.state.rt.drag, Drag::None)
+            && self.state.rt.header_popup.is_none()
+            && let Some(pos) = self.geo.col_at(p.x, sx, false)
+        {
+            // The hovered header's name and database type (the icon shows only the kind).
+            let col = self.geo.cols[pos];
+            let name = self.model.column_name(col);
+            let ty = self.model.column_meta(col).map(|m| m.type_name.as_str()).unwrap_or_default();
+            let tip = if ty.is_empty() { name.to_string() } else { format!("{name}: {ty}") };
+            header.clone().on_hover_text(tip);
         }
         let pressed = ui.input(|i| i.pointer.primary_pressed());
         let mods = ui.input(|i| i.modifiers);
@@ -916,33 +927,69 @@ impl GridFrame<'_> {
         self.autosize_with(&painter, col);
     }
 
-    /// Columns still at their default width get room for their whole name (with
-    /// the key / link icon, sort and menu zones): "category_id" is not cut to "category…".
-    /// Widths the user set or a saved layout restored are kept.
-    pub fn fit_headers(&mut self, painter: &egui::Painter) {
+    /// Room the header of `col` needs: its name, type and key / link icons, the
+    /// sort and menu zones.
+    pub(crate) fn header_width(&mut self, painter: &egui::Painter, col: usize) -> f32 {
+        let name = self.model.column_name(col).to_string();
+        let keyed = self.model.editability().as_ref().is_ok_and(|t| t.key_columns.contains(&col)) || self.model.foreign_key_for_column(col).is_some();
+        let icons = usize::from(super::paint::kind_icon(self.model.column_kind(col)).is_some()) + usize::from(keyed);
+        self.measure(painter, &name) + 2.0 * super::frame::PAD + SORT_ZONE + MENU_ZONE + icons as f32 * (self.font.size * 0.9 + 4.0) + 4.0
+    }
+
+    /// Initial widths, as in DBeaver: columns nobody sized (still at their default
+    /// width or at the one set here) fit their header and the values of the first
+    /// rows, up to [`MAX_INITIAL_WIDTH`](super::state::MAX_INITIAL_WIDTH). Runs for
+    /// new columns, when the first rows arrive and when key / link icons appear;
+    /// later rows and refreshes keep the widths. Widths the user set or a saved
+    /// layout restored are kept.
+    pub fn fit_columns(&mut self, painter: &egui::Painter) {
         use std::hash::{Hash, Hasher};
+        let ncols = self.model.column_count();
+        let has_rows = self.geo.nrows > 0;
         let mut h = std::collections::hash_map::DefaultHasher::new();
-        for c in 0..self.model.column_count() {
+        for c in 0..ncols {
             self.model.column_name(c).hash(&mut h);
+            self.model.foreign_key_for_column(c).is_some().hash(&mut h);
         }
+        self.model.editability().as_ref().ok().map(|t| t.key_columns.clone()).hash(&mut h);
+        has_rows.hash(&mut h);
         let key = h.finish();
-        if self.state.rt.headers_fitted == key {
+        if self.state.rt.columns_fitted == key {
             return;
         }
-        self.state.rt.headers_fitted = key;
-        for col in 0..self.model.column_count() {
+        self.state.rt.columns_fitted = key;
+        let sample = 0..self.geo.nrows.min(FIT_SAMPLE_ROWS);
+        let fmt = self.options.format.clone();
+        for col in 0..ncols {
             let name = self.model.column_name(col).to_string();
             let kind = self.model.column_meta(col).map(|m| m.kind).unwrap_or(dbiji_core::DataKind::Other);
             let current = self.state.column_width(col);
-            if (current - super::state::default_width(&name, kind)).abs() > 0.5 {
+            let auto = self.state.rt.auto_widths.get(&name).copied();
+            let untouched = (current - super::state::default_width(&name, kind)).abs() <= 0.5 || auto.is_some_and(|a| (current - a).abs() <= 0.5);
+            if !untouched {
                 continue;
             }
-            let needed = self.measure(painter, &name) + 2.0 * super::frame::PAD + super::input::SORT_ZONE + super::input::MENU_ZONE + 22.0;
-            if needed > current {
-                self.state.set_column_width(col, needed.min(super::state::MAX_AUTO_WIDTH));
+            let mut w = self.header_width(painter, col);
+            if has_rows {
+                let prepared = crate::format::PreparedFormat::new(&fmt, self.state.column_format(col));
+                let mut texts = Vec::new();
+                self.model.visit_rows(sample.clone(), |_, cells| {
+                    let v = cells.value_of(col).unwrap_or_default();
+                    texts.push(if v.is_null() { fmt.null_text.clone() } else { prepared.format(&v).into_owned() });
+                });
+                for t in &texts {
+                    // Multi-line values show their first line.
+                    let line = t.lines().next().unwrap_or_default();
+                    w = w.max(self.measure(painter, line) + 2.0 * super::frame::PAD + 2.0);
+                }
+            }
+            let w = w.clamp(super::state::MIN_COLUMN_WIDTH, super::state::MAX_INITIAL_WIDTH).round();
+            if (w - current).abs() > 0.5 {
+                self.state.set_column_width(col, w);
                 // The geometry of this frame still has the old width.
                 self.ctx.request_repaint();
             }
+            self.state.rt.auto_widths.insert(name, w);
         }
     }
 
@@ -954,6 +1001,9 @@ impl GridFrame<'_> {
         }
     }
 }
+
+/// Rows whose values set the initial column widths.
+const FIT_SAMPLE_ROWS: usize = 100;
 
 /// Next sort keys after clicking the sort indicator of `col`:
 /// ascending → descending → none. `add` keeps other keys (multi-column sort).

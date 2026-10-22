@@ -164,7 +164,17 @@ pub fn status_text(model: &ResultModel) -> String {
         s.push_str(" · ");
         s.push_str(&duration_text(e));
     }
+    // When the rows were read: are they still current?
+    if let Some(at) = model.fetch.fetched_at {
+        s.push_str(" · ");
+        s.push_str(&fetched_at_text(at, chrono::Local::now()));
+    }
     s
+}
+
+/// `09:35:51` for today, `2026-10-21 09:35` for an earlier day.
+fn fetched_at_text(at: chrono::DateTime<chrono::Local>, now: chrono::DateTime<chrono::Local>) -> String {
+    if at.date_naive() == now.date_naive() { at.format("%H:%M:%S").to_string() } else { at.format("%Y-%m-%d %H:%M").to_string() }
 }
 
 /// The filter bar: WHERE / client filter with history, ORDER BY, apply/clear
@@ -380,8 +390,8 @@ impl<'a> ResultToolbar<'a> {
 
     /// Show it. Returns actions for the application.
     ///
-    /// Groups, left to right: refresh · editing (add, duplicate, delete,
-    /// save, discard) · export · view (segmented) · side panels; on the
+    /// Groups, left to right: refresh · save, cancel · rows (add, duplicate,
+    /// delete) · export · view (segmented) · side panels; on the
     /// right the status, a message of the application and the fetch
     /// buttons next to the row count they change.
     pub fn show(self, ui: &mut Ui) -> Vec<GridAction> {
@@ -391,7 +401,7 @@ impl<'a> ResultToolbar<'a> {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
             // --- refresh
-            if ui.button(dbiji_icons::ic(icon::ARROWS_CLOCKWISE)).on_hover_text(tr("Refresh (Cmd+R)")).clicked() {
+            if ui.button((dbiji_icons::ic(icon::ARROWS_CLOCKWISE), tr("Refresh"))).on_hover_text(tr("Refresh (Cmd+R)")).clicked() {
                 actions.push(GridAction::Refresh);
             }
             let label = match state.auto_refresh_secs {
@@ -425,23 +435,8 @@ impl<'a> ResultToolbar<'a> {
                 });
             });
             group_separator(ui);
-            // --- editing
+            // --- save / cancel: a group of their own next to Refresh, with labels (DBeaver)
             let pending = model.pending_counts().total();
-            let editable = model.is_editable();
-            let notify = |r: Result<usize, String>, actions: &mut Vec<GridAction>| {
-                if let Err(e) = r {
-                    actions.push(GridAction::Notify { message: e, error: true });
-                }
-            };
-            if ui.add_enabled(editable, Button::new(dbiji_icons::ic(icon::ROWS_PLUS_BOTTOM))).on_hover_text(tr("Add row")).clicked() {
-                notify(grid::add_row(model, grid), &mut actions);
-            }
-            if ui.add_enabled(editable, Button::new(dbiji_icons::ic(icon::COPY_SIMPLE))).on_hover_text(tr("Duplicate selected rows")).clicked() {
-                notify(grid::duplicate_selected(model, grid), &mut actions);
-            }
-            if ui.add_enabled(editable, Button::new(dbiji_icons::ic(icon::TRASH))).on_hover_text(tr("Delete selected rows")).clicked() {
-                notify(grid::delete_selected(model, grid), &mut actions);
-            }
             // Save stands out while there is something to save.
             let save = if pending > 0 {
                 let v = ui.visuals();
@@ -449,13 +444,12 @@ impl<'a> ResultToolbar<'a> {
                     .fill(v.selection.bg_fill)
                     .stroke(egui::Stroke::new(1.0, v.hyperlink_color))
             } else {
-                Button::new(dbiji_icons::ic(icon::FLOPPY_DISK))
+                Button::new((dbiji_icons::ic(icon::FLOPPY_DISK), tr("Save")))
             };
             if ui.add_enabled(pending > 0, save).on_hover_text(trf("Save {} pending change(s) (Cmd+S)", &[&pending])).clicked() {
                 actions.push(GridAction::SaveChanges);
             }
-            let discard = if pending > 0 { Button::new(RichText::new(format!("{} {}", icon::X_CIRCLE, tr("Discard")))) } else { Button::new(dbiji_icons::ic(icon::X_CIRCLE)) };
-            let cancel = ui.add_enabled(pending > 0, discard).on_hover_text(tr("Discard pending changes"));
+            let cancel = ui.add_enabled(pending > 0, Button::new((dbiji_icons::ic(icon::X_CIRCLE), tr("Cancel")))).on_hover_text(tr("Discard pending changes"));
             if cancel.clicked() {
                 state.rt.confirm_discard = true;
             }
@@ -477,6 +471,23 @@ impl<'a> ResultToolbar<'a> {
                 if !open {
                     state.rt.confirm_discard = false;
                 }
+            }
+            group_separator(ui);
+            // --- rows
+            let editable = model.is_editable();
+            let notify = |r: Result<usize, String>, actions: &mut Vec<GridAction>| {
+                if let Err(e) = r {
+                    actions.push(GridAction::Notify { message: e, error: true });
+                }
+            };
+            if ui.add_enabled(editable, Button::new(dbiji_icons::ic(icon::ROWS_PLUS_BOTTOM))).on_hover_text(tr("Add row")).clicked() {
+                notify(grid::add_row(model, grid), &mut actions);
+            }
+            if ui.add_enabled(editable, Button::new(dbiji_icons::ic(icon::COPY_SIMPLE))).on_hover_text(tr("Duplicate selected rows")).clicked() {
+                notify(grid::duplicate_selected(model, grid), &mut actions);
+            }
+            if ui.add_enabled(editable, Button::new(dbiji_icons::ic(icon::TRASH))).on_hover_text(tr("Delete selected rows")).clicked() {
+                notify(grid::delete_selected(model, grid), &mut actions);
             }
             if !editable && let Some(r) = model.read_only_reason() {
                 ui.label(RichText::new(format!("{} {}", icon::LOCK_SIMPLE, r.short_label())).color(ui.visuals().warn_fg_color)).on_hover_text(r.message());
@@ -638,6 +649,11 @@ mod tests {
         m.fetch.total_count = Some(5000);
         m.fetch.elapsed = Some(Duration::from_millis(42));
         assert_eq!(status_text(&m), "1,234 rows · more available · total 5,000 · 42 ms");
+        let at = chrono::Local::now();
+        m.fetch.fetched_at = Some(at);
+        assert!(status_text(&m).ends_with(&format!("42 ms · {}", at.format("%H:%M:%S"))));
+        let earlier = at - chrono::Duration::days(2);
+        assert_eq!(fetched_at_text(earlier, at), earlier.format("%Y-%m-%d %H:%M").to_string());
         let mut s = ToolbarState::default();
         ToolbarState::push_history(&mut s.filter_history, " a = 1 ");
         ToolbarState::push_history(&mut s.filter_history, "b = 2");

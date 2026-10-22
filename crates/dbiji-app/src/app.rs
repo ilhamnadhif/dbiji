@@ -1410,8 +1410,10 @@ impl DbijiApp {
         if editor_only {
             return Err(tr("Available in a SQL editor: open one with New SQL editor."));
         }
-        let needs_connection =
-            matches!(action, A::EditConnection | A::Connect | A::Disconnect | A::Reconnect | A::OpenSqlConsole | A::OpenSessionManager | A::NewDatabase | A::Export | A::Import);
+        let needs_connection = matches!(
+            action,
+            A::EditConnection | A::Connect | A::Disconnect | A::Reconnect | A::OpenSqlConsole | A::OpenSessionManager | A::OpenErDiagram | A::NewDatabase | A::Export | A::Import
+        );
         if needs_connection && self.selected_connection().is_none() {
             return Err(tr("Select a connection in the navigator first."));
         }

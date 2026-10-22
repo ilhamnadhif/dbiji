@@ -616,8 +616,14 @@ impl Default for ToolbarSettings {
         use crate::actions::Action as A;
         // Global actions only: running, explaining, transactions and the
         // active connection / schema belong to the SQL editor's own toolbar.
-        let groups: [&[A]; 3] = [
-            &[A::NewConnection, A::NewSqlEditor],
+        let groups: [&[A]; 4] = [
+            &[A::NewConnection, A::NewSqlEditor, A::AiAssistant],
+            &[
+                A::Export,
+                A::Import,
+                A::OpenErDiagram,
+                A::OpenSessionManager,
+            ],
             &[A::OpenHistory, A::PendingTransactions, A::OpenTasks],
             &[A::CommandPalette],
         ];
@@ -641,8 +647,9 @@ fn grouped(groups: &[&[crate::actions::Action]]) -> Vec<String> {
 }
 
 impl ToolbarSettings {
-    /// Earlier defaults, which repeated the SQL editor's toolbar (without
-    /// and with group separators).
+    /// Earlier defaults: the SQL editor's toolbar repeated (without and with
+    /// group separators), and the global actions before AI, export / import,
+    /// ER diagram and sessions joined them.
     fn previous_defaults() -> Vec<Vec<String>> {
         use crate::actions::Action as A;
         let flat: Vec<String> = A::default_toolbar()
@@ -661,7 +668,12 @@ impl ToolbarSettings {
             &[A::Commit, A::Rollback, A::ToggleAutoCommit],
             &[A::FormatSql, A::OpenHistory],
         ]);
-        vec![flat, grouped_v3]
+        let global_v4 = grouped(&[
+            &[A::NewConnection, A::NewSqlEditor],
+            &[A::OpenHistory, A::PendingTransactions, A::OpenTasks],
+            &[A::CommandPalette],
+        ]);
+        vec![flat, grouped_v3, global_v4]
     }
 
     /// Settings saved with an earlier default get the current one;

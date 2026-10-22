@@ -3,6 +3,11 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.30 — 2026-10-22
+
+### Changed
+- The main toolbar has the AI assistant next to New connection and New SQL editor, and a group for Export, Import, ER diagram and the session manager (they need a connection selected in the navigator). Toolbars still at an earlier default get it; customised ones are kept.
+
 ## 0.3.29 — 2026-10-22
 
 ### Changed

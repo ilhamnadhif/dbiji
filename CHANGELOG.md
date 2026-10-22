@@ -3,6 +3,14 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.32 — 2026-10-22
+
+### Changed
+- The AI assistant is a panel at the right of the tabs, like an agent panel, instead of a tab: the toolbar button (highlighted while it is open), the menu and the shortcut show and hide it; the conversation stays while it is hidden.
+
+### Fixed
+- AI with an OpenAI compatible service: a base URL holding the whole endpoint (`https://api.xiaomimimo.com/v1/chat/completions`, as providers' docs show it) was extended to `…/chat/completions/v1/chat/completions` and refused ("400 Invalid request"). Such URLs are used as they are, and versioned bases like `…/v1beta/openai` work too. Errors 400 and 404 name the URL called and the service's `param`.
+
 ## 0.3.31 — 2026-10-22
 
 ### Fixed

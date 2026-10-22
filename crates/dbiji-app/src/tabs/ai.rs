@@ -581,6 +581,18 @@ impl AiAssistantTab {
         t
     }
 
+    /// Opened again for `conn`: an empty conversation follows the connection
+    /// (one under way keeps its own); the question box gets the focus.
+    pub fn follow(&mut self, conn: Option<String>) {
+        if self.turns.is_empty() && conn.is_some() && conn != self.conn {
+            self.conn = conn;
+            self.schema = None;
+            self.object = None;
+            self.lang = None;
+        }
+        self.focus_input = true;
+    }
+
     fn kind(&self, cx: &AppContext) -> DbKind {
         self.conn.as_ref().and_then(|c| cx.conns.live(c)).map(|l| l.kind()).unwrap_or(DbKind::Generic)
     }
@@ -837,7 +849,9 @@ impl AiAssistantTab {
     }
 
     fn header(&mut self, ui: &mut Ui, cx: &mut AppContext) {
-        ui.horizontal(|ui| {
+        // Two rows: the connection and schema, then what is sent and the actions
+        // (the assistant is a narrow panel at the right).
+        ui.horizontal_wrapped(|ui| {
             let mut conn = self.conn.clone();
             if crate::tabs::data_compare::connection_combo(ui, cx, ("ai_conn", self.uid), &mut conn, Some(tr("No connection"))) {
                 self.conn = conn;
@@ -854,15 +868,17 @@ impl AiAssistantTab {
                     self.object = None;
                 }
             }
+        });
+        ui.horizontal(|ui| {
             self.context_status(ui, cx);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button(dbiji_icons::ic(icon::GEAR)).on_hover_text(tr("AI settings")).clicked() {
                     cx.push(AppCommand::OpenSettings);
                 }
-                if ui.add_enabled(!self.turns.is_empty(), egui::Button::new((dbiji_icons::ic(icon::PLUS), tr("New conversation")))).clicked() {
+                if ui.add_enabled(!self.turns.is_empty(), egui::Button::new(dbiji_icons::ic(icon::PLUS))).on_hover_text(tr("New conversation")).clicked() {
                     self.reset();
                 }
-                ui.weak(cx.settings.ai.model.clone());
+                ui.add(egui::Label::new(RichText::new(cx.settings.ai.model.clone()).weak().small()).truncate());
             });
         });
     }

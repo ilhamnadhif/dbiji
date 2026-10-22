@@ -2757,3 +2757,5 @@ Rows, NULLs, distinct values, the smallest and the largest, over all rows of the
 Statistics of the whole column	Statistik seluruh kolom
 Statistics of {}	Statistik {}
 The query was cancelled.	Query dibatalkan.
+Hide the AI assistant	Sembunyikan asisten AI
+Endpoint: {}	Endpoint: {}

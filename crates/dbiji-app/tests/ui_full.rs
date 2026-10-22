@@ -1765,3 +1765,19 @@ fn filter_box_suggests_columns() {
     // Inside a string literal nothing is offered: Enter applies the filter.
     no_errors(&mut h, "filter suggestions");
 }
+
+/// The AI assistant is a panel at the right of the tabs: its button shows and
+/// hides it, and its conversation stays while it is hidden.
+#[test]
+fn ai_assistant_is_a_side_panel() {
+    let (_dir, mut h, _conn) = setup();
+    let ctx = h.ctx.clone();
+    h.state_mut().dispatch_action(&ctx, Action::AiAssistant);
+    frames(&mut h, 3);
+    assert!(h.state().ai_open && h.state().ai_panel.is_some());
+    assert!(!tab_titles(&h).iter().any(|t| t.contains("AI assistant")), "not a tab: {:?}", tab_titles(&h));
+    assert!(has(&h, "AI assistant"), "{:?}", labels(&h));
+    h.state_mut().dispatch_action(&ctx, Action::AiAssistant);
+    frames(&mut h, 2);
+    assert!(!h.state().ai_open && h.state().ai_panel.is_some(), "hidden, kept");
+}

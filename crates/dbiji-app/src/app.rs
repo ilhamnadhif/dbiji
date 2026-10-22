@@ -40,6 +40,10 @@ pub struct DbijiApp {
     pub dock: DockState<Tab>,
     next_tab_id: u64,
     pub nav: Navigator,
+    /// The AI assistant, a panel at the right of the tabs (its conversation
+    /// stays while the panel is hidden).
+    pub ai_panel: Option<crate::tabs::ai::AiAssistantTab>,
+    pub ai_open: bool,
     project: crate::project_view::ProjectView,
     /// Left panel shows the project (scripts, bookmarks, diagrams) instead of the database navigator.
     show_project: bool,
@@ -111,6 +115,8 @@ impl DbijiApp {
             dock: DockState::new(Vec::new()),
             next_tab_id: 1,
             nav: Navigator::default(),
+            ai_panel: None,
+            ai_open: false,
             project: Default::default(),
             show_project: false,
             show_nav: true,
@@ -600,9 +606,18 @@ impl DbijiApp {
             AppCommand::OpenDebugger { connection, routine } => {
                 self.open_tab(Box::new(crate::tabs::dbtools::DebuggerTab::new(connection, routine)));
             }
-            AppCommand::OpenAiAssistant { connection } => {
-                self.open_tab(Box::new(crate::tabs::ai::AiAssistantTab::new(connection)));
-            }
+            // The toolbar button, the menu and the shortcut show or hide the panel.
+            AppCommand::OpenAiAssistant { connection } => match self.ai_panel.as_mut() {
+                Some(_) if self.ai_open => self.ai_open = false,
+                Some(p) => {
+                    p.follow(connection);
+                    self.ai_open = true;
+                }
+                None => {
+                    self.ai_panel = Some(crate::tabs::ai::AiAssistantTab::new(connection));
+                    self.ai_open = true;
+                }
+            },
             AppCommand::OpenDataCompare { connection, table } => {
                 self.open_tab(Box::new(crate::tabs::data_compare::DataCompareTab::new(connection, table)));
             }
@@ -1441,7 +1456,9 @@ impl DbijiApp {
                 if let Some(c) = crate::keys::action_color(action, ui.visuals().dark_mode).filter(|_| state.is_ok()) {
                     text = text.color(c);
                 }
-                let b = egui::Button::new(text).frame(false).min_size(egui::vec2(26.0, 22.0));
+                // The AI assistant's button shows whether its panel is open.
+                let open = action == crate::keys::Action::AiAssistant && self.ai_open;
+                let b = egui::Button::new(text).frame(open).selected(open).min_size(egui::vec2(26.0, 22.0));
                 let resp = ui.add_enabled(state.is_ok(), b).on_hover_text(&tip);
                 let resp = match state {
                     Err(why) => resp.on_disabled_hover_text(format!("{tip}\n{why}")),
@@ -1775,6 +1792,24 @@ impl eframe::App for DbijiApp {
                     self.nav.ui(ui, &mut cx);
                     self.nav.track_focus(ui);
                 }
+            });
+        }
+        // The AI assistant at the right of the tabs (as an agent panel), resizable.
+        if self.ai_open
+            && let Some(ai) = self.ai_panel.as_mut()
+        {
+            egui::Panel::right("dbiji_ai").resizable(true).default_size(440.0).size_range(320.0..=1000.0).show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(format!("{} {}", icon::SPARKLE, tr("AI assistant"))).strong());
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let close = egui::Button::new(dbiji_icons::ic(icon::X)).frame_when_inactive(false);
+                        if ui.add(close).on_hover_text(tr("Hide the AI assistant")).clicked() {
+                            self.ai_open = false;
+                        }
+                    });
+                });
+                ui.separator();
+                crate::tabs::TabView::ui(ai, ui, &mut cx);
             });
         }
         self.active_tab = self.dock.find_active_focused().map(|(_, t)| t.id);

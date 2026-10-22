@@ -241,7 +241,17 @@ fn run_blocking(cfg: &AiConfig, agent: &ureq::Agent, req: &ChatRequest, initial:
                 attempt += 1;
                 continue;
             }
-            return Err(err.to_db_error());
+            let mut e = err.to_db_error();
+            // A wrong path or a rejected body: name the URL called (a base URL that
+            // already holds the endpoint used to be doubled).
+            if matches!(err.status, Some(400 | 404)) {
+                let url = trf("Endpoint: {}", &[&cfg.endpoint()]);
+                e.detail = Some(match e.detail.take() {
+                    Some(d) => format!("{d}\n{url}"),
+                    None => url,
+                });
+            }
+            return Err(e);
         }
         match read_stream(cfg.provider, resp, on_delta, cancel)? {
             Streamed::Done(state) => {

@@ -148,14 +148,25 @@ impl AiConfig {
         self.base_url.as_deref().map(str::trim).filter(|b| !b.is_empty()).unwrap_or(default).trim_end_matches('/').to_string()
     }
 
-    /// Full URL of the chat endpoint.
+    /// Full URL of the chat endpoint. The base may be the endpoint itself
+    /// (`…/v1/chat/completions`, as providers' docs show it), a versioned base
+    /// (`…/v1`, `…/v1beta/openai`) or the bare host (`/v1/…` is added).
     pub fn endpoint(&self) -> String {
         let base = self.base();
         let path = match self.provider {
             AiProviderKind::Anthropic => "messages",
             AiProviderKind::OpenAiCompatible => "chat/completions",
         };
-        if base.ends_with("/v1") { format!("{base}/{path}") } else { format!("{base}/v1/{path}") }
+        if base.ends_with(&format!("/{path}")) {
+            return base;
+        }
+        // A version segment in the path (`v1`, `v1beta`, `v3`): the path goes after the base.
+        let after_host = base.split_once("://").map_or(base.as_str(), |(_, rest)| rest);
+        let versioned = after_host.split('/').skip(1).any(|seg| {
+            let mut c = seg.chars();
+            c.next() == Some('v') && c.next().is_some_and(|d| d.is_ascii_digit())
+        });
+        if versioned { format!("{base}/{path}") } else { format!("{base}/v1/{path}") }
     }
 
     /// The base URL is the first-party Anthropic API.
@@ -240,6 +251,15 @@ mod tests {
         assert_eq!(o.endpoint(), "https://openrouter.ai/api/v1/chat/completions");
         let d = AiConfig { provider: AiProviderKind::OpenAiCompatible, base_url: None, ..Default::default() };
         assert_eq!(d.endpoint(), "https://api.openai.com/v1/chat/completions");
+        // The endpoint itself, a versioned base, or the host.
+        let at = |base: &str| AiConfig { provider: AiProviderKind::OpenAiCompatible, base_url: Some(base.into()), ..AiConfig::default() }.endpoint();
+        assert_eq!(at("https://api.xiaomimimo.com/v1/chat/completions"), "https://api.xiaomimimo.com/v1/chat/completions");
+        assert_eq!(at("https://api.xiaomimimo.com/v1/"), "https://api.xiaomimimo.com/v1/chat/completions");
+        assert_eq!(at("https://api.xiaomimimo.com"), "https://api.xiaomimimo.com/v1/chat/completions");
+        assert_eq!(at("https://generativelanguage.googleapis.com/v1beta/openai"), "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions");
+        assert_eq!(at("https://open.bigmodel.cn/api/paas/v4"), "https://open.bigmodel.cn/api/paas/v4/chat/completions");
+        let anthropic = AiConfig { base_url: Some("https://proxy.example/v1/messages".into()), ..AiConfig::default() };
+        assert_eq!(anthropic.endpoint(), "https://proxy.example/v1/messages");
     }
 
     #[test]

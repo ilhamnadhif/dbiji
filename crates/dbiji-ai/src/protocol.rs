@@ -222,11 +222,16 @@ impl ApiError {
             .or_else(|| err["code"].as_str().map(str::to_string))
             .or_else(|| err["code"].as_i64().map(|c| c.to_string()))
             .unwrap_or_default();
-        let message =
+        let mut message =
             err["message"].as_str().map(str::to_string).or_else(|| err.as_str().map(str::to_string)).or_else(|| v["message"].as_str().map(str::to_string)).unwrap_or_else(|| {
                 let t = raw.trim();
                 if t.is_empty() { String::new() } else { t.chars().take(500).collect() }
             });
+        // OpenAI's `param` names the field at fault (`max_tokens`); some services put
+        // the real cause there ("Invalid request" with `404 NOT_FOUND`).
+        if let Some(p) = err["param"].as_str().map(str::trim).filter(|p| !p.is_empty() && !message.contains(*p)) {
+            message = format!("{message} ({p})");
+        }
         let request_id = request_id.or_else(|| v["request_id"].as_str().map(str::to_string));
         ApiError { provider, status, error_type, message, request_id, retry_after }
     }
@@ -495,6 +500,14 @@ mod tests {
 
     fn req() -> ChatRequest {
         ChatRequest::new("You are a SQL expert.\n\nSchema:\ntable public.users (id integer PK)", vec![ChatMessage::user("count users")])
+    }
+
+    #[test]
+    fn the_param_of_an_openai_error_is_shown() {
+        let body = r#"{"error":{"code":"400","message":"Invalid request","param":"404 NOT_FOUND","type":""}}"#;
+        let e = ApiError::parse(AiProviderKind::OpenAiCompatible, Some(400), body, None, None);
+        assert_eq!(e.message, "Invalid request (404 NOT_FOUND)");
+        assert!(e.to_db_error().message.contains("Invalid request (404 NOT_FOUND)"));
     }
 
     #[test]

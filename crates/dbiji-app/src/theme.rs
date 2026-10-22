@@ -127,8 +127,9 @@ fn hex(rgb: u32) -> Color32 {
 
 /// DBiji's palettes: near-black (light) / near-white (dark) text with a
 /// solid secondary colour instead of egui's translucent grey, calm neutral
-/// panels and a clear blue selection. The dark one is a dim grey, not near
-/// black: less glare and softer contrast over long sessions.
+/// panels and a clear blue selection. The dark one is DBeaver's dark theme:
+/// neutral greys, the grid a shade darker than the panels around it, its
+/// header blue-grey, toolbars and tab bars lighter (see [`chrome`]).
 pub fn visuals(theme: Theme) -> Visuals {
     let dark = theme == Theme::Dark;
     let mut v = if dark { Visuals::dark() } else { Visuals::light() };
@@ -141,6 +142,7 @@ pub fn visuals(theme: Theme) -> Visuals {
         panel: Color32,
         window: Color32,
         field: Color32,
+        input: Color32,
         faint: Color32,
         code: Color32,
         line: Color32,
@@ -157,20 +159,21 @@ pub fn visuals(theme: Theme) -> Visuals {
     }
     let p = if dark {
         P {
-            text: hex(0xD6D8DC),
-            weak: hex(0xA0A4AC),
-            strong: hex(0xF3F4F6),
-            panel: hex(0x313338),
-            window: hex(0x383A40),
-            field: hex(0x2B2D31),
-            faint: hex(0x2F3136),
-            code: hex(0x383A40),
-            line: hex(0x45484E),
-            button: hex(0x3B3E44),
-            button_hover: hex(0x474A51),
-            button_active: hex(0x51545B),
-            border: hex(0x565A61),
-            border_hover: hex(0x6F737B),
+            text: hex(0xE2E2E2),
+            weak: hex(0xA1A1A1),
+            strong: hex(0xFFFFFF),
+            panel: hex(0x2F2F2F),
+            window: hex(0x2F2F2F),
+            field: hex(0x252525),
+            input: hex(0x3C3F42),
+            faint: hex(0x2A2A2A),
+            code: hex(0x353535),
+            line: hex(0x3D3D40),
+            button: hex(0x3C3C40),
+            button_hover: hex(0x48484D),
+            button_active: hex(0x545459),
+            border: hex(0x57575C),
+            border_hover: hex(0x707075),
             accent: hex(0x5C8FF0),
             selection: hex(0x3A5590),
             link: hex(0x78ABFF),
@@ -185,6 +188,7 @@ pub fn visuals(theme: Theme) -> Visuals {
             panel: hex(0xF3F4F6),
             window: hex(0xFFFFFF),
             field: hex(0xFFFFFF),
+            input: hex(0xFFFFFF),
             faint: hex(0xF6F8FA),
             code: hex(0xEEF0F3),
             line: hex(0xD5DAE0),
@@ -206,7 +210,7 @@ pub fn visuals(theme: Theme) -> Visuals {
     v.window_fill = p.window;
     v.window_stroke = Stroke::new(1.0, p.line);
     v.extreme_bg_color = p.field;
-    v.text_edit_bg_color = Some(p.field);
+    v.text_edit_bg_color = Some(p.input);
     v.faint_bg_color = p.faint;
     v.code_bg_color = p.code;
     v.hyperlink_color = p.link;
@@ -218,7 +222,8 @@ pub fn visuals(theme: Theme) -> Visuals {
     w.noninteractive.fg_stroke = Stroke::new(1.0, p.text);
     w.noninteractive.bg_stroke = Stroke::new(1.0, p.line);
     w.noninteractive.bg_fill = p.window;
-    w.noninteractive.weak_bg_fill = if dark { hex(0x36383D) } else { hex(0xEAEDF1) };
+    // The grid's header and row numbers: blue-grey in the dark theme (DBeaver's #3A4147 over the grid).
+    w.noninteractive.weak_bg_fill = if dark { hex(0x414A52) } else { hex(0xEAEDF1) };
     w.inactive.fg_stroke = Stroke::new(1.0, p.text);
     w.inactive.bg_fill = p.button;
     w.inactive.weak_bg_fill = p.button;
@@ -237,6 +242,43 @@ pub fn visuals(theme: Theme) -> Visuals {
     w.open.weak_bg_fill = p.button_hover;
     w.open.bg_stroke = Stroke::new(1.0, p.border);
     v
+}
+
+/// Toolbars, the menu, the status bar and the tab bar: lighter than the
+/// panels in the dark theme (as in DBeaver), the panel colour in the light one.
+pub fn chrome(v: &Visuals) -> Color32 {
+    if v.dark_mode { hex(0x48484C) } else { v.panel_fill }
+}
+
+/// Frame of the panels drawn in [`chrome`].
+pub fn chrome_frame(style: &egui::Style) -> egui::Frame {
+    egui::Frame::side_top_panel(style).fill(chrome(&style.visuals))
+}
+
+/// The tab area's style: in the dark theme the tab bar in [`chrome`] and the
+/// active tab dark, as in DBeaver.
+pub fn dock_style(style: &egui::Style) -> egui_dock::Style {
+    let mut s = egui_dock::Style::from_egui(style);
+    let v = &style.visuals;
+    if v.dark_mode {
+        let bar = chrome(v);
+        let active = hex(0x1E1F21);
+        s.tab_bar.bg_fill = bar;
+        s.tab_bar.hline_color = active;
+        for t in [&mut s.tab.active, &mut s.tab.focused, &mut s.tab.active_with_kb_focus, &mut s.tab.focused_with_kb_focus] {
+            t.bg_fill = active;
+            t.outline_color = active;
+            t.text_color = hex(0xFFFFFF);
+        }
+        for t in [&mut s.tab.inactive, &mut s.tab.inactive_with_kb_focus] {
+            t.bg_fill = bar;
+            t.outline_color = bar;
+            t.text_color = hex(0xC8C8C8);
+        }
+        s.tab.hovered.bg_fill = hex(0x545458);
+        s.tab.hovered.outline_color = hex(0x545458);
+    }
+    s
 }
 
 /// Colour of a connection type marker.
@@ -261,13 +303,13 @@ pub fn accent(dark_mode: bool) -> Color32 {
     if dark_mode { hex(0x2F7BEA) } else { hex(0x0B6BDB) }
 }
 
-/// A database type's brand colour (connection icons), readable in both themes.
+/// A database type's brand colour (one-colour logos and icons).
 pub fn brand_color(kind: dbiji_core::DbKind) -> Color32 {
     use dbiji_core::DbKind as K;
     match kind {
-        K::Postgres => hex(0x4479A1),
-        K::CockroachDb => hex(0x7C5CFF),
-        K::MySql => hex(0x0A84A0),
+        K::Postgres => hex(0x336791),
+        K::CockroachDb => hex(0x6933FF),
+        K::MySql => hex(0x00758F),
         K::MariaDb => hex(0xC0765A),
         K::Sqlite => hex(0x0F80CC),
         K::SqlServer => hex(0xCC2927),
@@ -276,10 +318,11 @@ pub fn brand_color(kind: dbiji_core::DbKind) -> Color32 {
     }
 }
 
-/// A database logo's colour: the brand colour, lighter on dark backgrounds.
+/// A one-colour database logo's colour: the brand colour, a little lighter
+/// on dark backgrounds (coloured logos keep their own colours).
 pub fn logo_color(kind: dbiji_core::DbKind, dark_mode: bool) -> Color32 {
     let c = brand_color(kind);
-    if dark_mode { crate::theme::lighten(c, 0.35) } else { c }
+    if dark_mode { crate::theme::lighten(c, 0.2) } else { c }
 }
 
 /// `c` mixed with white by `t` (0 … 1).

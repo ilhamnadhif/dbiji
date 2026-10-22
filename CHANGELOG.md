@@ -3,6 +3,16 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.25 — 2026-10-22
+
+### Added
+- The status bar shows where the active tab works, as in DBeaver: connection › database › schema › table (the server's version on hovering the connection), and on the right the time zone and the language ("WIB", "en"); a click on either chooses another.
+- Time zone (Settings → General, or the status bar): PostgreSQL, MySQL and MariaDB sessions show dates and times in the computer's time zone by default, as DBeaver does (a `timestamptz` shows `+07` in Jakarta instead of the server's `+00`); UTC or the server's own can be chosen. A time zone set in a connection's driver properties wins; connected connections reconnect when it changes.
+
+### Changed
+- The dark theme has DBeaver's colours: neutral greys, the grid darker than the panels with alternating rows, a blue-grey header with white row numbers, lighter toolbars, tab bar and status bar, and a dark active tab.
+- Database logos are in full colour (the blue PostgreSQL elephant, SQLite, ClickHouse, DuckDB); SQL Server has its logo; MySQL, MariaDB and CockroachDB are in their brand colours.
+
 ## 0.3.24 — 2026-10-22
 
 ### Changed

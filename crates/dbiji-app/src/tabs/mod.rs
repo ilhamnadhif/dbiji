@@ -195,6 +195,10 @@ pub struct TabLocation {
     pub kind: dbiji_core::DbKind,
     /// `schema@database` (DBeaver's notation), or the one level the database has.
     pub place: Option<String>,
+    /// The database, where databases hold schemas (PostgreSQL, SQL Server).
+    pub database: Option<String>,
+    /// The schema, or the one level the database has.
+    pub schema: Option<String>,
 }
 
 pub fn tab_location(view: &dyn TabView, conns: &crate::conn::ConnectionManager) -> Option<TabLocation> {
@@ -204,13 +208,16 @@ pub fn tab_location(view: &dyn TabView, conns: &crate::conn::ConnectionManager) 
     // PostgreSQL, SQL Server: databases hold schemas. Elsewhere one level.
     let two_levels = live.is_some_and(|l| l.multiple_databases());
     let current = live.map(|l| SchemaRef::new(l.current_database.clone(), l.current_schema.clone())).unwrap_or_default();
-    let place = place_label(view.schema_context().unwrap_or_default(), &current, two_levels);
-    Some(TabLocation { conn: conn.to_string(), name: cfg.name.clone(), kind: cfg.kind, place })
+    let at = view.schema_context().unwrap_or_default();
+    let place = place_label(at.clone(), &current, two_levels);
+    let (database, schema) = place_parts(at, &current, two_levels);
+    Some(TabLocation { conn: conn.to_string(), name: cfg.name.clone(), kind: cfg.kind, place, database, schema })
 }
 
-/// `schema@database` of `at`, its gaps filled from the session's `current`
-/// database / schema; one name where the database has a single level.
-fn place_label(mut at: SchemaRef, current: &SchemaRef, two_levels: bool) -> Option<String> {
+/// Database and schema of `at`, their gaps filled from the session's
+/// `current` database / schema; where the database has a single level, that
+/// level as the schema.
+fn place_parts(mut at: SchemaRef, current: &SchemaRef, two_levels: bool) -> (Option<String>, Option<String>) {
     if two_levels && at.database.is_none() {
         at.database = current.database.clone();
     }
@@ -220,9 +227,15 @@ fn place_label(mut at: SchemaRef, current: &SchemaRef, two_levels: bool) -> Opti
     if !two_levels && at.schema.is_none() {
         at.schema = current.database.clone();
     }
-    match (at.schema, at.database) {
-        (Some(s), Some(d)) if two_levels && s != d => Some(format!("{s}@{d}")),
-        (s, d) => s.or(d),
+    if two_levels { (at.database, at.schema) } else { (None, at.schema.or(at.database)) }
+}
+
+/// `schema@database` of `at` (see [`place_parts`]); one name where the
+/// database has a single level.
+fn place_label(at: SchemaRef, current: &SchemaRef, two_levels: bool) -> Option<String> {
+    match place_parts(at, current, two_levels) {
+        (Some(d), Some(s)) if s != d => Some(format!("{s}@{d}")),
+        (d, s) => s.or(d),
     }
 }
 

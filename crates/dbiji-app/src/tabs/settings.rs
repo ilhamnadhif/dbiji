@@ -195,6 +195,11 @@ impl SettingsTab {
                 s.locale = v;
                 ch
             });
+            c |= row(ui, tr("Time zone"), |ui| {
+                let choices = crate::conn::time_zone_choices();
+                let items: Vec<_> = choices.iter().map(|(v, l)| (*v, l.as_str())).collect();
+                combo(ui, "set_time_zone", &mut s.time_zone, &items)
+            });
             c |= row(ui, tr("Theme"), |ui| combo(ui, "set_theme", &mut s.theme, &[(Theme::System, tr("System")), (Theme::Light, tr("Light")), (Theme::Dark, tr("Dark"))]));
             c |= row(ui, tr("Font size"), |ui| num(ui, &mut s.ui_font_size, 8.0..=32.0, " pt"));
             c |= row(ui, tr("Zoom"), |ui| {

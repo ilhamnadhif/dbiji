@@ -213,7 +213,9 @@ fn editor_execute_sort_and_edit() {
 
 /// A navigator row (the navigator is the left panel).
 fn nav_row<'a>(h: &'a H, label: &'a str) -> Option<egui_kittest::Node<'a>> {
-    h.query_all_by_label(label).find(|n| n.rect().left() < 120.0 && n.rect().top() > 60.0)
+    // Not the status bar's breadcrumb at the bottom.
+    let status_top = h.ctx.content_rect().bottom() - 30.0;
+    h.query_all_by_label(label).find(|n| n.rect().left() < 120.0 && n.rect().top() > 60.0 && n.rect().top() < status_top)
 }
 
 fn nav_double_click(h: &mut H, label: &str) {

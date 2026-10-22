@@ -183,8 +183,8 @@ impl EditorTheme {
         } else {
             Self::light()
         };
-        theme.background = visuals.text_edit_bg_color();
-        theme.gutter_background = visuals.text_edit_bg_color();
+        theme.background = visuals.extreme_bg_color;
+        theme.gutter_background = visuals.extreme_bg_color;
         theme.selection = visuals.selection.bg_fill;
         theme
     }

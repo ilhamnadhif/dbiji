@@ -525,3 +525,25 @@ fn unique_index_makes_a_table_editable() {
     drop(view);
     h.sql(&format!("DROP TABLE {table}"));
 }
+
+/// Sessions show dates and times in the computer's time zone (as DBeaver),
+/// unless the connection sets its own; MySQL and MariaDB get its offset.
+#[test]
+fn sessions_use_the_computer_time_zone() {
+    use dbiji_config::settings::TimeZoneChoice;
+    let tz = dbiji_app::conn::session_time_zone(TimeZoneChoice::System).unwrap();
+    for (name, url) in servers() {
+        let (sql, expected) = match name {
+            "postgres" => ("SHOW TimeZone", tz.name.clone()),
+            "mysql" | "mariadb" => ("SELECT @@session.time_zone", tz.offset.clone()),
+            _ => continue,
+        };
+        let h = H::new(&url);
+        assert_eq!(h.query(sql)[0][0], expected, "{name}");
+        let own = H::new_with(&url, |c| {
+            let key = if name == "postgres" { "timezone" } else { "time_zone" };
+            c.properties.insert(key.into(), if name == "postgres" { "UTC".into() } else { "+00:00".into() });
+        });
+        assert_eq!(own.query(sql)[0][0], if name == "postgres" { "UTC" } else { "+00:00" }, "{name}: the connection's own time zone");
+    }
+}

@@ -100,6 +100,8 @@ impl DbijiApp {
         let (keymap, keymap_warnings) = crate::keys::Keymap::from_config(&settings.keymap, crate::keys::IS_MAC);
         let mut services = services;
         services.warnings.extend(keymap_warnings);
+        let mut conns = conns;
+        conns.time_zone = settings.general.time_zone;
         let mut app = DbijiApp {
             backend,
             conns,
@@ -1125,6 +1127,15 @@ impl DbijiApp {
     fn apply_settings(&mut self, ctx: &egui::Context) {
         crate::theme::apply_settings(ctx, &self.settings);
         dbiji_core::i18n::set_locale(self.settings.general.effective_locale());
+        // Another time zone: the connections whose sessions have one reconnect.
+        if self.conns.time_zone != self.settings.general.time_zone {
+            self.conns.time_zone = self.settings.general.time_zone;
+            for id in self.conns.live_ids() {
+                if self.conns.config(&id).is_some_and(|c| matches!(c.kind, dbiji_core::DbKind::Postgres | dbiji_core::DbKind::MySql | dbiji_core::DbKind::MariaDb)) {
+                    self.commands.push(AppCommand::Reconnect(id));
+                }
+            }
+        }
         self.settings.results.apply_memory_limits();
         let (keymap, _) = crate::keys::Keymap::from_config(&self.settings.keymap, crate::keys::IS_MAC);
         self.keymap = keymap;
@@ -1481,26 +1492,48 @@ impl DbijiApp {
 
     fn status_bar(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
-            let location = self.dock.find_active_focused().and_then(|(_, t)| crate::tabs::tab_location(t.view.as_ref(), &self.conns));
+            // Where the active tab works, as DBeaver's status bar:
+            // connection › database › schema › object.
+            let active = self.dock.find_active_focused();
+            let location = active.as_ref().and_then(|(_, t)| crate::tabs::tab_location(t.view.as_ref(), &self.conns));
+            let object = active.as_ref().and_then(|(_, t)| t.view.navigator_object());
             match location {
-                Some(crate::tabs::TabLocation { conn, place, .. }) => {
-                    let name = self.conns.config(&conn).map(|c| c.name.clone()).unwrap_or_default();
-                    let ty = self.conns.type_of(&conn);
+                Some(loc) => {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    let ty = self.conns.type_of(&loc.conn);
                     if let Some(color) = crate::theme::connection_marker(ty.color) {
-                        ui.label(RichText::new("■").color(color)).on_hover_text(&ty.name);
-                    }
-                    ui.label(format!("{} {}", icon::DATABASE, name));
-                    if let Some(live) = self.conns.live(&conn) {
-                        if let Some(place) = place {
-                            ui.separator();
-                            ui.label(place);
-                        }
+                        ui.label(RichText::new(format!("■ {}", ty.name)).color(color)).on_hover_text(tr("Connection type"));
                         ui.separator();
+                    }
+                    let dark = ui.visuals().dark_mode;
+                    match crate::dblogo::image(ui.ctx(), loc.kind, 14.0, crate::theme::logo_color(loc.kind, dark)) {
+                        Some(img) => ui.add(img),
+                        None => ui.label(dbiji_icons::ic(crate::nav::db_icon(loc.kind))),
+                    };
+                    let server = match self.conns.live(&loc.conn) {
                         // `version()` texts repeat the product ("PostgreSQL 16.4 on …"): show the number.
-                        let number = live.server.version.split_whitespace().find(|w| w.starts_with(|c: char| c.is_ascii_digit())).unwrap_or("");
-                        ui.weak(format!("{} {number}", live.server.product));
-                    } else {
-                        ui.weak(tr("not connected"));
+                        Some(live) => {
+                            let number = live.server.version.split_whitespace().find(|w| w.starts_with(|c: char| c.is_ascii_digit())).unwrap_or("");
+                            format!("{} {number}", live.server.product)
+                        }
+                        None => tr("not connected").to_string(),
+                    };
+                    ui.label(&loc.name).on_hover_text(server);
+                    let crumb = |ui: &mut Ui, kind: dbiji_core::meta::ObjectKind, name: &str| {
+                        ui.weak(icon::CARET_RIGHT);
+                        ui.label(dbiji_icons::ic(crate::nav::kind_icon(kind)));
+                        ui.label(name);
+                    };
+                    if self.conns.is_connected(&loc.conn) {
+                        if let Some(d) = &loc.database {
+                            crumb(ui, dbiji_core::meta::ObjectKind::Database, d);
+                        }
+                        if let Some(s) = &loc.schema {
+                            crumb(ui, dbiji_core::meta::ObjectKind::Schema, s);
+                        }
+                    }
+                    if let Some((_, obj)) = object.filter(|(c, _)| *c == loc.conn) {
+                        crumb(ui, obj.kind, &obj.name);
                     }
                 }
                 None => {
@@ -1520,6 +1553,33 @@ impl DbijiApp {
                 }
                 let mem = dbiji_core::rowstore::global_resident_bytes();
                 ui.weak(format!("{} {:.0} MB", icon::MEMORY, mem as f64 / 1_048_576.0)).on_hover_text(tr("Memory used by result sets"));
+                ui.separator();
+                // Language and time zone, as in DBeaver ("en", "WIB"): a click chooses another.
+                let locale = self.settings.general.effective_locale();
+                let lang = ui.add(egui::Button::new(locale.code()).frame_when_inactive(false)).on_hover_text(tr("Language"));
+                let mut changed = false;
+                egui::Popup::menu(&lang).show(|ui| {
+                    let mut v = self.settings.general.locale;
+                    for (choice, label) in [(None, tr("System")), (Some(dbiji_core::i18n::Locale::En), "English"), (Some(dbiji_core::i18n::Locale::Id), "Bahasa Indonesia")] {
+                        changed |= ui.radio_value(&mut v, choice, label).changed();
+                    }
+                    self.settings.general.locale = v;
+                });
+                let tz = self.settings.general.time_zone;
+                let tz_button = ui.add(egui::Button::new(crate::conn::time_zone_label(tz)).frame_when_inactive(false));
+                let tz_tip = crate::conn::time_zone_choices().into_iter().find(|(c, _)| *c == tz).map(|(_, l)| l).unwrap_or_default();
+                let tz_button = tz_button.on_hover_text(format!("{}: {tz_tip}", tr("Time zone")));
+                egui::Popup::menu(&tz_button).show(|ui| {
+                    let mut v = tz;
+                    for (choice, label) in crate::conn::time_zone_choices() {
+                        changed |= ui.radio_value(&mut v, choice, label).changed();
+                    }
+                    self.settings.general.time_zone = v;
+                });
+                if changed {
+                    self.commands.push(AppCommand::SettingsChanged);
+                    self.save_settings();
+                }
             });
         });
     }
@@ -1664,10 +1724,10 @@ impl eframe::App for DbijiApp {
         #[cfg(not(target_os = "macos"))]
         let native_menu = false;
         if !native_menu {
-            egui::Panel::top("dbiji_menu").show(ui, |ui| self.menu_bar(ui));
+            egui::Panel::top("dbiji_menu").frame(crate::theme::chrome_frame(ui.style())).show(ui, |ui| self.menu_bar(ui));
         }
-        egui::Panel::top("dbiji_toolbar").show(ui, |ui| self.toolbar(ui));
-        egui::Panel::bottom("dbiji_status").exact_size(24.0).show(ui, |ui| self.status_bar(ui));
+        egui::Panel::top("dbiji_toolbar").frame(crate::theme::chrome_frame(ui.style())).show(ui, |ui| self.toolbar(ui));
+        egui::Panel::bottom("dbiji_status").exact_size(24.0).frame(crate::theme::chrome_frame(ui.style())).show(ui, |ui| self.status_bar(ui));
 
         let mut cx = AppContext {
             backend: &self.backend,
@@ -1738,7 +1798,7 @@ impl eframe::App for DbijiApp {
                 return;
             }
             let mut viewer = DockViewer { cx: &mut cx, close_vetoed: Vec::new(), close_confirm: Vec::new(), active_tab: self.active_tab, style: ui.style().clone(), suffixes };
-            DockArea::new(&mut self.dock).style(egui_dock::Style::from_egui(ui.style().as_ref())).show_leaf_collapse_buttons(false).show_inside(ui, &mut viewer);
+            DockArea::new(&mut self.dock).style(crate::theme::dock_style(ui.style())).show_leaf_collapse_buttons(false).show_inside(ui, &mut viewer);
             for id in viewer.close_confirm {
                 if !self.close_confirm.contains(&id) {
                     self.close_confirm.push(id);

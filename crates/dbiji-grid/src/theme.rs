@@ -25,6 +25,8 @@ pub struct GridTheme {
     pub header_text: Color32,
     /// Header background of selected rows / columns.
     pub header_selected_bg: Color32,
+    /// Row numbers.
+    pub rownum_text: Color32,
     /// Normal text.
     pub text: Color32,
     /// Weak text (NULL, defaults, descriptions).
@@ -56,18 +58,21 @@ pub struct GridTheme {
 impl GridTheme {
     /// Theme for `visuals`.
     pub fn from_visuals(v: &Visuals) -> Self {
-        let bg = v.text_edit_bg_color.unwrap_or(v.extreme_bg_color);
+        let bg = v.extreme_bg_color;
         let text = v.text_color();
         let dark = v.dark_mode;
         let green = if dark { Color32::from_rgb(0x3f, 0xb9, 0x50) } else { Color32::from_rgb(0x1a, 0x7f, 0x37) };
         let header_base = v.widgets.noninteractive.weak_bg_fill;
         GridTheme {
             bg,
-            stripe: mix(bg, text, if dark { 0.035 } else { 0.03 }),
-            line: mix(bg, text, if dark { 0.14 } else { 0.12 }),
+            stripe: mix(bg, text, if dark { 0.053 } else { 0.03 }),
+            // Darker than the rows in the dark theme (as in DBeaver), else darker than white.
+            line: if dark { mix(bg, Color32::BLACK, 0.17) } else { mix(bg, text, 0.12) },
             header_bg: mix(header_base, bg, 0.25),
             header_text: v.strong_text_color(),
             header_selected_bg: mix(header_base, v.selection.bg_fill, 0.45),
+            // White on the dark blue-grey header (as in DBeaver), grey on the light one.
+            rownum_text: if dark { v.strong_text_color() } else { v.weak_text_color() },
             text,
             weak: v.weak_text_color(),
             selection: v.selection.bg_fill.gamma_multiply(if dark { 0.55 } else { 0.45 }),

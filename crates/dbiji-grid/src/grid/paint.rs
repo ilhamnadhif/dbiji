@@ -454,7 +454,7 @@ impl GridFrame<'_> {
             use std::fmt::Write as _;
             let _ = write!(buf, "{}", row + 1);
             let inner = r.shrink2(vec2(PAD + 2.0, 0.0));
-            let color = if state == RowState::Inserted { theme.bool_true } else { theme.weak };
+            let color = if state == RowState::Inserted { theme.bool_true } else { theme.rownum_text };
             if glyphs.place(&painter, &mut batch, &buf, inner, Align::Max, color).is_none() {
                 place_slow(&painter, &font, &buf, inner, Align::Max, color);
             }

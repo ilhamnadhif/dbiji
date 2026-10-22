@@ -6,6 +6,7 @@ pub mod session;
 
 use crate::backend::{Backend, Job, Loadable};
 use dbiji_config::ConnectionStore;
+use dbiji_config::settings::TimeZoneChoice;
 use dbiji_core::config::{AuthMethod, ConnectionConfig, ConnectionType, SecretSlot};
 use dbiji_core::driver::{ConnectParams, Driver, ServerInfo, TransactionMode};
 use dbiji_core::registry::DriverRegistry;
@@ -309,6 +310,101 @@ pub fn split_simple(sql: &str) -> Vec<String> {
     out
 }
 
+/// Time zone set on new sessions (see [`TimeZoneChoice`]): a zone name for
+/// PostgreSQL, an offset for MySQL / MariaDB (zone names need the server's
+/// time zone tables).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionTimeZone {
+    /// IANA name (`Asia/Jakarta`), `UTC`, or a POSIX zone for an offset.
+    pub name: String,
+    /// `+07:00`.
+    pub offset: String,
+}
+
+/// The session time zone of `choice`; `None` keeps the server's.
+pub fn session_time_zone(choice: TimeZoneChoice) -> Option<SessionTimeZone> {
+    match choice {
+        TimeZoneChoice::Server => None,
+        TimeZoneChoice::Utc => Some(SessionTimeZone { name: "UTC".into(), offset: "+00:00".into() }),
+        TimeZoneChoice::System => {
+            let secs = chrono::Local::now().offset().local_minus_utc();
+            let name = iana_time_zone::get_timezone().ok().filter(|n| n.contains('/') || n == "UTC").unwrap_or_else(|| posix_zone(secs));
+            Some(SessionTimeZone { name, offset: format_offset(secs) })
+        }
+    }
+}
+
+/// A POSIX zone for an offset (`<+07>-07` for 7 hours east of UTC: POSIX
+/// counts the other way round).
+fn posix_zone(secs: i32) -> String {
+    let m = secs.unsigned_abs() / 60;
+    let (h, m) = (m / 60, m % 60);
+    let (sign, posix) = if secs < 0 { ('-', '+') } else { ('+', '-') };
+    if m == 0 { format!("<{sign}{h:02}>{posix}{h}") } else { format!("<{sign}{h:02}{m:02}>{posix}{h}:{m:02}") }
+}
+
+/// `+07:00` for 25200 seconds east of UTC.
+fn format_offset(secs: i32) -> String {
+    let sign = if secs < 0 { '-' } else { '+' };
+    let m = secs.unsigned_abs() / 60;
+    format!("{sign}{:02}:{:02}", m / 60, m % 60)
+}
+
+/// The time zone choices with their labels ("Computer (Asia/Jakarta, +07:00)").
+pub fn time_zone_choices() -> Vec<(TimeZoneChoice, String)> {
+    let system = session_time_zone(TimeZoneChoice::System).map(|tz| format!("{}, {}", tz.name, tz.offset)).unwrap_or_default();
+    vec![
+        (TimeZoneChoice::System, dbiji_core::trf("Computer ({})", &[&system])),
+        (TimeZoneChoice::Utc, "UTC".to_string()),
+        (TimeZoneChoice::Server, dbiji_core::tr("Server's own").to_string()),
+    ]
+}
+
+/// Short name of the time zone of `choice` for the status bar (`WIB`, `UTC`).
+pub fn time_zone_label(choice: TimeZoneChoice) -> String {
+    match choice {
+        TimeZoneChoice::Server => dbiji_core::tr("Server").to_string(),
+        TimeZoneChoice::Utc => "UTC".into(),
+        TimeZoneChoice::System => zone_abbreviation().unwrap_or_else(|| format_offset(chrono::Local::now().offset().local_minus_utc())),
+    }
+}
+
+/// The computer's time zone abbreviation (`WIB`, `CEST`).
+#[cfg(unix)]
+fn zone_abbreviation() -> Option<String> {
+    // SAFETY: `localtime_r` fills the `tm` given; `tm_zone` points to a static
+    // NUL-terminated string (or is null).
+    unsafe {
+        let now = libc::time(std::ptr::null_mut());
+        let mut tm: libc::tm = std::mem::zeroed();
+        if libc::localtime_r(&now, &mut tm).is_null() || tm.tm_zone.is_null() {
+            return None;
+        }
+        let s = std::ffi::CStr::from_ptr(tm.tm_zone).to_string_lossy().into_owned();
+        (!s.is_empty()).then_some(s)
+    }
+}
+
+#[cfg(not(unix))]
+fn zone_abbreviation() -> Option<String> {
+    None
+}
+
+/// Set the session time zone on `params` unless the connection's driver
+/// properties set one. PostgreSQL, MySQL and MariaDB only: the others have
+/// no session time zone (SQL Server, SQLite) or show the server's.
+pub fn apply_time_zone(params: &mut ConnectParams, tz: &SessionTimeZone) {
+    let (key, value, names): (&str, &str, &[&str]) = match params.kind {
+        DbKind::Postgres => ("timezone", &tz.name, &["timezone"]),
+        DbKind::MySql | DbKind::MariaDb => ("time_zone", &tz.offset, &["time_zone", "timezone", "servertimezone"]),
+        _ => return,
+    };
+    if params.properties.keys().any(|k| names.contains(&k.to_ascii_lowercase().as_str())) {
+        return;
+    }
+    params.properties.insert(key.into(), value.to_string());
+}
+
 struct Connected {
     session: Box<dyn dbiji_core::Session>,
     params: ConnectParams,
@@ -330,6 +426,7 @@ async fn connect_task(
     creds: Credentials,
     net: Arc<dyn NetConnector>,
     pgpass: Option<Arc<dyn Fn(&str, u16, &str, &str) -> Option<Secret> + Send + Sync>>,
+    time_zone: Option<SessionTimeZone>,
 ) -> DbResult<Connected> {
     if let Some(cmd) = cfg.init.shell_before_connect.as_deref().filter(|c| !c.trim().is_empty()) {
         run_shell(cmd, Duration::from_secs(60)).await.map_err(|e| e.with_context("Shell command before connect"))?;
@@ -346,6 +443,9 @@ async fn connect_task(
     };
     let mut params = ConnectParams::from_config(&cfg, password);
     params.auto_commit = cfg.auto_commit.unwrap_or(conn_type.auto_commit);
+    if let Some(tz) = &time_zone {
+        apply_time_zone(&mut params, tz);
+    }
     // An in-memory database is one per connection, not one per session (editor, data tab, navigator).
     if matches!(cfg.kind, DbKind::Sqlite | DbKind::DuckDb) && params.file_path.as_deref().is_some_and(|p| p.as_os_str() == ":memory:") {
         params.file_path = Some(PathBuf::from(format!(":memory:{}", cfg.id)));
@@ -380,7 +480,14 @@ pub struct HeadlessConnection {
 }
 
 /// Connect to a saved connection with saved credentials only (no prompts).
-pub async fn connect_saved(registry: &DriverRegistry, store: &ConnectionStore, secrets: &dyn SecretSource, net: Arc<dyn NetConnector>, id: &str) -> DbResult<HeadlessConnection> {
+pub async fn connect_saved(
+    registry: &DriverRegistry,
+    store: &ConnectionStore,
+    secrets: &dyn SecretSource,
+    net: Arc<dyn NetConnector>,
+    id: &str,
+    time_zone: TimeZoneChoice,
+) -> DbResult<HeadlessConnection> {
     let cfg = store.get(id).cloned().ok_or_else(|| DbError::config(format!("Unknown connection {id}")))?;
     if matches!(cfg.auth, AuthMethod::Prompt) {
         return Err(DbError::auth(format!("The connection \"{}\" asks for its password at every connect; save the password to use it in tasks", cfg.name)));
@@ -402,7 +509,7 @@ pub async fn connect_saved(registry: &DriverRegistry, store: &ConnectionStore, s
     let conn_type = store.connection_type(&cfg.connection_type);
     let pgpass: Option<Arc<dyn Fn(&str, u16, &str, &str) -> Option<Secret> + Send + Sync>> =
         Some(Arc::new(|h: &str, p: u16, d: &str, u: &str| dbiji_config::import::pgpass::lookup(h, p, d, u)));
-    let c = connect_task(driver.clone(), eff, conn_type, creds, net, pgpass).await?;
+    let c = connect_task(driver.clone(), eff, conn_type, creds, net, pgpass, session_time_zone(time_zone)).await?;
     Ok(HeadlessConnection { session: c.session, params: c.params, driver, config: cfg, _tunnel: c.tunnel })
 }
 
@@ -419,6 +526,8 @@ pub struct ConnectionManager {
     pub secrets: Arc<dyn SecretSource>,
     pub net: Arc<dyn NetConnector>,
     pub pgpass: Option<Arc<dyn Fn(&str, u16, &str, &str) -> Option<Secret> + Send + Sync>>,
+    /// Time zone of new sessions (Settings › General).
+    pub time_zone: TimeZoneChoice,
     /// Ids whose connect finished this frame (for UI reactions like expanding the tree).
     pub just_connected: Vec<String>,
     /// The store changed and should be written to disk.
@@ -437,6 +546,7 @@ impl ConnectionManager {
             secrets,
             net,
             pgpass: None,
+            time_zone: TimeZoneChoice::default(),
             just_connected: Vec::new(),
             dirty: false,
         }
@@ -547,10 +657,12 @@ impl ConnectionManager {
         let cfg = self.effective_config(&cfg);
         let net = self.net.clone();
         let pgpass = self.pgpass.clone();
+        // With the sessions' time zone: a test fails as a connect would.
+        let time_zone = session_time_zone(self.time_zone);
         backend.spawn(async move {
             let driver = driver.ok_or_else(|| DbError::unsupported(format!("No driver for {}", cfg.kind)))?;
             let started = Instant::now();
-            let mut c = connect_task(driver, cfg, conn_type, creds, net, pgpass).await?;
+            let mut c = connect_task(driver, cfg, conn_type, creds, net, pgpass, time_zone).await?;
             let info = format!("{} {} ({} ms)", c.server.product, c.server.version.split_whitespace().next().unwrap_or(""), started.elapsed().as_millis());
             let _ = c.session.close().await;
             drop(c.tunnel.take());
@@ -630,7 +742,8 @@ impl ConnectionManager {
         let pgpass = self.pgpass.clone();
         self.failed.remove(id);
         self.failed_shown.remove(id);
-        self.connecting.insert(id.to_string(), backend.spawn(connect_task(driver, cfg, conn_type, creds, net, pgpass)));
+        let time_zone = session_time_zone(self.time_zone);
+        self.connecting.insert(id.to_string(), backend.spawn(connect_task(driver, cfg, conn_type, creds, net, pgpass, time_zone)));
         Ok(())
     }
 
@@ -853,6 +966,31 @@ impl NetConnector for DirectNet {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn session_time_zones() {
+        assert_eq!(format_offset(25_200), "+07:00");
+        assert_eq!(format_offset(-19_800), "-05:30");
+        assert_eq!(posix_zone(25_200), "<+07>-7");
+        assert_eq!(posix_zone(-19_800), "<-0530>+5:30");
+        assert!(session_time_zone(TimeZoneChoice::Server).is_none());
+        assert_eq!(session_time_zone(TimeZoneChoice::Utc).unwrap().name, "UTC");
+        let system = session_time_zone(TimeZoneChoice::System).unwrap();
+        assert!(system.offset.len() == 6 && !system.name.is_empty(), "{system:?}");
+        let tz = SessionTimeZone { name: "Asia/Jakarta".into(), offset: "+07:00".into() };
+        let params = |kind: DbKind, props: &[(&str, &str)]| {
+            let mut p = ConnectParams::from_config(&ConnectionConfig::new(kind, "x"), None);
+            p.properties.extend(props.iter().map(|(k, v)| (k.to_string(), v.to_string())));
+            apply_time_zone(&mut p, &tz);
+            p.properties
+        };
+        assert_eq!(params(DbKind::Postgres, &[]).get("timezone").map(String::as_str), Some("Asia/Jakarta"));
+        assert_eq!(params(DbKind::MariaDb, &[]).get("time_zone").map(String::as_str), Some("+07:00"));
+        // The connection's own time zone wins; others have no session time zone.
+        assert_eq!(params(DbKind::MySql, &[("serverTimezone", "UTC")]).len(), 1);
+        assert_eq!(params(DbKind::Postgres, &[("TimeZone", "UTC")]).get("TimeZone").map(String::as_str), Some("UTC"));
+        assert!(params(DbKind::SqlServer, &[]).is_empty() && params(DbKind::Sqlite, &[]).is_empty());
+    }
 
     async fn sqlite_session(label: &str) -> SessionHandle {
         let mut cfg = ConnectionConfig::new(DbKind::Sqlite, label);

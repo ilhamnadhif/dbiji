@@ -43,7 +43,8 @@ pub struct CompareTaskConfig {
 impl AppTaskExecutor {
     async fn open(&self, id: &str) -> DbResult<HeadlessConnection> {
         let store = ConnectionStore::load(&self.paths)?;
-        connect_saved(&self.registry, &store, self.secrets.as_ref(), self.net.clone(), id).await
+        let time_zone = dbiji_config::settings::load(&self.paths).general.time_zone;
+        connect_saved(&self.registry, &store, self.secrets.as_ref(), self.net.clone(), id, time_zone).await
     }
 
     async fn sql_script(

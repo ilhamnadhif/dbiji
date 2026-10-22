@@ -102,6 +102,20 @@ pub enum Theme {
     Dark,
 }
 
+/// Time zone of the sessions (DBeaver's client time zone): what
+/// `timestamptz` (PostgreSQL) and `TIMESTAMP` (MySQL) values are shown in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TimeZoneChoice {
+    /// The computer's time zone.
+    #[default]
+    System,
+    /// UTC.
+    Utc,
+    /// Each server's own time zone (nothing is set).
+    Server,
+}
+
 /// General preferences.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -112,6 +126,9 @@ pub struct GeneralSettings {
     /// Colour theme.
     #[serde(deserialize_with = "lenient")]
     pub theme: Theme,
+    /// Time zone the sessions show dates and times in.
+    #[serde(deserialize_with = "lenient")]
+    pub time_zone: TimeZoneChoice,
     /// UI font size in points.
     pub ui_font_size: f32,
     /// Additional UI zoom factor (1.0 = 100 %).
@@ -131,6 +148,7 @@ impl Default for GeneralSettings {
         GeneralSettings {
             locale: None,
             theme: Theme::System,
+            time_zone: TimeZoneChoice::System,
             ui_font_size: 13.0,
             ui_scale: 1.0,
             restore_session: true,

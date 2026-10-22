@@ -613,6 +613,53 @@ impl GridFrame<'_> {
         }
     }
 
+    /// The editing keys of the grid for a detached view (the record view),
+    /// as its menu shows them; moving, copying and Tab are the view's.
+    pub(super) fn detached_keys(&mut self, ui: &Ui) {
+        let events = ui.input(|i| i.events.clone());
+        for ev in events {
+            match ev {
+                Event::Key { key, pressed: true, modifiers: m, .. } => match key {
+                    Key::ArrowUp if m.command && m.alt => self.copy_from_adjacent(true),
+                    Key::ArrowDown if m.command && m.alt => self.copy_from_adjacent(false),
+                    Key::Z if m.command && !m.shift => {
+                        if !self.model.undo() {
+                            self.notify(tr("Nothing to undo"), false);
+                        }
+                    }
+                    Key::S if m.command => self.actions.push(GridAction::SaveChanges),
+                    Key::R if m.command => self.actions.push(GridAction::Refresh),
+                    Key::F5 => self.actions.push(GridAction::Refresh),
+                    Key::D if m.command => self.duplicate_selected(),
+                    Key::Insert if m.shift => self.add_row_before_active(),
+                    Key::Insert => self.add_row_after_active(),
+                    Key::Enter | Key::F2 if m.shift => {
+                        if let Some((row, col)) = self.active() {
+                            self.actions.push(GridAction::OpenValuePanel { row, col });
+                        }
+                    }
+                    Key::Enter | Key::F2 => {
+                        if let Some((row, col)) = self.active() {
+                            self.start_edit(row, col, None);
+                        }
+                    }
+                    Key::Delete if m.shift => self.set_selected_null(),
+                    Key::Delete => self.delete_selected(),
+                    Key::Space if !m.command => {
+                        if let Some((row, col)) = self.active()
+                            && self.model.column_kind(col) == DataKind::Bool
+                        {
+                            self.toggle_bool(row, col);
+                        }
+                    }
+                    _ => {}
+                },
+                Event::Paste(text) => self.paste(&text),
+                _ => {}
+            }
+        }
+    }
+
     /// Copy the selection to the clipboard.
     pub fn copy_selection(&mut self, opts: &CopyOptions) {
         match super::copy_text_and_nulls(self.model, self.state, self.options, opts) {

@@ -174,6 +174,8 @@ pub struct SqlEditorTab {
     tab_id: Option<u64>,
     /// Run the whole script as soon as the session is ready (benchmarks, "run on open").
     pub auto_run: bool,
+    /// Run the whole script once the session is ready, with the usual confirmations.
+    pub run_on_open: bool,
     /// Fetch every row of new results (benchmarks).
     pub fetch_all_results: bool,
 }
@@ -280,6 +282,7 @@ impl SqlEditorTab {
             request_focus: true,
             tab_id: None,
             auto_run: false,
+            run_on_open: false,
             fetch_all_results: false,
         }
     }
@@ -2071,9 +2074,11 @@ impl TabView for SqlEditorTab {
                 }
             });
         }
-        if self.auto_run && self.session_ready() && self.exec.is_none() {
+        if (self.auto_run || self.run_on_open) && self.session_ready() && self.exec.is_none() {
+            let confirmed = self.auto_run;
             self.auto_run = false;
-            self.run(cx, Request { scope: Scope::Script, new_tab: true, explain: None, confirmed: true, sql: None });
+            self.run_on_open = false;
+            self.run(cx, Request { scope: Scope::Script, new_tab: true, explain: None, confirmed, sql: None });
         }
         self.poll_exec(&ctx, cx);
         self.toolbar(ui, cx);

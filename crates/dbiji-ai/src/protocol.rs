@@ -3,7 +3,7 @@
 //! compatible chat completions. Pure functions, no I/O.
 
 use crate::config::{AiConfig, AiProviderKind};
-use crate::types::{ChatRequest, ChatResponse, Role, Usage};
+use crate::types::{ChatMessage, ChatRequest, ChatResponse, Role, ToolCall, Usage};
 use dbiji_core::{DbError, DbResult, ErrorKind, Secret, tr, trf};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -78,20 +78,76 @@ pub(crate) fn validate_request(req: &ChatRequest) -> DbResult<()> {
     if req.messages.is_empty() {
         return Err(DbError::config(tr("The conversation is empty")));
     }
-    if req.messages.iter().any(|m| m.content.trim().is_empty()) {
+    // An answer that only called tools has no text.
+    if req.messages.iter().any(|m| m.content.trim().is_empty() && m.tool_calls.is_empty()) {
         return Err(DbError::config(tr("Chat messages must not be empty")));
     }
-    if req.messages.last().is_some_and(|m| m.role != Role::User) {
+    if req.messages.last().is_some_and(|m| m.role == Role::Assistant) {
         return Err(DbError::config(tr("The conversation must end with a user message")));
     }
     Ok(())
+}
+
+/// The arguments of a call as a JSON object (`{}` when they do not parse).
+fn arguments_value(call: &ToolCall) -> Value {
+    serde_json::from_str::<Value>(&call.arguments).ok().filter(Value::is_object).unwrap_or_else(|| json!({}))
+}
+
+/// Messages in Anthropic's format: tool calls are `tool_use` blocks of the
+/// assistant, their results `tool_result` blocks of one user message.
+fn anthropic_messages(messages: &[ChatMessage]) -> Vec<Value> {
+    let mut out: Vec<Value> = Vec::new();
+    for m in messages {
+        match m.role {
+            Role::Tool => {
+                let block = json!({"type": "tool_result", "tool_use_id": m.tool_call_id.clone().unwrap_or_default(), "content": m.content});
+                // Results of one round go into one user message.
+                match out.last_mut() {
+                    Some(last) if last["role"] == "user" && last["content"].is_array() => last["content"].as_array_mut().expect("array").push(block),
+                    _ => out.push(json!({"role": "user", "content": [block]})),
+                }
+            }
+            Role::Assistant if !m.tool_calls.is_empty() => {
+                let mut content = Vec::new();
+                if !m.content.trim().is_empty() {
+                    content.push(json!({"type": "text", "text": m.content}));
+                }
+                for c in &m.tool_calls {
+                    content.push(json!({"type": "tool_use", "id": c.id, "name": c.name, "input": arguments_value(c)}));
+                }
+                out.push(json!({"role": "assistant", "content": content}));
+            }
+            _ => out.push(json!({"role": m.role.as_str(), "content": m.content})),
+        }
+    }
+    out
+}
+
+/// Messages in the OpenAI format (`tool_calls` of the assistant, `tool` messages).
+fn openai_messages(messages: &[ChatMessage]) -> Vec<Value> {
+    messages
+        .iter()
+        .map(|m| match m.role {
+            Role::Tool => json!({"role": "tool", "tool_call_id": m.tool_call_id.clone().unwrap_or_default(), "content": m.content}),
+            Role::Assistant if !m.tool_calls.is_empty() => {
+                let calls: Vec<Value> =
+                    m.tool_calls.iter().map(|c| json!({"id": c.id, "type": "function", "function": {"name": c.name, "arguments": c.arguments}})).collect();
+                let mut v = json!({"role": "assistant", "content": if m.content.is_empty() { Value::Null } else { json!(m.content) }, "tool_calls": calls});
+                if let Some(r) = &m.reasoning {
+                    v["reasoning_content"] = json!(r);
+                }
+                v
+            }
+            _ => json!({"role": m.role.as_str(), "content": m.content}),
+        })
+        .collect()
 }
 
 /// Build the HTTP request for `req`.
 pub(crate) fn build_request(cfg: &AiConfig, req: &ChatRequest, flags: Flags) -> DbResult<HttpRequest> {
     validate_request(req)?;
     let mut headers = vec![("content-type".to_string(), HeaderValue::Plain("application/json".into()))];
-    let messages: Vec<Value> = req.messages.iter().map(|m| json!({"role": m.role.as_str(), "content": m.content})).collect();
+    let parameters = |t: &crate::types::ToolDef| serde_json::from_str::<Value>(&t.parameters).unwrap_or_else(|_| json!({"type": "object"}));
     let body = match cfg.provider {
         AiProviderKind::Anthropic => {
             if let Some(k) = cfg.key() {
@@ -104,9 +160,12 @@ pub(crate) fn build_request(cfg: &AiConfig, req: &ChatRequest, flags: Flags) -> 
             let mut body = json!({
                 "model": cfg.model,
                 "max_tokens": cfg.max_tokens,
-                "messages": messages,
+                "messages": anthropic_messages(&req.messages),
                 "stream": true,
             });
+            if !req.tools.is_empty() {
+                body["tools"] = req.tools.iter().map(|t| json!({"name": t.name, "description": t.description, "input_schema": parameters(t)})).collect();
+            }
             if !req.system.trim().is_empty() {
                 body["system"] = json!([{"type": "text", "text": req.system, "cache_control": {"type": "ephemeral"}}]);
             }
@@ -124,12 +183,16 @@ pub(crate) fn build_request(cfg: &AiConfig, req: &ChatRequest, flags: Flags) -> 
             if let Some(k) = cfg.key() {
                 headers.push(("authorization".into(), HeaderValue::Secret(Secret::new(format!("Bearer {k}")))));
             }
-            let mut all = Vec::with_capacity(messages.len() + 1);
+            let mut all = Vec::with_capacity(req.messages.len() + 1);
             if !req.system.trim().is_empty() {
                 all.push(json!({"role": "system", "content": req.system}));
             }
-            all.extend(messages);
+            all.extend(openai_messages(&req.messages));
             let mut body = json!({"model": cfg.model, "messages": all, "stream": true});
+            if !req.tools.is_empty() {
+                body["tools"] =
+                    req.tools.iter().map(|t| json!({"type": "function", "function": {"name": t.name, "description": t.description, "parameters": parameters(t)}})).collect();
+            }
             let key = if flags.max_completion_tokens { "max_completion_tokens" } else { "max_tokens" };
             body[key] = json!(cfg.max_tokens);
             body
@@ -327,6 +390,10 @@ pub(crate) struct StreamState {
     pub fallback_from: Option<String>,
     /// Content block index -> block type.
     blocks: HashMap<u64, String>,
+    /// Tool calls by content block (Anthropic) or call index (OpenAI).
+    tool_calls: std::collections::BTreeMap<u64, ToolCall>,
+    /// `reasoning_content` deltas (OpenAI compatible).
+    reasoning: String,
 }
 
 fn merge_usage(u: &mut Usage, v: &Value) {
@@ -373,6 +440,12 @@ impl StreamState {
                             on_delta(t);
                         }
                     }
+                    "tool_use" => {
+                        if let Some(i) = v["index"].as_u64() {
+                            let call = ToolCall { id: block["id"].as_str().unwrap_or_default().to_string(), name: block["name"].as_str().unwrap_or_default().to_string(), arguments: String::new() };
+                            self.tool_calls.insert(i, call);
+                        }
+                    }
                     "fallback" => {
                         // a declined attempt; the fallback model continues on the same stream
                         if let Some(from) = block["from"]["model"].as_str() {
@@ -392,6 +465,12 @@ impl StreamState {
                 {
                     self.text.push_str(t);
                     on_delta(t);
+                }
+                if d["type"].as_str() == Some("input_json_delta")
+                    && let (Some(i), Some(part)) = (v["index"].as_u64(), d["partial_json"].as_str())
+                    && let Some(call) = self.tool_calls.get_mut(&i)
+                {
+                    call.arguments.push_str(part);
                 }
             }
             "message_delta" => {
@@ -440,6 +519,23 @@ impl StreamState {
             self.text.push_str(t);
             on_delta(t);
         }
+        if let Some(r) = choice["delta"]["reasoning_content"].as_str() {
+            self.reasoning.push_str(r);
+        }
+        // Tool calls arrive in pieces: the id and name first, the arguments in parts.
+        for c in choice["delta"]["tool_calls"].as_array().into_iter().flatten() {
+            let i = c["index"].as_u64().unwrap_or(0);
+            let call = self.tool_calls.entry(i).or_default();
+            if let Some(id) = c["id"].as_str().filter(|s| !s.is_empty()) {
+                call.id = id.to_string();
+            }
+            if let Some(n) = c["function"]["name"].as_str().filter(|s| !s.is_empty()) {
+                call.name = n.to_string();
+            }
+            if let Some(a) = c["function"]["arguments"].as_str() {
+                call.arguments.push_str(a);
+            }
+        }
         if let Some(r) = choice["finish_reason"].as_str() {
             self.stop_reason = Some(r.to_string());
         }
@@ -482,6 +578,17 @@ impl StreamState {
         if !self.done && self.stop_reason.is_none() {
             return Err(DbError::connection(tr("The AI response stream ended unexpectedly")));
         }
+        let tool_calls = self
+            .tool_calls
+            .into_values()
+            .filter(|c| !c.name.is_empty())
+            .map(|mut c| {
+                if c.arguments.trim().is_empty() {
+                    c.arguments = "{}".into();
+                }
+                c
+            })
+            .collect();
         Ok(ChatResponse {
             text: self.text,
             stop_reason: self.stop_reason,
@@ -489,6 +596,8 @@ impl StreamState {
             usage: self.usage,
             model: self.model.unwrap_or_else(|| requested_model.to_string()),
             fallback_from: self.fallback_from,
+            tool_calls,
+            reasoning: self.reasoning,
         })
     }
 }
@@ -851,5 +960,115 @@ data: [DONE]
         assert_eq!(parse_retry_after("3"), Some(Duration::from_secs(3)));
         assert_eq!(parse_retry_after(" 0.5 "), Some(Duration::from_millis(500)));
         assert_eq!(parse_retry_after("Wed, 21 Oct 2026 07:28:00 GMT"), None);
+    }
+}
+
+#[cfg(test)]
+mod tool_tests {
+    use super::*;
+    use crate::types::{ChatMessage, ToolDef};
+
+    /// A conversation in the middle of a tool round: the question, the call, its result.
+    fn tool_round() -> ChatRequest {
+        let call = ToolCall { id: "call_1".into(), name: "run_query".into(), arguments: r#"{"sql":"SELECT count(*) FROM charges"}"#.into() };
+        let mut req = ChatRequest::new(
+            "system",
+            vec![
+                ChatMessage::user("how many charges?"),
+                ChatMessage::assistant_calls("", vec![call], Some("count them".into())),
+                ChatMessage::tool_result("call_1", "count\n42"),
+            ],
+        );
+        req.tools = vec![ToolDef { name: "run_query".into(), description: "Run a read-only query".into(), parameters: r#"{"type":"object","properties":{"sql":{"type":"string"}},"required":["sql"]}"#.into() }];
+        req
+    }
+
+    #[test]
+    fn tools_and_their_results_in_both_formats() {
+        let cfg = AiConfig::anthropic("k");
+        let r = build_request(&cfg, &tool_round(), Flags::initial(&cfg)).unwrap();
+        assert_eq!(r.body["tools"][0]["name"], "run_query");
+        assert_eq!(r.body["tools"][0]["input_schema"]["required"][0], "sql");
+        assert_eq!(r.body["messages"][1]["content"][0]["type"], "tool_use");
+        assert_eq!(r.body["messages"][1]["content"][0]["input"]["sql"], "SELECT count(*) FROM charges");
+        assert_eq!(r.body["messages"][2]["role"], "user");
+        assert_eq!(r.body["messages"][2]["content"][0]["type"], "tool_result");
+        assert_eq!(r.body["messages"][2]["content"][0]["tool_use_id"], "call_1");
+
+        let cfg = AiConfig { provider: AiProviderKind::OpenAiCompatible, ..AiConfig::anthropic("k") };
+        let r = build_request(&cfg, &tool_round(), Flags::initial(&cfg)).unwrap();
+        assert_eq!(r.body["tools"][0]["type"], "function");
+        assert_eq!(r.body["tools"][0]["function"]["parameters"]["required"][0], "sql");
+        let m = &r.body["messages"];
+        assert_eq!(m[2]["role"], "assistant");
+        assert!(m[2]["content"].is_null());
+        assert_eq!(m[2]["tool_calls"][0]["function"]["arguments"], r#"{"sql":"SELECT count(*) FROM charges"}"#);
+        assert_eq!(m[2]["reasoning_content"], "count them", "thinking models want it back within the round");
+        assert_eq!(m[3]["role"], "tool");
+        assert_eq!(m[3]["tool_call_id"], "call_1");
+        // No tools: no `tools` key.
+        let plain = ChatRequest::new("s", vec![ChatMessage::user("hi")]);
+        assert!(build_request(&cfg, &plain, Flags::initial(&cfg)).unwrap().body.get("tools").is_none());
+    }
+
+    fn run(provider: AiProviderKind, stream: &str) -> ChatResponse {
+        let mut st = StreamState::default();
+        let mut lines = SseParser::default();
+        let mut events = Vec::new();
+        for l in stream.lines() {
+            events.extend(lines.push_line(l));
+        }
+        events.extend(lines.finish());
+        for ev in events {
+            let c = match provider {
+                AiProviderKind::Anthropic => st.on_anthropic_event(&ev, &mut |_: &str| {}),
+                AiProviderKind::OpenAiCompatible => st.on_openai_event(&ev, &mut |_: &str| {}),
+            };
+            if c != Control::Continue {
+                break;
+            }
+        }
+        st.finish(provider, "m").unwrap()
+    }
+
+    #[test]
+    fn streamed_tool_calls() {
+        let anthropic = r#"data: {"type":"message_start","message":{"model":"claude","usage":{"input_tokens":10}}}
+
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Let me count."}}
+
+data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_1","name":"run_query","input":{}}}
+
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"sql\": \"SELECT "}}
+
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"1\"}"}}
+
+data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":20}}
+
+data: {"type":"message_stop"}
+"#;
+        let r = run(AiProviderKind::Anthropic, anthropic);
+        assert_eq!(r.text, "Let me count.");
+        assert_eq!(r.tool_calls, vec![ToolCall { id: "toolu_1".into(), name: "run_query".into(), arguments: r#"{"sql": "SELECT 1"}"#.into() }]);
+        let openai = r#"data: {"choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"think "}}]}
+
+data: {"choices":[{"index":0,"delta":{"reasoning_content":"more"}}]}
+
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_9","type":"function","function":{"name":"run_query","arguments":""}}]}}]}
+
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"sql\":"}}]}}]}
+
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"SELECT 2\"}"}}]}}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: [DONE]
+"#;
+        let r = run(AiProviderKind::OpenAiCompatible, openai);
+        assert_eq!(r.tool_calls, vec![ToolCall { id: "call_9".into(), name: "run_query".into(), arguments: r#"{"sql":"SELECT 2"}"#.into() }]);
+        assert_eq!(r.reasoning, "think more");
+        assert!(!r.truncated);
     }
 }

@@ -379,6 +379,57 @@ fn record_view_picks_several_values_and_copies_them() {
 }
 
 #[test]
+fn record_view_has_the_grids_menu_and_keys() {
+    use crate::test_support::key;
+    use egui::Key;
+    let mut v = Viewer::new(editable_model(3));
+    v.state.grid.select_cell(1, 1);
+    v.state.toolbar.view = ResultViewKind::Record;
+    v.frame(vec![]);
+    v.frame(vec![]);
+    // The value of a field: right of its name.
+    let value_of = |v: &Viewer, name: &str| -> Pos2 {
+        let update = v.output.accesskit_update.as_ref().expect("accesskit");
+        update
+            .nodes
+            .iter()
+            .find_map(|(_, n)| {
+                let b = n.bounds()?;
+                (n.label().or(n.value()) == Some(name)).then(|| Pos2::new(b.x1 as f32 + 60.0, ((b.y0 + b.y1) / 2.0) as f32))
+            })
+            .unwrap_or_else(|| panic!("no column name {name}"))
+    };
+    let value = value_of(&v, "name");
+    v.frame(vec![Event::PointerMoved(value)]);
+    v.frame(vec![press(value, PointerButton::Secondary, Modifiers::NONE)]);
+    v.frame(vec![release(value, PointerButton::Secondary, Modifiers::NONE)]);
+    v.frame(vec![]);
+    for item in ["Copy with column names", "Set NULL", "Set DEFAULT", "Add row", "Duplicate row(s)", "Delete row(s)", "Filter by value", "Generate SQL"] {
+        assert!(v.find(item).is_some(), "{item} in the menu");
+    }
+    assert!(v.find("Zoom").is_none(), "the grid's own");
+    let set_null = v.find("Set NULL").unwrap();
+    v.click(set_null);
+    assert_eq!(v.model.cell(1, 1), Some(Value::Null));
+    assert_eq!(v.state.grid.active_cell(), Some((1, 1)), "the record shown stays");
+    // Its keys: Enter edits here (a list of values too), ⇧Delete sets NULL
+    // on the picked value, Delete marks the row.
+    let category = value_of(&v, "category");
+    v.click(category);
+    assert!(v.find_input("2").is_none());
+    v.frame(vec![key(Key::Enter, Modifiers::NONE)]);
+    v.frame(vec![]);
+    assert!(v.find_input("2").is_some(), "an editor opened");
+    v.frame(vec![key(Key::Escape, Modifiers::NONE)]);
+    v.frame(vec![]);
+    v.click(category);
+    v.frame_with(vec![key(Key::Delete, Modifiers::SHIFT)], Modifiers::SHIFT);
+    assert_eq!(v.model.cell(1, 3), Some(Value::Null));
+    v.frame(vec![key(Key::Delete, Modifiers::NONE)]);
+    assert_eq!(v.model.row_state(1), crate::model::RowState::Deleted);
+}
+
+#[test]
 fn cancel_discards_pending_changes_at_once() {
     let mut v = Viewer::new(editable_model(3));
     v.model.set_value(1, 1, dbiji_core::Value::text("changed")).unwrap();

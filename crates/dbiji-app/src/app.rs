@@ -160,6 +160,20 @@ impl DbijiApp {
         self.commands.push(cmd);
     }
 
+    /// A new SQL editor with `text`, run once connected when `run`.
+    fn new_sql_editor(&mut self, connection: Option<String>, schema: Option<dbiji_core::meta::SchemaRef>, text: String, run: bool) {
+        self.script_counter += 1;
+        let title = format!("Script-{}", self.script_counter);
+        let mut tab = crate::tabs::sql_editor::SqlEditorTab::new(connection.clone(), schema, text, None, false, title);
+        tab.run_on_open = run;
+        if let Some(c) = &connection
+            && !self.conns.is_connected(c)
+        {
+            self.request_connect(c);
+        }
+        self.open_tab(Box::new(tab));
+    }
+
     /// Open a tab, or focus an existing tab with the same dedupe key.
     pub fn open_tab(&mut self, view: Box<dyn TabView>) -> u64 {
         if view.popup_size().is_some() {
@@ -479,17 +493,8 @@ impl DbijiApp {
                 self.dialogs.palette_open = true;
             }
             AppCommand::Action(a) => self.dispatch_action(ctx, a),
-            AppCommand::NewSqlEditor { connection, schema, text } => {
-                self.script_counter += 1;
-                let title = format!("Script-{}", self.script_counter);
-                let tab = crate::tabs::sql_editor::SqlEditorTab::new(connection.clone(), schema, text.unwrap_or_default(), None, false, title);
-                if let Some(c) = &connection
-                    && !self.conns.is_connected(c)
-                {
-                    self.request_connect(c);
-                }
-                self.open_tab(Box::new(tab));
-            }
+            AppCommand::NewSqlEditor { connection, schema, text } => self.new_sql_editor(connection, schema, text.unwrap_or_default(), false),
+            AppCommand::RunSqlInEditor { connection, schema, text } => self.new_sql_editor(connection, schema, text, true),
             AppCommand::NewSqlConsole { connection } => {
                 let name = self.conns.config(&connection).map(|c| c.name.clone()).unwrap_or_default();
                 let title = format!("{} {}", tr("Console"), name);

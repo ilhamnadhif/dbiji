@@ -33,6 +33,13 @@ pub enum AppCommand {
         schema: Option<SchemaRef>,
         text: Option<String>,
     },
+    /// A new SQL editor that runs `text` once connected (with the usual
+    /// confirmations: production, read-only, dangerous statements).
+    RunSqlInEditor {
+        connection: Option<String>,
+        schema: Option<SchemaRef>,
+        text: String,
+    },
     OpenScript(PathBuf),
     /// Open the SQL console (terminal-style output) for a connection.
     NewSqlConsole {

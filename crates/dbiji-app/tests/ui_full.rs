@@ -1771,12 +1771,50 @@ fn filter_box_suggests_columns() {
 #[test]
 fn ai_assistant_is_a_side_panel() {
     let (_dir, mut h, _conn) = setup();
+    // Enabled, with a key (never used: nothing is sent), so that the conversation shows.
+    h.state_mut().settings.ai.enabled = true;
+    let provider = h.state().settings.ai.provider.id().to_string();
+    h.state().services.secrets.read().set_ai_api_key(&provider, Some(&dbiji_core::Secret::new("test"))).unwrap();
     let ctx = h.ctx.clone();
     h.state_mut().dispatch_action(&ctx, Action::AiAssistant);
     frames(&mut h, 3);
     assert!(h.state().ai_open && h.state().ai_panel.is_some());
     assert!(!tab_titles(&h).iter().any(|t| t.contains("AI assistant")), "not a tab: {:?}", tab_titles(&h));
     assert!(has(&h, "AI assistant"), "{:?}", labels(&h));
+    // A query the assistant ran shows above its answer; the answer's SQL runs
+    // in a new editor (with the editor's confirmations).
+    let ai = h.state_mut().ai_panel.as_mut().unwrap();
+    ai.push_exchange(dbiji_app::tabs::ai::QuickAction::Chat, "How many customers?", "There are 5.\n\n```sql\nSELECT count(*) AS customers FROM customer\n```");
+    ai.push_step(dbiji_app::tabs::ai_agent::ToolStep {
+        sql: "SELECT count(*) FROM customer".into(),
+        ok: true,
+        summary: "1 rows".into(),
+        for_model: String::new(),
+        columns: vec!["count(*)".into()],
+        rows: vec![vec!["5".into()]],
+    });
+    frames(&mut h, 3);
+    assert!(has(&h, "Ran a query · 1 rows"), "{:?}", labels(&h));
+    click(&mut h, "Run");
+    wait(&mut h, "the query run in a new editor", |h| tab_titles(h).iter().any(|t| t.starts_with("Script-")) && has(h, "Data grid, 1 rows"));
+    no_errors(&mut h, "Run from the assistant");
+    // The conversation is kept: after a new one, the history opens it again.
+    h.state_mut().ai_panel.as_mut().unwrap().reset();
+    frames(&mut h, 2);
+    assert!(h.state().ai_panel.as_ref().unwrap().turns().is_empty());
+    let history = egui_phosphor::regular::CLOCK_COUNTER_CLOCKWISE;
+    {
+        let button = h.query_all_by_label(history).max_by(|a, b| a.rect().left().total_cmp(&b.rect().left())).expect("history button");
+        button.click();
+    }
+    frames(&mut h, 3);
+    assert!(has(&h, "Clear history"), "{:?}", labels(&h));
+    click(&mut h, "How many customers?");
+    frames(&mut h, 2);
+    let turns = h.state().ai_panel.as_ref().unwrap().turns();
+    assert_eq!(turns.len(), 1);
+    assert_eq!(turns[0].steps.len(), 1, "with the query it ran");
+    assert!(has(&h, "Ran a query · 1 rows"), "{:?}", labels(&h));
     h.state_mut().dispatch_action(&ctx, Action::AiAssistant);
     frames(&mut h, 2);
     assert!(!h.state().ai_open && h.state().ai_panel.is_some(), "hidden, kept");

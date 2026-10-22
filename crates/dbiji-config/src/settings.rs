@@ -767,6 +767,9 @@ pub struct AiSettings {
     pub include_schema_context: bool,
     /// Send sample rows (off by default for privacy).
     pub send_sample_data: bool,
+    /// Agent mode: the assistant may run read-only queries on the connection
+    /// and read their results (which are sent to the AI service). Off by default.
+    pub agent_queries: bool,
 }
 
 impl Default for AiSettings {
@@ -780,6 +783,7 @@ impl Default for AiSettings {
             effort: AiEffort::High,
             include_schema_context: true,
             send_sample_data: false,
+            agent_queries: false,
         }
     }
 }

@@ -791,6 +791,7 @@ impl SettingsTab {
             c |= check(ui, &mut a.include_schema_context, tr("Send table and column names as context"));
             ui.label("");
             c |= check(ui, &mut a.send_sample_data, tr("Allow sending sample rows"));
+            c |= check(ui, &mut a.agent_queries, tr("Let the assistant run read-only queries (their results are sent to the AI service)"));
             c
         });
         heading(ui, tr("API key"));

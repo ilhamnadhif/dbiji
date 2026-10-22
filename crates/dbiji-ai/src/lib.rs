@@ -29,4 +29,4 @@ pub use config::{
 };
 pub use prompts::{SchemaContext, SchemaContextBuilder, extract_sql_blocks, system_prompt};
 pub use protocol::{ANTHROPIC_VERSION, FALLBACK_BETA};
-pub use types::{ChatMessage, ChatRequest, ChatResponse, Role, Usage};
+pub use types::{ChatMessage, ChatRequest, ChatResponse, Role, ToolCall, ToolDef, Usage};

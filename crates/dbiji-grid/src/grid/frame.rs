@@ -152,6 +152,81 @@ pub(super) struct GridFrame<'a> {
     /// Cell under the pointer.
     pub hover_cell: Option<CellPos>,
     pub focused: bool,
+    /// The menu is shown by another view of the rows (the record view).
+    pub detached: bool,
+}
+
+/// The body's context menu of `resp` and the dialogs its items open, shown
+/// by another view of the grid's rows (the record view): the items, and the
+/// editing keys when `keys`, act on `cells` (row, model column); the view's
+/// own items (`own`) come first.
+/// Afterwards the grid's selection is what it was, unless an item changed it
+/// (a new row is selected). Returns the actions, and the cell "Edit cell"
+/// opened (row, column, text), for the view's own editor.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn detached_menu(
+    model: &mut ResultModel,
+    state: &mut DataGridState,
+    options: &GridOptions,
+    id: Id,
+    ui: &mut Ui,
+    resp: Option<&egui::Response>,
+    keys: bool,
+    cells: &[(usize, usize)],
+    own: impl FnOnce(&mut Ui),
+) -> (Vec<GridAction>, Option<(usize, usize, String)>) {
+    let font = options.font.clone().unwrap_or_else(|| TextStyle::Body.resolve(ui.style()));
+    let geo = compute_geometry(model, state, options, ui.max_rect(), font.size * 1.3, font.size * 0.6);
+    let before = state.rt.selection.clone();
+    let mut picked = Selection::default();
+    for (i, p) in cells.iter().filter_map(|&(r, c)| geo.cols.iter().position(|&x| x == c).map(|pos| CellPos::new(r, pos))).enumerate() {
+        if i == 0 {
+            picked.select_cell(p);
+        } else {
+            picked.toggle_cell(p);
+        }
+    }
+    let acting = !picked.is_empty();
+    if acting {
+        state.rt.selection = picked.clone();
+    }
+    let mut f = GridFrame {
+        model,
+        state,
+        options,
+        id,
+        ctx: ui.ctx().clone(),
+        actions: Vec::new(),
+        geo,
+        font,
+        theme: GridTheme::from_visuals(ui.visuals()),
+        selection_before: before.clone(),
+        hover_tooltip: None,
+        hover_cell: None,
+        focused: false,
+        detached: true,
+    };
+    if acting {
+        if let Some(resp) = resp {
+            egui::Popup::context_menu(resp).show(|ui| {
+                ui.set_min_width(220.0);
+                own(ui);
+                f.menu_items(ui);
+            });
+        }
+        if keys {
+            f.detached_keys(ui);
+        }
+    }
+    f.dialogs(ui);
+    let actions = f.actions;
+    // "Advanced copy…" copies the picked cells when its dialog closes.
+    if acting && state.rt.selection == picked && !state.rt.copy_dialog {
+        state.rt.selection = before;
+    }
+    // The grid's editor and list of values are not shown here: the view edits.
+    let edit = state.rt.editing.take().map(|e| (e.row, e.col, e.text)).or_else(|| state.rt.dropdown.take().map(|d| (d.row, d.col, model.cell(d.row, d.col).filter(|v| !v.is_null()).map(|v| v.to_text().into_owned()).unwrap_or_default())));
+    (actions, edit)
 }
 
 pub(super) fn show(model: &mut ResultModel, state: &mut DataGridState, options: &GridOptions, id_salt: Id, ui: &mut Ui) -> GridResponse {
@@ -226,6 +301,7 @@ pub(super) fn show(model: &mut ResultModel, state: &mut DataGridState, options: 
         hover_tooltip: None,
         hover_cell: None,
         focused: false,
+        detached: false,
     };
     f.selection_before = f.state.rt.selection.clone();
     f.fit_columns(&ui.painter().clone());

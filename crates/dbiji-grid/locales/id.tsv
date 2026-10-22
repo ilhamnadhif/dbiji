@@ -399,8 +399,8 @@ Copy all	Salin semua
 Copied	Tersalin
 Cells copied with gaps between them cannot be pasted: copy a block	Sel yang disalin dengan celah di antaranya tidak bisa ditempel: salin satu blok
 Copy with column names	Salin dengan nama kolom
-Tab: back to the grid · ← →: previous / next row. Click a value or a column name to select it, ⇧-click or ⌘-click to select more; ⌘C copies the selection, right-click copies it with the column names.	Tab: kembali ke grid · ← →: baris sebelumnya / berikutnya. Klik nilai atau nama kolom untuk memilihnya, ⇧-klik atau ⌘-klik untuk memilih lebih banyak; ⌘C menyalin pilihan, klik kanan menyalinnya beserta nama kolom.
-Click a value or a column name to select it, ⇧-click or ⌘-click to select more; ⌘C copies the selection, right-click copies it with the column names.	Klik nilai atau nama kolom untuk memilihnya, ⇧-klik atau ⌘-klik untuk memilih lebih banyak; ⌘C menyalin pilihan, klik kanan menyalinnya beserta nama kolom.
+Tab: back to the grid · ← →: previous / next row. Click a value or a column name to select it, ⇧-click or ⌘-click to select more; ⌘C copies the selection. Right-click for the grid's menu (Set NULL, rows, filters…); its keys work here too.	Tab: kembali ke grid · ← →: baris sebelumnya / berikutnya. Klik nilai atau nama kolom untuk memilihnya, ⇧-klik atau ⌘-klik untuk memilih lebih banyak; ⌘C menyalin pilihan. Klik kanan untuk menu grid (Set NULL, baris, filter…); tombol pintasnya juga berlaku di sini.
+Click a value or a column name to select it, ⇧-click or ⌘-click to select more; ⌘C copies the selection. Right-click for the grid's menu (Set NULL, rows, filters…); its keys work here too.	Klik nilai atau nama kolom untuk memilihnya, ⇧-klik atau ⌘-klik untuk memilih lebih banyak; ⌘C menyalin pilihan. Klik kanan untuk menu grid (Set NULL, baris, filter…); tombol pintasnya juga berlaku di sini.
 Of the first {} rows	Dari {} baris pertama
 Time zone	Zona waktu
 Loaded rows	Baris dimuat

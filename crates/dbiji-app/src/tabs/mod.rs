@@ -3,6 +3,8 @@
 
 pub mod admin;
 pub mod ai;
+pub mod ai_agent;
+pub mod ai_history;
 pub mod catalog;
 pub mod compare;
 pub mod data_compare;

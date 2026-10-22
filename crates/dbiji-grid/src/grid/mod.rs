@@ -29,6 +29,7 @@ pub mod state;
 pub(crate) mod text;
 
 pub(crate) use paint::{CANCEL_AFTER, kind_icon};
+pub(crate) use frame::detached_menu;
 pub use selection::{CellPos, CellRange, Selection};
 pub use state::{ColumnState, DataGridState, DataMode};
 

@@ -188,12 +188,12 @@ impl GridFrame<'_> {
         }
     }
 
-    fn menu_items(&mut self, ui: &mut Ui) {
+    pub(super) fn menu_items(&mut self, ui: &mut Ui) {
         let active = self.active();
         let editable = self.model.is_editable() && self.options.allow_editing;
         let cmd = Modifiers::COMMAND;
-        // --- clipboard
-        if item(ui, icon::COPY, tr("Copy"), Some(KeyboardShortcut::new(cmd, Key::C))).clicked() {
+        // --- clipboard (a detached menu has its own Copy)
+        if !self.detached && item(ui, icon::COPY, tr("Copy"), Some(KeyboardShortcut::new(cmd, Key::C))).clicked() {
             self.copy_selection(&CopyOptions::plain());
             ui.close();
         }
@@ -373,18 +373,21 @@ impl GridFrame<'_> {
                 }
             }
         });
-        ui.menu_button(format!("{}  {}", icon::MAGNIFYING_GLASS_PLUS, tr("Zoom")), |ui| {
-            if ui.button(tr("Zoom in")).clicked() {
-                self.state.zoom_by(Some(0.1));
-            }
-            if ui.button(tr("Zoom out")).clicked() {
-                self.state.zoom_by(Some(-0.1));
-            }
-            if ui.button(tr("Reset zoom")).clicked() {
-                self.state.zoom_by(None);
-                ui.close();
-            }
-        });
+        // Zoom and widths are the grid's own.
+        if !self.detached {
+            ui.menu_button(format!("{}  {}", icon::MAGNIFYING_GLASS_PLUS, tr("Zoom")), |ui| {
+                if ui.button(tr("Zoom in")).clicked() {
+                    self.state.zoom_by(Some(0.1));
+                }
+                if ui.button(tr("Zoom out")).clicked() {
+                    self.state.zoom_by(Some(-0.1));
+                }
+                if ui.button(tr("Reset zoom")).clicked() {
+                    self.state.zoom_by(None);
+                    ui.close();
+                }
+            });
+        }
         ui.separator();
         if item(ui, icon::EXPORT, tr("Export selection…"), None).clicked() {
             let rows = self.state.rt.selection.rows(self.geo.nrows, usize::MAX);
@@ -453,11 +456,15 @@ impl GridFrame<'_> {
                 }
             });
         });
-        if item(ui, icon::ARROWS_OUT_LINE_HORIZONTAL, tr("Auto-size column"), None).clicked() {
+        if !self.detached && item(ui, icon::ARROWS_OUT_LINE_HORIZONTAL, tr("Auto-size column"), None).clicked() {
             let ctx = self.ctx.clone();
             let painter = egui::Painter::new(ctx, ui.layer_id(), ui.clip_rect());
             self.autosize_with(&painter, col);
             ui.close();
+        }
+        if self.detached {
+            self.format_menu(ui, col);
+            return;
         }
         ui.menu_button(format!("{}  {}", icon::COLUMNS_PLUS_RIGHT, tr("Column layout")), |ui| {
             let cmd_alt = Modifiers::COMMAND | Modifiers::ALT;
@@ -485,6 +492,10 @@ impl GridFrame<'_> {
                 ui.close();
             }
         });
+        self.format_menu(ui, col);
+    }
+
+    fn format_menu(&mut self, ui: &mut Ui, col: usize) {
         ui.menu_button(format!("{}  {}", icon::TEXT_AA, tr("Format")), |ui| {
             let mut f = self.state.column_format(col).cloned().unwrap_or_default();
             let mut changed = false;

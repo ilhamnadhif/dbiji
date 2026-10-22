@@ -239,7 +239,7 @@ impl<'a> RecordView<'a> {
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(RichText::new(format!("{}  {}", icon::KEYBOARD, tr("Tab: grid · ← →: rows · ⌘C: copy"))).small().weak())
-                        .on_hover_text(tr("Tab: back to the grid · ← →: previous / next row. Click a value or a column name to select it, ⇧-click or ⌘-click to select more; ⌘C copies the selection, right-click copies it with the column names."));
+                        .on_hover_text(tr("Tab: back to the grid · ← →: previous / next row. Click a value or a column name to select it, ⇧-click or ⌘-click to select more; ⌘C copies the selection. Right-click for the grid's menu (Set NULL, rows, filters…); its keys work here too."));
                     if !state.column_filter.trim().is_empty() {
                         let needle = state.column_filter.to_lowercase();
                         let shown = grid.visible_columns().into_iter().filter(|&c| model.column_name(c).to_lowercase().contains(&needle)).count();
@@ -329,7 +329,7 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(RichText::new(format!("{}  {}", icon::KEYBOARD, tr("Tab: grid · ⌘C: copy"))).small().weak()).on_hover_text(tr(
-                    "Click a value or a column name to select it, ⇧-click or ⌘-click to select more; ⌘C copies the selection, right-click copies it with the column names.",
+                    "Click a value or a column name to select it, ⇧-click or ⌘-click to select more; ⌘C copies the selection. Right-click for the grid's menu (Set NULL, rows, filters…); its keys work here too.",
                 ));
                 let needle = state.column_filter.trim().to_lowercase();
                 if !needle.is_empty() {
@@ -432,6 +432,9 @@ fn rows_table(
     let mut clicked_cell: Option<(usize, usize, egui::Modifiers)> = None;
     let mut clicked_field: Option<(usize, egui::Modifiers)> = None;
     let mods = ui.input(|i| i.modifiers);
+    // The value / column name whose context menu is open.
+    let mut menu_resp: Option<egui::Response> = None;
+    let menu_open = |r: &egui::Response| r.secondary_clicked() || egui::Popup::is_id_open(&r.ctx, egui::Popup::default_response_id(r));
     ScrollArea::horizontal().auto_shrink([false, false]).show(ui, |ui| {
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
@@ -479,7 +482,9 @@ fn rows_table(
                         if lead_resp.secondary_clicked() && !field_picked {
                             clicked_field = Some((c, egui::Modifiers::NONE));
                         }
-                        lead_resp.context_menu(|ui| copy_menu(ui, &mut copy));
+                        if menu_open(&lead_resp) {
+                            menu_resp = Some(lead_resp.clone());
+                        }
                         // As DBeaver: the names in the header's colour (the current field's
                         // as a selected header), the values in one colour.
                         let hovered = ui.input(|inp| inp.pointer.hover_pos()).is_some_and(|p| p.y >= lead_rect.top() && p.y < lead_rect.bottom() && ui.clip_rect().contains(p));
@@ -571,7 +576,9 @@ fn rows_table(
                             if resp.secondary_clicked() && !is_picked {
                                 clicked_cell = Some((r, c, egui::Modifiers::NONE));
                             }
-                            resp.context_menu(|ui| copy_menu(ui, &mut copy));
+                            if menu_open(&resp) {
+                                menu_resp = Some(resp.clone());
+                            }
                             if resp.double_clicked() && !boolean {
                                 let multi = matches!(v, Value::Text(s) if s.contains('\n')) || matches!(v, Value::Bytes(_));
                                 if can_edit && !multi {
@@ -665,6 +672,21 @@ fn rows_table(
             state.pick_anchor = Some((first, c));
         }
     }
+    // The grid's menu, on the picked cells (and the dialogs its items open).
+    let mut cells: Vec<(usize, usize)> = state.picked.iter().copied().filter(|(r, c)| rows.contains(r) && order.contains(c)).collect();
+    if cells.is_empty()
+        && let Some(cell) = grid.active_cell().filter(|(r, c)| rows.contains(r) && order.contains(c))
+    {
+        cells.push(cell);
+    }
+    let keys = focus.has_focus() && state.editing.is_none();
+    let (menu_actions, edit) = crate::grid::detached_menu(model, grid, options, ui.id().with("record_menu"), ui, menu_resp.as_ref(), keys, &cells, |ui| copy_menu(ui, &mut copy));
+    actions.extend(menu_actions);
+    if let Some((r, c, text)) = edit {
+        state.editing = Some((r, c, text.clone(), text));
+        state.editing_anchor = model.row_anchor(r);
+        state.error = None;
+    }
     if let Some(names) = copy {
         let shown: Vec<(usize, usize)> = state.picked.iter().copied().filter(|(r, c)| rows.contains(r) && order.contains(c)).collect();
         if !shown.is_empty() {
@@ -705,10 +727,11 @@ fn rows_table(
     }
 }
 
-/// Copy items of a value's / a column name's context menu: `copy` becomes
-/// `Some(with column names)`.
+/// The record view's own copy items, at the top of the grid's menu: `copy`
+/// becomes `Some(with column names)` (laid out as shown, a line per column).
 fn copy_menu(ui: &mut Ui, copy: &mut Option<bool>) {
-    if ui.button(format!("{}  {}", icon::COPY, tr("Copy"))).clicked() {
+    let shortcut = ui.ctx().format_shortcut(&egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, Key::C));
+    if ui.add(Button::new(format!("{}  {}", icon::COPY, tr("Copy"))).shortcut_text(shortcut)).clicked() {
         *copy = Some(false);
         ui.close();
     }

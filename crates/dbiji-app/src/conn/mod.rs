@@ -240,6 +240,12 @@ impl LiveConnection {
 
     /// Open an additional session (separate connection per editor, FR-C7).
     pub fn open_session_job(&self, backend: &Backend, label: String, database: Option<String>) -> Job<DbResult<SessionHandle>> {
+        backend.spawn(self.open_session_future(label, database))
+    }
+
+    /// The opening of an additional session, to await in a background job
+    /// (the AI assistant's queries).
+    pub fn open_session_future(&self, label: String, database: Option<String>) -> impl std::future::Future<Output = DbResult<SessionHandle>> + Send + 'static {
         let driver = self.driver.clone();
         let mut params = self.params.clone();
         if database.is_some() {
@@ -247,7 +253,7 @@ impl LiveConnection {
         }
         let cfg = self.config.clone();
         let tab_sessions = self.tab_sessions.clone();
-        backend.spawn(async move {
+        async move {
             let mut s = driver.connect(&params).await?;
             init_session(s.as_mut(), &cfg, &params).await?;
             let handle = SessionHandle::new(s, label, database);
@@ -256,7 +262,7 @@ impl LiveConnection {
             list.retain(|w| w.upgrade().is_some_and(|s| !s.is_closed()));
             list.push(handle.downgrade());
             Ok(handle)
-        })
+        }
     }
 }
 

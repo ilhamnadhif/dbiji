@@ -135,7 +135,7 @@ fn send(agent: &ureq::Agent, r: &HttpRequest) -> Result<ureq::http::Response<ure
 }
 
 enum Streamed {
-    Done(StreamState),
+    Done(Box<StreamState>),
     /// Error event; `emitted` tells whether text was already delivered.
     Error {
         err: ApiError,
@@ -169,12 +169,12 @@ fn read_stream(provider: AiProviderKind, resp: ureq::http::Response<ureq::Body>,
         if let Some(ev) = ev {
             match handle(ev, &mut state, &mut emitted) {
                 Control::Continue => {}
-                Control::Done => return Ok(Streamed::Done(state)),
+                Control::Done => return Ok(Streamed::Done(Box::new(state))),
                 Control::Error(err) => return Ok(Streamed::Error { err, emitted }),
             }
         }
         if n == 0 {
-            return Ok(Streamed::Done(state));
+            return Ok(Streamed::Done(Box::new(state)));
         }
     }
 }

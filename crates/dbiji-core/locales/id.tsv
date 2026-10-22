@@ -2744,8 +2744,8 @@ Cells copied with gaps between them cannot be pasted: copy a block	Sel yang disa
 Row height	Tinggi baris
 Normal	Normal
 Copy with column names	Salin dengan nama kolom
-Tab: back to the grid · ← →: previous / next row. Click a value or a column name to select it, ⇧-click or ⌘-click to select more; ⌘C copies the selection, right-click copies it with the column names.	Tab: kembali ke grid · ← →: baris sebelumnya / berikutnya. Klik nilai atau nama kolom untuk memilihnya, ⇧-klik atau ⌘-klik untuk memilih lebih banyak; ⌘C menyalin pilihan, klik kanan menyalinnya beserta nama kolom.
-Click a value or a column name to select it, ⇧-click or ⌘-click to select more; ⌘C copies the selection, right-click copies it with the column names.	Klik nilai atau nama kolom untuk memilihnya, ⇧-klik atau ⌘-klik untuk memilih lebih banyak; ⌘C menyalin pilihan, klik kanan menyalinnya beserta nama kolom.
+Tab: back to the grid · ← →: previous / next row. Click a value or a column name to select it, ⇧-click or ⌘-click to select more; ⌘C copies the selection. Right-click for the grid's menu (Set NULL, rows, filters…); its keys work here too.	Tab: kembali ke grid · ← →: baris sebelumnya / berikutnya. Klik nilai atau nama kolom untuk memilihnya, ⇧-klik atau ⌘-klik untuk memilih lebih banyak; ⌘C menyalin pilihan. Klik kanan untuk menu grid (Set NULL, baris, filter…); tombol pintasnya juga berlaku di sini.
+Click a value or a column name to select it, ⇧-click or ⌘-click to select more; ⌘C copies the selection. Right-click for the grid's menu (Set NULL, rows, filters…); its keys work here too.	Klik nilai atau nama kolom untuk memilihnya, ⇧-klik atau ⌘-klik untuk memilih lebih banyak; ⌘C menyalin pilihan. Klik kanan untuk menu grid (Set NULL, baris, filter…); tombol pintasnya juga berlaku di sini.
 Computer ({})	Komputer ({})
 Server's own	Milik server
 Time zone	Zona waktu
@@ -2759,3 +2759,19 @@ Statistics of {}	Statistik {}
 The query was cancelled.	Query dibatalkan.
 Hide the AI assistant	Sembunyikan asisten AI
 Endpoint: {}	Endpoint: {}
+(Stopped after {} rounds of queries.)	(Berhenti setelah {} putaran query.)
+Exactly one statement per query	Tepat satu pernyataan per query
+Let the assistant run read-only queries (their results are sent to the AI service)	Izinkan asisten menjalankan query read-only (hasilnya dikirim ke layanan AI)
+Only queries can run here ({} is not one); show the statement to the user instead	Hanya query yang bisa dijalankan di sini ({} bukan query); tampilkan pernyataannya ke pengguna
+Ran a query	Menjalankan query
+Run in a new SQL editor	Jalankan di editor SQL baru
+Running a query…	Menjalankan query…
+SELECT … INTO writes; only queries can run here	SELECT … INTO menulis data; hanya query yang bisa dijalankan di sini
+The assistant's session could not be opened	Sesi asisten tidak bisa dibuka
+The query did not run	Query tidak dijalankan
+There is no tool {}	Tidak ada tool {}
+first {} rows	{} baris pertama
+{} does more than read; it cannot run here	{} melakukan lebih dari membaca; tidak bisa dijalankan di sini
+Clear history	Hapus riwayat
+Conversation history	Riwayat percakapan
+No saved conversations	Belum ada percakapan tersimpan

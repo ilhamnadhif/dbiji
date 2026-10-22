@@ -126,6 +126,11 @@ impl AppPaths {
         self.data_dir.join("tasks")
     }
 
+    /// `data/ai/`: the AI assistant's saved conversations.
+    pub fn ai_conversations_dir(&self) -> PathBuf {
+        self.data_dir.join("ai")
+    }
+
     /// `data/vault.bin` (encrypted secret store).
     pub fn vault_file(&self) -> PathBuf {
         self.data_dir.join("vault.bin")

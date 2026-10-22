@@ -19,6 +19,8 @@ use crate::conn::session::SessionHandle;
 use crate::cx::AppContext;
 use crate::sqllang::SqlLanguage;
 use crate::tabs::TabView;
+use crate::tabs::ai_agent::{self, Agent, AgentEvent, ToolStep};
+use crate::tabs::ai_history::{ConversationStore, SavedConversation, title_of};
 use dbiji_ai::prompts;
 use dbiji_ai::{AiClient, AiConfig, AiProviderKind, ChatMessage, ChatRequest, ChatResponse, SchemaContextBuilder, Usage};
 use dbiji_config::settings::{AiProvider, AiSettings};
@@ -49,7 +51,7 @@ const SQL_TAGS: &[&str] = &["sql", "postgresql", "postgres", "pgsql", "plpgsql",
 // ------------------------------------------------------------ quick actions
 
 /// What the user asks the assistant to do.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum QuickAction {
     /// Free conversation.
     Chat,
@@ -394,7 +396,7 @@ fn highlight_job(code: &str, lang: Option<&SqlLanguage>, theme: &EditorTheme, fo
 // -------------------------------------------------------------- the chat
 
 /// State of one answer.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TurnState {
     /// Reading the plan / definition / sample rows from the database.
     Preparing,
@@ -407,8 +409,8 @@ pub enum TurnState {
     Refused(String),
 }
 
-/// One question and its answer.
-#[derive(Debug, Clone)]
+/// One question and its answer (saved with the conversation).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Turn {
     pub action: QuickAction,
     /// What the chat shows as the question.
@@ -421,13 +423,35 @@ pub struct Turn {
     pub usage: Option<Usage>,
     pub truncated: bool,
     pub fallback_from: Option<String>,
-    /// Parsed `answer`, keyed by its length (answers only grow while streaming).
-    segments: Option<(usize, Vec<AnswerSegment>)>,
+    /// Queries the assistant ran, each after `answer[..offset]`.
+    pub steps: Vec<(usize, ToolStep)>,
+    /// The query running now.
+    #[serde(skip)]
+    pub running: Option<String>,
+    /// Parsed `answer` in pieces split at the steps, keyed by its length
+    /// and the number of steps (both only grow while streaming).
+    #[serde(skip)]
+    segments: Option<((usize, usize), Vec<Vec<AnswerSegment>>)>,
 }
 
 impl Turn {
     fn new(action: QuickAction, shown: String) -> Turn {
-        Turn { action, shown, message: None, answer: String::new(), state: TurnState::Preparing, model: None, usage: None, truncated: false, fallback_from: None, segments: None }
+        Turn { action, shown, message: None, answer: String::new(), state: TurnState::Preparing, model: None, usage: None, truncated: false, fallback_from: None, steps: Vec::new(), running: None, segments: None }
+    }
+
+    fn apply(&mut self, ev: Event) {
+        match ev {
+            Event::Prepared(m) => {
+                self.message = Some(m);
+                self.state = TurnState::Streaming;
+            }
+            Event::Delta(d) | Event::Agent(AgentEvent::Text(d)) => self.answer.push_str(&d),
+            Event::Agent(AgentEvent::Running(sql)) => self.running = Some(sql),
+            Event::Agent(AgentEvent::Step(step)) => {
+                self.running = None;
+                self.steps.push((self.answer.len(), step));
+            }
+        }
     }
 
     /// Part of the conversation sent with later questions.
@@ -435,10 +459,23 @@ impl Turn {
         self.message.is_some() && matches!(self.state, TurnState::Done | TurnState::Stopped) && !self.answer.trim().is_empty()
     }
 
-    fn segments(&mut self) -> &[AnswerSegment] {
-        let len = self.answer.len();
-        if self.segments.as_ref().is_none_or(|(l, _)| *l != len) {
-            self.segments = Some((len, answer_segments(&self.answer)));
+    /// The answer's segments before the first step, between the steps and
+    /// after the last.
+    fn parts(&mut self) -> &[Vec<AnswerSegment>] {
+        let key = (self.answer.len(), self.steps.len());
+        if self.segments.as_ref().is_none_or(|(k, _)| *k != key) {
+            let mut parts = Vec::with_capacity(self.steps.len() + 1);
+            let mut from = 0;
+            for (at, _) in &self.steps {
+                let mut at = (*at).clamp(from, self.answer.len());
+                while !self.answer.is_char_boundary(at) {
+                    at += 1;
+                }
+                parts.push(answer_segments(&self.answer[from..at]));
+                from = at;
+            }
+            parts.push(answer_segments(&self.answer[from..]));
+            self.segments = Some((key, parts));
         }
         &self.segments.as_ref().expect("just set").1
     }
@@ -447,6 +484,7 @@ impl Turn {
 enum Event {
     Prepared(ChatMessage),
     Delta(String),
+    Agent(AgentEvent),
 }
 
 struct Pending {
@@ -461,6 +499,16 @@ enum Prep {
     None,
     Plan { session: SessionHandle, sql: String },
     Describe { session: SessionHandle, dialect: Arc<dyn Dialect>, object: ObjectRef, sample: bool },
+}
+
+/// `sql` as the text of a new editor: ended with `;` and a new line.
+fn editor_text(sql: &str) -> String {
+    let mut text = sql.trim_end().to_string();
+    if !text.ends_with(';') {
+        text.push(';');
+    }
+    text.push('\n');
+    text
 }
 
 fn short_value(s: &str) -> String {
@@ -532,6 +580,12 @@ pub struct AiAssistantTab {
     dedupe: bool,
     lang: Option<(DbKind, SqlLanguage)>,
     focus_input: bool,
+    /// Id the conversation is saved under.
+    conversation: String,
+    /// Saved conversations, read when the history opens.
+    saved: Option<Vec<SavedConversation>>,
+    /// An answer finished since the conversation was saved.
+    unsaved: bool,
 }
 
 impl AiAssistantTab {
@@ -556,6 +610,9 @@ impl AiAssistantTab {
             dedupe: true,
             lang: None,
             focus_input: true,
+            conversation: uuid::Uuid::new_v4().to_string(),
+            saved: None,
+            unsaved: false,
         }
     }
 
@@ -641,12 +698,48 @@ impl AiAssistantTab {
         self.pending.is_some()
     }
 
-    /// Start a new conversation.
+    /// Start a new conversation (the current one stays in the history).
     pub fn reset(&mut self) {
         self.stop();
         self.pending = None;
         self.turns.clear();
         self.notice = None;
+        self.conversation = uuid::Uuid::new_v4().to_string();
+    }
+
+    fn store(cx: &AppContext) -> ConversationStore {
+        ConversationStore::new(cx.services.paths.ai_conversations_dir())
+    }
+
+    /// Save the conversation's finished turns.
+    fn save(&mut self, cx: &AppContext) {
+        let turns: Vec<Turn> = self.turns.iter().filter(|t| !matches!(t.state, TurnState::Preparing | TurnState::Streaming)).cloned().collect();
+        let Some(first) = turns.first() else { return };
+        let c = SavedConversation {
+            id: self.conversation.clone(),
+            title: title_of(&first.shown),
+            connection: self.conn.clone(),
+            schema: self.schema.clone(),
+            updated: chrono::Utc::now().timestamp(),
+            turns,
+        };
+        if let Err(e) = Self::store(cx).save(&c) {
+            tracing::warn!("cannot save the AI conversation: {e}");
+        }
+        self.saved = None;
+    }
+
+    /// Continue the saved conversation `c`.
+    pub fn open_saved(&mut self, c: SavedConversation, cx: &AppContext) {
+        self.reset();
+        self.conversation = c.id;
+        self.turns = c.turns;
+        if let Some(conn) = c.connection.filter(|id| cx.conns.config(id).is_some()) {
+            self.conn = Some(conn);
+            self.schema = c.schema;
+            self.object = None;
+            self.lang = None;
+        }
     }
 
     pub fn stop(&mut self) {
@@ -714,6 +807,14 @@ impl AiAssistantTab {
         let locale = dbiji_core::i18n::locale();
         let include_schema = ai.include_schema_context;
         let preparing = !matches!(prep, Prep::None);
+        let mut agent = match live {
+            Some(l) if ai.agent_queries => {
+                let schema = self.schema.clone().unwrap_or_default();
+                let opener = l.open_session_future(format!("{} ({})", l.config.name, tr("AI assistant")), schema.database);
+                Some(Agent::new(l.kind(), l.main.dialect().syntax().clone(), schema.schema, Box::pin(opener)))
+            }
+            _ => None,
+        };
         let mut turn = Turn::new(action, shown_text(action, &input, object.as_ref()));
         turn.state = if preparing { TurnState::Preparing } else { TurnState::Streaming };
         let (tx, rx) = mpsc::channel();
@@ -730,17 +831,21 @@ impl AiAssistantTab {
             let req = build_request(&ctx, &history, message.clone(), &question);
             let _ = tx.send(Event::Prepared(message));
             repaint.request();
-            let rp = repaint.clone();
-            client
-                .chat_stream(
-                    req,
-                    move |d| {
-                        let _ = tx.send(Event::Delta(d.to_string()));
-                        rp.request();
-                    },
-                    token,
-                )
-                .await
+            let (client_ref, tx_ref, rp_ref, token_ref) = (&client, &tx, &repaint, &token);
+            let stream = move |req| -> std::pin::Pin<Box<dyn std::future::Future<Output = DbResult<ChatResponse>> + Send + '_>> {
+                let (tx, rp) = (tx_ref.clone(), rp_ref.clone());
+                let on_delta = move |d: &str| {
+                    let _ = tx.send(Event::Delta(d.to_string()));
+                    rp.request();
+                };
+                Box::pin(client_ref.chat_stream(req, on_delta, token_ref.clone()))
+            };
+            let Some(agent) = &mut agent else { return stream(req).await };
+            let on_event = |e| {
+                let _ = tx.send(Event::Agent(e));
+                repaint.request();
+            };
+            ai_agent::converse(req, agent, &token, stream, on_event).await
         });
         self.turns.push(turn);
         self.pending = Some(Pending { turn: self.turns.len() - 1, job, rx, cancel });
@@ -750,29 +855,22 @@ impl AiAssistantTab {
         }
     }
 
-    fn poll(&mut self) {
-        let Some(p) = &mut self.pending else { return };
+    /// Take what the request sent; true when its answer finished.
+    fn poll(&mut self) -> bool {
+        let Some(p) = &mut self.pending else { return false };
         let Some(turn) = self.turns.get_mut(p.turn) else {
             self.pending = None;
-            return;
+            return false;
         };
         while let Ok(ev) = p.rx.try_recv() {
-            match ev {
-                Event::Prepared(m) => {
-                    turn.message = Some(m);
-                    turn.state = TurnState::Streaming;
-                }
-                Event::Delta(d) => turn.answer.push_str(&d),
-            }
+            turn.apply(ev);
         }
-        let Some(result) = p.job.poll() else { return };
+        let Some(result) = p.job.poll() else { return false };
         // Deltas sent before the result arrived.
         while let Ok(ev) = p.rx.try_recv() {
-            match ev {
-                Event::Prepared(m) => turn.message = Some(m),
-                Event::Delta(d) => turn.answer.push_str(&d),
-            }
+            turn.apply(ev);
         }
+        turn.running = None;
         match result {
             Ok(r) => {
                 turn.answer = r.text;
@@ -795,6 +893,7 @@ impl AiAssistantTab {
             }
         }
         self.pending = None;
+        true
     }
 
     /// The SQL blocks of the answer of turn `turn`.
@@ -804,12 +903,7 @@ impl AiAssistantTab {
 
     /// Open SQL in a new editor bound to the assistant's connection and schema.
     pub fn open_in_editor(&self, cx: &mut AppContext, sql: &str) {
-        let mut text = sql.trim_end().to_string();
-        if !text.ends_with(';') {
-            text.push(';');
-        }
-        text.push('\n');
-        cx.push(AppCommand::NewSqlEditor { connection: self.conn.clone(), schema: self.schema.clone(), text: Some(text) });
+        cx.push(AppCommand::NewSqlEditor { connection: self.conn.clone(), schema: self.schema.clone(), text: Some(editor_text(sql)) });
     }
 
     /// Test helper: add a finished exchange without contacting any service.
@@ -820,6 +914,16 @@ impl AiAssistantTab {
         t.answer = answer.to_string();
         t.state = TurnState::Done;
         self.turns.push(t);
+        self.unsaved = true;
+    }
+
+    /// Test helper: a query the assistant ran before the answer of the last turn.
+    #[doc(hidden)]
+    pub fn push_step(&mut self, step: ToolStep) {
+        if let Some(t) = self.turns.last_mut() {
+            t.steps.push((0, step));
+            self.unsaved = true;
+        }
     }
 
     #[doc(hidden)]
@@ -878,9 +982,73 @@ impl AiAssistantTab {
                 if ui.add_enabled(!self.turns.is_empty(), egui::Button::new(dbiji_icons::ic(icon::PLUS))).on_hover_text(tr("New conversation")).clicked() {
                     self.reset();
                 }
+                self.history_button(ui, cx);
                 ui.add(egui::Label::new(RichText::new(cx.settings.ai.model.clone()).weak().small()).truncate());
             });
         });
+    }
+
+    /// The saved conversations: one opens with a click, the trash deletes it.
+    fn history_button(&mut self, ui: &mut Ui, cx: &mut AppContext) {
+        let resp = ui.button(dbiji_icons::ic(icon::CLOCK_COUNTER_CLOCKWISE)).on_hover_text(tr("Conversation history"));
+        if resp.clicked() || self.saved.is_none() && egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&resp)) {
+            self.saved = Some(Self::store(cx).list());
+        }
+        let mut open: Option<SavedConversation> = None;
+        let mut delete: Option<String> = None;
+        let mut clear = false;
+        egui::Popup::from_toggle_button_response(&resp).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
+            ui.set_width(340.0);
+            let saved = self.saved.as_deref().unwrap_or_default();
+            if saved.is_empty() {
+                ui.weak(tr("No saved conversations"));
+                return;
+            }
+            egui::ScrollArea::vertical().max_height(380.0).show(ui, |ui| {
+                for c in saved {
+                    let when = chrono::DateTime::from_timestamp(c.updated, 0).map(|t| t.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M").to_string()).unwrap_or_default();
+                    let conn = c.connection.as_deref().and_then(|id| cx.conns.config(id)).map(|c| c.name.clone()).unwrap_or_default();
+                    let detail = [conn, when].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ");
+                    ui.horizontal(|ui| {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.add(egui::Button::new(dbiji_icons::ic(icon::TRASH)).frame_when_inactive(false)).on_hover_text(tr("Delete")).clicked() {
+                                delete = Some(c.id.clone());
+                            }
+                            ui.vertical(|ui| {
+                                let title = egui::Button::selectable(c.id == self.conversation, c.title.as_str()).wrap_mode(egui::TextWrapMode::Truncate);
+                                if ui.add(title).on_hover_text(c.title.as_str()).clicked() {
+                                    open = Some(c.clone());
+                                }
+                                ui.add(egui::Label::new(RichText::new(detail).small().weak()).truncate());
+                            });
+                        });
+                    });
+                    ui.add_space(2.0);
+                }
+            });
+            ui.separator();
+            if ui.button(format!("{}  {}", icon::BROOM, tr("Clear history"))).clicked() {
+                clear = true;
+            }
+        });
+        let store = Self::store(cx);
+        let done = if clear {
+            store.clear()
+        } else if let Some(id) = &delete {
+            store.delete(id)
+        } else {
+            Ok(())
+        };
+        if let Err(e) = done {
+            self.notice = Some(e.to_string());
+        }
+        if clear || delete.is_some() {
+            self.saved = Some(store.list());
+        }
+        if let Some(c) = open {
+            egui::Popup::close_id(ui.ctx(), egui::Popup::default_response_id(&resp));
+            self.open_saved(c, cx);
+        }
     }
 
     /// What is sent besides the question.
@@ -960,6 +1128,9 @@ impl AiAssistantTab {
                     lang_tag.to_string()
                 });
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if sql && self.conn.is_some() && ui.small_button((dbiji_icons::ic(icon::PLAY), tr("Run"))).on_hover_text(tr("Run in a new SQL editor")).clicked() {
+                        cx.push(AppCommand::RunSqlInEditor { connection: self.conn.clone(), schema: self.schema.clone(), text: editor_text(code) });
+                    }
                     if sql && ui.small_button((dbiji_icons::ic(icon::FILE_SQL), tr("Open in SQL editor"))).clicked() {
                         self.open_in_editor(cx, code);
                     }
@@ -971,6 +1142,41 @@ impl AiAssistantTab {
             egui::ScrollArea::horizontal().id_salt(("ai_code", id)).auto_shrink([false, true]).show(ui, |ui| {
                 let lang = if sql { self.lang.as_ref().map(|(_, l)| l) } else { None };
                 ui.add(egui::Label::new(highlight_job(code, lang, &theme, font.clone())).selectable(true).extend());
+            });
+        });
+    }
+
+    /// A query the assistant ran: collapsed to one line, opening on its SQL
+    /// and result.
+    fn step_ui(&self, ui: &mut Ui, cx: &mut AppContext, step: &ToolStep, id: (u64, usize, usize)) {
+        let dark = ui.visuals().dark_mode;
+        let title = if step.ok {
+            RichText::new(format!("{} {} · {}", icon::DATABASE, tr("Ran a query"), step.summary))
+        } else {
+            RichText::new(format!("{} {}", icon::WARNING, tr("The query did not run"))).color(crate::theme::warning_color(dark))
+        };
+        egui::CollapsingHeader::new(title).id_salt(("ai_step", id)).show(ui, |ui| {
+            self.code_block(ui, cx, (id.0, id.1, usize::MAX - 1 - id.2, 0), "", &step.sql, true);
+            if !step.ok {
+                crate::widgets::error_box(ui, &step.summary);
+                return;
+            }
+            if step.columns.is_empty() {
+                return;
+            }
+            egui::ScrollArea::both().id_salt(("ai_step_rows", id)).max_height(220.0).auto_shrink([false, true]).show(ui, |ui| {
+                egui::Grid::new(("ai_step_grid", id)).striped(true).spacing([12.0, 2.0]).show(ui, |ui| {
+                    for c in &step.columns {
+                        ui.label(RichText::new(c).strong());
+                    }
+                    ui.end_row();
+                    for r in &step.rows {
+                        for v in r {
+                            ui.add(egui::Label::new(RichText::new(v).monospace()).truncate());
+                        }
+                        ui.end_row();
+                    }
+                });
             });
         });
     }
@@ -1001,6 +1207,10 @@ impl AiAssistantTab {
                     let t = &self.turns[ti];
                     (t.action, t.shown.clone(), t.state.clone(), t.model.clone(), t.usage, t.truncated, t.fallback_from.clone(), t.answer.trim().is_empty())
                 };
+                let (steps, running, after_step) = {
+                    let t = &self.turns[ti];
+                    (t.steps.iter().map(|(_, s)| s.clone()).collect::<Vec<_>>(), t.running.clone(), t.steps.last().is_some_and(|(at, _)| *at >= t.answer.len()))
+                };
                 // question
                 egui::Frame::new().fill(ui.visuals().faint_bg_color).corner_radius(6.0).inner_margin(8.0).show(ui, |ui| {
                     ui.set_width(ui.available_width());
@@ -1028,7 +1238,7 @@ impl AiAssistantTab {
                             ui.weak(tr("Reading from the database…"));
                         });
                     }
-                    TurnState::Streaming if answer_empty => {
+                    TurnState::Streaming if answer_empty && steps.is_empty() && running.is_none() => {
                         ui.horizontal(|ui| {
                             ui.spinner();
                             ui.weak(tr("Thinking…"));
@@ -1036,8 +1246,27 @@ impl AiAssistantTab {
                     }
                     _ => {}
                 }
-                let segs = self.turns[ti].segments().to_vec();
-                self.segments_ui(ui, cx, &segs, (self.uid, ti, 1));
+                let parts = self.turns[ti].parts().to_vec();
+                for (pi, segs) in parts.iter().enumerate() {
+                    self.segments_ui(ui, cx, segs, (self.uid, ti, 1 + pi));
+                    if let Some(step) = steps.get(pi) {
+                        self.step_ui(ui, cx, step, (self.uid, ti, pi));
+                    }
+                }
+                if state == TurnState::Streaming {
+                    if let Some(sql) = &running {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.weak(tr("Running a query…"));
+                        });
+                        self.code_block(ui, cx, (self.uid, ti, usize::MAX, 0), "", sql, true);
+                    } else if after_step {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.weak(tr("Thinking…"));
+                        });
+                    }
+                }
                 match &state {
                     TurnState::Stopped => {
                         ui.weak(format!("{} {}", icon::STOP, tr("Stopped.")));
@@ -1205,7 +1434,10 @@ impl TabView for AiAssistantTab {
     }
 
     fn ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
-        self.poll();
+        if self.poll() || self.unsaved {
+            self.unsaved = false;
+            self.save(cx);
+        }
         self.sync_language(cx);
         let status = self.status(cx);
         if status != AiStatus::Ready {

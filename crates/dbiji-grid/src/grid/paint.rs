@@ -1,7 +1,7 @@
 //! Painting of the grid: body cells, row numbers, header, scrollbars, overlays.
 
 use super::GridAction;
-use super::frame::{Geo, GridFrame, PAD};
+use super::frame::{Geo, GridFrame, PAD, fk_button_rect};
 
 /// A fetch running this long offers Cancel.
 pub(crate) const CANCEL_AFTER: std::time::Duration = std::time::Duration::from_secs(1);
@@ -173,6 +173,9 @@ impl GridFrame<'_> {
         let mut lines: Vec<Line> = Vec::new();
         let hover = self.hover_cell;
         let command_down = ui.input(|i| i.modifiers.command);
+        let pointer = hover.and(ui.input(|i| i.pointer.hover_pos()));
+        let fk_icon = |color| painter.layout_no_wrap(egui_phosphor::regular::ARROW_SQUARE_OUT.to_string(), FontId::new(font.size * 0.85, font.family.clone()), color);
+        let (fk_idle, fk_hot) = (fk_icon(theme.weak), fk_icon(theme.link));
         let mut tooltip: Option<(Rect, String)> = None;
         let max_tip = options.max_tooltip_chars;
         let striped = options.striped;
@@ -270,13 +273,8 @@ impl GridFrame<'_> {
                     CellRef::Default => CellLook { text: default_text.into(), color: theme.weak, align: Align::Min, badge: None, suffix: None, checkbox: None },
                     CellRef::Value(v) if v.is_null() => CellLook { text: null_text.into(), color: theme.weak, align: Align::Min, badge: None, suffix: None, checkbox: None },
                     CellRef::Value(v) => {
-                        let color = if deleted {
-                            theme.weak
-                        } else if info.fk {
-                            theme.link
-                        } else {
-                            theme.text
-                        };
+                        // Foreign key values look like others: their button (below) leads on.
+                        let color = if deleted { theme.weak } else { theme.text };
                         match v {
                             Value::Bool(b) if checkbox_style => CellLook { text: "".into(), color, align: Align::Center, badge: None, suffix: None, checkbox: Some(*b) },
                             Value::Bytes(b) if detect_image(b).is_some() => {
@@ -323,6 +321,23 @@ impl GridFrame<'_> {
                         sink.line_segment([m, z], s);
                     }
                     continue;
+                }
+                // A foreign key value has a button at its right that opens the row it references.
+                let mut fk_hover: Option<Rect> = None;
+                if info.fk
+                    && matches!(cell, CellRef::Value(v) if !v.is_null())
+                    && let Some(b) = fk_button_rect(inner)
+                {
+                    text_rect.max.x = b.left() - 2.0;
+                    let hot = pointer.is_some_and(|p| b.contains(p));
+                    if hot {
+                        let bg = Rect::from_center_size(b.center(), vec2(b.width(), (row_h - 4.0).min(b.width() + 2.0)));
+                        sink.rect_filled(bg, CornerRadius::same(3), mix(theme.bg, theme.text, 0.12));
+                        fk_hover = Some(b);
+                    }
+                    let g = if hot { fk_hot.clone() } else { fk_idle.clone() };
+                    let color = if hot { theme.link } else { theme.weak };
+                    sink.galley(b.center() - g.rect.size() / 2.0, g, color);
                 }
                 let placed = place_text(glyphs, &mut sink, &mut batch, &font, &look.text, text_rect, look.align, look.color);
                 let mut elided = placed.elided || look.text.ends_with('¶');
@@ -373,6 +388,11 @@ impl GridFrame<'_> {
                             tooltip = Some((cell_rect, full));
                         }
                     }
+                }
+                if let Some(b) = fk_hover
+                    && let Some(i) = model.foreign_key_for_column(info.col)
+                {
+                    tooltip = Some((b, trf("Open the referenced row in {}", &[&model.foreign_keys()[i].ref_table.display_path()])));
                 }
             }
         });

@@ -431,6 +431,9 @@ impl GridFrame<'_> {
                     let fk = self.model.foreign_key_for_column(col);
                     if mods.command && !mods.shift && fk.is_some() {
                         self.navigate_fk(row, col);
+                    } else if !mods.any() && self.fk_button_at(p).is_some() {
+                        self.state.rt.selection.select_cell(cell);
+                        self.navigate_fk(row, col);
                     } else if mods.shift {
                         self.state.rt.selection.extend_to(cell);
                         self.state.rt.drag = Drag::Cells;
@@ -466,13 +469,33 @@ impl GridFrame<'_> {
         {
             self.start_edit(row, col, None);
         }
-        // FK link cursor.
+        // FK link cursor: Cmd over a foreign key value, or over its button.
         if let Some(c) = self.hover_cell
             && mods.command
             && self.geo.cols.get(c.col).and_then(|&col| self.model.foreign_key_for_column(col)).is_some()
         {
             ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
         }
+        if body.hover_pos().and_then(|p| self.fk_button_at(p)).is_some() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
+    }
+
+    /// The foreign key button under `p`: (display row, column) of its cell, when the value is not NULL.
+    pub(super) fn fk_button_at(&self, p: egui::Pos2) -> Option<(usize, usize)> {
+        let (sx, sy) = (self.state.rt.scroll_x, self.state.rt.scroll_y);
+        let (row, pos) = (self.geo.row_at(p.y, sy, false)?, self.geo.col_at(p.x, sx, false)?);
+        let col = *self.geo.cols.get(pos)?;
+        let button = self.fk_button_rect_of(row, col)?;
+        (button.contains(p) && self.model.cell(row, col).is_some_and(|v| !v.is_null())).then_some((row, col))
+    }
+
+    /// Screen rectangle of the foreign key button of a cell.
+    pub(super) fn fk_button_rect_of(&self, row: usize, col: usize) -> Option<egui::Rect> {
+        self.model.foreign_key_for_column(col)?;
+        let pos = self.pos_of(col)?;
+        let (sx, sy) = (self.state.rt.scroll_x, self.state.rt.scroll_y);
+        super::frame::fk_button_rect(self.geo.cell_rect(row, pos, sx, sy).shrink2(egui::vec2(super::frame::PAD, 0.0)))
     }
 
     /// Emit a NavigateForeignKey action for the FK of `col` in `row`.

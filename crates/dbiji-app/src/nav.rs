@@ -1796,18 +1796,21 @@ const DROP_KEYS: &str = if crate::keys::IS_MAC { "⌘⌫" } else { "Delete" };
 
 /// Context menu for a database object (navigator and object editors).
 /// `in_navigator`: show the navigator's keys next to the items.
+///
+/// Outside the navigator (the object editor's ⋯ menu) the items its pages and
+/// Refresh button already offer are left out: Open, View data, View DDL, ER diagram, Refresh.
 pub fn object_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, obj: &ObjectRef, in_navigator: bool) {
     let c = conn.to_string();
     let keys = |k: &str| if in_navigator { k.to_string() } else { String::new() };
-    if item(ui, icon::ARROW_SQUARE_OUT, tr("Open"), &keys(OPEN_KEYS)).clicked() {
+    if in_navigator && item(ui, icon::ARROW_SQUARE_OUT, tr("Open"), &keys(OPEN_KEYS)).clicked() {
         cx.push(AppCommand::OpenObject { connection: c.clone(), object: obj.clone(), page: ObjectPage::Properties });
         ui.close();
     }
-    if obj.kind.has_data() && ui.button((dbiji_icons::ic(icon::TABLE), tr("View data"))).clicked() {
+    if in_navigator && obj.kind.has_data() && ui.button((dbiji_icons::ic(icon::TABLE), tr("View data"))).clicked() {
         cx.push(AppCommand::OpenObject { connection: c.clone(), object: obj.clone(), page: ObjectPage::Data });
         ui.close();
     }
-    if ui.button((dbiji_icons::ic(icon::CODE), tr("View DDL"))).clicked() {
+    if in_navigator && ui.button((dbiji_icons::ic(icon::CODE), tr("View DDL"))).clicked() {
         cx.push(AppCommand::OpenObject { connection: c.clone(), object: obj.clone(), page: ObjectPage::Ddl });
         ui.close();
     }
@@ -1816,7 +1819,7 @@ pub fn object_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, obj: &ObjectRef
             cx.push(AppCommand::EditTable { connection: c.clone(), table: obj.clone() });
             ui.close();
         }
-        if ui.button((dbiji_icons::ic(icon::GRAPH), tr("ER diagram"))).clicked() {
+        if in_navigator && ui.button((dbiji_icons::ic(icon::GRAPH), tr("ER diagram"))).clicked() {
             cx.push(AppCommand::OpenErDiagram { connection: c.clone(), schema: obj.schema_ref(), tables: vec![obj.name.clone()] });
             ui.close();
         }
@@ -1900,7 +1903,7 @@ pub fn object_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, obj: &ObjectRef
         ui.ctx().copy_text(name);
         ui.close();
     }
-    if item(ui, icon::ARROW_CLOCKWISE, tr("Refresh"), &keys(&crate::keys::label(cx.keymap, crate::keys::Action::Refresh))).clicked() {
+    if in_navigator && item(ui, icon::ARROW_CLOCKWISE, tr("Refresh"), &keys(&crate::keys::label(cx.keymap, crate::keys::Action::Refresh))).clicked() {
         cx.push(AppCommand::RefreshMetadata { connection: c.clone(), object: Some(obj.clone()), schema: None });
         ui.close();
     }

@@ -374,6 +374,10 @@ pub trait EmbeddedView {
     fn transaction_session(&self) -> Option<crate::conn::session::SessionHandle> {
         None
     }
+    /// Controls the view puts in its host's header row (laid out right to left).
+    fn header_ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
+        let _ = (ui, cx);
+    }
 }
 
 /// Data editor for a table or view (filled in by the results module).

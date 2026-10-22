@@ -407,3 +407,4 @@ Loaded rows	Baris dimuat
 Stop the query	Hentikan query
 Rows, NULLs, distinct values, the smallest and the largest, over all rows of the query	Baris, NULL, nilai unik, terkecil dan terbesar, dari semua baris query
 Statistics of the whole column	Statistik seluruh kolom
+Open the referenced row in {}	Buka baris yang dirujuk di {}

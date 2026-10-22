@@ -81,11 +81,18 @@ fn has(h: &H, label: &str) -> bool {
     h.query_all_by_label_contains(label).next().is_some()
 }
 
-/// Click the first widget whose label contains `label`.
+/// Whether `n` is a button of the main toolbar (its icon and short label).
+fn on_toolbar(n: &egui_kittest::Node<'_>) -> bool {
+    let label = n.accesskit_node().label().unwrap_or_default();
+    n.rect().top() < 60.0 && Action::ALL.iter().any(|&a| label == format!("{} {}", dbiji_app::keys::action_icon(a), dbiji_app::keys::toolbar_label(a)))
+}
+
+/// Click the first widget whose label contains `label`, one outside the
+/// main toolbar when there is one (its labels repeat menu items: Export, Connection …).
 fn click(h: &mut H, label: &str) {
     pause(h);
     {
-        let Some(n) = h.query_all_by_label_contains(label).next() else {
+        let Some(n) = h.query_all_by_label_contains(label).find(|n| !on_toolbar(n)).or_else(|| h.query_all_by_label_contains(label).next()) else {
             panic!("no widget labelled {label:?}; labels: {:?}", labels(h));
         };
         n.click();
@@ -624,7 +631,7 @@ fn settings_grid_menu_and_editor_helpers() {
     ] {
         pause(&mut h);
         let key = format!(" {section}");
-        let Some(n) = h.query_all_by_label_contains(&key).next() else {
+        let Some(n) = h.query_all_by_label_contains(&key).find(|n| !on_toolbar(n)) else {
             panic!("settings section {section:?}; labels: {:?}", labels(&h));
         };
         n.click();
@@ -1440,14 +1447,15 @@ fn workspace_from_dbeaver() {
 
     // Main toolbar: SQL editor actions are disabled without an editor.
     let toolbar_enabled = |h: &H, icon: &str| -> bool {
-        let n = h.query_all_by_label(icon).find(|n| n.rect().top() < 70.0).unwrap_or_else(|| panic!("toolbar {icon:?}: {:?}", labels(h)));
+        // Icon and short label, or the icon alone.
+        let n = h.query_all_by_label_contains(icon).find(|n| n.rect().top() < 70.0).unwrap_or_else(|| panic!("toolbar {icon:?}: {:?}", labels(h)));
         !n.accesskit_node().is_disabled()
     };
     // No tab is open: the start page fills the editor area.
     assert_eq!(h.state().dock.iter_all_tabs().count(), 0);
     assert!(has(&h, "Create sample database"));
     // The default toolbar has global actions only (run, commit … are in the editor).
-    assert!(h.query_all_by_label(egui_phosphor::regular::PLAY).all(|n| n.rect().top() >= 70.0), "no Run in the main toolbar by default");
+    assert!(h.query_all_by_label_contains(egui_phosphor::regular::PLAY).all(|n| n.rect().top() >= 70.0), "no Run in the main toolbar by default");
     // A customised toolbar with editor actions: disabled without an editor.
     h.state_mut().settings.toolbar.items = ["sql.new_editor", "sql.execute_statement", "tx.commit"].map(String::from).to_vec();
     frames(&mut h, 2);

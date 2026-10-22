@@ -1440,30 +1440,61 @@ impl DbijiApp {
         Ok(())
     }
 
-    /// Main toolbar (customisable in the settings).
+    /// Main toolbar (customisable in the settings): its groups' buttons with
+    /// short labels, as the grid's toolbar; when the window is too narrow for
+    /// them all, the last ones show their icon only.
     fn toolbar(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 2.0;
+            ui.spacing_mut().item_spacing.x = 4.0;
             let hidden = &self.settings.toolbar.hidden;
-            for id in &self.settings.toolbar.items {
-                if hidden.contains(id) {
-                    continue;
+            let items: Vec<Option<crate::keys::Action>> = self
+                .settings
+                .toolbar
+                .items
+                .iter()
+                .filter(|id| !hidden.contains(id))
+                .filter_map(|id| if id == "|" { Some(None) } else { crate::keys::Action::from_id(id).map(Some) })
+                .collect();
+            // Labels from the first button on, as many as fit next to the connection and schema.
+            let font = egui::TextStyle::Button.resolve(ui.style());
+            let pad = 2.0 * ui.spacing().button_padding.x + ui.spacing().item_spacing.x;
+            let icon_w = 16.0 + pad;
+            let label_w = |a: crate::keys::Action| {
+                ui.fonts_mut(|f| f.layout_no_wrap(crate::keys::toolbar_label(a).to_string(), font.clone(), egui::Color32::WHITE).size().x) + ui.spacing().icon_spacing + 4.0
+            };
+            let actions: Vec<crate::keys::Action> = items.iter().flatten().copied().collect();
+            let widths: Vec<f32> = actions.iter().map(|&a| label_w(a)).collect();
+            let separators = items.iter().filter(|i| i.is_none()).count() as f32 * 8.0;
+            let budget = ui.available_width() - 300.0 - separators - icon_w * actions.len() as f32;
+            let mut labelled = 0;
+            let mut used = 0.0;
+            for w in &widths {
+                if used + w > budget {
+                    break;
                 }
-                if id == "|" {
+                used += w;
+                labelled += 1;
+            }
+            let mut index = 0;
+            for item in items {
+                let Some(action) = item else {
                     ui.separator();
                     continue;
-                }
-                let Some(action) = crate::keys::Action::from_id(id) else { continue };
+                };
+                let with_label = index < labelled;
+                index += 1;
                 let keys = crate::keys::label(&self.keymap, action);
-                let tip = if keys.is_empty() { crate::keys::action_label(action).to_string() } else { format!("{}  ({keys})", crate::keys::action_label(action)) };
+                let name = crate::keys::action_label(action);
+                let tip = if keys.is_empty() { name.to_string() } else { format!("{name}  ({keys})") };
                 let state = self.toolbar_action_state(action);
-                let mut text = RichText::new(crate::keys::action_icon(action)).size(16.0);
+                let mut icon = RichText::new(crate::keys::action_icon(action)).size(16.0);
                 if let Some(c) = crate::keys::action_color(action, ui.visuals().dark_mode).filter(|_| state.is_ok()) {
-                    text = text.color(c);
+                    icon = icon.color(c);
                 }
                 // The AI assistant's button shows whether its panel is open.
                 let open = action == crate::keys::Action::AiAssistant && self.ai_open;
-                let b = egui::Button::new(text).frame(open).selected(open).min_size(egui::vec2(26.0, 22.0));
+                let b = if with_label { egui::Button::new((icon, crate::keys::toolbar_label(action))) } else { egui::Button::new(icon) };
+                let b = b.selected(open).min_size(egui::vec2(26.0, 22.0));
                 let resp = ui.add_enabled(state.is_ok(), b).on_hover_text(&tip);
                 let resp = match state {
                     Err(why) => resp.on_disabled_hover_text(format!("{tip}\n{why}")),

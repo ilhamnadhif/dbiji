@@ -218,6 +218,32 @@ fn foreign_key_navigation_with_command_click() {
 }
 
 #[test]
+fn foreign_key_button_opens_the_referenced_row() {
+    let mut m = editable_model(5);
+    m.set_foreign_keys(vec![ForeignKeyLink {
+        name: None,
+        columns: vec![3],
+        ref_table: dbiji_core::ObjectRef::table(Some("app".into()), "categories"),
+        ref_columns: vec!["id".into()],
+    }]);
+    let mut h = GridHarness::new(m);
+    h.frame(vec![]);
+    // The button at the right of the value: a plain click follows the key.
+    let c = h.cell_center(2, 3);
+    let w = h.state.column_width(h.state.visible_columns()[3]);
+    let p = egui::pos2(c.x + w / 2.0 - super::frame::PAD - super::frame::FK_BUTTON / 2.0, c.y);
+    h.frame(vec![Event::PointerMoved(p)]);
+    h.frame(vec![crate::test_support::press(p, PointerButton::Primary, Modifiers::NONE)]);
+    let found = h.actions.iter().any(|a| matches!(a, GridAction::NavigateForeignKey { values, .. } if values == &vec![Value::Int(3)]));
+    assert!(found, "{:?}", h.actions);
+    h.frame(vec![crate::test_support::release(p, PointerButton::Primary, Modifiers::NONE)]);
+    // On the value itself it only selects.
+    h.click_at(egui::pos2(c.x - w / 4.0, c.y), PointerButton::Primary, Modifiers::NONE);
+    assert!(!h.actions.iter().any(|a| matches!(a, GridAction::NavigateForeignKey { .. })));
+    assert_eq!(h.state.active_cell(), Some((2, 3)));
+}
+
+#[test]
 fn dictionary_column_opens_dropdown() {
     let mut m = editable_model(5);
     let mut d = std::collections::HashMap::new();

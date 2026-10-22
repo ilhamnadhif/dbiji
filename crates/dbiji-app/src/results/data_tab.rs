@@ -157,6 +157,19 @@ impl EmbeddedView for TableDataView {
         self.panel.as_ref().map(|p| p.src.session.clone())
     }
 
+    /// Back / forward of foreign key navigation, and the table shown when it is another one.
+    fn header_ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
+        let Some(p) = self.panel.as_mut() else { return };
+        p.history_in_header = true;
+        if !p.has_history() {
+            return;
+        }
+        p.history_ui(ui, cx);
+        if let Some(t) = p.table.as_ref().filter(|t| **t != self.table) {
+            ui.label(egui::RichText::new(format!("{} {}", crate::nav::kind_icon(t.kind), t.display_path())).strong());
+        }
+    }
+
     fn on_action(&mut self, action: crate::keys::Action, cx: &mut AppContext) -> bool {
         use crate::keys::Action as A;
         let Some(p) = self.panel.as_mut() else { return false };

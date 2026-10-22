@@ -40,6 +40,8 @@ pub struct ObjectEditorTab {
     selected_row: Option<usize>,
     /// Data page, created on first use.
     pub data: Option<Box<dyn crate::tabs::EmbeddedView>>,
+    /// Diagram page (the table and its related ones), created on first use.
+    diagram: Option<crate::tabs::er::ErTab>,
     /// Virtual model of the table being edited (virtual key, dictionary, virtual columns).
     vmodel: Option<dbiji_config::VirtualTable>,
     new_vcol: (String, String),
@@ -61,6 +63,7 @@ impl ObjectEditorTab {
             stats: Loadable::NotLoaded,
             selected_row: None,
             data: None,
+            diagram: None,
             vmodel: None,
             new_vcol: (String::new(), String::new()),
             invalidations: None,
@@ -527,11 +530,19 @@ impl TabView for ObjectEditorTab {
                 ui.selectable_value(&mut self.page, p, label);
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button(dbiji_icons::ic(icon::ARROW_CLOCKWISE)).on_hover_text(tr("Refresh")).clicked() {
+                // The data page has the grid's own Refresh.
+                if self.page != ObjectPage::Data && ui.button(dbiji_icons::ic(icon::ARROW_CLOCKWISE)).on_hover_text(tr("Refresh")).clicked() {
                     self.refresh();
+                    if let (ObjectPage::Diagram, Some(d)) = (self.page, self.diagram.as_mut()) {
+                        d.reload(cx);
+                    }
                     cx.push(AppCommand::RefreshMetadata { connection: self.conn.clone(), object: Some(self.obj.clone()), schema: None });
                 }
-                ui.menu_button(icon::DOTS_THREE, |ui| crate::nav::object_menu(ui, cx, &self.conn.clone(), &self.obj.clone(), false));
+                ui.menu_button(icon::DOTS_THREE, |ui| crate::nav::object_menu(ui, cx, &self.conn.clone(), &self.obj.clone(), false)).response.on_hover_text(tr("More actions"));
+                // Back / forward of foreign key navigation on the data page.
+                if let (ObjectPage::Data, Some(d)) = (self.page, self.data.as_mut()) {
+                    d.header_ui(ui, cx);
+                }
             });
         });
         ui.separator();
@@ -552,8 +563,8 @@ impl TabView for ObjectEditorTab {
             ObjectPage::Dependencies => self.deps_page(ui, cx),
             ObjectPage::Statistics => self.stats_page(ui, cx),
             ObjectPage::Diagram => {
-                cx.push(AppCommand::OpenErDiagram { connection: self.conn.clone(), schema: self.obj.schema_ref(), tables: vec![self.obj.name.clone()] });
-                self.page = ObjectPage::Properties;
+                let diagram = self.diagram.get_or_insert_with(|| crate::tabs::er::ErTab::embedded(self.conn.clone(), self.obj.schema_ref(), self.obj.name.clone()));
+                diagram.ui(ui, cx);
             }
         }
     }

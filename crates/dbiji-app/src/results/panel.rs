@@ -88,6 +88,8 @@ pub struct ResultPanel {
     spatial: Option<SpatialView>,
     back: Vec<Location>,
     forward: Vec<Location>,
+    /// Back / forward are in the host's header (the object editor's), not in a row of their own.
+    pub history_in_header: bool,
     /// Last status message (`true` = error).
     pub status: Option<(String, bool)>,
     fetch_op: Option<u64>,
@@ -197,6 +199,7 @@ impl ResultPanel {
             spatial: None,
             back: Vec::new(),
             forward: Vec::new(),
+            history_in_header: false,
             status: None,
             fetch_op: None,
             executed: Instant::now(),
@@ -567,6 +570,45 @@ impl ResultPanel {
         let sql = self.current_sql(d.as_ref());
         self.src.requery(cx.backend, sql, Self::fetch_size(cx));
         self.executed = Instant::now();
+    }
+
+    /// Foreign key navigation went somewhere: back / forward apply.
+    pub fn has_history(&self) -> bool {
+        self.table.is_some() && (!self.back.is_empty() || !self.forward.is_empty())
+    }
+
+    /// Back and forward buttons of foreign key navigation, in the layout's direction.
+    pub fn history_ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
+        // Not with pending edits: moving to another table would discard them.
+        let free = !self.model.has_changes();
+        let tip = |verb: &str, to: Option<&Location>| match to {
+            Some(l) => format!("{verb}: {}", l.table.display_path()),
+            None => verb.to_string(),
+        };
+        let back_tip = tip(tr("Back"), self.back.last());
+        let forward_tip = tip(tr("Forward"), self.forward.last());
+        let mut go_back = false;
+        let mut go_forward = false;
+        let mut back =
+            |ui: &mut Ui| go_back = ui.add_enabled(free && !self.back.is_empty(), egui::Button::new(dbiji_icons::ic(icon::ARROW_LEFT))).on_hover_text(&back_tip).clicked();
+        let mut forward = |ui: &mut Ui| {
+            go_forward = ui.add_enabled(free && !self.forward.is_empty(), egui::Button::new(dbiji_icons::ic(icon::ARROW_RIGHT))).on_hover_text(&forward_tip).clicked()
+        };
+        if ui.layout().prefer_right_to_left() {
+            forward(ui);
+            back(ui);
+        } else {
+            back(ui);
+            forward(ui);
+        }
+        let here = self.table.as_ref().map(|t| Location { table: t.clone(), where_clause: self.where_clause.clone() });
+        if go_back && let Some(loc) = self.back.pop() {
+            self.forward.extend(here);
+            self.navigate(cx, loc, false);
+        } else if go_forward && let Some(loc) = self.forward.pop() {
+            self.back.extend(here);
+            self.navigate(cx, loc, false);
+        }
     }
 
     /// Show another table (FK navigation inside a table data view).
@@ -1152,26 +1194,9 @@ impl ResultPanel {
         }
         self.poll(cx);
         self.resolve_editability(cx);
-        if self.table.is_some() && (!self.back.is_empty() || !self.forward.is_empty()) {
+        if !self.history_in_header && self.has_history() {
             ui.horizontal(|ui| {
-                // Not with pending edits: moving to another table would discard them.
-                let free = !self.model.has_changes();
-                if ui.add_enabled(free && !self.back.is_empty(), egui::Button::new(dbiji_icons::ic(icon::ARROW_LEFT))).on_hover_text(tr("Back")).clicked()
-                    && let Some(loc) = self.back.pop()
-                {
-                    if let Some(t) = &self.table {
-                        self.forward.push(Location { table: t.clone(), where_clause: self.where_clause.clone() });
-                    }
-                    self.navigate(cx, loc, false);
-                }
-                if ui.add_enabled(free && !self.forward.is_empty(), egui::Button::new(dbiji_icons::ic(icon::ARROW_RIGHT))).on_hover_text(tr("Forward")).clicked()
-                    && let Some(loc) = self.forward.pop()
-                {
-                    if let Some(t) = &self.table {
-                        self.back.push(Location { table: t.clone(), where_clause: self.where_clause.clone() });
-                    }
-                    self.navigate(cx, loc, false);
-                }
+                self.history_ui(ui, cx);
                 if let Some(t) = &self.table {
                     ui.strong(t.display_path());
                 }

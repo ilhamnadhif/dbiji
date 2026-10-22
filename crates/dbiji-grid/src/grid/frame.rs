@@ -13,6 +13,13 @@ use std::ops::Range;
 pub(super) const BAR: f32 = 12.0;
 /// Horizontal cell padding.
 pub(super) const PAD: f32 = 5.0;
+/// Width of the button at the right of a foreign key value that opens the row it references.
+pub(super) const FK_BUTTON: f32 = 16.0;
+
+/// The foreign key button of a cell whose padded rectangle is `inner` (none in narrow cells).
+pub(super) fn fk_button_rect(inner: Rect) -> Option<Rect> {
+    (inner.width() >= FK_BUTTON + 24.0).then(|| Rect::from_min_max(pos2(inner.right() - FK_BUTTON, inner.top()), inner.max))
+}
 
 /// Geometry of one frame.
 #[derive(Debug, Clone)]

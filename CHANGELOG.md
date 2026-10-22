@@ -3,6 +3,15 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.35 — 2026-10-23
+
+### Changed
+- The main toolbar's buttons have labels, as the grid's toolbar: Connection, SQL editor, AI, Export, Import, ER diagram, Sessions, History, Transactions, Tasks, Commands, in their groups. A window too narrow for them all shows the last ones as icons (their name and shortcut on hover).
+- A table's Diagram page shows the ER diagram in the table's tab, with the tables it references and those referencing it, instead of opening another tab; the page's Refresh reads the schema again.
+- The ⋯ menu of a table's tab leaves out what its pages and buttons already do (Open, View data, View DDL, ER diagram, Refresh); the data page has the grid's Refresh only.
+- Foreign key values look like the other values instead of links: a small button at their right opens the row they reference (⌘-click on the value still does), in the grid and in the record view.
+- Back and forward of foreign key navigation are in the table tab's header, next to ⋯, with the table shown, instead of a row of their own; the filter shows the condition.
+
 ## 0.3.34 — 2026-10-22
 
 ### Added

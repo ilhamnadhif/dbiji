@@ -28,6 +28,9 @@ pub struct ErTab {
     refresh_pending: bool,
     /// Tables were added to or removed from the diagram: a refresh keeps that choice.
     curated: bool,
+    /// The Diagram page of a table: the table and its related ones, without the
+    /// name / Save / Refresh row (the page's header refreshes it).
+    embedded: bool,
 }
 
 impl ErTab {
@@ -49,7 +52,23 @@ impl ErTab {
             snapshot: None,
             refresh_pending: false,
             curated: false,
+            embedded: false,
         }
+    }
+
+    /// Diagram of `table` and the tables related to it, for the table's Diagram page.
+    pub fn embedded(conn: String, schema: SchemaRef, table: String) -> Self {
+        let mut t = Self::new(conn, schema, vec![table]);
+        t.embedded = true;
+        t
+    }
+
+    /// Read the schema again (the Diagram page's Refresh).
+    pub fn reload(&mut self, cx: &mut AppContext) {
+        if let Some(live) = cx.conns.live_mut(&self.conn) {
+            live.meta.clear_schema(&self.schema);
+        }
+        self.refresh_pending = true;
     }
 
     /// Open a diagram saved in the project.
@@ -88,7 +107,8 @@ impl ErTab {
         if self.tables.is_empty() {
             ErModel::from_snapshot(snap, None)
         } else {
-            let keys: Vec<String> = self.tables.iter().map(|t| dbiji_visual::er::table_key(snap.schema.as_deref(), t)).collect();
+            let names: Vec<String> = if self.embedded { self.tables.iter().flat_map(|t| related(snap, t)).collect() } else { self.tables.clone() };
+            let keys: Vec<String> = names.iter().map(|t| dbiji_visual::er::table_key(snap.schema.as_deref(), t)).collect();
             ErModel::from_snapshot(snap, Some(&keys))
         }
     }
@@ -170,20 +190,8 @@ impl ErTab {
             }
             ErEvent::AddRelatedTables(k) => {
                 let (Some(snap), Some(d)) = (self.snapshot.clone(), self.diagram.as_mut()) else { return };
-                let obj_name = k.rsplit('.').next().unwrap_or(&k).to_string();
-                let mut related: Vec<String> = Vec::new();
-                for t in &snap.tables {
-                    if t.name == obj_name {
-                        related.extend(t.foreign_keys.iter().map(|f| f.ref_table.clone()));
-                        related.extend(t.referenced_by.iter().map(|f| f.table.clone()));
-                    } else if t.foreign_keys.iter().any(|f| f.ref_table == obj_name) {
-                        related.push(t.name.clone());
-                    }
-                }
-                related.push(obj_name);
-                related.sort();
-                related.dedup();
-                let keys: Vec<String> = related.iter().map(|n| dbiji_visual::er::table_key(snap.schema.as_deref(), n)).collect();
+                let obj_name = k.rsplit('.').next().unwrap_or(&k);
+                let keys: Vec<String> = related(&snap, obj_name).iter().map(|n| dbiji_visual::er::table_key(snap.schema.as_deref(), n)).collect();
                 let model = ErModel::from_snapshot(&snap, Some(&keys));
                 let added = d.add_model(model);
                 self.curated = true;
@@ -229,6 +237,22 @@ impl ErTab {
             }
         }
     }
+}
+
+/// `table` and the tables it references or that reference it.
+fn related(snap: &SchemaSnapshot, table: &str) -> Vec<String> {
+    let mut related = vec![table.to_string()];
+    for t in &snap.tables {
+        if t.name == table {
+            related.extend(t.foreign_keys.iter().map(|f| f.ref_table.clone()));
+            related.extend(t.referenced_by.iter().map(|f| f.table.clone()));
+        } else if t.foreign_keys.iter().any(|f| f.ref_table == table) {
+            related.push(t.name.clone());
+        }
+    }
+    related.sort();
+    related.dedup();
+    related
 }
 
 impl TabView for ErTab {
@@ -296,7 +320,8 @@ impl TabView for ErTab {
                 } else if self.refresh_pending {
                     // The tables now on the diagram (added or removed since it opened),
                     // or the whole schema for a diagram of the schema left as it was.
-                    let curated = !self.tables.is_empty() || self.curated;
+                    // A table's Diagram page shows its related tables of now.
+                    let curated = (!self.tables.is_empty() && !self.embedded) || self.curated;
                     let model = match &self.diagram {
                         Some(d) if curated => {
                             let keys: Vec<String> = d.model.tables.iter().map(|t| t.key.clone()).collect();
@@ -330,20 +355,9 @@ impl TabView for ErTab {
                 }
             }
         }
-        ui.horizontal(|ui| {
-            ui.add(egui::TextEdit::singleline(&mut self.name_edit).desired_width(200.0));
-            if ui.button((dbiji_icons::ic(icon::FLOPPY_DISK), tr("Save"))).on_hover_text(tr("Save the diagram in the project")).clicked() {
-                self.save(cx);
-            }
-            if ui.button((dbiji_icons::ic(icon::ARROW_CLOCKWISE), tr("Refresh"))).clicked() {
-                if let Some(live) = cx.conns.live_mut(&self.conn) {
-                    live.meta.clear_schema(&self.schema);
-                }
-                self.refresh_pending = true;
-            }
-            // Layout, edit mode and export are in the diagram's own toolbar.
-        });
-        ui.separator();
+        if !self.embedded {
+            self.name_row(ui, cx);
+        }
         let events = match self.diagram.as_mut() {
             Some(d) => show_er(ui, d, &mut self.state).events,
             None => Vec::new(),
@@ -354,4 +368,21 @@ impl TabView for ErTab {
     }
 
     crate::impl_tab_any!();
+}
+
+impl ErTab {
+    /// Name, Save and Refresh of a diagram tab.
+    fn name_row(&mut self, ui: &mut Ui, cx: &mut AppContext) {
+        ui.horizontal(|ui| {
+            ui.add(egui::TextEdit::singleline(&mut self.name_edit).desired_width(200.0));
+            if ui.button((dbiji_icons::ic(icon::FLOPPY_DISK), tr("Save"))).on_hover_text(tr("Save the diagram in the project")).clicked() {
+                self.save(cx);
+            }
+            if ui.button((dbiji_icons::ic(icon::ARROW_CLOCKWISE), tr("Refresh"))).clicked() {
+                self.reload(cx);
+            }
+            // Layout, edit mode and export are in the diagram's own toolbar.
+        });
+        ui.separator();
+    }
 }

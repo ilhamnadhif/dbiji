@@ -423,6 +423,8 @@ fn rows_table(
     let editable = model.is_editable() && options.allow_editing;
     let mut commit: Option<(usize, usize, String)> = None;
     let mut open_value: Option<(usize, usize)> = None;
+    // A foreign key value's button was clicked: open the row it references.
+    let mut follow: Option<(usize, usize)> = None;
     let picked = state.picked.clone();
     // The cell a ⇧-click block starts from has the border (as the grid's active cell).
     let anchor = state.pick_anchor.filter(|a| picked.contains(a)).or_else(|| picked.first().copied());
@@ -538,7 +540,28 @@ fn rows_table(
                             let Some((v, is_default, modified)) = values.get(j).and_then(|vs| vs.get(i)) else { continue };
                             let fmt = PreparedFormat::new(&options.format, grid.column_format(c));
                             let rt = value_text(v, *is_default, *modified, &fmt, options, &theme);
-                            paint_text(ui, inner, rt, theme.text);
+                            let mut text_rect = inner;
+                            // As in the grid: a foreign key value has a button that opens the row it references.
+                            if let Some(i) = model.foreign_key_for_column(c).filter(|_| !v.is_null() && !*is_default && inner.width() > 40.0) {
+                                let b = egui::Rect::from_center_size(egui::pos2(inner.right() - 8.0, rect.center().y), egui::vec2(16.0, (row_h - 4.0).min(18.0)));
+                                text_rect.max.x = b.left() - 2.0;
+                                let target = model.foreign_keys()[i].ref_table.display_path();
+                                let tip = trf("Open the referenced row in {}", &[&target]);
+                                let b_resp =
+                                    ui.interact(b, ui.id().with(("record_fk", r, c)), egui::Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(&tip);
+                                b_resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &tip));
+                                let color = if b_resp.hovered() {
+                                    ui.painter().rect_filled(b, 3.0, crate::theme::mix(fill, theme.text, 0.12));
+                                    theme.link
+                                } else {
+                                    theme.weak
+                                };
+                                ui.painter().text(b.center(), egui::Align2::CENTER_CENTER, icon::ARROW_SQUARE_OUT, egui::FontId::new(body.size * 0.85, body.family.clone()), color);
+                                if b_resp.clicked() {
+                                    follow = Some((r, c));
+                                }
+                            }
+                            paint_text(ui, text_rect, rt, theme.text);
                             let boolean = is_bool_column(model, c, v) && !*is_default;
                             let can_edit = editable && model.can_edit_cell(r, c).is_ok();
                             // Booleans: the box is a check box of its own (a click elsewhere picks the cell).
@@ -724,6 +747,13 @@ fn rows_table(
     }
     if let Some((r, c)) = open_value {
         actions.push(GridAction::OpenValuePanel { row: r, col: c });
+    }
+    if let Some((r, c)) = follow
+        && let Some(i) = model.foreign_key_for_column(c)
+    {
+        let link = model.foreign_keys()[i].clone();
+        let values: Vec<Value> = link.columns.iter().map(|&k| model.cell(r, k).unwrap_or_default()).collect();
+        actions.push(GridAction::NavigateForeignKey { link, values });
     }
 }
 

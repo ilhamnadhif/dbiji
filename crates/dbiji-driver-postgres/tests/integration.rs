@@ -33,7 +33,7 @@ async fn connect_and_server_info() {
     let mut s = connect(&params).await;
     let info = s.server_info().clone();
     assert_eq!(info.product, "PostgreSQL");
-    assert!(info.version_number.0 >= 12, "{info:?}");
+    assert!(info.version_number.0 >= 11, "{info:?}");
     assert!(info.session_id.as_deref().is_some_and(|p| p.parse::<i32>().is_ok()));
     assert_eq!(s.kind(), DbKind::Postgres);
     s.ping().await.unwrap();
@@ -101,6 +101,8 @@ async fn type_conversions_text_protocol() {
         let mut s = connect(&params).await;
         exec(&mut s, &format!("CREATE TYPE {schema}.mood AS ENUM ('sad', 'happy')")).await;
         exec(&mut s, "SET TimeZone = 'Asia/Kolkata'").await;
+        let multirange = major(s.as_ref()) >= 14;
+        let mr = if multirange { "'{[1,3), [5,7)}'::int4multirange" } else { "NULL::int4range" };
         let sql = format!(
             "SELECT true AS b, 42::int2 AS i2, 42::int4 AS i4, 9007199254740993::int8 AS i8, 4294967295::oid AS o, \
              1.5::float4 AS f4, 2.25::float8 AS f8, 'NaN'::float8 AS fnan, '-Infinity'::float8 AS finf, \
@@ -111,7 +113,7 @@ async fn type_conversions_text_protocol() {
              '1 year 2 mons 3 days 04:05:06'::interval AS iv, 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid AS u, \
              '{{\"a\": 1}}'::json AS j, '{{\"b\": [1, 2]}}'::jsonb AS jb, '\\x0102ff'::bytea AS by, '<a>x</a>'::xml AS x, \
              '192.168.0.1/24'::inet AS ip, '10.0.0.0/8'::cidr AS net, '08:00:2b:01:02:03'::macaddr AS mac, \
-             B'1011'::bit(4) AS bt, B'101'::varbit AS vb, '[1,10)'::int4range AS r, '{{[1,3), [5,7)}}'::int4multirange AS mr, \
+             B'1011'::bit(4) AS bt, B'101'::varbit AS vb, '[1,10)'::int4range AS r, {mr} AS mr, \
              'happy'::{schema}.mood AS en, ARRAY[1,2,3] AS arr, ARRAY['a b', NULL] AS tarr, 'x'::text AS txt, \
              'y'::varchar(10) AS vc, 'z'::char(3) AS ch, 'n'::name AS nm, NULL::int4 AS nul, \
              '(1,2)'::point AS pt, 'a fat cat'::tsvector AS tsv"
@@ -174,8 +176,10 @@ async fn type_conversions_text_protocol() {
         assert_eq!(get("bt").0.kind, DataKind::Bit);
         assert_eq!(get("r").1, &Value::text("[1,10)"));
         assert_eq!(get("r").0.kind, DataKind::Range);
-        assert_eq!(get("mr").1, &Value::text("{[1,3),[5,7)}"));
-        assert_eq!(get("mr").0.kind, DataKind::Range);
+        if multirange {
+            assert_eq!(get("mr").1, &Value::text("{[1,3),[5,7)}"));
+            assert_eq!(get("mr").0.kind, DataKind::Range);
+        }
         assert_eq!(get("en").1, &Value::text("happy"));
         assert_eq!(get("en").0.kind, DataKind::Enum);
         assert_eq!(get("en").0.type_name, "mood");
@@ -836,7 +840,10 @@ CREATE AGGREGATE {s}.mysum(integer) (SFUNC = int4pl, STYPE = integer, INITCOND =
 "#;
 
 async fn create_rich_schema(s: &mut Box<dyn Session>, schema: &str) {
-    let sql = RICH_SCHEMA.replace("{s}", schema);
+    let mut sql = RICH_SCHEMA.replace("{s}", schema);
+    if major(s.as_ref()) < 12 {
+        sql = sql.replace(" GENERATED ALWAYS AS (qty * price) STORED", "");
+    }
     exec(s, &sql).await;
 }
 
@@ -897,7 +904,8 @@ async fn metadata_of_every_object_kind() {
         assert!(trg[1].detail.as_deref().unwrap().starts_with("BEFORE INSERT OR UPDATE OF note ON"), "{:?}", trg[1].detail);
         let credit = s.list_children(&ObjectRef::table(Some(schema.clone()), "customers"), ObjectKind::Column).await.unwrap();
         assert_eq!(credit[4].detail.as_deref(), Some("numeric(12,2) NOT NULL DEFAULT 0"));
-        assert!(cols[5].detail.as_deref().unwrap().contains("GENERATED ALWAYS AS"), "{:?}", cols[5].detail);
+        let generated = major(s.as_ref()) >= 12;
+        assert!(!generated || cols[5].detail.as_deref().unwrap().contains("GENERATED ALWAYS AS"), "{:?}", cols[5].detail);
         let customers = ObjectRef::table(Some(schema.clone()), "customers");
         assert_eq!(names(&s.list_children(&customers, ObjectKind::UniqueKey).await.unwrap()), vec!["customers_code_key"]);
         let events = ObjectRef::table(Some(schema.clone()), "events");
@@ -911,7 +919,7 @@ async fn metadata_of_every_object_kind() {
         let id = def.column("id").unwrap();
         assert!(id.auto_increment && !id.nullable);
         assert!(id.default.as_deref().unwrap().starts_with("nextval("));
-        assert_eq!(def.column("total").unwrap().generated.as_deref(), Some("((qty)::numeric * price)"));
+        assert_eq!(def.column("total").unwrap().generated.as_deref(), generated.then_some("((qty)::numeric * price)"));
         let ticket = def.column("ticket").unwrap();
         assert!(!ticket.auto_increment, "a default from a standalone sequence is not serial");
         assert_eq!(ticket.default.as_deref(), Some(format!("nextval('{schema}.ticket_seq'::regclass)").as_str()));
@@ -1733,6 +1741,62 @@ async fn manual_mode_survives_an_abandoned_cursor() {
         assert!(s.in_transaction());
         assert_eq!(scalar(&mut s, &format!("SELECT count(*) FROM {schema}.kept")).await, Value::Int(1), "earlier work kept");
         s.commit().await.unwrap();
+    })
+    .await;
+}
+
+/// Every object of the schema answers properties, statistics, dependencies and
+/// DDL without a server error (a catalog column of a newer version, say).
+#[tokio::test]
+async fn every_object_answers_its_tabs() {
+    let Some(url) = url() else { return };
+    let params = params_from_url(&url);
+    with_schema(&params, |params, schema| async move {
+        let mut s = connect(&params).await;
+        create_rich_schema(&mut s, &schema).await;
+        exec(&mut s, &format!("CREATE POLICY p1 ON {schema}.customers USING (true)")).await;
+        exec(&mut s, &format!("CREATE STATISTICS {schema}.st1 (dependencies) ON qty, price FROM {schema}.orders")).await;
+        let sr = SchemaRef::schema(schema.clone());
+        let mut objs = vec![ObjectRef::new(ObjectKind::Schema, None, schema.clone()), ObjectRef::new(ObjectKind::Database, None, params.database.clone().unwrap())];
+        let kinds = [
+            ObjectKind::Table,
+            ObjectKind::View,
+            ObjectKind::MaterializedView,
+            ObjectKind::Sequence,
+            ObjectKind::Function,
+            ObjectKind::Procedure,
+            ObjectKind::Aggregate,
+            ObjectKind::Type,
+            ObjectKind::Domain,
+        ];
+        for k in kinds {
+            objs.extend(s.list_objects(&sr, k).await.unwrap_or_else(|e| panic!("{k:?}: {}", e.full_text())).into_iter().map(|o| o.obj));
+        }
+        objs.extend(s.list_objects(&SchemaRef::default(), ObjectKind::Extension).await.unwrap().into_iter().map(|o| o.obj));
+        let tables: Vec<ObjectRef> = objs.iter().filter(|o| o.kind == ObjectKind::Table).cloned().collect();
+        let children = [
+            ObjectKind::Column,
+            ObjectKind::Index,
+            ObjectKind::PrimaryKey,
+            ObjectKind::UniqueKey,
+            ObjectKind::CheckConstraint,
+            ObjectKind::ForeignKey,
+            ObjectKind::Trigger,
+            ObjectKind::Partition,
+        ];
+        for t in &tables {
+            for k in children {
+                objs.extend(s.list_children(t, k).await.unwrap_or_else(|e| panic!("{t} {k:?}: {}", e.full_text())).into_iter().map(|o| o.obj));
+            }
+        }
+        assert!(objs.len() > 40, "{}", objs.len());
+        let mut failed = Vec::new();
+        for o in &objs {
+            let results =
+                [s.object_properties(o).await.map(|_| ()), s.object_statistics(o).await.map(|_| ()), s.object_dependencies(o).await.map(|_| ()), s.object_ddl(o).await.map(|_| ())];
+            failed.extend(results.into_iter().filter_map(|r| r.err()).filter(|e| e.code.is_some()).map(|e| format!("{:?} {o}: {}", o.kind, e.full_text())));
+        }
+        assert!(failed.is_empty(), "{failed:#?}");
     })
     .await;
 }

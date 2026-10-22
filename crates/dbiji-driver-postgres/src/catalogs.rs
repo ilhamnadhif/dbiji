@@ -192,7 +192,7 @@ FROM pg_language ORDER BY 1",
             I::Text,
             "SELECT c.collname AS name, n.nspname AS detail, n.nspname AS schema,
   CASE c.collprovider WHEN 'c' THEN 'libc' WHEN 'i' THEN 'icu' WHEN 'b' THEN 'builtin' ELSE 'default' END AS provider,
-  c.collcollate AS lc_collate, c.collctype AS lc_ctype, c.collisdeterministic AS deterministic
+  c.collcollate AS lc_collate, c.collctype AS lc_ctype, (to_jsonb(c) ->> 'collisdeterministic')::bool AS deterministic
 FROM pg_collation c JOIN pg_namespace n ON n.oid = c.collnamespace ORDER BY 1, 2",
         ),
         F::new(

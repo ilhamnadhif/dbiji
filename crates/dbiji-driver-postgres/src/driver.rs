@@ -65,7 +65,7 @@ impl PostgresDriver {
             info: DriverInfo {
                 kind: DbKind::Postgres,
                 name: "PostgreSQL",
-                description: "PostgreSQL 12+ via the native protocol (tokio-postgres, rustls)",
+                description: "PostgreSQL 11+ via the native protocol (tokio-postgres, rustls)",
                 capabilities: capabilities(false),
             },
             dialect: Arc::new(PgDialect::new()),

@@ -20,6 +20,30 @@ enum Page {
     General,
 }
 
+/// What the sessions of a connection are opened with: `cfg` without its name,
+/// colour, navigator settings and other settings a live connection applies as
+/// they are; `auto_commit` resolves the connection type's default.
+fn session_settings(cfg: &ConnectionConfig, auto_commit: bool) -> ConnectionConfig {
+    let mut c = cfg.clone();
+    c.auto_commit = Some(auto_commit);
+    c.connection_type.clear();
+    c.name.clear();
+    c.folder = None;
+    c.sort_index = None;
+    c.description = None;
+    c.color = None;
+    c.save_password = false;
+    c.last_connected = None;
+    c.filters = Default::default();
+    c.navigator_view = Default::default();
+    c.init.show_all_databases = false;
+    c.init.show_system_objects = false;
+    c.init.fetch_size = None;
+    c.init.query_timeout_secs = 0;
+    c.init.shell_after_disconnect = None;
+    c
+}
+
 pub struct ConnectionDialog {
     pub cfg: ConnectionConfig,
     pub is_new: bool,
@@ -29,6 +53,8 @@ pub struct ConnectionDialog {
     ssh_passphrase: String,
     proxy_password: String,
     password_loaded: bool,
+    /// The saved password, SSH password, SSH passphrase and proxy password as loaded.
+    saved_secrets: [String; 4],
     /// Saved secrets that could not be read (locked vault, keychain denied): left as they are on save.
     unreadable: Vec<SecretSlot>,
     auto_commit_choice: u8, // 0 = type default, 1 = on, 2 = off
@@ -67,6 +93,7 @@ impl ConnectionDialog {
             ssh_passphrase: String::new(),
             proxy_password: String::new(),
             password_loaded: false,
+            saved_secrets: Default::default(),
             unreadable: Vec::new(),
             auto_commit_choice,
             new_prop: Default::default(),
@@ -98,6 +125,11 @@ impl ConnectionDialog {
         self.ssh_passphrase = get(SecretSlot::SshPassphrase);
         self.proxy_password = get(SecretSlot::ProxyPassword);
         self.unreadable = unreadable;
+        self.saved_secrets = self.secrets();
+    }
+
+    fn secrets(&self) -> [String; 4] {
+        [self.password.clone(), self.ssh_password.clone(), self.ssh_passphrase.clone(), self.proxy_password.clone()]
     }
 
     fn credentials(&self) -> Credentials {
@@ -164,11 +196,16 @@ impl ConnectionDialog {
             self.error = Some(trf("Cannot store the password securely: {}", &[&e]));
             return false;
         }
-        let was_connected = cx.conns.is_connected(&id);
+        // A live connection reconnects when its sessions were opened with what changed.
+        let auto_commit = |c: &ConnectionConfig| c.auto_commit.unwrap_or(cx.conns.connection_type(&c.connection_type).auto_commit);
+        let reconnect = cx.conns.is_connected(&id)
+            && (self.secrets() != self.saved_secrets
+                || cx.conns.config(&id).is_none_or(|old| session_settings(old, auto_commit(old)) != session_settings(&self.cfg, auto_commit(&self.cfg))));
         cx.conns.upsert(self.cfg.clone());
         cx.push(crate::command::AppCommand::SaveConnections);
-        if was_connected {
-            cx.toasts.info(tr("Reconnect to apply the changed settings."));
+        if reconnect {
+            cx.push(crate::command::AppCommand::Reconnect(id));
+            cx.toasts.info(tr("Reconnecting to apply the changed settings."));
         }
         true
     }
@@ -840,4 +877,32 @@ pub fn proxy_form(ui: &mut Ui, id: &str, proxy: &mut ProxyConfig, password: &mut
             ui.end_row();
         });
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_session_settings_need_a_reconnect() {
+        let old = ConnectionConfig::new(DbKind::Postgres, "pg");
+        let same = |new: &ConnectionConfig, ac: bool| session_settings(&old, true) == session_settings(new, ac);
+        let mut new = old.clone();
+        new.name = "renamed".into();
+        new.color = Some([1, 2, 3]);
+        new.connection_type = "prod".into();
+        new.init.show_all_databases = true;
+        assert!(same(&new, true), "name, colour, type with the same auto-commit, navigator");
+        assert!(!same(&new, false), "the type's auto-commit changed");
+        for change in [
+            |c: &mut ConnectionConfig| c.host = "elsewhere".into(),
+            |c: &mut ConnectionConfig| c.read_only = true,
+            |c: &mut ConnectionConfig| c.init.init_sql = "SET x = 1".into(),
+            |c: &mut ConnectionConfig| drop(c.properties.insert("sslmode".into(), "require".into())),
+        ] {
+            let mut new = old.clone();
+            change(&mut new);
+            assert!(!same(&new, true), "{new:?}");
+        }
+    }
 }

@@ -266,9 +266,8 @@ fn compute_geometry(model: &ResultModel, state: &DataGridState, options: &GridOp
         x += state.column_width(c);
         xs.push(x);
     }
-    let (row_pad, header_pad) = if options.compact_rows { (4.0, 10.0) } else { (8.0, 12.0) };
-    let row_h = options.row_height.unwrap_or((text_h + row_pad).round()).max(text_h + 2.0);
-    let header_h = (text_h + header_pad).round();
+    let row_h = options.row_height_for(text_h);
+    let header_h = (text_h + if options.compact_rows { 10.0 } else { 12.0 }).round();
     let rownum_w = if options.show_row_numbers {
         let digits = (nrows.max(1) as f64).log10().floor() as usize + 1;
         (digits.max(2) as f32 * digit_w + 2.0 * PAD + 10.0).round()

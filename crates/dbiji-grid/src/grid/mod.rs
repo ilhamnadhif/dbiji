@@ -28,6 +28,7 @@ pub mod selection;
 pub mod state;
 pub(crate) mod text;
 
+pub(crate) use paint::kind_icon;
 pub use selection::{CellPos, CellRange, Selection};
 pub use state::{ColumnState, DataGridState, DataMode};
 
@@ -104,6 +105,14 @@ impl std::fmt::Debug for GridOptions {
             .field("row_height", &self.row_height)
             .field("allow_editing", &self.allow_editing)
             .finish_non_exhaustive()
+    }
+}
+
+impl GridOptions {
+    /// Height of a row whose text is `text_h` high (grid and record view).
+    pub fn row_height_for(&self, text_h: f32) -> f32 {
+        let pad = if self.compact_rows { 4.0 } else { 8.0 };
+        self.row_height.unwrap_or((text_h + pad).round()).max(text_h + 2.0)
     }
 }
 

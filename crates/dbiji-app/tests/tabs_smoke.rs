@@ -116,7 +116,6 @@ fn every_tab_draws_without_panicking() {
     let schema = SchemaRef::new(None, Some("main".into()));
     let customer = ObjectRef::table(Some("main".into()), "customer");
     let mut tabs: Vec<(&str, Box<dyn TabView>)> = vec![
-        ("welcome", Box::new(dbiji_app::tabs::welcome::WelcomeTab)),
         ("settings", Box::new(dbiji_app::tabs::settings::SettingsTab::default())),
         ("history", Box::new(dbiji_app::tabs::history::HistoryTab::default())),
         ("editor", Box::new(dbiji_app::tabs::sql_editor::SqlEditorTab::new(Some(conn.clone()), None, "select * from customer;".into(), None, false, "smoke".into()))),

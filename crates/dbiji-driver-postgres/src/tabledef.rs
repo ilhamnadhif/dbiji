@@ -150,7 +150,7 @@ pub(crate) async fn load_columns(s: &PgSession, oids: &[u32]) -> DbResult<Vec<(u
     };
     let sql = format!(
         "SELECT a.attrelid::int8, a.attname::text, pg_catalog.format_type(a.atttypid, a.atttypmod), a.attnotnull, \
-         pg_catalog.pg_get_expr(ad.adbin, ad.adrelid), a.attidentity::text, a.attgenerated::text, d.description, \
+         pg_catalog.pg_get_expr(ad.adbin, ad.adrelid), a.attidentity::text, {generated}, d.description, \
          CASE WHEN a.attcollation <> 0 AND a.attcollation <> t.typcollation THEN \
            CASE WHEN cn.nspname = 'pg_catalog' THEN co.collname::text ELSE '\"' || replace(cn.nspname, '\"', '\"\"') || '\".\"' || replace(co.collname, '\"', '\"\"') || '\"' END END, \
          a.attnum::int8, seq.seqstart, seq.seqincrement, seq.seqmin, seq.seqmax, seq.seqcache, seq.seqcycle, \
@@ -163,7 +163,8 @@ pub(crate) async fn load_columns(s: &PgSession, oids: &[u32]) -> DbResult<Vec<(u
          LEFT JOIN pg_catalog.pg_namespace cn ON cn.oid = co.collnamespace \
          {seq_join} \
          WHERE a.attrelid = ANY($1::oid[]) AND a.attnum > 0 AND NOT a.attisdropped \
-         ORDER BY a.attrelid, a.attnum"
+         ORDER BY a.attrelid, a.attnum",
+        generated = s.attgenerated()
     );
     let rows = s.q(&sql, &[P::Oids(oids)]).await?;
     let mut out = Vec::with_capacity(rows.len());

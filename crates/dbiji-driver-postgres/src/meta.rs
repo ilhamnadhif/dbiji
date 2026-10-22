@@ -295,11 +295,12 @@ impl PgSession {
         let base = "FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace";
         match kind {
             ObjectKind::Column => {
+                let generated = self.attgenerated();
                 let rows = self
                     .q(
                         &format!(
                             "SELECT a.attname::text, pg_catalog.format_type(a.atttypid, a.atttypmod), a.attnotnull, d.description, \
-                             a.attidentity::text, a.attgenerated::text, \
+                             a.attidentity::text, {generated}, \
                              EXISTS (SELECT 1 FROM pg_catalog.pg_constraint pk WHERE pk.conrelid = c.oid AND pk.contype = 'p' AND a.attnum = ANY(pk.conkey)), \
                              pg_catalog.pg_get_expr(ad.adbin, ad.adrelid) \
                              {base} JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid \
@@ -974,9 +975,10 @@ impl PgSession {
                 let schema = require_schema(obj.schema.as_deref())?;
                 let table = obj.table.as_deref().unwrap_or_default();
                 let compression = if self.pg_major() >= 14 { "a.attcompression::text" } else { "NULL::text" };
+                let generated = self.attgenerated();
                 let sql = format!(
                     "SELECT a.attnum::int8, pg_catalog.format_type(a.atttypid, a.atttypmod), a.attnotnull, \
-                     pg_catalog.pg_get_expr(ad.adbin, ad.adrelid), a.attidentity::text, a.attgenerated::text, \
+                     pg_catalog.pg_get_expr(ad.adbin, ad.adrelid), a.attidentity::text, {generated}, \
                      co.collname::text, a.attstorage::text, {compression}, a.attacl::text, d.description \
                      FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid = a.attrelid \
                      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \

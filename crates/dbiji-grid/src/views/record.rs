@@ -417,7 +417,8 @@ fn rows_table(
         }
         w + 20.0
     };
-    let row_h = ui.text_style_height(&egui::TextStyle::Body) + 10.0;
+    // As high as the grid's rows (Settings › Results › Row height).
+    let row_h = options.row_height_for(ui.text_style_height(&egui::TextStyle::Body));
     let active_row = grid.active_cell().map(|(r, _)| r);
     let editable = model.is_editable() && options.allow_editing;
     let mut commit: Option<(usize, usize, String)> = None;
@@ -488,6 +489,9 @@ fn rows_table(
                             p.text(egui::pos2(x, lead_rect.center().y), egui::Align2::LEFT_CENTER, icon::KEY, body.clone(), theme.warn);
                         } else if model.foreign_key_for_column(c).is_some() {
                             p.text(egui::pos2(x, lead_rect.center().y), egui::Align2::LEFT_CENTER, icon::LINK_SIMPLE, body.clone(), theme.link);
+                        } else if let Some(k) = crate::grid::kind_icon(model.column_kind(c)) {
+                            // The column's kind, as in the grid's header.
+                            p.text(egui::pos2(x, lead_rect.center().y), egui::Align2::LEFT_CENTER, k, egui::FontId::new(body.size * 0.85, body.family.clone()), theme.weak);
                         }
                         x += 18.0;
                         let name_rect = egui::Rect::from_min_max(egui::pos2(x, lead_rect.top()), egui::pos2(lead_rect.right() - 6.0, lead_rect.bottom()));
@@ -499,7 +503,7 @@ fn rows_table(
                         for (j, &r) in rows.iter().enumerate() {
                             if state.editing.as_ref().is_some_and(|(er, ec, _, _)| *er == r && *ec == c) {
                                 if let Some((_, _, text, original)) = state.editing.as_mut() {
-                                    let te = ui.add_sized([widths[j], row_h], TextEdit::singleline(text));
+                                    let te = ui.add_sized([widths[j], row_h], TextEdit::singleline(text).margin(egui::Margin::symmetric(7, 0)).vertical_align(egui::Align::Center));
                                     if te.lost_focus() {
                                         // Unchanged text is no edit (a NULL would become '').
                                         if ui.input(|inp| inp.key_pressed(Key::Escape)) || text == original {

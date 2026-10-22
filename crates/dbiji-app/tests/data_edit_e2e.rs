@@ -492,7 +492,8 @@ fn table_of_another_database() {
     // Its primary key is read in that database too: the rows can be edited.
     h.until(&mut view, "editable rows", |v| v.panel.as_ref().is_some_and(|p| p.model.is_editable()));
     drop(view);
-    let _ = h.try_sql(&format!("DROP DATABASE {db} WITH (FORCE)"));
+    let _ = h.try_sql(&format!("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{db}' AND pid <> pg_backend_pid()"));
+    let _ = h.try_sql(&format!("DROP DATABASE {db}"));
 }
 
 /// A table without a primary key or unique constraint, but with a unique

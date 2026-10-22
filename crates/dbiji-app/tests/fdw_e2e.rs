@@ -47,7 +47,9 @@ async fn postgres_fdw_script_imports_a_schema() {
     }
     .await;
 
-    exec(&mut main, &format!("DROP DATABASE IF EXISTS {db} WITH (FORCE)")).await;
+    // Sessions are ended first (DROP DATABASE … WITH (FORCE) needs PostgreSQL 13).
+    query_all(main.as_mut(), &format!("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{db}' AND pid <> pg_backend_pid()"), &[]).await.unwrap();
+    exec(&mut main, &format!("DROP DATABASE IF EXISTS {db}")).await;
     exec(&mut main, &format!("DROP SCHEMA {schema} CASCADE")).await;
     main.close().await.ok();
     assert_eq!(result, vec![vec![Value::text("one")], vec![Value::text("it's two")]]);

@@ -1441,8 +1441,9 @@ fn workspace_from_dbeaver() {
         let n = h.query_all_by_label(icon).find(|n| n.rect().top() < 70.0).unwrap_or_else(|| panic!("toolbar {icon:?}: {:?}", labels(h)));
         !n.accesskit_node().is_disabled()
     };
-    focus_tab(&mut h, "Welcome");
-    frames(&mut h, 2);
+    // No tab is open: the start page fills the editor area.
+    assert_eq!(h.state().dock.iter_all_tabs().count(), 0);
+    assert!(has(&h, "Create sample database"));
     // The default toolbar has global actions only (run, commit … are in the editor).
     assert!(h.query_all_by_label(egui_phosphor::regular::PLAY).all(|n| n.rect().top() >= 70.0), "no Run in the main toolbar by default");
     // A customised toolbar with editor actions: disabled without an editor.
@@ -1661,7 +1662,14 @@ fn create_database_from_the_navigator() {
     let driver = dbiji_app::driver_registry().get(dbiji_core::DbKind::Postgres).unwrap();
     let params = dbiji_core::ConnectParams::from_config(&cfg, password);
     let mut s = backend.block_on(driver.connect(&params)).unwrap();
-    backend.block_on(dbiji_core::driver::execute_update(s.as_mut(), &format!("DROP DATABASE {name} WITH (FORCE)"), &[])).unwrap();
+    backend
+        .block_on(dbiji_core::driver::query_all(
+            s.as_mut(),
+            &format!("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{name}' AND pid <> pg_backend_pid()"),
+            &[],
+        ))
+        .unwrap();
+    backend.block_on(dbiji_core::driver::execute_update(s.as_mut(), &format!("DROP DATABASE {name}"), &[])).unwrap();
 }
 
 /// Booleans in the record view are check boxes: a click toggles, nothing is typed.

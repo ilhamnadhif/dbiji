@@ -44,6 +44,11 @@ pub async fn connect(params: &ConnectParams) -> Box<dyn Session> {
     PostgresDriver::new().connect(params).await.expect("connect")
 }
 
+/// Major version of the server (generated columns came with 12, multiranges with 14).
+pub fn major(s: &dyn Session) -> u32 {
+    s.server_info().version_number.0
+}
+
 pub async fn exec(s: &mut Box<dyn Session>, sql: &str) {
     execute_update(&mut **s, sql, &[]).await.unwrap_or_else(|e| panic!("{sql}: {}", e.full_text()));
 }
@@ -98,7 +103,9 @@ where
     p.database = Some(db.clone());
     let res = AssertUnwindSafe(body(p, db.clone())).catch_unwind().await;
     let mut s = connect(params).await;
-    if let Err(e) = execute_update(&mut *s, &format!("DROP DATABASE IF EXISTS {db} WITH (FORCE)"), &[]).await {
+    // Sessions are ended first (DROP DATABASE … WITH (FORCE) needs PostgreSQL 13).
+    let _ = rows(&mut s, &format!("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{db}' AND pid <> pg_backend_pid()")).await;
+    if let Err(e) = execute_update(&mut *s, &format!("DROP DATABASE IF EXISTS {db}"), &[]).await {
         eprintln!("cleanup of {db} failed: {}", e.full_text());
     }
     s.close().await.ok();

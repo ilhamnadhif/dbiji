@@ -3,6 +3,16 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.22 — 2026-10-22
+
+### Fixed
+- PostgreSQL 11: tables opened read-only ("Read-only" in the result toolbar) and column properties failed, because the column definitions were read with a catalog column of PostgreSQL 12; the Collations folder failed the same way. PostgreSQL 11 is supported again and tested.
+
+### Changed
+- Saving a connection that is connected reconnects it when a setting its sessions use changed (host, user, password, SSL, SSH, proxy, read-only, auto-commit, initialization SQL, driver properties) instead of only asking for a reconnect; uncommitted transactions are confirmed first. A new name, colour, connection type or navigator setting applies at once, without a reconnect.
+- The start page is no longer a tab: it fills the editor area whenever no tab is open.
+- The record view is as compact as the grid (Settings → Results → Row height) and shows each column's type icon, as in DBeaver.
+
 ## 0.3.21 — 2026-10-22
 
 ### Added

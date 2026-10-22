@@ -478,6 +478,13 @@ impl ConnectionManager {
     }
 
     pub fn upsert(&mut self, cfg: ConnectionConfig) {
+        // A live connection shows the new name, colour, type and navigator settings
+        // at once (its sessions keep what they were opened with until a reconnect).
+        let conn_type = self.connection_type(&cfg.connection_type);
+        if let Some(live) = self.live.get_mut(&cfg.id) {
+            live.config = cfg.clone();
+            live.conn_type = conn_type;
+        }
         let r = if self.store.get(&cfg.id).is_some() { self.store.update(cfg) } else { self.store.add(cfg).map(|_| ()) };
         if let Err(e) = r {
             tracing::warn!("cannot store connection: {e}");

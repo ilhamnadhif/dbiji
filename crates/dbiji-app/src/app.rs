@@ -144,7 +144,6 @@ impl DbijiApp {
         };
         app.existing_install = crate::updates::is_existing_install(&app.services.paths);
         app.updates.data_dir = Some(app.services.paths.data_dir().to_path_buf());
-        app.open_tab(Box::new(crate::tabs::welcome::WelcomeTab));
         app
     }
 
@@ -905,7 +904,6 @@ impl DbijiApp {
     pub fn restore_session(&mut self) {
         let Some(projects) = self.services.projects.as_ref() else { return };
         let state = projects.load_session();
-        let mut opened = 0;
         let mut to_connect: Vec<String> = Vec::new();
         for t in &state.tabs {
             if matches!(t.kind, dbiji_config::project::TabKind::ObjectEditor | dbiji_config::project::TabKind::DataEditor | dbiji_config::project::TabKind::ErDiagram)
@@ -927,7 +925,6 @@ impl DbijiApp {
                         let conn = t.connection_id.clone().filter(|c| self.conns.config(c).is_some());
                         let schema = (t.schema.is_some() || t.database.is_some()).then(|| dbiji_core::meta::SchemaRef::new(t.database.clone(), t.schema.clone()));
                         let _ = self.open_script_with(p, conn.map(|c| (c, schema)));
-                        opened += 1;
                     }
                 }
                 dbiji_config::project::TabKind::SqlScript | dbiji_config::project::TabKind::SqlConsole => {
@@ -937,13 +934,11 @@ impl DbijiApp {
                     self.script_counter += 1;
                     let title = t.title.clone().unwrap_or_else(|| format!("Script-{}", self.script_counter));
                     self.open_tab(Box::new(crate::tabs::sql_editor::SqlEditorTab::new(conn, schema, t.content.clone().unwrap_or_default(), None, console, title)));
-                    opened += 1;
                 }
                 dbiji_config::project::TabKind::ObjectEditor | dbiji_config::project::TabKind::DataEditor => {
                     let (Some(conn), Some(obj)) = (t.connection_id.clone().filter(|c| self.conns.config(c).is_some()), t.object.clone()) else { continue };
                     let page = if t.kind == dbiji_config::project::TabKind::DataEditor { crate::command::ObjectPage::Data } else { crate::command::ObjectPage::Properties };
                     self.open_tab(Box::new(crate::tabs::object::ObjectEditorTab::new(conn, obj, page)));
-                    opened += 1;
                 }
                 dbiji_config::project::TabKind::ErDiagram => {
                     let Some(conn) = t.connection_id.clone().filter(|c| self.conns.config(c).is_some()) else { continue };
@@ -960,18 +955,8 @@ impl DbijiApp {
                             self.open_tab(Box::new(crate::tabs::er::ErTab::new(conn, schema, tables)));
                         }
                     }
-                    opened += 1;
                 }
                 _ => {}
-            }
-        }
-        if opened > 0 {
-            // The welcome tab is not needed when editors were restored.
-            let welcome: Vec<u64> = self.dock.iter_all_tabs().filter(|(_, t)| t.view.as_any().is::<crate::tabs::welcome::WelcomeTab>()).map(|(_, t)| t.id).collect();
-            for id in welcome {
-                if let Some(path) = self.dock.find_tab_from(|t| t.id == id) {
-                    self.dock.remove_tab(path);
-                }
             }
         }
     }
@@ -1728,6 +1713,12 @@ impl eframe::App for DbijiApp {
         }
         egui::CentralPanel::default().frame(egui::Frame::new()).show(ui, |ui| {
             let suffixes = crate::tabs::tab_suffixes(self.dock.iter_all_tabs().map(|(_, t)| t), cx.conns);
+            // Without tabs the editor area is the start page (as in DBeaver), not a tab.
+            if self.dock.iter_all_tabs().next().is_none() {
+                ui.painter().rect_filled(ui.max_rect(), 0.0, ui.visuals().window_fill);
+                crate::tabs::welcome::show(ui, &mut cx);
+                return;
+            }
             let mut viewer = DockViewer { cx: &mut cx, close_vetoed: Vec::new(), close_confirm: Vec::new(), active_tab: self.active_tab, style: ui.style().clone(), suffixes };
             DockArea::new(&mut self.dock).style(egui_dock::Style::from_egui(ui.style().as_ref())).show_leaf_collapse_buttons(false).show_inside(ui, &mut viewer);
             for id in viewer.close_confirm {
@@ -1838,9 +1829,6 @@ impl eframe::App for DbijiApp {
             if let Err(e) = self.conns.connect(&self.backend, &id, creds) {
                 self.toasts.error(tr("Cannot connect"), Some(e.to_string()));
             }
-        }
-        if self.dock.iter_all_tabs().next().is_none() {
-            self.open_tab(Box::new(crate::tabs::welcome::WelcomeTab));
         }
         self.ensure_focus();
         self.process_commands(&ctx);

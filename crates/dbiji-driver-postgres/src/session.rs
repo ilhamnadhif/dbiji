@@ -199,6 +199,12 @@ impl PgSession {
         if self.is_cockroach() { 0 } else { self.info.version_number.0 }
     }
 
+    /// `pg_attribute.attgenerated` of `a` as text: generated columns came with
+    /// PostgreSQL 12, older servers do not have the column.
+    pub(crate) fn attgenerated(&self) -> &'static str {
+        if self.is_cockroach() || self.pg_major() >= 12 { "a.attgenerated::text" } else { "''::text" }
+    }
+
     /// Take the session gate (see [`acquire_raw`](Self::acquire_raw)) and
     /// settle the savepoint of the previous statement.
     pub(crate) async fn acquire(&self) -> DbResult<OwnedMutexGuard<()>> {

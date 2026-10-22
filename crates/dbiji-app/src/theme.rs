@@ -1,7 +1,7 @@
 //! Fonts, light/dark visuals, accessibility tweaks and connection-type colours.
 
 use egui::{Color32, Context, FontData, FontDefinitions, FontFamily, Stroke, Theme, ThemePreference, Visuals};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 /// User theme choice (stored in `settings.json`).
 pub use dbiji_config::settings::Theme as ThemeChoice;
@@ -10,9 +10,16 @@ pub use dbiji_config::settings::Theme as ThemeChoice;
 /// a typeface designed for screens, crisp at UI sizes; egui's default UI font
 /// is a light weight that looks faint and blurry. Subset without the private
 /// use area, where the Phosphor icons live (`pyftsubset --unicodes=
-/// U+0000-DFFF,U+F900-FFFF,U+10000-10FFFF --layout-features='*'`).
-const INTER: &[u8] = include_bytes!("../assets/fonts/Inter-Regular.ttf");
-const INTER_MEDIUM: &[u8] = include_bytes!("../assets/fonts/Inter-Medium.ttf");
+/// U+0000-DFFF,U+F900-FFFF,U+10000-10FFFF --layout-features='*'`), and
+/// zlib-compressed (half the size in the binary; inflated once, in a few ms).
+static INTER: LazyLock<Vec<u8>> = LazyLock::new(|| inflate(include_bytes!("../assets/fonts/Inter-Regular.ttf.zz")));
+static INTER_MEDIUM: LazyLock<Vec<u8>> = LazyLock::new(|| inflate(include_bytes!("../assets/fonts/Inter-Medium.ttf.zz")));
+
+fn inflate(data: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    std::io::Read::read_to_end(&mut flate2::read::ZlibDecoder::new(data), &mut out).expect("bundled font");
+    out
+}
 
 /// Fonts: Inter for the UI, Hack for code, then egui's emoji fonts and the
 /// Phosphor icon font as fallbacks, so icons can be mixed into any label.
@@ -21,7 +28,7 @@ const INTER_MEDIUM: &[u8] = include_bytes!("../assets/fonts/Inter-Medium.ttf");
 /// bundled font, Ubuntu-Light, is not used and not linked.)
 pub fn font_definitions(theme: Theme) -> FontDefinitions {
     use egui::FontTweak;
-    let inter = if theme == Theme::Light { INTER_MEDIUM } else { INTER };
+    let inter: &'static [u8] = if theme == Theme::Light { &INTER_MEDIUM } else { &INTER };
     let mut fonts = FontDefinitions::empty();
     let mut add = |name: &str, data: FontData| {
         fonts.font_data.insert(name.into(), Arc::new(data));

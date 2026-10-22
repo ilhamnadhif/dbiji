@@ -436,7 +436,20 @@ pub struct Turn {
 
 impl Turn {
     fn new(action: QuickAction, shown: String) -> Turn {
-        Turn { action, shown, message: None, answer: String::new(), state: TurnState::Preparing, model: None, usage: None, truncated: false, fallback_from: None, steps: Vec::new(), running: None, segments: None }
+        Turn {
+            action,
+            shown,
+            message: None,
+            answer: String::new(),
+            state: TurnState::Preparing,
+            model: None,
+            usage: None,
+            truncated: false,
+            fallback_from: None,
+            steps: Vec::new(),
+            running: None,
+            segments: None,
+        }
     }
 
     fn apply(&mut self, ev: Event) {

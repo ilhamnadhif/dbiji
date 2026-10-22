@@ -130,8 +130,7 @@ fn openai_messages(messages: &[ChatMessage]) -> Vec<Value> {
         .map(|m| match m.role {
             Role::Tool => json!({"role": "tool", "tool_call_id": m.tool_call_id.clone().unwrap_or_default(), "content": m.content}),
             Role::Assistant if !m.tool_calls.is_empty() => {
-                let calls: Vec<Value> =
-                    m.tool_calls.iter().map(|c| json!({"id": c.id, "type": "function", "function": {"name": c.name, "arguments": c.arguments}})).collect();
+                let calls: Vec<Value> = m.tool_calls.iter().map(|c| json!({"id": c.id, "type": "function", "function": {"name": c.name, "arguments": c.arguments}})).collect();
                 let mut v = json!({"role": "assistant", "content": if m.content.is_empty() { Value::Null } else { json!(m.content) }, "tool_calls": calls});
                 if let Some(r) = &m.reasoning {
                     v["reasoning_content"] = json!(r);
@@ -442,7 +441,11 @@ impl StreamState {
                     }
                     "tool_use" => {
                         if let Some(i) = v["index"].as_u64() {
-                            let call = ToolCall { id: block["id"].as_str().unwrap_or_default().to_string(), name: block["name"].as_str().unwrap_or_default().to_string(), arguments: String::new() };
+                            let call = ToolCall {
+                                id: block["id"].as_str().unwrap_or_default().to_string(),
+                                name: block["name"].as_str().unwrap_or_default().to_string(),
+                                arguments: String::new(),
+                            };
                             self.tool_calls.insert(i, call);
                         }
                     }
@@ -973,13 +976,13 @@ mod tool_tests {
         let call = ToolCall { id: "call_1".into(), name: "run_query".into(), arguments: r#"{"sql":"SELECT count(*) FROM charges"}"#.into() };
         let mut req = ChatRequest::new(
             "system",
-            vec![
-                ChatMessage::user("how many charges?"),
-                ChatMessage::assistant_calls("", vec![call], Some("count them".into())),
-                ChatMessage::tool_result("call_1", "count\n42"),
-            ],
+            vec![ChatMessage::user("how many charges?"), ChatMessage::assistant_calls("", vec![call], Some("count them".into())), ChatMessage::tool_result("call_1", "count\n42")],
         );
-        req.tools = vec![ToolDef { name: "run_query".into(), description: "Run a read-only query".into(), parameters: r#"{"type":"object","properties":{"sql":{"type":"string"}},"required":["sql"]}"#.into() }];
+        req.tools = vec![ToolDef {
+            name: "run_query".into(),
+            description: "Run a read-only query".into(),
+            parameters: r#"{"type":"object","properties":{"sql":{"type":"string"}},"required":["sql"]}"#.into(),
+        }];
         req
     }
 

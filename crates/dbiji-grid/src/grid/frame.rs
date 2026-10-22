@@ -225,7 +225,12 @@ pub(crate) fn detached_menu(
         state.rt.selection = before;
     }
     // The grid's editor and list of values are not shown here: the view edits.
-    let edit = state.rt.editing.take().map(|e| (e.row, e.col, e.text)).or_else(|| state.rt.dropdown.take().map(|d| (d.row, d.col, model.cell(d.row, d.col).filter(|v| !v.is_null()).map(|v| v.to_text().into_owned()).unwrap_or_default())));
+    let edit = state
+        .rt
+        .editing
+        .take()
+        .map(|e| (e.row, e.col, e.text))
+        .or_else(|| state.rt.dropdown.take().map(|d| (d.row, d.col, model.cell(d.row, d.col).filter(|v| !v.is_null()).map(|v| v.to_text().into_owned()).unwrap_or_default())));
     (actions, edit)
 }
 

@@ -49,13 +49,8 @@ impl ConversationStore {
 
     /// Every readable conversation, the latest first.
     pub fn list(&self) -> Vec<SavedConversation> {
-        let mut all: Vec<SavedConversation> = std::fs::read_dir(&self.dir)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
-            .filter_map(|e| read(&e.path()))
-            .collect();
+        let mut all: Vec<SavedConversation> =
+            std::fs::read_dir(&self.dir).into_iter().flatten().flatten().filter(|e| e.path().extension().is_some_and(|x| x == "json")).filter_map(|e| read(&e.path())).collect();
         all.sort_by_key(|c| std::cmp::Reverse(c.updated));
         all
     }

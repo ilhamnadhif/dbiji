@@ -1556,6 +1556,7 @@ dependencies = [
  "egui_kittest",
  "egui_plot",
  "epaint_default_fonts",
+ "flate2",
  "futures",
  "iana-time-zone",
  "image",

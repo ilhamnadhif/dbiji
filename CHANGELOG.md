@@ -3,13 +3,16 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
-## 0.3.33 — 2026-10-22
+## 0.3.34 — 2026-10-22
 
 ### Added
 - AI agent mode (Settings › AI › "Let the assistant run read-only queries", off by default since results go to the AI service): the assistant runs queries on the connection to answer from the data. Only one SELECT / WITH / SHOW / DESCRIBE / EXPLAIN (without ANALYZE) per call, never functions that end sessions, read server files or sleep; in a session of its own that the server keeps read-only (PostgreSQL, CockroachDB, MySQL, MariaDB, SQLite); at most 100 rows within 30 seconds. Each query shows in the chat, collapsed, with its SQL and result.
 - SQL in the assistant's answers has a Run button: it opens a SQL editor and runs it there, with the editor's confirmations (production connections, dangerous statements).
 - The AI assistant keeps its conversations: the history button (clock) in the panel lists them, latest first, to continue one, delete one, or clear them all. They are saved on this computer (the data folder's `ai/`), the last 100.
 - The record view has the grid's context menu on its values and column names: Set NULL / DEFAULT, Edit cell, add, duplicate and delete rows, copy from the row above / below, Generate UUID, filter, highlight, order, Advanced copy / Copy as, Generate SQL, Export selection … acting on the picked values, and the same keys (⇧Delete, Delete, Insert, ⌘D, Enter, ⌘Z, ⌘V …).
+
+### Changed
+- The app is about 400 KB smaller: its bundled fonts are stored compressed.
 
 ## 0.3.32 — 2026-10-22
 

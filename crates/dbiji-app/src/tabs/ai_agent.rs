@@ -271,7 +271,8 @@ mod tests {
     }
 
     fn reply(text: &str, calls: &[&str]) -> ChatResponse {
-        let tool_calls = calls.iter().enumerate().map(|(i, sql)| ToolCall { id: format!("c{i}"), name: TOOL.into(), arguments: serde_json::json!({ "sql": sql }).to_string() }).collect();
+        let tool_calls =
+            calls.iter().enumerate().map(|(i, sql)| ToolCall { id: format!("c{i}"), name: TOOL.into(), arguments: serde_json::json!({ "sql": sql }).to_string() }).collect();
         ChatResponse { text: text.into(), tool_calls, usage: Usage { input_tokens: 10, output_tokens: 1, ..Default::default() }, ..Default::default() }
     }
 
@@ -285,7 +286,8 @@ mod tests {
         let syntax = crate::driver_registry().dialect(DbKind::Sqlite).syntax().clone();
         let mut agent = Agent::new(DbKind::Sqlite, syntax, None, Box::pin(sqlite(path)));
         // The model tries a write, then counts; the third request answers.
-        let mut replies = vec![reply("", &["DELETE FROM charges"]), reply("Counting.", &["SELECT count(*) AS n FROM charges WHERE paid = 1"]), reply("2 are paid.", &[])].into_iter();
+        let mut replies =
+            vec![reply("", &["DELETE FROM charges"]), reply("Counting.", &["SELECT count(*) AS n FROM charges WHERE paid = 1"]), reply("2 are paid.", &[])].into_iter();
         let mut sent = Vec::new();
         let mut events = Vec::new();
         let r = converse(

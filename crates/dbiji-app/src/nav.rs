@@ -102,6 +102,8 @@ struct Row {
     logo: Option<DbKind>,
     /// Background of the row: the connection type's colour (DBeaver-like).
     tint: Option<Color32>,
+    /// A table's size right-aligned (as in DBeaver: "2.4M") and its hover text.
+    size: Option<(String, String)>,
     expandable: bool,
     expanded: bool,
     /// Placeholder rows: "Loading…", errors, empty markers.
@@ -156,6 +158,26 @@ pub(crate) fn connection_detail(cfg: &ConnectionConfig) -> String {
     };
     // The name is usually the file name: then the folder is enough.
     if cfg.name == file { dir } else { format!("{dir}/{file}") }
+}
+
+/// A size as DBeaver shows it in the navigator: `512`, `16K`, `2.4M`, `57M`, `1.2G`.
+fn short_size(bytes: i64) -> String {
+    let mut v = bytes as f64;
+    for unit in ["", "K", "M", "G", "T"] {
+        if v < 1024.0 || unit == "T" {
+            return if unit.is_empty() || v >= 10.0 { format!("{}{unit}", v.round()) } else { format!("{:.1}{unit}", v).replace(".0", "") };
+        }
+        v /= 1024.0;
+    }
+    unreachable!()
+}
+
+/// A size with its unit for hover texts (`2.4 MB`, `812 bytes`).
+fn long_size(bytes: i64) -> String {
+    match short_size(bytes) {
+        s if s.ends_with(|c: char| c.is_ascii_digit()) => format!("{s} bytes"),
+        s => format!("{} {}B", &s[..s.len() - 1], &s[s.len() - 1..]),
+    }
 }
 
 pub fn kind_icon(kind: ObjectKind) -> &'static str {
@@ -354,6 +376,7 @@ impl Navigator {
                 badge: None,
                 logo: None,
                 tint: None,
+                size: None,
                 expandable: true,
                 expanded,
                 kind: RowKind::Node,
@@ -391,6 +414,7 @@ impl Navigator {
             badge: color,
             logo: Some(cfg.kind),
             tint: marker,
+            size: None,
             expandable: true,
             expanded,
             kind: RowKind::Node,
@@ -463,6 +487,7 @@ impl Navigator {
             badge: None,
             logo: None,
             tint: None,
+            size: None,
             expandable: true,
             expanded,
             kind: RowKind::Node,
@@ -483,6 +508,7 @@ impl Navigator {
                     badge: None,
                     logo: None,
                     tint: None,
+                    size: None,
                     expandable: true,
                     expanded: ext_expanded,
                     kind: RowKind::Node,
@@ -532,6 +558,7 @@ impl Navigator {
                 badge: None,
                 logo: None,
                 tint: None,
+                size: None,
                 expandable: true,
                 expanded,
                 kind: RowKind::Node,
@@ -557,6 +584,7 @@ impl Navigator {
                 badge: None,
                 logo: None,
                 tint: None,
+                size: None,
                 expandable: !f.table_only,
                 expanded,
                 kind: RowKind::Node,
@@ -592,6 +620,7 @@ impl Navigator {
                     badge: None,
                     logo: None,
                     tint: None,
+                    size: None,
                     expandable: has_children,
                     expanded: item_expanded,
                     kind: RowKind::Node,
@@ -663,6 +692,7 @@ impl Navigator {
                 badge: None,
                 logo: None,
                 tint: None,
+                size: None,
                 expandable: true,
                 expanded,
                 kind: RowKind::Node,
@@ -704,6 +734,7 @@ impl Navigator {
                 badge: None,
                 logo: None,
                 tint: None,
+                size: None,
                 expandable: true,
                 expanded,
                 kind: RowKind::Node,
@@ -758,12 +789,27 @@ impl Navigator {
                 node,
                 depth,
                 label,
-                detail: o.detail.clone().or_else(|| o.row_estimate.filter(|r| *r >= 0).map(|r| format!("~{r}"))),
+                // Where the server tells a table's size, only the size shows (as in
+                // DBeaver); "partitioned", the engine and the rows are on hover.
+                detail: match o.size_bytes {
+                    Some(_) => None,
+                    None => o.detail.clone().or_else(|| o.row_estimate.filter(|r| *r >= 0).map(|r| format!("~{r}"))),
+                },
                 icon: kind_icon(kind),
                 icon_color: None,
                 badge: None,
                 logo: None,
                 tint: None,
+                size: o.size_bytes.filter(|b| *b >= 0).map(|b| {
+                    let mut tip = format!("{}: {}", tr("Size"), long_size(b));
+                    if let Some(r) = o.row_estimate.filter(|r| *r >= 0) {
+                        tip.push_str(&format!("\n{}: ~{r}", tr("Estimated rows")));
+                    }
+                    if let Some(d) = &o.detail {
+                        tip.push_str(&format!("\n{d}"));
+                    }
+                    (short_size(b), tip)
+                }),
                 expandable: has_children,
                 expanded,
                 kind: RowKind::Node,
@@ -797,6 +843,7 @@ impl Navigator {
                 badge: None,
                 logo: None,
                 tint: None,
+                size: None,
                 expandable: true,
                 expanded,
                 kind: RowKind::Node,
@@ -818,6 +865,7 @@ impl Navigator {
                                 badge: None,
                                 logo: None,
                                 tint: None,
+                                size: None,
                                 expandable: false,
                                 expanded: false,
                                 kind: RowKind::Node,
@@ -1179,10 +1227,23 @@ impl Navigator {
                     ui.painter().circle(at, 3.5, badge, egui::Stroke::new(1.5, bg));
                 }
                 x += 20.0;
-                // Name and detail cut with "…" at the panel's edge.
-                let right = rect.right() - 6.0;
+                // Name and detail cut with "…" at the panel's edge (or the size's box).
+                let mut right = rect.right() - 6.0;
                 let fit = |ui: &Ui, text: egui::RichText, width: f32, style: egui::TextStyle| {
                     egui::WidgetText::from(text).into_galley(ui, Some(egui::TextWrapMode::Truncate), width, style)
+                };
+                let resp = match &r.size {
+                    Some((short, tip)) if right - x > 120.0 => {
+                        let weak = ui.visuals().weak_text_color();
+                        let g = fit(ui, RichText::new(short).small().color(weak), 60.0, egui::TextStyle::Small);
+                        let boxed = egui::Rect::from_min_max(egui::pos2(right - g.size().x - 8.0, y - 7.5), egui::pos2(right, y + 7.5));
+                        ui.painter().rect_filled(boxed, 2.0, ui.visuals().faint_bg_color);
+                        ui.painter().rect_stroke(boxed, 2.0, egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color), egui::StrokeKind::Inside);
+                        ui.painter().galley(egui::pos2(boxed.right() - 4.0 - g.size().x, y - g.size().y / 2.0), g, weak);
+                        right = boxed.left() - 6.0;
+                        resp.on_hover_text(tip)
+                    }
+                    _ => resp,
                 };
                 let galley = fit(ui, RichText::new(&r.label).color(text_color), (right - x).max(30.0), egui::TextStyle::Body);
                 let w = galley.size().x;
@@ -1640,6 +1701,7 @@ fn placeholder(depth: usize, kind: RowKind) -> Row {
         badge: None,
         logo: None,
         tint: None,
+        size: None,
         expandable: false,
         expanded: false,
         kind,
@@ -1847,5 +1909,22 @@ pub fn object_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, obj: &ObjectRef
     if ui.add(egui::Button::new(RichText::new(format!("{} {}", icon::TRASH, tr("Drop…"))).color(red)).shortcut_text(keys(DROP_KEYS))).clicked() {
         cx.push(AppCommand::DropObjects { connection: c, objects: vec![obj.clone()] });
         ui.close();
+    }
+}
+
+#[cfg(test)]
+mod size_tests {
+    use super::{long_size, short_size};
+
+    #[test]
+    fn sizes_as_dbeaver_shows_them() {
+        assert_eq!(short_size(512), "512");
+        assert_eq!(short_size(16 * 1024), "16K");
+        assert_eq!(short_size(2_516_582), "2.4M");
+        assert_eq!(short_size(57 * 1024 * 1024), "57M");
+        assert_eq!(short_size(3 * 1024 * 1024), "3M");
+        assert_eq!(short_size(1_288_490_189), "1.2G");
+        assert_eq!(long_size(2_516_582), "2.4 MB");
+        assert_eq!(long_size(812), "812 bytes");
     }
 }

@@ -591,6 +591,7 @@ impl ResultPanel {
                 }
             }
             GridAction::FetchMore => self.src.fetch_more(backend, Self::fetch_size(cx), None),
+            GridAction::CancelFetch => self.src.stop(backend),
             GridAction::FetchAll => {
                 let limit = cx.settings.results.confirm_fetch_all_above;
                 let known_small = self.model.fetch.total_count.is_some_and(|t| t <= limit);

@@ -255,15 +255,35 @@ impl egui_dock::TabViewer for DockViewer<'_, '_> {
         if title.chars().count() > 46 {
             title = title.chars().take(44).collect::<String>() + "…";
         }
-        let mut text = egui::RichText::new(title);
-        if let Some(color) = tab.view.connection_id().and_then(|c| self.cx.conns.color_of(c)).and_then(crate::theme::connection_marker) {
-            text = text.color(color);
-        }
+        // Tabs of a coloured connection type (Production …) are tinted, see `tab_style_override`.
+        let text = egui::RichText::new(title);
         let mut job = egui::text::LayoutJob::default();
         let font = egui::FontSelection::Default;
         dbiji_icons::ic(tab.view.icon()).append_to(&mut job, &self.style, font.clone(), egui::Align::Center);
         text.append_to(&mut job, &self.style, font, egui::Align::Center);
         job.into()
+    }
+
+    /// A tab of a connection whose type has a colour (Production: red) is
+    /// tinted in it, as in DBeaver: work on that server stands out.
+    fn tab_style_override(&self, tab: &Tab, global: &egui_dock::TabStyle) -> Option<egui_dock::TabStyle> {
+        let color = tab.view.connection_id().and_then(|c| self.cx.conns.color_of(c)).and_then(crate::theme::connection_marker)?;
+        let dark = self.style.visuals.dark_mode;
+        let mut s = global.clone();
+        let tint = |base: egui::Color32, t: f32| dbiji_grid::theme::mix(base, color, t);
+        for (style, t) in [
+            (&mut s.active, if dark { 0.45 } else { 0.35 }),
+            (&mut s.focused, if dark { 0.45 } else { 0.35 }),
+            (&mut s.active_with_kb_focus, if dark { 0.45 } else { 0.35 }),
+            (&mut s.focused_with_kb_focus, if dark { 0.45 } else { 0.35 }),
+            (&mut s.inactive, if dark { 0.3 } else { 0.22 }),
+            (&mut s.inactive_with_kb_focus, if dark { 0.3 } else { 0.22 }),
+            (&mut s.hovered, if dark { 0.4 } else { 0.3 }),
+        ] {
+            style.bg_fill = tint(style.bg_fill, t);
+            style.outline_color = color;
+        }
+        Some(s)
     }
 
     fn ui(&mut self, ui: &mut Ui, tab: &mut Tab) {

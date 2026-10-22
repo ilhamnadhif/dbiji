@@ -318,7 +318,7 @@ pub async fn list_objects(s: &mut ClickHouseSession, schema: &SchemaRef, kind: O
     let system = is_system_db(&db);
     if let Some(filter) = engine_filter(kind) {
         let sql = format!(
-            "SELECT name, engine, comment, total_rows FROM system.tables \
+            "SELECT name, engine, comment, total_rows, total_bytes FROM system.tables \
              WHERE database = {} AND is_temporary = 0 AND {filter} ORDER BY name",
             lit(&db)
         );
@@ -329,6 +329,7 @@ pub async fn list_objects(s: &mut ClickHouseSession, schema: &SchemaRef, kind: O
                 let mut info = ObjectInfo::new(ObjectRef::new(kind, Some(db.clone()), text(r.first()))).with_detail(text(r.get(1))).with_comment(opt(r.get(2)));
                 info.is_system = system;
                 info.row_estimate = int(r.get(3));
+                info.size_bytes = int(r.get(4));
                 info
             })
             .collect());

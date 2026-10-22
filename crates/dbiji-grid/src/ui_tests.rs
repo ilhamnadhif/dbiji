@@ -377,3 +377,41 @@ fn record_view_picks_several_values_and_copies_them() {
     // The rows shown side by side stay selected in the grid.
     assert_eq!(v.state.grid.selected_rows(5, 10), vec![1, 2]);
 }
+
+#[test]
+fn cancel_discards_pending_changes_at_once() {
+    let mut v = Viewer::new(editable_model(3));
+    v.model.set_value(1, 1, dbiji_core::Value::text("changed")).unwrap();
+    v.frame(vec![]);
+    assert!(v.model.has_changes());
+    let cancel = v.find("Cancel").expect("Cancel button");
+    v.click(cancel);
+    assert!(!v.model.has_changes(), "no Discard / Keep question first");
+    assert!(v.actions.iter().any(|a| matches!(a, GridAction::ChangesDiscarded)));
+    v.frame(vec![]);
+    assert!(v.find("Keep").is_none());
+}
+
+#[test]
+fn a_long_fetch_shows_a_spinner_then_cancel() {
+    let mut v = Viewer::new(crate::test_support::editable_model(0));
+    v.model.fetch.fetching = true;
+    v.frame(vec![]);
+    assert!(v.find("Fetching…").is_some(), "the spinner's text");
+    // Not the Cancel of Save / Cancel in the toolbar: the one over the grid's body.
+    let cancel_in_body = |v: &Viewer| {
+        let (body, ..) = v.state.grid.rt.last_geometry.unwrap();
+        let update = v.output.accesskit_update.as_ref()?;
+        update.nodes.iter().find_map(|(_, n)| {
+            let b = n.bounds().filter(|_| n.label().is_some_and(|l| l.contains("Cancel")))?;
+            let p = egui::pos2(((b.x0 + b.x1) / 2.0) as f32, ((b.y0 + b.y1) / 2.0) as f32);
+            body.contains(p).then_some(p)
+        })
+    };
+    assert!(cancel_in_body(&v).is_none(), "not at once");
+    std::thread::sleep(crate::grid::CANCEL_AFTER);
+    v.frame(vec![]);
+    let cancel = cancel_in_body(&v).expect("Cancel once it takes long");
+    v.click(cancel);
+    assert!(v.actions.contains(&GridAction::CancelFetch));
+}

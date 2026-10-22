@@ -159,8 +159,15 @@ impl PgSession {
                     ObjectKind::Sequence if !self.is_cockroach() => "(SELECT pg_catalog.format_type(s.seqtypid, NULL) FROM pg_catalog.pg_sequence s WHERE s.seqrelid = c.oid)",
                     _ => "NULL::text",
                 };
+                // With its indexes and TOAST; a partitioned table: its partitions'.
+                let size = if self.is_cockroach() || !matches!(kind, ObjectKind::Table | ObjectKind::MaterializedView) {
+                    "NULL::int8"
+                } else {
+                    "CASE WHEN c.relkind = 'p' THEN (SELECT sum(pg_catalog.pg_total_relation_size(i.inhrelid))::int8 FROM pg_catalog.pg_inherits i WHERE i.inhparent = c.oid) \
+                     ELSE pg_catalog.pg_total_relation_size(c.oid) END"
+                };
                 let sql = format!(
-                    "SELECT c.relname::text, d.description, c.reltuples::int8, c.relkind::text, c.relpersistence::text, {detail} \
+                    "SELECT c.relname::text, d.description, c.reltuples::int8, c.relkind::text, c.relpersistence::text, {detail}, {size} \
                      FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
                      LEFT JOIN pg_catalog.pg_description d ON d.objoid = c.oid AND d.classoid = {DESC_CLASS} AND d.objsubid = 0 \
                      WHERE n.nspname = $1{partition_filter} ORDER BY c.relname"
@@ -171,6 +178,7 @@ impl PgSession {
                     let mut o = ObjectInfo::new(mk(kind, r.s(0)?)).with_comment(r.os(1)?);
                     if matches!(kind, ObjectKind::Table | ObjectKind::MaterializedView | ObjectKind::ForeignTable) {
                         o.row_estimate = r.oi(2)?.filter(|n| *n >= 0);
+                        o.size_bytes = r.oi(6)?;
                     }
                     let relkind = r.s(3)?;
                     let persistence = r.s(4)?;

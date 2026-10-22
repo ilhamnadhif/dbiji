@@ -9,6 +9,8 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # A runner's DNS or the crates.io index failing for a moment does not fail the run.
+  CARGO_NET_RETRY: 10
 
 jobs:
   lint:
@@ -51,6 +53,25 @@ jobs:
         ports: ["55432:5432"]
         options: >-
           --health-cmd "pg_isready -U dbiji" --health-interval 5s --health-timeout 5s --health-retries 20
+      # The oldest PostgreSQL DBiji supports: catalog columns of newer versions fail here.
+      postgres11:
+        image: postgres:11
+        env:
+          POSTGRES_USER: dbiji
+          POSTGRES_PASSWORD: dbiji
+          POSTGRES_DB: dbiji
+        ports: ["55411:5432"]
+        options: >-
+          --health-cmd "pg_isready -U dbiji" --health-interval 5s --health-timeout 5s --health-retries 20
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: Dbiji_test1
+        ports: ["51433:1433"]
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P Dbiji_test1 -Q 'SELECT 1' -b -o /dev/null"
+          --health-interval 10s --health-timeout 10s --health-retries 30
       mysql:
         image: mysql:8.0
         env:
@@ -80,6 +101,7 @@ jobs:
       DBIJI_TEST_MARIADB: mariadb://root:dbiji@127.0.0.1:53307/dbiji
       DBIJI_TEST_CLICKHOUSE: http://dbiji:dbiji@127.0.0.1:58123
       DBIJI_TEST_COCKROACH: cockroachdb://root@127.0.0.1:26257/defaultdb?sslmode=disable
+      DBIJI_TEST_MSSQL: sqlserver://sa:Dbiji_test1@127.0.0.1:51433/master
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -93,8 +115,13 @@ jobs:
       - name: Driver and end-to-end integration tests
         run: >-
           cargo test -p dbiji-driver-postgres -p dbiji-driver-mysql -p dbiji-driver-sqlite
-          -p dbiji-driver-clickhouse -p dbiji-driver-duckdb -p dbiji-transfer -p dbiji-compare
-          -p dbiji-tasks -p dbiji-app -- --test-threads=4
+          -p dbiji-driver-clickhouse -p dbiji-driver-duckdb -p dbiji-driver-mssql -p dbiji-transfer
+          -p dbiji-compare -p dbiji-tasks -p dbiji-app -- --test-threads=4
+      - name: The PostgreSQL tests on PostgreSQL 11
+        run: >-
+          env -u DBIJI_TEST_MYSQL -u DBIJI_TEST_MARIADB -u DBIJI_TEST_CLICKHOUSE -u DBIJI_TEST_COCKROACH -u DBIJI_TEST_MSSQL
+          DBIJI_TEST_PG=postgres://dbiji:dbiji@127.0.0.1:55411/dbiji
+          cargo test -p dbiji-driver-postgres -p dbiji-transfer -p dbiji-app -- --test-threads=4
 
   audit:
     runs-on: ubuntu-24.04

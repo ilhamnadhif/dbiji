@@ -37,6 +37,25 @@ pub struct FetchState {
     pub fetched_at: Option<chrono::DateTime<chrono::Local>>,
     /// Last fetch error, shown in the status line.
     pub error: Option<String>,
+    /// Since when the running fetch runs (see [`FetchState::fetching_for`]).
+    fetching_since: Option<std::time::Instant>,
+}
+
+impl FetchState {
+    /// How long the running fetch has been running (`None` when none runs):
+    /// a long one offers Cancel.
+    pub fn fetching_for(&self) -> Option<Duration> {
+        self.fetching_since.filter(|_| self.fetching).map(|t| t.elapsed())
+    }
+
+    /// Note when a fetch starts and ends (every frame, from [`ResultModel::try_sync`]).
+    fn track(&mut self) {
+        match (self.fetching, self.fetching_since) {
+            (true, None) => self.fetching_since = Some(std::time::Instant::now()),
+            (false, Some(_)) => self.fetching_since = None,
+            _ => {}
+        }
+    }
 }
 
 /// Value descriptions for a column ("kamus data", FR-D5).
@@ -495,6 +514,7 @@ impl ResultModel {
     /// Like [`ResultModel::sync`] but never waits: when the fetch task holds
     /// the store lock the row count is picked up on a later call.
     pub fn try_sync(&mut self) -> bool {
+        self.fetch.track();
         let Some(guard) = self.store.try_lock() else { return false };
         let len = guard.len();
         drop(guard);

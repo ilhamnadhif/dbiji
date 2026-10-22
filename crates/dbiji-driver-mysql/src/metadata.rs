@@ -318,7 +318,7 @@ impl MySqlSession {
                     _ => "'SEQUENCE'",
                 };
                 let sql = format!(
-                    "SELECT TABLE_NAME, ENGINE, TABLE_ROWS, TABLE_COMMENT, CREATE_OPTIONS, TABLE_TYPE \
+                    "SELECT TABLE_NAME, ENGINE, TABLE_ROWS, TABLE_COMMENT, CREATE_OPTIONS, TABLE_TYPE, DATA_LENGTH + INDEX_LENGTH \
                      FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE IN ({types}) \
                      ORDER BY TABLE_NAME"
                 );
@@ -341,6 +341,7 @@ impl MySqlSession {
                             info.detail = Some(detail.trim().to_string());
                         }
                         info.row_estimate = read::int(&r, 2);
+                        info.size_bytes = read::int(&r, 6);
                         info = info.with_comment(read::non_empty(&r, 3));
                     }
                     out.push(info);

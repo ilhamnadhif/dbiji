@@ -62,7 +62,6 @@ struct ToolbarRuntime {
     /// Focus the filter box (cursor at the end) on the next frame.
     focus_filter: bool,
     next_refresh: Option<f64>,
-    confirm_discard: bool,
 }
 
 impl ToolbarState {
@@ -449,28 +448,10 @@ impl<'a> ResultToolbar<'a> {
             if ui.add_enabled(pending > 0, save).on_hover_text(trf("Save {} pending change(s) (Cmd+S)", &[&pending])).clicked() {
                 actions.push(GridAction::SaveChanges);
             }
-            let cancel = ui.add_enabled(pending > 0, Button::new((dbiji_icons::ic(icon::X_CIRCLE), tr("Cancel")))).on_hover_text(tr("Discard pending changes"));
-            if cancel.clicked() {
-                state.rt.confirm_discard = true;
-            }
-            if state.rt.confirm_discard {
-                let mut open = true;
-                Popup::from_response(&cancel).open_bool(&mut open).close_behavior(PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
-                    ui.label(trf("Discard {} pending change(s)?", &[&pending]));
-                    ui.horizontal(|ui| {
-                        if ui.button(tr("Discard")).clicked() {
-                            model.discard_changes();
-                            actions.push(GridAction::ChangesDiscarded);
-                            state.rt.confirm_discard = false;
-                        }
-                        if ui.button(tr("Keep")).clicked() {
-                            state.rt.confirm_discard = false;
-                        }
-                    });
-                });
-                if !open {
-                    state.rt.confirm_discard = false;
-                }
+            // Cancel discards at once (as in DBeaver): the changes are only pending.
+            if ui.add_enabled(pending > 0, Button::new((dbiji_icons::ic(icon::X_CIRCLE), tr("Cancel")))).on_hover_text(tr("Discard pending changes")).clicked() {
+                model.discard_changes();
+                actions.push(GridAction::ChangesDiscarded);
             }
             group_separator(ui);
             // --- rows
@@ -524,6 +505,16 @@ impl<'a> ResultToolbar<'a> {
             // --- right: fetch buttons, status, messages (right to left)
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let fetching = model.fetch.fetching;
+                // A long fetch (fetch all, a slow query) can be stopped here too.
+                if let Some(running) = model.fetch.fetching_for() {
+                    if running >= crate::grid::CANCEL_AFTER {
+                        if ui.button((dbiji_icons::ic(icon::X_CIRCLE), tr("Cancel"))).on_hover_text(tr("Stop the query")).clicked() {
+                            actions.push(GridAction::CancelFetch);
+                        }
+                    } else {
+                        ui.ctx().request_repaint_after(crate::grid::CANCEL_AFTER - running);
+                    }
+                }
                 if ui.add_enabled(!model.fetch.counting, Button::new(dbiji_icons::ic(icon::HASH))).on_hover_text(tr("Calculate total row count")).clicked() {
                     actions.push(GridAction::CountTotal);
                 }

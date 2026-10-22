@@ -197,8 +197,15 @@ pub async fn list_objects(s: &mut SqlServerSession, schema: &SchemaRef, kind: Ob
         ObjectKind::Table | ObjectKind::View => {
             let view = kind == ObjectKind::View;
             let src = if view { "sys.views" } else { "sys.tables" };
-            let rows_expr =
-                if view { "NULL".to_string() } else { format!("(SELECT SUM(p.rows) FROM {d}sys.partitions p WHERE p.object_id = t.object_id AND p.index_id IN (0, 1))") };
+            let rows_expr = if view {
+                "NULL, NULL".to_string()
+            } else {
+                // Rows, and the pages of the table and its indexes (8 KB each).
+                format!(
+                    "(SELECT SUM(p.rows) FROM {d}sys.partitions p WHERE p.object_id = t.object_id AND p.index_id IN (0, 1)), \
+                     (SELECT CAST(SUM(a.total_pages) AS bigint) * 8192 FROM {d}sys.partitions p JOIN {d}sys.allocation_units a ON a.container_id = p.partition_id WHERE p.object_id = t.object_id)"
+                )
+            };
             let rows = s
                 .rows(
                     &format!(
@@ -216,6 +223,7 @@ pub async fn list_objects(s: &mut SqlServerSession, schema: &SchemaRef, kind: Ob
                     let mut info = ObjectInfo::new(mk(kind, text(r.first()))).with_comment(opt(r.get(1)));
                     info.is_system = truthy(r.get(2));
                     info.row_estimate = int(r.get(3));
+                    info.size_bytes = int(r.get(4));
                     info
                 })
                 .collect())

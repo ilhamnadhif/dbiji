@@ -284,6 +284,21 @@ fn time_text(t: &NaiveTime, fractional: bool) -> String {
     }
 }
 
+/// A time for grid cells, as DBeaver shows it: milliseconds always three
+/// digits (`10:16:43.539`, `10:16:43.000`), so a column's values line up. The
+/// full precision is in [`Value::to_text`] (copy, editing, the value panel).
+fn time_ms(t: &NaiveTime) -> String {
+    format!("{}.{:03}", t.format("%H:%M:%S"), (t.nanosecond() / 1_000_000).min(999))
+}
+
+/// An offset for grid cells: `+07:00` (hours and minutes), after a space.
+fn offset_display(o: &FixedOffset) -> String {
+    let secs = o.local_minus_utc();
+    let sign = if secs < 0 { '-' } else { '+' };
+    let secs = secs.abs();
+    format!(" {sign}{:02}:{:02}", secs / 3600, (secs % 3600) / 60)
+}
+
 fn offset_text(o: &FixedOffset) -> String {
     let secs = o.local_minus_utc();
     let sign = if secs < 0 { '-' } else { '+' };
@@ -469,26 +484,24 @@ impl Value {
             Value::Date(d) => Cow::Owned(strftime(|out| write!(out, "{}", d.format(&opts.date_format))).unwrap_or_else(|| self.to_text().into_owned())),
             Value::Time(t) => {
                 if opts.show_fractional_seconds && opts.time_format == "%H:%M:%S" {
-                    Cow::Owned(time_text(t, true))
+                    Cow::Owned(time_ms(t))
                 } else {
                     Cow::Owned(strftime(|out| write!(out, "{}", t.format(&opts.time_format))).unwrap_or_else(|| self.to_text().into_owned()))
                 }
             }
             Value::DateTime(dt) => {
                 if opts.show_fractional_seconds && opts.datetime_format == "%Y-%m-%d %H:%M:%S" {
-                    Cow::Owned(format!("{} {}", dt.date().format("%Y-%m-%d"), time_text(&dt.time(), true)))
+                    Cow::Owned(format!("{} {}", dt.date().format("%Y-%m-%d"), time_ms(&dt.time())))
                 } else {
                     Cow::Owned(strftime(|out| write!(out, "{}", dt.format(&opts.datetime_format))).unwrap_or_else(|| self.to_text().into_owned()))
                 }
             }
             Value::DateTimeTz(dt) => {
+                let local = dt.naive_local();
                 if opts.show_fractional_seconds && opts.datetime_format == "%Y-%m-%d %H:%M:%S" {
-                    Cow::Owned(self.to_text().into_owned())
+                    Cow::Owned(format!("{} {}{}", local.date().format("%Y-%m-%d"), time_ms(&local.time()), offset_display(dt.offset())))
                 } else {
-                    Cow::Owned(
-                        strftime(|out| write!(out, "{}{}", dt.naive_local().format(&opts.datetime_format), offset_text(dt.offset())))
-                            .unwrap_or_else(|| self.to_text().into_owned()),
-                    )
+                    Cow::Owned(strftime(|out| write!(out, "{}{}", local.format(&opts.datetime_format), offset_display(dt.offset()))).unwrap_or_else(|| self.to_text().into_owned()))
                 }
             }
             Value::Uuid(_) | Value::Array(_) => {
@@ -952,6 +965,22 @@ fn strftime(f: impl FnOnce(&mut String) -> fmt::Result) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn grid_times_show_milliseconds_and_the_offset() {
+        use chrono::TimeZone;
+        let o = FormatOptions::default();
+        let at = |micros: u32| NaiveDate::from_ymd_opt(2026, 10, 22).unwrap().and_hms_micro_opt(10, 16, 43, micros).unwrap();
+        let tz = |micros: u32| Value::DateTimeTz(FixedOffset::east_opt(7 * 3600).unwrap().from_local_datetime(&at(micros)).unwrap());
+        assert_eq!(tz(539_588).display(&o), "2026-10-22 10:16:43.539 +07:00");
+        assert_eq!(tz(0).display(&o), "2026-10-22 10:16:43.000 +07:00", "the same width");
+        assert_eq!(Value::DateTime(at(5_000)).display(&o), "2026-10-22 10:16:43.005");
+        assert_eq!(Value::Time(at(120_000).time()).display(&o), "10:16:43.120");
+        // Copy and editing keep every digit.
+        assert_eq!(tz(539_588).to_text(), "2026-10-22 10:16:43.539588+07");
+        let no_fraction = FormatOptions { show_fractional_seconds: false, ..FormatOptions::default() };
+        assert_eq!(tz(539_588).display(&no_fraction), "2026-10-22 10:16:43 +07:00");
+    }
 
     #[test]
     fn date_patterns_that_do_not_fit_fall_back() {

@@ -462,3 +462,17 @@ fn columns_fit_header_and_first_values_until_sized_by_hand() {
     h.frame(vec![]);
     assert_eq!(h.state.column_width(1), 90.0);
 }
+
+#[test]
+fn a_hovered_header_summarises_its_loaded_values() {
+    let mut m = editable_model(10);
+    m.set_value(4, 1, Value::Null).unwrap();
+    let mut h = GridHarness::new(m);
+    let (_, header, _, _) = h.geometry();
+    let x = h.header_border(1).x - h.state.column_width(1) / 2.0;
+    h.frame(vec![egui::Event::PointerMoved(egui::pos2(x, header.center().y))]);
+    let (col, _, text) = h.state.rt.column_summary.clone().expect("summary of the hovered column");
+    assert_eq!(col, 1);
+    assert!(text.contains("Loaded rows: 10 · NULLs: 1 · Distinct: 9"), "{text}");
+    assert!(text.contains("Min: name 0 · Max: name 9"), "{text}");
+}

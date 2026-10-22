@@ -28,7 +28,7 @@ pub mod selection;
 pub mod state;
 pub(crate) mod text;
 
-pub(crate) use paint::kind_icon;
+pub(crate) use paint::{CANCEL_AFTER, kind_icon};
 pub use selection::{CellPos, CellRange, Selection};
 pub use state::{ColumnState, DataGridState, DataMode};
 
@@ -201,6 +201,8 @@ pub enum GridAction {
     FetchMore,
     /// Fetch all remaining rows.
     FetchAll,
+    /// Stop the running fetch (the query on the server too, where it can be cancelled).
+    CancelFetch,
     /// Run a `COUNT(*)` and set `model.fetch.total_count`.
     CountTotal,
     /// Re-run the query (manual or auto refresh).

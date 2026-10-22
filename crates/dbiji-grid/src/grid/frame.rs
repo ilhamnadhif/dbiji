@@ -240,6 +240,7 @@ pub(super) fn show(model: &mut ResultModel, state: &mut DataGridState, options: 
     f.show_editor(ui);
     f.show_dropdown(ui);
     f.cell_tooltip(ui);
+    f.fetching_overlay(ui);
     f.context_menu(&body);
     f.context_menu(&rownums);
     f.header_menu(&header);

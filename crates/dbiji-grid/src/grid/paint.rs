@@ -1,6 +1,10 @@
 //! Painting of the grid: body cells, row numbers, header, scrollbars, overlays.
 
+use super::GridAction;
 use super::frame::{Geo, GridFrame, PAD};
+
+/// A fetch running this long offers Cancel.
+pub(crate) const CANCEL_AFTER: std::time::Duration = std::time::Duration::from_secs(1);
 use super::input::{MENU_ZONE, SORT_ZONE};
 use super::state::BodyCache;
 use super::state::Drag;
@@ -128,7 +132,8 @@ impl GridFrame<'_> {
             let msg = if geo.cols.is_empty() && self.model.column_count() > 0 {
                 tr("All columns are hidden")
             } else if self.model.fetch.fetching {
-                tr("Fetching…")
+                // With a spinner and, when it takes long, Cancel (see `fetching_overlay`).
+                return;
             } else {
                 tr("No rows")
             };
@@ -338,10 +343,13 @@ impl GridFrame<'_> {
                 if hovered && info.fk && command_down && placed.width > 0.0 {
                     lines.push(Line { x0: placed.left, x1: placed.left + placed.width, y: inner.center().y + font.size * 0.55, color: theme.link });
                 }
+                // Dates and times show every digit and their time zone on hover
+                // (the cell shows milliseconds), as in DBeaver.
+                let temporal = matches!(cell, CellRef::Value(Value::DateTime(_) | Value::DateTimeTz(_) | Value::Time(_)));
                 if hovered {
                     if let Some(e) = &error_text {
                         tooltip = Some((cell_rect, e.clone()));
-                    } else if elided || look.badge.is_some() {
+                    } else if elided || look.badge.is_some() || temporal {
                         let full = match cell {
                             CellRef::Value(v) => {
                                 let mut t = match v {
@@ -353,6 +361,9 @@ impl GridFrame<'_> {
                                 }
                                 if let Some(d) = look.suffix {
                                     t = format!("{t} — {d}");
+                                }
+                                if let Value::DateTimeTz(dt) = v {
+                                    t = format!("{t}\n{}: UTC{}", tr("Time zone"), dt.format("%:z"));
                                 }
                                 t
                             }
@@ -653,6 +664,30 @@ impl GridFrame<'_> {
         }
         if clear {
             self.state.rt.message = None;
+        }
+    }
+
+    /// While the first rows are fetched: a spinner with "Fetching…", and
+    /// Cancel once it takes longer than [`CANCEL_AFTER`].
+    pub fn fetching_overlay(&mut self, ui: &mut Ui) {
+        let Some(running) = self.model.fetch.fetching_for() else { return };
+        if self.geo.nrows > 0 || self.geo.cols.is_empty() {
+            return;
+        }
+        let center = self.geo.body.center();
+        let row = Rect::from_center_size(center, vec2(160.0, 24.0));
+        ui.scope_builder(egui::UiBuilder::new().max_rect(row).layout(egui::Layout::left_to_right(egui::Align::Center)), |ui| {
+            ui.add(egui::Spinner::new().size(16.0));
+            ui.label(egui::RichText::new(tr("Fetching…")).color(self.theme.weak));
+        });
+        if running >= CANCEL_AFTER {
+            let at = Rect::from_center_size(center + vec2(0.0, 32.0), vec2(96.0, 24.0));
+            let cancel = egui::Button::new((dbiji_icons::ic(egui_phosphor::regular::X_CIRCLE), tr("Cancel")));
+            if ui.put(at, cancel).on_hover_text(tr("Stop the query")).clicked() {
+                self.actions.push(GridAction::CancelFetch);
+            }
+        } else {
+            ui.ctx().request_repaint_after(CANCEL_AFTER - running);
         }
     }
 

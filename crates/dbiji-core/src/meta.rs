@@ -263,11 +263,14 @@ pub struct ObjectInfo {
     pub is_system: bool,
     /// Estimated row count for tables.
     pub row_estimate: Option<i64>,
+    /// Space a table takes with its indexes (bytes), where the server tells cheaply.
+    #[serde(default)]
+    pub size_bytes: Option<i64>,
 }
 
 impl ObjectInfo {
     pub fn new(obj: ObjectRef) -> Self {
-        ObjectInfo { obj, comment: None, detail: None, is_system: false, row_estimate: None }
+        ObjectInfo { obj, comment: None, detail: None, is_system: false, row_estimate: None, size_bytes: None }
     }
     pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
         self.detail = Some(detail.into());

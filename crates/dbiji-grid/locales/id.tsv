@@ -74,7 +74,6 @@ Delete selected rows	Hapus baris terpilih
 Delimiter	Pemisah
 Discard	Buang
 Discard pending changes	Buang perubahan tertunda
-Discard {} pending change(s)?	Buang {} perubahan tertunda?
 Distinct	Unik
 Division by zero	Pembagian dengan nol
 Double-click to edit	Klik ganda untuk mengubah
@@ -402,3 +401,7 @@ Cells copied with gaps between them cannot be pasted: copy a block	Sel yang disa
 Copy with column names	Salin dengan nama kolom
 Tab: back to the grid · ← →: previous / next row. Click a value or a column name to select it, ⇧-click or ⌘-click to select more; ⌘C copies the selection, right-click copies it with the column names.	Tab: kembali ke grid · ← →: baris sebelumnya / berikutnya. Klik nilai atau nama kolom untuk memilihnya, ⇧-klik atau ⌘-klik untuk memilih lebih banyak; ⌘C menyalin pilihan, klik kanan menyalinnya beserta nama kolom.
 Click a value or a column name to select it, ⇧-click or ⌘-click to select more; ⌘C copies the selection, right-click copies it with the column names.	Klik nilai atau nama kolom untuk memilihnya, ⇧-klik atau ⌘-klik untuk memilih lebih banyak; ⌘C menyalin pilihan, klik kanan menyalinnya beserta nama kolom.
+Of the first {} rows	Dari {} baris pertama
+Time zone	Zona waktu
+Loaded rows	Baris dimuat
+Stop the query	Hentikan query

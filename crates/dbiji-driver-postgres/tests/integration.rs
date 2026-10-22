@@ -861,6 +861,8 @@ async fn metadata_of_every_object_kind() {
         let tables = s.list_objects(&sr, ObjectKind::Table).await.unwrap();
         assert_eq!(names(&tables), vec!["customers", "events", "orders"], "partitions are not listed");
         assert_eq!(tables.iter().find(|t| t.obj.name == "events").unwrap().detail.as_deref(), Some("partitioned"));
+        // Sizes for the navigator: a table with its indexes, a partitioned one its partitions'.
+        assert!(tables.iter().all(|t| t.size_bytes.is_some_and(|b| b > 0)), "{tables:?}");
         assert_eq!(tables[0].comment.as_deref(), Some("Customers, it's important"));
         assert_eq!(names(&s.list_objects(&sr, ObjectKind::View).await.unwrap()), vec!["big_customers"]);
         assert_eq!(names(&s.list_objects(&sr, ObjectKind::MaterializedView).await.unwrap()), vec!["order_stats"]);

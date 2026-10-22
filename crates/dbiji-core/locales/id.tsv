@@ -363,7 +363,6 @@ Delete selected rows	Hapus baris terpilih
 Delimiter	Pemisah
 Discard	Buang
 Discard pending changes	Buang perubahan tertunda
-Discard {} pending change(s)?	Buang {} perubahan tertunda?
 Distinct	Unik
 Division by zero	Pembagian dengan nol
 Double-click to edit	Klik ganda untuk mengubah
@@ -2750,3 +2749,6 @@ Click a value or a column name to select it, ⇧-click or ⌘-click to select mo
 Computer ({})	Komputer ({})
 Server's own	Milik server
 Time zone	Zona waktu
+Of the first {} rows	Dari {} baris pertama
+Loaded rows	Baris dimuat
+Stop the query	Hentikan query

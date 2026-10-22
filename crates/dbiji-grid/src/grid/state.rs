@@ -141,6 +141,9 @@ pub(crate) struct Runtime {
     pub columns_fitted: u64,
     /// Widths set by fitting, by column name: a column still at it was not sized by the user.
     pub auto_widths: std::collections::HashMap<String, f32>,
+    /// Summary of a column's loaded values for its header's tooltip: the
+    /// column, the model generation it was computed for, and the text.
+    pub column_summary: Option<(usize, u64, String)>,
     pub last_selection_label: String,
     /// Geometry of the last frame: body, header, row numbers, row height.
     pub last_geometry: Option<(egui::Rect, egui::Rect, egui::Rect, f32)>,

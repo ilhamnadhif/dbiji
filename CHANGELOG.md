@@ -3,6 +3,20 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.26 — 2026-10-22
+
+### Added
+- Hovering a column header summarises its loaded values: how many, NULLs, distinct values, the smallest and the largest.
+- Hovering a date or time cell shows every digit and, for a `timestamptz`, its time zone (as in DBeaver).
+- The navigator shows each table's size at the right, as in DBeaver (`2.4M`, `160K`; PostgreSQL, MySQL, MariaDB, SQL Server, ClickHouse); its rows, "partitioned" or engine are on hover.
+- A fetch shows a spinner, and Cancel once it takes longer than a second (over the empty grid and in the result toolbar); a query still running is cancelled on the server.
+
+### Changed
+- Dates and times in the grid have milliseconds and the offset in one width, as in DBeaver (`2026-10-22 10:16:43.539 +07:00`); copying, editing and the value panel keep every digit.
+- Tabs of a coloured connection type (Production: red) are tinted in its colour.
+- Cancel in the result toolbar discards the pending changes at once, without asking.
+- CI also tests on PostgreSQL 11 and SQL Server, and retries downloads.
+
 ## 0.3.25 — 2026-10-22
 
 ### Added

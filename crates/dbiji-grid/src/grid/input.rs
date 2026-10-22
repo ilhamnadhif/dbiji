@@ -7,6 +7,9 @@ use super::{GridAction, apply_sort};
 use crate::copy::{CopyFormat, CopyOptions};
 use crate::view::SortKey;
 use dbiji_core::{DataKind, Value, tr, trf};
+
+/// Rows a column's summary (header tooltip) looks at.
+const SUMMARY_ROWS: usize = 100_000;
 use egui::{CursorIcon, Event, EventFilter, Key, Response, Sense, Ui, vec2};
 
 /// Width of the column resize grab zone (each side of the border).
@@ -211,11 +214,15 @@ impl GridFrame<'_> {
             && self.state.rt.header_popup.is_none()
             && let Some(pos) = self.geo.col_at(p.x, sx, false)
         {
-            // The hovered header's name and database type (the icon shows only the kind).
+            // The hovered header's name and database type (the icon shows only
+            // the kind), and a summary of its loaded values.
             let col = self.geo.cols[pos];
             let name = self.model.column_name(col);
             let ty = self.model.column_meta(col).map(|m| m.type_name.as_str()).unwrap_or_default();
-            let tip = if ty.is_empty() { name.to_string() } else { format!("{name}: {ty}") };
+            let mut tip = if ty.is_empty() { name.to_string() } else { format!("{name}: {ty}") };
+            if let Some(summary) = self.column_summary(col) {
+                tip = format!("{tip}\n{summary}");
+            }
             header.clone().on_hover_text(tip);
         }
         let pressed = ui.input(|i| i.pointer.primary_pressed());
@@ -925,6 +932,41 @@ impl GridFrame<'_> {
     pub fn autosize_column(&mut self, ui: &Ui, col: usize) {
         let painter = ui.painter().clone();
         self.autosize_with(&painter, col);
+    }
+
+    /// Summary of the loaded values of `col` for its header's tooltip: how
+    /// many, NULLs, distinct values, the smallest and the largest. Computed
+    /// over the first [`SUMMARY_ROWS`] rows and kept until the data changes;
+    /// `None` while the store is busy.
+    fn column_summary(&mut self, col: usize) -> Option<String> {
+        let generation = self.model.generation();
+        if let Some((c, g, text)) = &self.state.rt.column_summary
+            && *c == col
+            && *g == generation
+        {
+            return Some(text.clone());
+        }
+        let total = self.model.row_count();
+        let n = total.min(SUMMARY_ROWS);
+        let mut values = Vec::with_capacity(n);
+        if !self.model.visit_rows_for(0..n, std::time::Duration::from_millis(20), |_, cells| values.push(cells.value_of(col).unwrap_or(Value::Null))) {
+            return None;
+        }
+        let s = crate::calc::compute_stats(values.iter(), n);
+        let short = |v: &Value| {
+            let t = v.to_text();
+            if t.chars().count() > 40 { t.chars().take(40).collect::<String>() + "…" } else { t.into_owned() }
+        };
+        let mut lines = vec![format!("{}: {} · {}: {} · {}: {}", tr("Loaded rows"), s.count, tr("NULLs"), s.nulls, tr("Distinct"), s.distinct)];
+        if let (Some(min), Some(max)) = (&s.min, &s.max) {
+            lines.push(format!("{}: {} · {}: {}", tr("Min"), short(min), tr("Max"), short(max)));
+        }
+        if n < total {
+            lines.push(trf("Of the first {} rows", &[&n]));
+        }
+        let text = lines.join("\n");
+        self.state.rt.column_summary = Some((col, generation, text.clone()));
+        Some(text)
     }
 
     /// Room the header of `col` needs: its name, type and key / link icons, the

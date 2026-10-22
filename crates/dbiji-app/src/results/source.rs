@@ -205,6 +205,24 @@ impl ResultSource {
         }
     }
 
+    /// Stop the running fetch (Cancel in the grid). A query that is still
+    /// running is cancelled on the server, so the session stays usable and the
+    /// fetch ends with the server's "cancelled"; reading more pages of an open
+    /// cursor is stopped here.
+    pub fn stop(&mut self, backend: &Backend) {
+        if self.fetch_job.is_none() {
+            return;
+        }
+        if self.token.is_none() && self.session.can_cancel() {
+            let session = self.session.clone();
+            backend.spawn_detached(async move {
+                let _ = session.cancel().await;
+            });
+        } else {
+            self.cancel_fetch();
+        }
+    }
+
     /// The operation of a cancelled fetch, to be marked as cancelled.
     pub fn take_cancelled_op(&mut self) -> Option<u64> {
         self.cancelled_op.take()

@@ -547,3 +547,26 @@ fn sessions_use_the_computer_time_zone() {
         assert_eq!(own.query(sql)[0][0], if name == "postgres" { "UTC" } else { "+00:00" }, "{name}: the connection's own time zone");
     }
 }
+
+/// Cancel stops a slow query on the server: the fetch ends at once and the
+/// session can run the next statement.
+#[test]
+fn cancel_stops_a_slow_query_on_the_server() {
+    let Some(url) = std::env::var("DBIJI_TEST_PG").ok().filter(|u| !u.trim().is_empty()) else { return };
+    let h = H::new(&url);
+    let session = h.cm.live(&h.id).unwrap().main.clone();
+    let mut src = dbiji_app::results::source::ResultSource::new(session, "SELECT pg_sleep(30)".into(), Vec::new(), Vec::new(), None, 1 << 20);
+    // As the data tab runs its query (open, refresh, a server-side filter).
+    src.refresh(&h.backend, 100);
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(src.is_fetching());
+    let t0 = Instant::now();
+    src.stop(&h.backend);
+    while src.is_fetching() {
+        assert!(t0.elapsed() < Duration::from_secs(10), "the query was not cancelled");
+        src.poll();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(t0.elapsed() < Duration::from_secs(5), "{:?}", t0.elapsed());
+    assert_eq!(h.query("SELECT 1")[0][0], "1", "the session still works");
+}

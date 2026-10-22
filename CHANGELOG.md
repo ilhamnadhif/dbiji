@@ -3,6 +3,11 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.23 — 2026-10-22
+
+### Changed
+- The navigator's toolbar no longer repeats New connection and New SQL editor of the main toolbar (as in DBeaver); it keeps Connect / Disconnect, Refresh and Collapse all. New SQL editor in the main toolbar (and ⌘]) opens on the navigator's selected schema or database, as the navigator's button did.
+
 ## 0.3.22 — 2026-10-22
 
 ### Fixed

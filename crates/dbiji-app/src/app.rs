@@ -703,7 +703,12 @@ impl DbijiApp {
         }
         let conn = self.selected_connection();
         let cmd = match action {
-            A::NewSqlEditor => Some(AppCommand::NewSqlEditor { connection: conn, schema: None, text: None }),
+            A::NewSqlEditor => {
+                // On the navigator's selection: its schema (or database) too.
+                let nav_conn = self.nav.selected.as_ref().and_then(|n| n.connection());
+                let schema = if nav_conn.is_some() && nav_conn == conn.as_deref() { self.nav.selected_schema() } else { None };
+                Some(AppCommand::NewSqlEditor { connection: conn, schema, text: None })
+            }
             A::OpenSqlConsole => conn.map(|c| AppCommand::NewSqlConsole { connection: c }),
             A::NewConnection => Some(AppCommand::NewConnection { kind: None, folder: None }),
             A::NewDatabase => match conn {

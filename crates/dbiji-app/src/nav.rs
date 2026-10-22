@@ -998,13 +998,11 @@ impl Navigator {
         if self.prefs != cx.settings.navigator {
             self.prefs = cx.settings.navigator.clone();
         }
-        // Toolbar: the frequent actions as plain icons, the rest in "⋯".
+        // Toolbar: actions on the tree as plain icons, the rest in "⋯". New
+        // connection and New SQL editor are in the main toolbar (as in DBeaver).
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
             let flat = |text: egui::RichText| egui::Button::new(text).frame_when_inactive(false).min_size(egui::vec2(24.0, 22.0));
-            if ui.add(flat(dbiji_icons::ic(icon::PLUS))).on_hover_text(tr("New connection")).clicked() {
-                cx.push(AppCommand::NewConnection { kind: None, folder: None });
-            }
             let sel_conn = self.selected.as_ref().and_then(|n| n.connection()).map(str::to_string);
             let connected = sel_conn.as_deref().is_some_and(|c| cx.conns.is_connected(c));
             let plug = egui::RichText::new(if connected { icon::PLUGS } else { icon::PLUGS_CONNECTED });
@@ -1012,9 +1010,6 @@ impl Navigator {
                 && let Some(c) = sel_conn.clone()
             {
                 cx.push(if connected { AppCommand::Disconnect(c) } else { AppCommand::Connect(c) });
-            }
-            if ui.add_enabled(sel_conn.is_some(), flat(dbiji_icons::ic(icon::FILE_SQL))).on_hover_text(tr("New SQL editor")).clicked() {
-                cx.push(AppCommand::NewSqlEditor { connection: sel_conn.clone(), schema: self.selected_schema(), text: None });
             }
             if ui.add_enabled(connected, flat(dbiji_icons::ic(icon::ARROW_CLOCKWISE))).on_hover_text(tr("Refresh")).clicked() {
                 self.refresh_selected(cx);

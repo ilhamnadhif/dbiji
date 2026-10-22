@@ -3,6 +3,11 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.31 — 2026-10-22
+
+### Fixed
+- The × of a side panel's tab (Grouping, Calc, Value …) did nothing: the tab took the click. It closes the panel again.
+
 ## 0.3.30 — 2026-10-22
 
 ### Changed

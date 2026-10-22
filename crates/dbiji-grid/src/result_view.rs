@@ -261,9 +261,15 @@ fn panel_tab(ui: &mut Ui, p: PanelKind, selected: bool, named: bool) -> (bool, b
     use egui::{Button, CornerRadius, Label, Margin, RichText, Sense};
     let v = ui.visuals().clone();
     let fill = if selected { v.widgets.inactive.weak_bg_fill } else { egui::Color32::TRANSPARENT };
+    // The icon and the name select the tab; the frame itself takes no clicks:
+    // sensed after the ×, it would cover it and swallow its clicks.
     let inner = Frame::new().fill(fill).corner_radius(CornerRadius::same(4)).inner_margin(Margin::symmetric(6, 3)).show(ui, |ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
-        let mut clicked = ui.add(Label::new(RichText::new(panel_icon(p)).color(panel_color(p, v.dark_mode))).sense(Sense::click())).clicked();
+        let icon = ui.add(Label::new(RichText::new(panel_icon(p)).color(panel_color(p, v.dark_mode))).sense(Sense::click()));
+        let mut clicked = icon.clicked();
+        if !named {
+            icon.on_hover_text(panel_name(p));
+        }
         if named {
             let text = RichText::new(panel_name(p)).color(if selected { v.strong_text_color() } else { v.text_color() });
             clicked |= ui.add(Label::new(text).extend().sense(Sense::click())).clicked();
@@ -272,12 +278,7 @@ fn panel_tab(ui: &mut Ui, p: PanelKind, selected: bool, named: bool) -> (bool, b
             && ui.add(Button::new(RichText::new(egui_phosphor::regular::X).size(11.0).color(v.weak_text_color())).frame(false).small()).on_hover_text(tr("Close panel")).clicked();
         (clicked, close)
     });
-    let (mut select, close) = inner.inner;
-    let resp = inner.response.interact(Sense::click());
-    select |= resp.clicked();
-    if !named {
-        resp.on_hover_text(panel_name(p));
-    }
+    let (select, close) = inner.inner;
     (select && !close, close)
 }
 

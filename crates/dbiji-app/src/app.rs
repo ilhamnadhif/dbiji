@@ -1684,6 +1684,9 @@ impl eframe::App for DbijiApp {
         };
         if self.show_nav {
             egui::Panel::left("dbiji_navigator").resizable(true).default_size(280.0).size_range(160.0..=600.0).show(ui, |ui| {
+                // The tree's toolbar on the switch's row (as in DBeaver); below it
+                // when the panel is too narrow for both.
+                let mut toolbar_below = false;
                 ui.horizontal(|ui| {
                     if ui.selectable_label(!self.show_project, (dbiji_icons::ic(icon::DATABASE), tr("Database"))).clicked() {
                         self.show_project = false;
@@ -1691,7 +1694,17 @@ impl eframe::App for DbijiApp {
                     if ui.selectable_label(self.show_project, (dbiji_icons::ic(icon::FOLDER_SIMPLE), tr("Project"))).clicked() {
                         self.show_project = true;
                     }
+                    if !self.show_project {
+                        if ui.available_width() >= crate::nav::Navigator::TOOLBAR_WIDTH {
+                            self.nav.toolbar_ui(ui, &mut cx);
+                        } else {
+                            toolbar_below = true;
+                        }
+                    }
                 });
+                if toolbar_below {
+                    ui.horizontal(|ui| self.nav.toolbar_ui(ui, &mut cx));
+                }
                 ui.separator();
                 if self.show_project {
                     self.project.ui(ui, &mut cx);

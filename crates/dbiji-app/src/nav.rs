@@ -993,56 +993,61 @@ impl Navigator {
         });
     }
 
+    /// Width of [`toolbar_ui`](Self::toolbar_ui): four icons.
+    pub const TOOLBAR_WIDTH: f32 = 4.0 * 22.0 + 3.0;
+
+    /// The tree's actions as plain icons, right-aligned in `ui`'s row (as in
+    /// DBeaver, next to the Database / Project switch), the rest in "⋯". New
+    /// connection and New SQL editor are in the main toolbar.
+    pub fn toolbar_ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.spacing_mut().item_spacing.x = 1.0;
+            let flat = |text: egui::RichText| egui::Button::new(text).frame_when_inactive(false).min_size(egui::vec2(22.0, 22.0));
+            let more = ui.add(flat(egui::RichText::new(icon::DOTS_THREE))).on_hover_text(tr("More"));
+            egui::Popup::menu(&more).show(|ui| {
+                // A new folder inside the selected folder, else at the top level.
+                if ui.button((dbiji_icons::ic(icon::FOLDER_PLUS), tr("New folder…"))).clicked() {
+                    let parent = match &self.selected {
+                        Some(NavNode::Folder(f)) => Some(f.clone()),
+                        _ => None,
+                    };
+                    cx.push(AppCommand::NewFolder { parent });
+                    ui.close();
+                }
+                ui.separator();
+                let mut props = cx.settings.navigator.show_properties;
+                if ui.checkbox(&mut props, tr("Properties panel")).changed() {
+                    cx.settings.navigator.show_properties = props;
+                    cx.push(AppCommand::SettingsChanged);
+                }
+                let mut link = cx.settings.navigator.link_with_editor;
+                if ui.checkbox(&mut link, tr("Link with editor")).on_hover_text(tr("Link with editor: select the object of the active tab")).changed() {
+                    cx.settings.navigator.link_with_editor = link;
+                    cx.push(AppCommand::SettingsChanged);
+                }
+            });
+            if ui.add(flat(dbiji_icons::ic(icon::ARROWS_IN_SIMPLE))).on_hover_text(tr("Collapse all")).clicked() {
+                self.collapse_all();
+            }
+            let sel_conn = self.selected.as_ref().and_then(|n| n.connection()).map(str::to_string);
+            let connected = sel_conn.as_deref().is_some_and(|c| cx.conns.is_connected(c));
+            if ui.add_enabled(connected, flat(dbiji_icons::ic(icon::ARROW_CLOCKWISE))).on_hover_text(tr("Refresh")).clicked() {
+                self.refresh_selected(cx);
+            }
+            let plug = egui::RichText::new(if connected { icon::PLUGS } else { icon::PLUGS_CONNECTED });
+            if ui.add_enabled(sel_conn.is_some(), flat(plug)).on_hover_text(if connected { tr("Disconnect") } else { tr("Connect") }).clicked()
+                && let Some(c) = sel_conn
+            {
+                cx.push(if connected { AppCommand::Disconnect(c) } else { AppCommand::Connect(c) });
+            }
+        });
+    }
+
     pub fn ui(&mut self, ui: &mut Ui, cx: &mut AppContext) {
         self.dark = ui.visuals().dark_mode;
         if self.prefs != cx.settings.navigator {
             self.prefs = cx.settings.navigator.clone();
         }
-        // Toolbar: actions on the tree as plain icons, the rest in "⋯". New
-        // connection and New SQL editor are in the main toolbar (as in DBeaver).
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 2.0;
-            let flat = |text: egui::RichText| egui::Button::new(text).frame_when_inactive(false).min_size(egui::vec2(24.0, 22.0));
-            let sel_conn = self.selected.as_ref().and_then(|n| n.connection()).map(str::to_string);
-            let connected = sel_conn.as_deref().is_some_and(|c| cx.conns.is_connected(c));
-            let plug = egui::RichText::new(if connected { icon::PLUGS } else { icon::PLUGS_CONNECTED });
-            if ui.add_enabled(sel_conn.is_some(), flat(plug)).on_hover_text(if connected { tr("Disconnect") } else { tr("Connect") }).clicked()
-                && let Some(c) = sel_conn.clone()
-            {
-                cx.push(if connected { AppCommand::Disconnect(c) } else { AppCommand::Connect(c) });
-            }
-            if ui.add_enabled(connected, flat(dbiji_icons::ic(icon::ARROW_CLOCKWISE))).on_hover_text(tr("Refresh")).clicked() {
-                self.refresh_selected(cx);
-            }
-            if ui.add(flat(dbiji_icons::ic(icon::ARROWS_IN_SIMPLE))).on_hover_text(tr("Collapse all")).clicked() {
-                self.collapse_all();
-            }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let more = ui.add(flat(egui::RichText::new(icon::DOTS_THREE))).on_hover_text(tr("More"));
-                egui::Popup::menu(&more).show(|ui| {
-                    // A new folder inside the selected folder, else at the top level.
-                    if ui.button((dbiji_icons::ic(icon::FOLDER_PLUS), tr("New folder…"))).clicked() {
-                        let parent = match &self.selected {
-                            Some(NavNode::Folder(f)) => Some(f.clone()),
-                            _ => None,
-                        };
-                        cx.push(AppCommand::NewFolder { parent });
-                        ui.close();
-                    }
-                    ui.separator();
-                    let mut props = cx.settings.navigator.show_properties;
-                    if ui.checkbox(&mut props, tr("Properties panel")).changed() {
-                        cx.settings.navigator.show_properties = props;
-                        cx.push(AppCommand::SettingsChanged);
-                    }
-                    let mut link = cx.settings.navigator.link_with_editor;
-                    if ui.checkbox(&mut link, tr("Link with editor")).on_hover_text(tr("Link with editor: select the object of the active tab")).changed() {
-                        cx.settings.navigator.link_with_editor = link;
-                        cx.push(AppCommand::SettingsChanged);
-                    }
-                });
-            });
-        });
         let search = ui.add(egui::TextEdit::singleline(&mut self.filter).hint_text(format!("{} {}", icon::MAGNIFYING_GLASS, tr("Filter objects"))).desired_width(f32::INFINITY));
         if search.changed() {
             // keep selection visible

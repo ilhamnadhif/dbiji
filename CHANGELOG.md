@@ -3,6 +3,11 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.24 — 2026-10-22
+
+### Changed
+- The navigator's buttons (Connect / Disconnect, Refresh, Collapse all, ⋯) sit on the row of the Database / Project switch, as in DBeaver, so the tree starts higher; a narrow panel puts them on a row of their own.
+
 ## 0.3.23 — 2026-10-22
 
 ### Changed

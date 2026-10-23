@@ -340,7 +340,7 @@ impl GridFrame<'_> {
                     sink.galley(b.center() - g.rect.size() / 2.0, g, color);
                 }
                 let placed = place_text(glyphs, &mut sink, &mut batch, &font, &look.text, text_rect, look.align, look.color);
-                let mut elided = placed.elided || look.text.ends_with('¶');
+                let mut elided = placed.elided || look.text.contains('¶');
                 if let Some(desc) = look.suffix {
                     let start = placed.left + placed.width + 6.0;
                     if start + 12.0 < text_rect.right() {

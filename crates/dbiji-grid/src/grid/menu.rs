@@ -24,9 +24,9 @@ fn short_value(v: &Value) -> String {
     if v.is_null() {
         return "NULL".into();
     }
-    let t = v.to_text();
-    let first = t.lines().next().unwrap_or("");
-    if first.chars().count() > 32 || t.contains('\n') { format!("{}…", first.chars().take(32).collect::<String>()) } else { first.to_string() }
+    let text = v.to_text();
+    let t = dbiji_core::value::single_line(&text);
+    if t.chars().count() > 32 { format!("{}…", t.chars().take(32).collect::<String>()) } else { t.into_owned() }
 }
 
 impl GridFrame<'_> {

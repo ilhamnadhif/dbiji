@@ -3,6 +3,12 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.37 — 2026-10-23
+
+### Fixed
+- Multi-line text in the grid and the record view showed only its first line, so a value starting with a line break (JSON from an API, for example) showed as "…". Cells show the whole value on one line, each line break as ¶ (as in DBeaver); hovering shows it with its lines.
+- Floating point values show every digit again (`1932.7799999999997`), the same text as Copy, export and editing.
+
 ## 0.3.36 — 2026-10-23
 
 ### Fixed

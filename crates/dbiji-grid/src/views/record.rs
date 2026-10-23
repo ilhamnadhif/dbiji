@@ -4,6 +4,7 @@ use crate::format::PreparedFormat;
 use crate::grid::{DataGridState, GridAction, GridOptions, ResultViewKind};
 use crate::model::{CellRef, ResultModel, RowAnchor, RowState};
 use crate::theme::GridTheme;
+use dbiji_core::value::single_line;
 use dbiji_core::{Value, tr, trf};
 use egui::{Button, Key, RichText, ScrollArea, TextEdit, Ui};
 use egui_phosphor::regular as icon;
@@ -20,8 +21,8 @@ fn value_text(v: &Value, is_default: bool, modified: bool, fmt: &PreparedFormat,
             // A check box only (its state is the value).
             Value::Bool(true) => RichText::new(icon::CHECK_SQUARE).size(17.0).color(theme.bool_true),
             Value::Bool(false) => RichText::new(icon::SQUARE).size(17.0).color(theme.weak),
-            Value::Json(s) => RichText::new(s.to_string()).monospace().color(theme.text),
-            Value::Text(s) => RichText::new(clip(s)).color(theme.text),
+            Value::Json(s) => RichText::new(clip(&single_line(s))).monospace().color(theme.text),
+            Value::Text(s) => RichText::new(clip(&single_line(s))).color(theme.text),
             other => RichText::new(clip(&fmt.format(other))).color(theme.text),
         }
     };

@@ -1090,9 +1090,7 @@ impl GridFrame<'_> {
                     texts.push(if v.is_null() { fmt.null_text.clone() } else { prepared.format(&v).into_owned() });
                 });
                 for t in &texts {
-                    // Multi-line values show their first line.
-                    let line = t.lines().next().unwrap_or_default();
-                    w = w.max(self.measure(painter, line) + 2.0 * super::frame::PAD + 2.0);
+                    w = w.max(self.measure(painter, t) + 2.0 * super::frame::PAD + 2.0);
                 }
             }
             let w = w.clamp(super::state::MIN_COLUMN_WIDTH, super::state::MAX_INITIAL_WIDTH).round();

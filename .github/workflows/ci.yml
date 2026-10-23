@@ -43,6 +43,7 @@ jobs:
 
   integration:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:16
@@ -113,6 +114,7 @@ jobs:
   # 5.7's DHE-only TLS).
   integration-oldest:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     env:
       DBIJI_TEST_PG: postgres://dbiji:dbiji@127.0.0.1:55411/dbiji
       DBIJI_TEST_MYSQL: mysql://root:dbiji@127.0.0.1:53357/dbiji

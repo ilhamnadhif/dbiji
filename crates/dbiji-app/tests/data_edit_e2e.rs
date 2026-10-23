@@ -415,9 +415,12 @@ fn manual_commit_reorder_while_loading() {
         let (backend, id) = (h.backend.clone(), h.id.clone());
         h.cm.disconnect(&backend, &id);
         drop(h);
+        // statement_timeout bounds each try even where lock_timeout does not apply
+        // (a CI run once hung here).
         setup.sql("SET lock_timeout = '2s'");
+        setup.sql("SET statement_timeout = '10s'");
         let t0 = Instant::now();
-        while let Err(e) = setup.try_sql(&format!("DROP TABLE {table}")) {
+        while let Err(e) = setup.try_sql(&format!("DROP TABLE IF EXISTS {table}")) {
             assert!(t0.elapsed() < Duration::from_secs(60), "[{name}] DROP TABLE: {e}");
             std::thread::sleep(Duration::from_millis(200));
         }

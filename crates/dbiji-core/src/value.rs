@@ -260,17 +260,9 @@ fn float_text(f: f64) -> String {
     }
 }
 
-/// A float for reading: 15 significant digits, so binary noise of a sum (`0.1 + 0.2`,
-/// `1932.7799999999997`) shows as `0.3`, `1932.78` (as the sqlite3 shell and Excel do).
-/// Copy, export and editing keep the exact value ([`float_text`]).
-fn float_display(f: f64) -> String {
-    if !f.is_finite() {
-        return float_text(f);
-    }
-    match format!("{f:.14e}").parse::<f64>() {
-        Ok(r) => float_text(r),
-        Err(_) => float_text(f),
-    }
+/// `s` on one line: each line break shows as `¶`, the rest of the text is kept.
+pub fn single_line(s: &str) -> Cow<'_, str> {
+    if s.contains(['\n', '\r']) { Cow::Owned(s.replace("\r\n", "¶").replace(['\n', '\r'], "¶")) } else { Cow::Borrowed(s) }
 }
 
 fn truncate_chars(s: &str, max: usize) -> Cow<'_, str> {
@@ -460,7 +452,7 @@ impl Value {
                         let s = format!("{f:.d$}");
                         if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.').to_string() } else { s }
                     }
-                    _ => float_display(*f),
+                    _ => float_text(*f),
                 };
                 if opts.thousands_separator { Cow::Owned(group_number_text(&s)) } else { Cow::Owned(s) }
             }
@@ -471,17 +463,10 @@ impl Value {
                     Cow::Borrowed(s)
                 }
             }
-            Value::Text(s) | Value::Json(s) => {
-                let first_line_end = s.find('\n');
-                match first_line_end {
-                    Some(i) => {
-                        let mut t: String = s[..i].to_string();
-                        t.push('¶');
-                        Cow::Owned(truncate_chars(&t, opts.max_text_len).into_owned())
-                    }
-                    None => truncate_chars(s, opts.max_text_len),
-                }
-            }
+            Value::Text(s) | Value::Json(s) => match single_line(s) {
+                Cow::Borrowed(t) => truncate_chars(t, opts.max_text_len),
+                Cow::Owned(t) => Cow::Owned(truncate_chars(&t, opts.max_text_len).into_owned()),
+            },
             Value::Bytes(b) => {
                 let shown = &b[..b.len().min(opts.binary_max_len)];
                 let more = if b.len() > shown.len() { "…" } else { "" };
@@ -996,16 +981,12 @@ mod tests {
     }
 
     #[test]
-    fn grid_floats_hide_binary_noise() {
+    fn grid_shows_floats_and_text_as_copied() {
         let o = FormatOptions::default();
-        assert_eq!(Value::Float(1932.7799999999997).display(&o), "1932.78");
-        assert_eq!(Value::Float(0.1 + 0.2).display(&o), "0.3");
-        assert_eq!(Value::Float(1.5).display(&o), "1.5");
-        assert_eq!(Value::Float(-2.0).display(&o), "-2");
-        assert_eq!(Value::Float(1e-7).display(&o), "0.0000001");
-        assert_eq!(Value::Float(f64::NAN).display(&o), "NaN");
-        // Copy and editing keep every digit.
-        assert_eq!(Value::Float(0.1 + 0.2).to_text(), "0.30000000000000004");
+        assert_eq!(Value::Float(1932.7799999999997).display(&o), "1932.7799999999997");
+        assert_eq!(Value::Float(0.1 + 0.2).display(&o), Value::Float(0.1 + 0.2).to_text());
+        // Multi-line text keeps every line, joined by ¶.
+        assert_eq!(Value::text("\r\n  {\n\"a\": 1\n  }").display(&o), "¶  {¶\"a\": 1¶  }");
     }
 
     #[test]
@@ -1079,7 +1060,7 @@ mod tests {
         assert_eq!(Value::Int(-1234).display(&o), "-1,234");
         assert_eq!(Value::decimal("1234.50").display(&o), "1,234.50");
         assert_eq!(Value::Null.display(&o), "[NULL]");
-        assert_eq!(Value::text("a\nb").display(&o), "a¶");
+        assert_eq!(Value::text("a\nb").display(&o), "a¶b");
     }
 
     #[test]

@@ -376,14 +376,19 @@ fn server_side_sort_asc_desc() {
 /// transaction is aborted").
 #[test]
 fn manual_commit_reorder_while_loading() {
+    let stage = watchdog("manual_commit_reorder_while_loading", Duration::from_secs(180));
+    let at = |s: String| *stage.lock().unwrap() = s;
     for (name, url) in servers().into_iter().filter(|(n, _)| matches!(*n, "postgres" | "cockroach")) {
         let table = format!("dbiji_big_{}", &uuid::Uuid::new_v4().simple().to_string()[..8]);
+        at(format!("[{name}] create table"));
         let setup = H::new(&url);
         setup.sql(&format!("CREATE TABLE {table} AS SELECT g AS id, repeat('x', 100) AS pad FROM generate_series(1, 200000) g"));
         let mut h = H::new_with(&url, |cfg| cfg.auto_commit = Some(false));
         let mut view = TableDataView::new(h.id.clone(), ObjectRef::table(None, table.clone()), None);
+        at(format!("[{name}] first page"));
         h.until(&mut view, "first page", |v| v.panel.as_ref().is_some_and(|p| p.model.row_count() > 0));
         for (dir, first) in [(" DESC", 200000), ("", 1), (" DESC", 200000)] {
+            at(format!("[{name}] order by id{dir}"));
             {
                 let mut cx = AppContext {
                     backend: &h.backend,
@@ -411,10 +416,12 @@ fn manual_commit_reorder_while_loading() {
         }
         // The view's manual-commit transaction holds a lock on the table
         // until its session is closed (asynchronously): retry the DROP.
+        at(format!("[{name}] disconnect"));
         drop(view);
         let (backend, id) = (h.backend.clone(), h.id.clone());
         h.cm.disconnect(&backend, &id);
         drop(h);
+        at(format!("[{name}] drop table"));
         // statement_timeout bounds each try even where lock_timeout does not apply
         // (a CI run once hung here).
         setup.sql("SET lock_timeout = '2s'");
@@ -425,6 +432,28 @@ fn manual_commit_reorder_while_loading() {
             std::thread::sleep(Duration::from_millis(200));
         }
     }
+    at(String::new());
+}
+
+/// Ends the test run when `test` is still at the stage it last set after
+/// `limit` (a CI run once hung in it for 30 minutes without telling where);
+/// an empty stage means done.
+fn watchdog(test: &'static str, limit: Duration) -> Arc<std::sync::Mutex<String>> {
+    let stage = Arc::new(std::sync::Mutex::new(String::from("start")));
+    let watched = stage.clone();
+    std::thread::spawn(move || {
+        let t0 = Instant::now();
+        while t0.elapsed() < limit {
+            std::thread::sleep(Duration::from_millis(500));
+            if watched.lock().unwrap().is_empty() {
+                return;
+            }
+        }
+        use std::io::Write;
+        let _ = writeln!(std::io::stderr(), "{test} hung at: {}", watched.lock().unwrap());
+        std::process::exit(101);
+    });
+    stage
 }
 
 /// "Save as default filter": the table opens with the saved WHERE / ORDER BY

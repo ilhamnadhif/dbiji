@@ -1082,7 +1082,7 @@ impl Navigator {
             if ui.add_enabled(connected, flat(dbiji_icons::ic(icon::ARROW_CLOCKWISE))).on_hover_text(tr("Refresh")).clicked() {
                 self.refresh_selected(cx);
             }
-            let plug = egui::RichText::new(if connected { icon::PLUGS } else { icon::PLUGS_CONNECTED });
+            let plug = dbiji_icons::ic(if connected { icon::PLUGS } else { icon::PLUGS_CONNECTED });
             if ui.add_enabled(sel_conn.is_some(), flat(plug)).on_hover_text(if connected { tr("Disconnect") } else { tr("Connect") }).clicked()
                 && let Some(c) = sel_conn
             {

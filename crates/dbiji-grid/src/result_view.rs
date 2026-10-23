@@ -303,6 +303,17 @@ impl<'a> ResultViewer<'a> {
 
     /// Show everything in the available space.
     pub fn show(self, ui: &mut Ui) -> ResultViewResponse {
+        // A row above that did not fit (cut at the clip rect) widened `ui`: lay out
+        // in the visible part only, or the bars and side panels below would run past
+        // the tab (over the panel next to it).
+        let rect = ui.available_rect_before_wrap().intersect(ui.clip_rect());
+        let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(*ui.layout()));
+        let response = self.show_inside(&mut inner);
+        ui.advance_cursor_after_rect(rect);
+        response
+    }
+
+    fn show_inside(self, ui: &mut Ui) -> ResultViewResponse {
         let ResultViewer { model, state, options, id_salt } = self;
         // Rows fetched since the last frame (the grid syncs itself; the other views do not).
         if !matches!(state.toolbar.view, ResultViewKind::Grid) {

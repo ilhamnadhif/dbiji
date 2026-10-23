@@ -1847,11 +1847,13 @@ impl eframe::App for DbijiApp {
                 }
             });
         }
-        // The AI assistant at the right of the tabs (as an agent panel), resizable.
+        // The AI assistant at the right of the tabs (as an agent panel), resizable up
+        // to 720 points while the tabs keep 640 (narrower, their toolbars no longer fit).
         if self.ai_open
             && let Some(ai) = self.ai_panel.as_mut()
         {
-            egui::Panel::right("dbiji_ai").resizable(true).default_size(440.0).size_range(320.0..=1000.0).show(ui, |ui| {
+            let max = (ui.available_width() - 640.0).clamp(320.0, 720.0);
+            egui::Panel::right("dbiji_ai").resizable(true).default_size(440.0).size_range(320.0..=max).show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(format!("{} {}", icon::SPARKLE, tr("AI assistant"))).strong());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -1880,6 +1882,9 @@ impl eframe::App for DbijiApp {
             }
         }
         egui::CentralPanel::default().frame(egui::Frame::new()).show(ui, |ui| {
+            // A tab too wide for the space left (toolbars, grids) is cut at its edge
+            // instead of painting over the AI assistant.
+            ui.shrink_clip_rect(ui.max_rect());
             let suffixes = crate::tabs::tab_suffixes(self.dock.iter_all_tabs().map(|(_, t)| t), cx.conns);
             // Without tabs the editor area is the start page (as in DBeaver), not a tab.
             if self.dock.iter_all_tabs().next().is_none() {

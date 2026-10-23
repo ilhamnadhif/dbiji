@@ -2324,7 +2324,7 @@ words	kata
 {} task(s) deleted	{} task dihapus
 {} task(s) exported to {}	{} task diekspor ke {}
 {} task(s) moved	{} task dipindahkan
-{} to send	{} untuk dikirim
+{} to send, {} for a new line	{} untuk mengirim, {} untuk baris baru
 {} warning(s)	{} peringatan
 {} was not found. Install the client tools or set the tool path.	{} tidak ditemukan. Pasang alat klien atau atur lokasi alat.
 {}, row {}: {}	{}, baris {}: {}

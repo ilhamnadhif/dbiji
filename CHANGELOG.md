@@ -3,6 +3,16 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.38 — 2026-10-23
+
+### Changed
+- The AI assistant sends with Enter; Shift+Enter starts a new line (⌘Enter still sends).
+- The navigator's Connect button is green and its Disconnect button red, as in the connection's menu.
+
+### Fixed
+- Widening the AI assistant let the tab next to it run under it: the result grid, its side icons and its toolbar were drawn over the assistant. The assistant is at most 720 points wide and leaves the tabs 640, and a result too wide for its tab is cut at the tab's edge.
+- Security advisory RUSTSEC-2026-0385 (`ctutils`, used by the SSH tunnel's key handling): updated to 0.4.5.
+
 ## 0.3.37 — 2026-10-23
 
 ### Fixed

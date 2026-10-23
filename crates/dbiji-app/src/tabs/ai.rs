@@ -581,6 +581,17 @@ pub struct AiAssistantTab {
     unsaved: bool,
 }
 
+/// Shift+Enter starts a new line in the assistant's inputs; Enter sends.
+const NEW_LINE: egui::KeyboardShortcut = egui::KeyboardShortcut::new(egui::Modifiers::SHIFT, egui::Key::Enter);
+
+/// Enter (or ⌘Enter) without Shift was pressed: send the message.
+fn enter_pressed(ui: &mut Ui) -> bool {
+    ui.input_mut(|i| {
+        let at = i.events.iter().position(|e| matches!(e, egui::Event::Key { key: egui::Key::Enter, pressed: true, modifiers, .. } if !modifiers.shift && !modifiers.alt));
+        at.map(|at| i.events.remove(at)).is_some()
+    })
+}
+
 impl AiAssistantTab {
     pub fn new(conn: Option<String>) -> Self {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
@@ -1305,7 +1316,12 @@ impl AiAssistantTab {
         let busy = self.pending.is_some();
         let mut send = false;
         let rows = if self.action.takes_sql() || self.action == QuickAction::Describe { 4 } else { 2 };
-        let mut edit = egui::TextEdit::multiline(&mut self.input).hint_text(self.action.hint()).desired_rows(rows).desired_width(f32::INFINITY).id_salt(("ai_input", self.uid));
+        let mut edit = egui::TextEdit::multiline(&mut self.input)
+            .hint_text(self.action.hint())
+            .desired_rows(rows)
+            .desired_width(f32::INFINITY)
+            .return_key(NEW_LINE)
+            .id_salt(("ai_input", self.uid));
         if self.action.takes_sql() || self.action == QuickAction::Describe {
             edit = edit.code_editor();
         }
@@ -1314,7 +1330,7 @@ impl AiAssistantTab {
             self.focus_input = false;
             resp.request_focus();
         }
-        if resp.has_focus() && ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Enter)) {
+        if resp.has_focus() && enter_pressed(ui) {
             send = true;
         }
         if self.action == QuickAction::FixError {
@@ -1323,9 +1339,10 @@ impl AiAssistantTab {
                     .hint_text(tr("Error message from the database"))
                     .desired_rows(2)
                     .desired_width(f32::INFINITY)
+                    .return_key(NEW_LINE)
                     .id_salt(("ai_error", self.uid)),
             );
-            if r.has_focus() && ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Enter)) {
+            if r.has_focus() && enter_pressed(ui) {
                 send = true;
             }
         }
@@ -1338,7 +1355,8 @@ impl AiAssistantTab {
             } else if ui.button(RichText::new(format!("{} {}", icon::PAPER_PLANE_RIGHT, tr("Send"))).strong()).clicked() {
                 send = true;
             }
-            ui.weak(trf("{} to send", &[&if crate::keys::IS_MAC { "⌘↩" } else { "Ctrl+Enter" }]));
+            let (enter, shift_enter) = if crate::keys::IS_MAC { ("↩", "⇧↩") } else { ("Enter", "Shift+Enter") };
+            ui.weak(trf("{} to send, {} for a new line", &[&enter, &shift_enter]));
             if let Some(n) = &self.notice {
                 ui.label(RichText::new(n).color(crate::theme::warning_color(ui.visuals().dark_mode)));
             }

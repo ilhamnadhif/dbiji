@@ -546,7 +546,9 @@ impl GridFrame<'_> {
         });
     }
 
-    /// Auto-size `col` using a painter for measurement.
+    /// Auto-size `col` using a painter for measurement: it fits the longest
+    /// shown value, up to the width of the grid (a longer text is read in the
+    /// value panel, not by scrolling sideways).
     pub fn autosize_with(&mut self, painter: &egui::Painter, col: usize) {
         let mut w = self.header_width(painter, col);
         let rows = self.geo.visible_rows(self.state.rt.scroll_y);
@@ -560,7 +562,8 @@ impl GridFrame<'_> {
         for t in &texts {
             w = w.max(self.measure(painter, t) + 2.0 * super::frame::PAD + 2.0);
         }
-        self.state.set_column_width(col, w.clamp(super::state::MIN_COLUMN_WIDTH, super::state::MAX_AUTO_WIDTH));
+        let max = (self.geo.body.width() - 2.0).max(super::state::MIN_COLUMN_WIDTH);
+        self.state.set_column_width(col, w.clamp(super::state::MIN_COLUMN_WIDTH, max));
     }
 
     /// Generate SQL for the selected rows and show it.

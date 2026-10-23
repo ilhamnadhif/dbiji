@@ -3,6 +3,11 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.39 — 2026-10-24
+
+### Fixed
+- A double click on a column's border (and Fit to values) stopped at 480 points, so long texts stayed cut with "…". The column fits its longest shown value, up to the width of the grid.
+
 ## 0.3.38 — 2026-10-23
 
 ### Changed

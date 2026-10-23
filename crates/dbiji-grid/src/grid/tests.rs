@@ -490,6 +490,32 @@ fn columns_fit_header_and_first_values_until_sized_by_hand() {
 }
 
 #[test]
+fn double_click_on_a_border_fits_the_longest_value_up_to_the_grid_width() {
+    let text = "Bisa, aku bisa bantu kamu belajar membaca kitab, misalnya latihan membaca harian";
+    let mut m = editable_model(10);
+    m.set_value(2, 1, Value::text(text)).unwrap();
+    let mut h = GridHarness::new(m);
+    h.frame(vec![]);
+    let double_click = |h: &mut GridHarness| {
+        // Apart from the clicks before (not a triple click).
+        for _ in 0..30 {
+            h.frame(vec![]);
+        }
+        let b = h.header_border(1);
+        h.click_at(b, PointerButton::Primary, Modifiers::NONE);
+        h.click_at(b, PointerButton::Primary, Modifiers::NONE);
+    };
+    double_click(&mut h);
+    let (body, ..) = h.geometry();
+    let fit = h.state.column_width(1);
+    assert!(fit > 480.0 && fit < body.width() - 2.0, "the whole value fits: {fit}");
+    // A value longer than the grid is as wide as the grid.
+    h.model.set_value(4, 1, Value::text(text.repeat(5))).unwrap();
+    double_click(&mut h);
+    assert!((h.state.column_width(1) - (body.width() - 2.0)).abs() < 1.0, "{}", h.state.column_width(1));
+}
+
+#[test]
 fn a_hovered_header_summarises_its_loaded_values() {
     let mut m = editable_model(10);
     m.set_value(4, 1, Value::Null).unwrap();

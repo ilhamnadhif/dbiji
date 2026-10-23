@@ -42,8 +42,6 @@ impl Default for ColumnState {
 
 /// Minimum column width.
 pub const MIN_COLUMN_WIDTH: f32 = 24.0;
-/// Maximum column width set by auto-sizing.
-pub const MAX_AUTO_WIDTH: f32 = 480.0;
 /// Maximum width a column gets from its first values (longer texts are cut).
 pub const MAX_INITIAL_WIDTH: f32 = 360.0;
 

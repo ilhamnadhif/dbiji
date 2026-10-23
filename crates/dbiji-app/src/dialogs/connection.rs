@@ -221,7 +221,7 @@ impl ConnectionDialog {
         let title = if self.is_new { tr("New connection") } else { tr("Edit connection") };
         let mut open = self.open;
         let mut close = false;
-        egui::Window::new(format!("{} {}", icon::PLUGS_CONNECTED, title))
+        let shown = egui::Window::new(format!("{} {}", icon::PLUGS_CONNECTED, title))
             // Its own window per connection: two dialogs with the same title share no state.
             .id(egui::Id::new(("conn_dlg", &self.cfg.id)))
             .open(&mut open)
@@ -337,6 +337,9 @@ impl ConnectionDialog {
                     });
                 });
             });
+        if crate::widgets::escape_closes(ctx, shown.map(|r| r.response.layer_id)) {
+            close = true;
+        }
         self.open = open && !close;
     }
 

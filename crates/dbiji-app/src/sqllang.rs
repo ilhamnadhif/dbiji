@@ -213,6 +213,30 @@ impl EditorLanguage for SqlLanguage {
     }
 }
 
+/// Highlighted, non-wrapping layout of `code` from its `tokens` (see [`EditorLanguage::highlight`]).
+pub fn highlight_job(code: &str, tokens: &[(Range<usize>, TokenStyle)], theme: &dbiji_editor::EditorTheme, font: egui::FontId) -> egui::text::LayoutJob {
+    let mut job = egui::text::LayoutJob::default();
+    let fmt = |color| egui::TextFormat { font_id: font.clone(), color, ..Default::default() };
+    let mut tokens = tokens.to_vec();
+    tokens.sort_by_key(|(r, _)| r.start);
+    let mut pos = 0;
+    for (r, style) in tokens {
+        if r.start < pos || r.end > code.len() || !code.is_char_boundary(r.start) || !code.is_char_boundary(r.end) {
+            continue;
+        }
+        if r.start > pos {
+            job.append(&code[pos..r.start], 0.0, fmt(theme.token_color(TokenStyle::Plain)));
+        }
+        job.append(&code[r.clone()], 0.0, fmt(theme.token_color(style)));
+        pos = r.end;
+    }
+    if pos < code.len() {
+        job.append(&code[pos..], 0.0, fmt(theme.token_color(TokenStyle::Plain)));
+    }
+    job.wrap.max_width = f32::INFINITY;
+    job
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

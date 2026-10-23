@@ -173,7 +173,7 @@ impl Dialogs {
         }
         if self.about_open {
             let mut open = true;
-            egui::Window::new(tr("About DBiji")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
+            let shown = egui::Window::new(tr("About DBiji")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
                     ui.label(RichText::new("DBiji").size(26.0).strong());
                     ui.label(format!("{} {}", tr("Version"), env!("CARGO_PKG_VERSION")));
@@ -183,11 +183,11 @@ impl Dialogs {
                     ui.weak(tr("No telemetry. Only connects to the servers you configure."));
                 });
             });
-            self.about_open = open;
+            self.about_open = open && !crate::widgets::escape_closes(ctx, shown.map(|r| r.response.layer_id));
         }
         if self.drivers_open {
             let mut open = true;
-            egui::Window::new(format!("{} {}", icon::PLUGS, tr("Database drivers"))).open(&mut open).default_width(720.0).show(ctx, |ui| {
+            let shown = egui::Window::new(format!("{} {}", icon::PLUGS, tr("Database drivers"))).open(&mut open).default_width(720.0).show(ctx, |ui| {
                 ui.label(tr("Drivers are built into DBiji (no downloads); network drivers are written in Rust, SQLite and DuckDB are embedded engines."));
                 ui.add_space(4.0);
                 let mut kinds = cx.conns.registry.kinds();
@@ -217,14 +217,14 @@ impl Dialogs {
                 ui.add_space(6.0);
                 ui.weak(tr("Not available: Oracle, Db2, Firebird, H2 and Trino (no Rust network driver yet)."));
             });
-            self.drivers_open = open;
+            self.drivers_open = open && !crate::widgets::escape_closes(ctx, shown.map(|r| r.response.layer_id));
         }
         if self.shortcuts_open {
             let mut open = true;
-            egui::Window::new(tr("Keyboard shortcuts")).open(&mut open).default_width(420.0).show(ctx, |ui| {
+            let shown = egui::Window::new(tr("Keyboard shortcuts")).open(&mut open).default_width(420.0).show(ctx, |ui| {
                 crate::keys::shortcuts_table(ui, cx);
             });
-            self.shortcuts_open = open;
+            self.shortcuts_open = open && !crate::widgets::escape_closes(ctx, shown.map(|r| r.response.layer_id));
         }
         if self.palette_open {
             let mut open = true;
@@ -238,7 +238,7 @@ impl Dialogs {
         for (i, p) in self.prompts.iter_mut().enumerate() {
             let mut open = true;
             let mut submit = false;
-            egui::Window::new(format!("{} {}", icon::KEY, trf("Connect to {}", &[&p.conn_name])))
+            let shown = egui::Window::new(format!("{} {}", icon::KEY, trf("Connect to {}", &[&p.conn_name])))
                 .id(egui::Id::new(("cred_prompt", &p.conn_id)))
                 .open(&mut open)
                 .collapsible(false)
@@ -314,7 +314,7 @@ impl Dialogs {
                 }
                 self.ready.push((p.conn_id.clone(), creds));
                 done.push(i);
-            } else if !open {
+            } else if !open || crate::widgets::escape_closes(ctx, shown.map(|r| r.response.layer_id)) {
                 done.push(i);
             }
         }

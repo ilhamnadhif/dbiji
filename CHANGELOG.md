@@ -3,6 +3,20 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.36 — 2026-10-23
+
+### Fixed
+- SQLite: with a table's data open, a statement that writes from another tab (or another program) failed with "database is locked" after 5 seconds: the data tab kept its read open for the next page. Its read now ends a second after the last page; scrolling further runs the query again.
+- The ER diagram button opens the diagram with only the connection selected in the navigator (the active tab's schema, else the connection's current one) instead of asking to select a schema.
+- Escape closes the dialog windows like Cancel: new / edit connection, the password prompt, Import connections, About, Database drivers, Keyboard shortcuts and Tip of the day (not while typing in an editor behind them).
+- The Dependencies and other property tables size their columns to their values instead of cutting names short.
+- The DDL view (table DDL, catalog object DDL, FDW scripts) had two Copy buttons on separate rows.
+
+### Changed
+- The DDL page is highlighted like the SQL editor, its buttons are on one row, and Format shows it formatted with the SQL editor's formatter settings (for SQLite's DDL kept as typed on one line).
+- Floating point values show 15 significant digits in the grid: `1932.78` instead of `1932.7799999999997`, `0.3` instead of `0.30000000000000004`. Copy, export and editing keep the exact value.
+- The status bar's result-set memory shows KB below 1 MB instead of "0 MB".
+
 ## 0.3.35 — 2026-10-23
 
 ### Changed

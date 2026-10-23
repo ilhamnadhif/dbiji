@@ -195,7 +195,7 @@ impl TabView for CatalogObjectTab {
                             cx.push(AppCommand::NewSqlEditor { connection: Some(self.conn.clone()), schema, text: Some(ddl.clone()) });
                         }
                     });
-                    crate::tabs::code(ui, cx, ("catalog_ddl", &self.conn, self.folder_id), ddl);
+                    crate::tabs::code(ui, cx, &self.conn, ("catalog_ddl", &self.conn, self.folder_id), ddl);
                 }
                 Loadable::Failed(e) => {
                     ui.add_space(8.0);

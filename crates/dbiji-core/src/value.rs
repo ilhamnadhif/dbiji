@@ -260,6 +260,19 @@ fn float_text(f: f64) -> String {
     }
 }
 
+/// A float for reading: 15 significant digits, so binary noise of a sum (`0.1 + 0.2`,
+/// `1932.7799999999997`) shows as `0.3`, `1932.78` (as the sqlite3 shell and Excel do).
+/// Copy, export and editing keep the exact value ([`float_text`]).
+fn float_display(f: f64) -> String {
+    if !f.is_finite() {
+        return float_text(f);
+    }
+    match format!("{f:.14e}").parse::<f64>() {
+        Ok(r) => float_text(r),
+        Err(_) => float_text(f),
+    }
+}
+
 fn truncate_chars(s: &str, max: usize) -> Cow<'_, str> {
     if s.len() <= max {
         return Cow::Borrowed(s);
@@ -447,7 +460,7 @@ impl Value {
                         let s = format!("{f:.d$}");
                         if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.').to_string() } else { s }
                     }
-                    _ => float_text(*f),
+                    _ => float_display(*f),
                 };
                 if opts.thousands_separator { Cow::Owned(group_number_text(&s)) } else { Cow::Owned(s) }
             }
@@ -980,6 +993,19 @@ mod tests {
         assert_eq!(tz(539_588).to_text(), "2026-10-22 10:16:43.539588+07");
         let no_fraction = FormatOptions { show_fractional_seconds: false, ..FormatOptions::default() };
         assert_eq!(tz(539_588).display(&no_fraction), "2026-10-22 10:16:43 +07:00");
+    }
+
+    #[test]
+    fn grid_floats_hide_binary_noise() {
+        let o = FormatOptions::default();
+        assert_eq!(Value::Float(1932.7799999999997).display(&o), "1932.78");
+        assert_eq!(Value::Float(0.1 + 0.2).display(&o), "0.3");
+        assert_eq!(Value::Float(1.5).display(&o), "1.5");
+        assert_eq!(Value::Float(-2.0).display(&o), "-2");
+        assert_eq!(Value::Float(1e-7).display(&o), "0.0000001");
+        assert_eq!(Value::Float(f64::NAN).display(&o), "NaN");
+        // Copy and editing keep every digit.
+        assert_eq!(Value::Float(0.1 + 0.2).to_text(), "0.30000000000000004");
     }
 
     #[test]

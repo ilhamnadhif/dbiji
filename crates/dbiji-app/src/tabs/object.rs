@@ -390,13 +390,41 @@ impl ObjectEditorTab {
         Self::load(&mut self.ddl, cx.backend, session, move |s| async move { s.lock().await.object_ddl(&obj).await });
         let mut retry = false;
         if widgets::load_state(ui, &self.ddl, &mut retry) {
-            let text = self.ddl.get().cloned().unwrap_or_default();
+            // Formatted or as the database returns it (SQLite: as typed), shared by all tabs.
+            let format_id = egui::Id::new("ddl_formatted");
+            let mut formatted = ui.data(|d| d.get_temp::<bool>(format_id)).unwrap_or(false);
+            let raw = self.ddl.get().cloned().unwrap_or_default();
+            let text = match cx.conns.live(&self.conn).filter(|_| formatted) {
+                Some(live) => {
+                    // Formatted once per text, not every frame.
+                    let key = egui::Id::new(("ddl_pretty", &self.obj));
+                    match ui.data(|d| d.get_temp::<(String, String)>(key)).filter(|(r, _)| *r == raw) {
+                        Some((_, pretty)) => pretty,
+                        None => {
+                            let pretty = dbiji_sql::format_sql(&raw, live.dialect.syntax(), &crate::tabs::sql_editor::format_options(&cx.settings.editor.format));
+                            ui.data_mut(|d| d.insert_temp(key, (raw, pretty.clone())));
+                            pretty
+                        }
+                    }
+                }
+                None => raw,
+            };
             ui.horizontal(|ui| {
                 if ui.button((dbiji_icons::ic(icon::FILE_SQL), tr("Open in SQL editor"))).clicked() {
                     cx.push(AppCommand::NewSqlEditor { connection: Some(self.conn.clone()), schema: Some(self.obj.schema_ref()), text: Some(text.clone()) });
                 }
+                if ui.button((dbiji_icons::ic(icon::COPY), tr("Copy"))).clicked() {
+                    ui.ctx().copy_text(text.clone());
+                }
+                if ui
+                    .toggle_value(&mut formatted, (dbiji_icons::ic(icon::TEXT_ALIGN_LEFT), tr("Format")))
+                    .on_hover_text(tr("Show the DDL formatted with the SQL editor's formatter settings"))
+                    .changed()
+                {
+                    ui.data_mut(|d| d.insert_temp(format_id, formatted));
+                }
             });
-            crate::tabs::code(ui, cx, ("ddl", &self.obj), &text);
+            crate::tabs::code(ui, cx, &self.conn.clone(), ("ddl", &self.obj), &text);
         }
         if retry {
             self.ddl = Loadable::NotLoaded;

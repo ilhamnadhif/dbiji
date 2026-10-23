@@ -386,10 +386,24 @@ pub fn make_table_data_view(cx: &mut AppContext, conn: &str, obj: &dbiji_core::O
     Some(Box::new(crate::results::data_tab::TableDataView::new(conn.to_string(), obj.clone(), None)))
 }
 
-/// Read-only highlighted code (DDL, plans, logs).
-pub fn code(ui: &mut Ui, cx: &mut AppContext, id: impl std::hash::Hash + std::fmt::Debug, text: &str) {
-    let _ = cx;
-    crate::widgets::code_view(ui, id, text);
+/// Read-only SQL (DDL, generated scripts), highlighted in the dialect of `conn`.
+pub fn code(ui: &mut Ui, cx: &mut AppContext, conn: &str, id: impl std::hash::Hash + std::fmt::Debug, text: &str) {
+    use dbiji_editor::{EditorLanguage, TokenStyle};
+    type Tokens = std::sync::Arc<Vec<(std::ops::Range<usize>, TokenStyle)>>;
+    let key = Id::new(&id).with("sql_tokens");
+    let hash = {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (conn, text).hash(&mut h);
+        h.finish()
+    };
+    let cached = ui.data(|d| d.get_temp::<(u64, Tokens)>(key)).filter(|(h, _)| *h == hash).map(|(_, t)| t);
+    let tokens = cached.unwrap_or_else(|| {
+        let t: Tokens = std::sync::Arc::new(cx.conns.live(conn).map(|l| crate::sqllang::SqlLanguage::new(l.dialect.clone()).highlight(text)).unwrap_or_default());
+        ui.data_mut(|d| d.insert_temp(key, (hash, t.clone())));
+        t
+    });
+    crate::widgets::code_view(ui, id, text, &tokens);
 }
 
 #[cfg(test)]

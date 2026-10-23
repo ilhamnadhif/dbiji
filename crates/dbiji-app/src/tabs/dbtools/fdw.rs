@@ -243,7 +243,7 @@ impl TabView for FdwConfigTab {
                         ui.ctx().copy_text(script.clone());
                     }
                 });
-                egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| crate::tabs::code(ui, cx, ("fdw_script", &self.conn), &script));
+                egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| crate::tabs::code(ui, cx, &self.conn.clone(), ("fdw_script", &self.conn), &script));
             }
             Err(e) => {
                 ui.label(RichText::new(e).weak());

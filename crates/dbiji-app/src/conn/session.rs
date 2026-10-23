@@ -56,6 +56,16 @@ struct Shared {
 /// snapshot and table locks (PostgreSQL: an ALTER of the table waits for it).
 const CURSOR_IDLE: Duration = Duration::from_secs(300);
 
+/// How long an open cursor of `kind` may stay unread. SQLite locks the whole file:
+/// an unfinished read blocks every writer (other tabs, other programs) until it ends,
+/// so its cursor is closed almost at once and the next page runs the query again.
+fn cursor_idle(kind: DbKind) -> Duration {
+    match kind {
+        DbKind::Sqlite => Duration::from_secs(1),
+        _ => CURSOR_IDLE,
+    }
+}
+
 /// Cloneable handle to a session. All access goes through [`SessionHandle::lock`],
 /// which first closes any cursor left open on the session (the driver contract
 /// allows only one open cursor per session).
@@ -342,7 +352,7 @@ impl SessionHandle {
         }
     }
 
-    /// Close the open cursor once it was not read for [`CURSOR_IDLE`]; the result
+    /// Close the open cursor once it was not read for [`cursor_idle`]; the result
     /// fetches its further rows by running the query again. One task per session
     /// watches whichever cursor is open, and ends when none is.
     fn watch_idle_cursor(&self) {
@@ -354,8 +364,9 @@ impl SessionHandle {
             return;
         };
         let weak = self.downgrade();
+        let limit = cursor_idle(self.inner.kind);
         rt.spawn(async move {
-            let mut wait = CURSOR_IDLE;
+            let mut wait = limit;
             loop {
                 tokio::time::sleep(wait).await;
                 let Some(s) = weak.upgrade() else { return };
@@ -363,7 +374,7 @@ impl SessionHandle {
                 let token = match s.inner.cursor.try_lock() {
                     Ok(slot) => slot.as_ref().map(|c| c.token),
                     Err(_) => {
-                        wait = Duration::from_secs(30);
+                        wait = limit.min(Duration::from_secs(30));
                         continue;
                     }
                 };
@@ -372,12 +383,12 @@ impl SessionHandle {
                     return;
                 };
                 let idle = s.inner.cursor_used.lock().elapsed();
-                if idle >= CURSOR_IDLE && !s.is_busy() {
+                if idle >= limit && !s.is_busy() {
                     s.close_cursor_token(token).await;
                     s.inner.cursor_watched.store(false, Ordering::Release);
                     return;
                 }
-                wait = CURSOR_IDLE.saturating_sub(idle).max(Duration::from_secs(10));
+                wait = limit.saturating_sub(idle).max(limit.min(Duration::from_secs(10)));
             }
         });
     }

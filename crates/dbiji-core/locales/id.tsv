@@ -2779,3 +2779,4 @@ AI	AI
 Commands	Perintah
 More actions	Tindakan lain
 Open the referenced row in {}	Buka baris yang dirujuk di {}
+Show the DDL formatted with the SQL editor's formatter settings	Tampilkan DDL yang diformat dengan pengaturan formatter SQL editor

@@ -28,7 +28,7 @@ use dbiji_core::ddl::SchemaSnapshot;
 use dbiji_core::i18n::Locale;
 use dbiji_core::meta::{ObjectKind, ObjectRef, SchemaRef};
 use dbiji_core::{DbError, DbKind, DbResult, Dialect, ErrorKind, Secret, tr, trf};
-use dbiji_editor::{EditorLanguage, EditorTheme, TokenStyle};
+use dbiji_editor::{EditorLanguage, EditorTheme};
 use egui::{RichText, Ui};
 use egui_phosphor::regular as icon;
 use std::sync::Arc;
@@ -369,28 +369,8 @@ pub fn sql_blocks(text: &str) -> Vec<String> {
 
 /// Highlighted, non-wrapping layout of SQL text.
 fn highlight_job(code: &str, lang: Option<&SqlLanguage>, theme: &EditorTheme, font: egui::FontId) -> egui::text::LayoutJob {
-    let mut job = egui::text::LayoutJob::default();
-    let fmt = |color| egui::TextFormat { font_id: font.clone(), color, ..Default::default() };
-    let mut pos = 0;
-    if let Some(lang) = lang {
-        let mut tokens = lang.highlight(code);
-        tokens.sort_by_key(|(r, _)| r.start);
-        for (r, style) in tokens {
-            if r.start < pos || r.end > code.len() || !code.is_char_boundary(r.start) || !code.is_char_boundary(r.end) {
-                continue;
-            }
-            if r.start > pos {
-                job.append(&code[pos..r.start], 0.0, fmt(theme.token_color(TokenStyle::Plain)));
-            }
-            job.append(&code[r.clone()], 0.0, fmt(theme.token_color(style)));
-            pos = r.end;
-        }
-    }
-    if pos < code.len() {
-        job.append(&code[pos..], 0.0, fmt(theme.token_color(TokenStyle::Plain)));
-    }
-    job.wrap.max_width = f32::INFINITY;
-    job
+    let tokens = lang.map(|l| l.highlight(code)).unwrap_or_default();
+    crate::sqllang::highlight_job(code, &tokens, theme, font)
 }
 
 // -------------------------------------------------------------- the chat

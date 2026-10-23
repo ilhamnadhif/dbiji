@@ -681,6 +681,23 @@ impl DbijiApp {
         })
     }
 
+    /// Schema of the ER diagram: the navigator's selection, else the active tab's schema,
+    /// else the connection's current one (a connection node selected, a single-schema database).
+    fn er_schema(&self, conn: Option<&str>) -> Option<dbiji_core::meta::SchemaRef> {
+        let conn = conn?;
+        let usable = |s: &dbiji_core::meta::SchemaRef| s.schema.is_some() || s.database.is_none();
+        if let Some(s) = self.nav.selected_schema().filter(usable) {
+            return Some(s);
+        }
+        let active = self.active_tab?;
+        let tab = self.dock.iter_all_tabs().find(|(_, t)| t.id == active).map(|(_, t)| t);
+        if let Some(s) = tab.filter(|t| t.view.connection_id() == Some(conn)).and_then(|t| t.view.schema_context()).filter(|s| s.schema.is_some()) {
+            return Some(s);
+        }
+        let live = self.conns.live(conn)?;
+        live.current_schema.clone().or_else(|| live.current_database.clone()).map(|s| dbiji_core::meta::SchemaRef::new(None, Some(s)))
+    }
+
     /// Run an action: the active tab gets the first chance, then the global handler.
     pub fn dispatch_action(&mut self, ctx: &egui::Context, action: crate::keys::Action) {
         use crate::keys::Action as A;
@@ -779,7 +796,7 @@ impl DbijiApp {
             }
             A::CommandPalette | A::OpenDatabaseObject => Some(AppCommand::ShowPalette),
             A::OpenHistory => Some(AppCommand::OpenHistory),
-            A::OpenErDiagram => match (conn, self.nav.selected_schema().filter(|s| s.schema.is_some() || s.database.is_none())) {
+            A::OpenErDiagram => match (conn.clone(), self.er_schema(conn.as_deref())) {
                 (Some(c), Some(s)) => Some(AppCommand::OpenErDiagram { connection: c, schema: s, tables: Vec::new() }),
                 _ => {
                     self.toasts.info(tr("Select a schema in the navigator first."));
@@ -1607,7 +1624,7 @@ impl DbijiApp {
                     self.toggle_theme(ui.ctx());
                 }
                 let mem = dbiji_core::rowstore::global_resident_bytes();
-                ui.weak(format!("{} {:.0} MB", icon::MEMORY, mem as f64 / 1_048_576.0)).on_hover_text(tr("Memory used by result sets"));
+                ui.weak(format!("{} {}", icon::MEMORY, crate::widgets::format_bytes(mem as i64))).on_hover_text(tr("Memory used by result sets"));
                 ui.separator();
                 // Language and time zone, as in DBeaver ("en", "WIB"): a click chooses another.
                 let locale = self.settings.general.effective_locale();

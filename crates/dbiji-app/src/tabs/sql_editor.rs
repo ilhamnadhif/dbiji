@@ -215,6 +215,20 @@ fn split_options(cx: &AppContext) -> dbiji_sql::SplitOptions {
     }
 }
 
+/// The built-in formatter's options from the SQL editor settings.
+pub(crate) fn format_options(f: &dbiji_config::settings::SqlFormatSettings) -> dbiji_sql::FormatOptions {
+    let compact = f.formatter == dbiji_config::settings::FormatterKind::Compact;
+    dbiji_sql::FormatOptions {
+        keyword_case: keyword_case(f.keyword_case),
+        indent: if f.use_tabs { dbiji_sql::IndentStyle::Tab } else { dbiji_sql::IndentStyle::Spaces(f.indent_width.min(16) as u8) },
+        comma_first: f.comma_first,
+        newline_before_and_or: f.newline_before_and_or && !compact,
+        max_line_length: if compact { (f.max_line_length as usize).max(160) } else { f.max_line_length as usize },
+        lines_between_statements: if compact { 0 } else { f.lines_between_statements as usize },
+        compact_short_lists: compact,
+    }
+}
+
 fn keyword_case(k: dbiji_config::settings::KeywordCase) -> dbiji_sql::KeywordCase {
     match k {
         dbiji_config::settings::KeywordCase::Upper => dbiji_sql::KeywordCase::Upper,
@@ -938,16 +952,7 @@ impl SqlEditorTab {
     fn format(&mut self, cx: &mut AppContext) {
         use dbiji_config::settings::FormatterKind;
         let f = cx.settings.editor.format.clone();
-        let compact = f.formatter == FormatterKind::Compact;
-        let opts = dbiji_sql::FormatOptions {
-            keyword_case: keyword_case(f.keyword_case),
-            indent: if f.use_tabs { dbiji_sql::IndentStyle::Tab } else { dbiji_sql::IndentStyle::Spaces(f.indent_width.min(16) as u8) },
-            comma_first: f.comma_first,
-            newline_before_and_or: f.newline_before_and_or && !compact,
-            max_line_length: if compact { (f.max_line_length as usize).max(160) } else { f.max_line_length as usize },
-            lines_between_statements: if compact { 0 } else { f.lines_between_statements as usize },
-            compact_short_lists: compact,
-        };
+        let opts = format_options(&f);
         let ctx = cx.egui_ctx();
         // The selection, the statement under the cursor, or the whole script.
         let range = match self.editor.selection().filter(|r| !r.is_empty()) {

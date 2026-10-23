@@ -39,7 +39,7 @@ impl TipWindow {
         let mut open = true;
         let mut close = false;
         let n = TIPS.len();
-        egui::Window::new(format!("{} {}", icon::LIGHTBULB, tr("Tip of the day")))
+        let shown = egui::Window::new(format!("{} {}", icon::LIGHTBULB, tr("Tip of the day")))
             .id(egui::Id::new("tip_of_the_day"))
             .open(&mut open)
             .collapsible(false)
@@ -66,6 +66,6 @@ impl TipWindow {
                     });
                 });
             });
-        open && !close
+        open && !close && !crate::widgets::escape_closes(ctx, shown.map(|r| r.response.layer_id))
     }
 }

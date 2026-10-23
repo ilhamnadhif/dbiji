@@ -18,11 +18,21 @@ pub struct TableResponse {
 /// Space before the text of a table cell.
 const CELL_PAD: f32 = 6.0;
 
-/// Virtualised, striped, resizable table of text cells.
 /// The main action of a dialog or wizard: white text on the accent colour.
 pub fn primary_button(ui: &Ui, glyph: &str, text: impl Into<String>) -> egui::Button<'static> {
     let fill = crate::theme::accent(ui.visuals().dark_mode);
     egui::Button::new(RichText::new(format!("{glyph}  {}", text.into())).color(egui::Color32::WHITE).strong()).fill(fill)
+}
+
+/// Escape pressed on the dialog window shown in `layer` while it is the top window,
+/// no pop-up is open (a combo box list closes first) and the keyboard focus is not
+/// elsewhere (an editor behind a non-modal dialog): it closes like Cancel.
+pub fn escape_closes(ctx: &egui::Context, layer: Option<egui::LayerId>) -> bool {
+    if layer.is_none() || ctx.top_layer_id() != layer || egui::Popup::is_any_open(ctx) || !ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        return false;
+    }
+    let focus = ctx.memory(|m| m.focused()).and_then(|id| ctx.read_response(id));
+    focus.is_none_or(|r| Some(r.layer_id) == layer)
 }
 
 /// A heading with a coloured icon.
@@ -35,6 +45,7 @@ pub fn icon_heading(ui: &mut Ui, glyph: &str, text: impl Into<String>) -> egui::
     ui.label(job)
 }
 
+/// Virtualised, striped, resizable table of text cells.
 pub fn simple_table(ui: &mut Ui, id_salt: impl std::hash::Hash + std::fmt::Debug, headers: &[&str], rows: &[Vec<String>], selected: Option<usize>) -> TableResponse {
     // In its own ui: the column lines end at the last row, not at the bottom of the panel.
     ui.scope(|ui| table_in(ui, id_salt, headers, rows, selected)).inner
@@ -45,8 +56,15 @@ fn table_in(ui: &mut Ui, id_salt: impl std::hash::Hash + std::fmt::Debug, header
     let row_h = ui.text_style_height(&egui::TextStyle::Body) + 8.0;
     // Every column at least as wide as its header (plus the cell padding).
     let font = egui::TextStyle::Body.resolve(ui.style());
-    let header_w: Vec<f32> =
-        headers.iter().map(|h| ui.fonts_mut(|f| f.layout_no_wrap(h.to_string(), font.clone(), egui::Color32::WHITE).rect.width()) + 2.0 * CELL_PAD + 6.0).collect();
+    let text_w = |ui: &mut Ui, s: &str| ui.fonts_mut(|f| f.layout_no_wrap(s.to_string(), font.clone(), egui::Color32::WHITE).rect.width());
+    let header_w: Vec<f32> = headers.iter().map(|h| text_w(ui, h) + 2.0 * CELL_PAD + 6.0).collect();
+    // Initially as wide as the first rows' text: truncated labels never widen an auto column.
+    let content_w: Vec<f32> = (0..headers.len())
+        .map(|i| {
+            let widest = rows.iter().take(100).filter_map(|r| r.get(i)).map(|c| text_w(ui, c.lines().next().unwrap_or("")) + 4.0).fold(0.0, f32::max);
+            widest + 2.0 * CELL_PAD
+        })
+        .collect();
     let mut tb = TableBuilder::new(ui)
         .id_salt(id_salt)
         .striped(true)
@@ -59,7 +77,7 @@ fn table_in(ui: &mut Ui, id_salt: impl std::hash::Hash + std::fmt::Debug, header
         tb = if i + 1 == headers.len() {
             tb.column(Column::remainder().at_least(w.max(60.0)).clip(true))
         } else {
-            tb.column(Column::auto().at_least(w.max(40.0)).at_most(480.0).clip(true).resizable(true))
+            tb.column(Column::initial(content_w[i].clamp(w.max(40.0), 480.0)).at_least(w.max(40.0)).clip(true).resizable(true))
         };
     }
     tb.header(row_h + 2.0, |mut header| {
@@ -169,16 +187,14 @@ pub fn error_box(ui: &mut Ui, text: &str) {
     });
 }
 
-/// Read-only, selectable monospace text (DDL, logs) with a copy button.
-pub fn code_view(ui: &mut Ui, id: impl std::hash::Hash + std::fmt::Debug, text: &str) {
-    ui.horizontal(|ui| {
-        if ui.small_button((dbiji_icons::ic(icon::COPY), tr("Copy"))).clicked() {
-            ui.ctx().copy_text(text.to_string());
-        }
-    });
+/// Read-only, selectable monospace text (DDL, scripts) coloured by `tokens`.
+pub fn code_view(ui: &mut Ui, id: impl std::hash::Hash + std::fmt::Debug, text: &str, tokens: &[(std::ops::Range<usize>, dbiji_editor::TokenStyle)]) {
+    let theme = dbiji_editor::EditorTheme::from_visuals(ui.visuals());
+    let font = egui::TextStyle::Monospace.resolve(ui.style());
+    let mut layouter = |ui: &Ui, buf: &dyn egui::TextBuffer, _wrap: f32| ui.fonts_mut(|f| f.layout_job(crate::sqllang::highlight_job(buf.as_str(), tokens, &theme, font.clone())));
     egui::ScrollArea::both().id_salt(id).auto_shrink([false, false]).show(ui, |ui| {
         let mut t = text;
-        ui.add(egui::TextEdit::multiline(&mut t).code_editor().desired_width(f32::INFINITY).interactive(true));
+        ui.add(egui::TextEdit::multiline(&mut t).code_editor().desired_width(f32::INFINITY).interactive(true).layouter(&mut layouter));
     });
 }
 

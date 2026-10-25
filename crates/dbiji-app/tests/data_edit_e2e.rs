@@ -428,7 +428,22 @@ fn manual_commit_reorder_while_loading() {
         setup.sql("SET statement_timeout = '10s'");
         let t0 = Instant::now();
         while let Err(e) = setup.try_sql(&format!("DROP TABLE IF EXISTS {table}")) {
-            assert!(t0.elapsed() < Duration::from_secs(60), "[{name}] DROP TABLE: {e}");
+            if t0.elapsed() >= Duration::from_secs(60) {
+                // Who still holds the table (the panic's message is lost when the watchdog ends the run).
+                let holders = if name == "postgres" {
+                    format!(
+                        "{:?}",
+                        setup.query(&format!(
+                            "SELECT a.pid::text, coalesce(a.state, ''), coalesce(a.application_name, ''), left(a.query, 120) FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid WHERE l.relation = '{table}'::regclass AND a.pid <> pg_backend_pid()"
+                        ))
+                    )
+                } else {
+                    String::new()
+                };
+                use std::io::Write;
+                let _ = writeln!(std::io::stderr(), "[{name}] DROP TABLE: {e}; held by {holders}");
+                panic!("[{name}] DROP TABLE: {e}; held by {holders}");
+            }
             std::thread::sleep(Duration::from_millis(200));
         }
     }

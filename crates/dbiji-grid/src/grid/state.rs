@@ -240,8 +240,15 @@ impl DataGridState {
         s
     }
 
+    /// The layout to keep for later (columns, sort, mode, zoom, highlights),
+    /// without the selection, scroll position or edit in progress.
+    pub fn layout(&self) -> DataGridState {
+        DataGridState { rt: Runtime::default(), ..self.clone() }
+    }
+
     /// Adapt to the model's columns: keeps widths, visibility and order of
-    /// columns with the same names, adds new columns at the end.
+    /// columns with the same names, adds new columns at the end. Columns
+    /// nobody moved take the model's order (another query, another table).
     pub fn sync_columns(&mut self, model: &ResultModel) {
         let n = model.column_count();
         let same = self.columns.len() == n && (0..n).all(|c| self.columns[c].name == model.column_name(c));
@@ -270,8 +277,9 @@ impl DataGridState {
             });
         }
         // Order: old relative order for kept columns, then new columns.
+        let moved = old_order.iter().enumerate().any(|(i, &o)| i != o);
         let mut order: Vec<usize> = Vec::with_capacity(n);
-        for &o in &old_order {
+        for &o in old_order.iter().filter(|_| moved) {
             if let Some(newc) = mapping.iter().position(|m| *m == Some(o)) {
                 order.push(newc);
             }
@@ -471,6 +479,14 @@ mod tests {
         let back: DataGridState = serde_json::from_str(&json).unwrap();
         assert_eq!(back.columns, s.columns);
         assert_eq!(back.order, s.order);
+    }
+
+    #[test]
+    fn columns_nobody_moved_take_the_new_order() {
+        // users (id, name, status, created_at) then messages: not users' order.
+        let mut s = DataGridState::for_model(&model(&["id", "name", "status", "created_at"]));
+        s.sync_columns(&model(&["id", "user_id", "text", "status", "created_at"]));
+        assert_eq!(s.order, vec![0, 1, 2, 3, 4]);
     }
 
     #[test]

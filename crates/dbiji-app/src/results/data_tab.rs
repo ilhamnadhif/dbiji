@@ -67,12 +67,7 @@ impl TableDataView {
                     let mut src = ResultSource::from_executed(exec.session.clone(), sql, Vec::new(), columns, store, token, exhausted, budget);
                     src.exec_duration = elapsed;
                     let mut panel = ResultPanel::new(self.conn.clone(), self.table.name.clone(), src, Some(self.table.clone()));
-                    if let Some(w) = &self.where_clause {
-                        panel.view.toolbar.filter_text = w.clone();
-                    }
-                    if let Some(o) = &self.order_by {
-                        panel.view.toolbar.order_text = o.clone();
-                    }
+                    panel.set_query(self.where_clause.clone(), self.order_by.clone());
                     self.panel = Some(panel);
                 }
                 ExecEvent::Error { error, .. } => self.error = Some(error.full_text()),

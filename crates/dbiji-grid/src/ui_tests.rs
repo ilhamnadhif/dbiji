@@ -167,6 +167,26 @@ fn client_filter_from_filter_bar() {
 }
 
 #[test]
+fn filter_text_undoes_a_word_at_a_time() {
+    let mut v = Viewer::new(editable_model(10));
+    v.state.toolbar.focus_filter();
+    v.frame(vec![]);
+    // Typed without a pause.
+    for t in ["status", " ", "=", " ", "'open'"] {
+        v.frame(vec![Event::Text(t.into())]);
+    }
+    assert_eq!(v.state.toolbar.filter_text, "status = 'open'");
+    let undo = Event::Key { key: egui::Key::Z, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::COMMAND };
+    for expected in ["status =", "status", ""] {
+        v.frame_with(vec![undo.clone()], Modifiers::COMMAND);
+        assert_eq!(v.state.toolbar.filter_text, expected);
+    }
+    let redo = Event::Key { key: egui::Key::Z, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::COMMAND | Modifiers::SHIFT };
+    v.frame_with(vec![redo], Modifiers::COMMAND | Modifiers::SHIFT);
+    assert_eq!(v.state.toolbar.filter_text, "status");
+}
+
+#[test]
 fn server_mode_filter_bar_emits_query_change() {
     let mut v = Viewer::new(editable_model(10));
     v.state.grid.mode = crate::grid::DataMode::Server;

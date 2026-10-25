@@ -390,6 +390,59 @@ fn navigator_data_editing_and_context_menus() {
     eprintln!("tabs: {titles:?}");
 }
 
+/// The grid's label: "Data grid, N rows, M columns, selected cell: row R, column = value".
+fn grid_label(h: &H) -> String {
+    labels(h).into_iter().find(|l| l.starts_with("Data grid,")).unwrap_or_default()
+}
+
+/// Click (with `modifiers`) the grid cell at `x` on the first row.
+fn click_first_row(h: &mut H, x: f32, modifiers: Modifiers) {
+    pause(h);
+    let body = h.query_all_by_label_contains("Data grid,").next().unwrap().rect();
+    let p = egui::pos2(x, body.top() + 9.0);
+    // Held during the click (egui does not take them from the click's events).
+    h.event(egui::Event::ModifiersChanged(modifiers));
+    h.event(egui::Event::PointerMoved(p));
+    for pressed in [true, false] {
+        h.event(egui::Event::PointerButton { pos: p, button: egui::PointerButton::Primary, pressed, modifiers });
+    }
+    frames(h, 3);
+    h.event(egui::Event::ModifiersChanged(Modifiers::NONE));
+}
+
+#[test]
+fn foreign_key_navigation_keeps_each_tables_columns() {
+    let (_dir, mut h, _conn) = setup();
+    wait(&mut h, "Tables folder", |h| nav_row(h, "Tables").is_some());
+    nav_double_click(&mut h, "Tables");
+    wait(&mut h, "product table", |h| nav_row(h, "product").is_some());
+    nav_double_click(&mut h, "product");
+    wait(&mut h, "product data", |h| grid_label(h).contains(" rows, 5 columns"));
+    // The category_id cell of the first row: Cmd+click goes to its category.
+    let left = h.query_all_by_label_contains("Data grid,").next().unwrap().rect().left();
+    let x = (0..40)
+        .map(|i| left + 12.0 + i as f32 * 20.0)
+        .find(|&x| {
+            click_first_row(&mut h, x, Modifiers::NONE);
+            grid_label(&h).contains("row 1, category_id = ")
+        })
+        .expect("the category_id column");
+    click_first_row(&mut h, x, CMD);
+    wait(&mut h, "category data", |h| grid_label(h).contains("1 rows, 2 columns"));
+    // Back: product has its own columns, not category's order (id, name) first.
+    let back = h.query_all_by_label(egui_phosphor::regular::ARROW_LEFT).next().expect("Back button").rect().center();
+    h.event(egui::Event::PointerMoved(back));
+    for pressed in [true, false] {
+        h.event(egui::Event::PointerButton { pos: back, button: egui::PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
+    }
+    wait(&mut h, "product data again", |h| grid_label(h).contains(" rows, 5 columns"));
+    click_first_row(&mut h, left + 12.0, Modifiers::NONE);
+    h.key_press(Key::ArrowRight);
+    frames(&mut h, 2);
+    assert!(grid_label(&h).contains("row 1, category_id = "), "{}", grid_label(&h));
+    no_errors(&mut h, "foreign key navigation");
+}
+
 /// The text field on the same row as (to the right of) a label.
 fn field_right_of(h: &mut H, label: &str, text: &str) {
     pause(h);

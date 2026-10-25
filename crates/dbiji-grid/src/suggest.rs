@@ -74,6 +74,31 @@ fn byte_at(text: &str, char_index: usize) -> usize {
     text.char_indices().nth(char_index).map_or(text.len(), |(b, _)| b)
 }
 
+/// Undo of the text field `id` goes back a word at a time (egui keeps a step
+/// only after a second without typing, so ⌘Z took the whole text): a step
+/// before a space typed after a word, and before a paste.
+fn word_undo_point(ui: &Ui, id: egui::Id, text: &str) {
+    if !ui.memory(|m| m.has_focus(id)) {
+        return;
+    }
+    let Some(mut st) = TextEditState::load(ui.ctx(), id) else { return };
+    let cursor = st.cursor.char_range().unwrap_or(CCursorRange::one(CCursor::new(text.chars().count())));
+    let before = text.chars().take(cursor.primary.index.into()).last();
+    let step = ui.input(|i| {
+        i.events.iter().any(|e| match e {
+            egui::Event::Text(t) => t.starts_with(char::is_whitespace) && before.is_some_and(|c| !c.is_whitespace()),
+            egui::Event::Paste(_) => true,
+            _ => false,
+        })
+    });
+    if step {
+        let mut undoer = st.undoer();
+        undoer.add_undo(&(cursor, text.to_owned()));
+        st.set_undoer(undoer);
+        st.store(ui.ctx(), id);
+    }
+}
+
 /// A single-line text field with column suggestions under it. ↑ / ↓ pick,
 /// Tab or Enter take the suggestion (Enter applies the filter when none
 /// is shown), Escape closes them. `quote` writes a column name as SQL.
@@ -97,6 +122,7 @@ pub(crate) fn suggest_edit(
             escape = i.consume_key(Modifiers::NONE, Key::Escape);
         });
     }
+    word_undo_point(ui, id, text);
     let resp = ui.add(edit(TextEdit::singleline(text).id(id)));
     if resp.changed() {
         s.dismissed = false;

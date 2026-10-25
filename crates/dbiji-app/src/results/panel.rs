@@ -12,7 +12,7 @@ use dbiji_core::meta::{ObjectKind, ObjectRef};
 use dbiji_core::{ColumnMeta, DbResult, Dialect, Row, Value, tr, trf};
 use dbiji_grid::model::ForeignKeyLink;
 use dbiji_grid::panels::{ReferencesPanelState, Relation, RelationDirection};
-use dbiji_grid::{EditTarget, GridAction, GridOptions, ReadOnlyReason, ResultModel, ResultViewState, ResultViewer, determine_editability};
+use dbiji_grid::{DataGridState, EditTarget, GridAction, GridOptions, ReadOnlyReason, ResultModel, ResultViewState, ResultViewer, determine_editability};
 use egui::{RichText, Ui};
 use egui_phosphor::regular as icon;
 use std::collections::HashMap;
@@ -51,6 +51,10 @@ enum Deferred {
 struct Location {
     table: ObjectRef,
     where_clause: Option<String>,
+    order_by: Option<String>,
+    /// The grid's columns there (order, widths, sort) when it was left; `None`
+    /// for a table not shown yet in this view.
+    layout: Option<Box<DataGridState>>,
 }
 
 pub struct ResultPanel {
@@ -88,6 +92,8 @@ pub struct ResultPanel {
     spatial: Option<SpatialView>,
     back: Vec<Location>,
     forward: Vec<Location>,
+    /// Layout of the table foreign key navigation is going to, set when its columns arrive.
+    next_layout: Option<DataGridState>,
     /// Back / forward are in the host's header (the object editor's), not in a row of their own.
     pub history_in_header: bool,
     /// Last status message (`true` = error).
@@ -199,6 +205,7 @@ impl ResultPanel {
             spatial: None,
             back: Vec::new(),
             forward: Vec::new(),
+            next_layout: None,
             history_in_header: false,
             status: None,
             fetch_op: None,
@@ -265,8 +272,17 @@ impl ResultPanel {
             self.editability = None;
             self.foreign_keys.clear();
             self.model.reset(self.src.columns.clone(), self.src.store.clone());
+            if let Some(layout) = self.next_layout.take() {
+                self.view.grid = layout;
+            }
             self.chart = None;
             self.spatial = None;
+        }
+        // The same columns there (a table like the one before): its layout all the same.
+        if !self.src.is_fetching()
+            && let Some(layout) = self.next_layout.take()
+        {
+            self.view.grid = layout;
         }
         if !Arc::ptr_eq(self.model.store(), &self.src.store) {
             self.model.reset(self.src.columns.clone(), self.src.store.clone());
@@ -601,7 +617,7 @@ impl ResultPanel {
             back(ui);
             forward(ui);
         }
-        let here = self.table.as_ref().map(|t| Location { table: t.clone(), where_clause: self.where_clause.clone() });
+        let here = self.location();
         if go_back && let Some(loc) = self.back.pop() {
             self.forward.extend(here);
             self.navigate(cx, loc, false);
@@ -611,18 +627,32 @@ impl ResultPanel {
         }
     }
 
+    /// Where this table data view is, with its grid's layout.
+    fn location(&self) -> Option<Location> {
+        let table = self.table.clone()?;
+        Some(Location { table, where_clause: self.where_clause.clone(), order_by: self.order_by.clone(), layout: Some(Box::new(self.view.grid.layout())) })
+    }
+
+    /// The table's filter and sort (its default ones when the view opens).
+    pub fn set_query(&mut self, where_clause: Option<String>, order_by: Option<String>) {
+        self.view.toolbar.filter_text = where_clause.clone().unwrap_or_default();
+        self.view.toolbar.order_text = order_by.clone().unwrap_or_default();
+        self.where_clause = where_clause;
+        self.order_by = order_by;
+    }
+
     /// Show another table (FK navigation inside a table data view).
     fn navigate(&mut self, cx: &mut AppContext, to: Location, record: bool) {
-        if record && let Some(t) = &self.table {
-            self.back.push(Location { table: t.clone(), where_clause: self.where_clause.clone() });
+        if record && let Some(here) = self.location() {
+            self.back.push(here);
             self.forward.clear();
         }
+        // Each table keeps its own columns: shown with its rows (not those of the
+        // table before, by name). Another row of the same table keeps the layout.
+        self.next_layout = (self.table.as_ref() != Some(&to.table)).then(|| to.layout.map(|l| *l).unwrap_or_default());
         self.title = to.table.name.clone();
         self.table = Some(to.table);
-        self.where_clause = to.where_clause.clone();
-        self.order_by = None;
-        self.view.toolbar.filter_text = to.where_clause.unwrap_or_default();
-        self.view.toolbar.order_text.clear();
+        self.set_query(to.where_clause, to.order_by);
         self.editability = None;
         self.foreign_keys.clear();
         self.requery(cx);
@@ -716,7 +746,7 @@ impl ResultPanel {
             GridAction::NavigateForeignKey { link, values } => {
                 let Some(d) = self.dialect(cx) else { return };
                 let w = Self::where_for(d.as_ref(), &link.ref_columns, &values);
-                let target = Location { table: link.ref_table.clone(), where_clause: Some(w) };
+                let target = Location { table: link.ref_table.clone(), where_clause: Some(w), order_by: None, layout: None };
                 if self.table.is_some() {
                     self.run_or_confirm(Deferred::Navigate(target), cx);
                 } else {

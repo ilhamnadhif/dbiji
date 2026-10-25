@@ -3,6 +3,12 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.40 — 2026-10-25
+
+### Fixed
+- Going to another table by a foreign key and back mixed up the columns: those with the same names as in the other table (`id`, `status`, `created_at` …) came first, in its order. Each table of a data tab keeps its own columns (order, widths, sort), and Back brings its filter and ORDER BY back too. A result whose columns nobody moved shows a new query's columns in their order.
+- ⌘Z in the filter and ORDER BY fields took back the whole text typed without a pause: it goes back a word at a time.
+
 ## 0.3.39 — 2026-10-24
 
 ### Fixed

@@ -713,3 +713,54 @@ fn random_inputs_never_panic() {
         }
     }
 }
+
+/// A partitioned table and two monthly partitions of it.
+fn partitioned(kind: dbiji_core::DbKind) -> SnapshotCatalog {
+    let mut t = TableDef::new(Some("public".into()), "api_calls");
+    t.columns.push(ColumnDef::new("id", "bigint"));
+    t.columns.push(ColumnDef::new("called_at", "timestamptz"));
+    for m in ["2029_01", "2029_02"] {
+        t.partitions.push(dbiji_core::ddl::PartitionDef {
+            name: format!("api_calls_{m}"),
+            bound: "FOR VALUES FROM (...) TO (...)".into(),
+            row_estimate: None,
+        });
+    }
+    let snap = SchemaSnapshot {
+        kind: Some(kind),
+        schema: Some("public".into()),
+        tables: vec![t],
+        ..Default::default()
+    };
+    SnapshotCatalog::new(vec![snap], Some("public".into()))
+}
+
+#[test]
+fn partitions_are_tables_after_their_table() {
+    let cat = partitioned(dbiji_core::DbKind::Postgres);
+    let d = TestDialect::pg();
+    let opts = CompletionOptions::default();
+    let sql = "SELECT * FROM api";
+    let r = complete(sql, sql.len(), &d, &cat, &opts);
+    assert_eq!(
+        labels(&r)[..3],
+        ["api_calls", "api_calls_2029_01", "api_calls_2029_02"]
+    );
+    assert_eq!(
+        find(&r, "api_calls_2029_01").unwrap().detail.as_deref(),
+        Some("partition of api_calls")
+    );
+    // Its columns are its table's.
+    let sql = "SELECT p. FROM api_calls_2029_01 p";
+    let r = complete(sql, "SELECT p.".len(), &d, &cat, &opts);
+    assert_eq!(columns(&r), ["id", "called_at"]);
+    // A MySQL partition is no table.
+    let cat = partitioned(dbiji_core::DbKind::MySql);
+    let sql = "SELECT * FROM api";
+    let r = complete(sql, sql.len(), &TestDialect::mysql(), &cat, &opts);
+    assert!(
+        has(&r, "api_calls") && !has(&r, "api_calls_2029_01"),
+        "{:?}",
+        labels(&r)
+    );
+}

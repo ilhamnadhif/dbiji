@@ -2784,3 +2784,21 @@ Truncate…	Truncate…
 Delete every row of the table	Hapus semua baris tabel
 Every row of the table(s) is deleted at once, without a transaction to roll back.	Semua baris tabel dihapus sekaligus, tanpa transaksi yang bisa di-rollback.
 Truncate: {}	Truncate: {}
+partition of {}	partisi dari {}
+-1: no limit	-1: tanpa batas
+Allow connections	Izinkan koneksi
+Character type	Tipe karakter
+Connection limit	Batas koneksi
+Database {}	Database {}
+Database {} not found	Database {} tidak ditemukan
+Database {} saved	Database {} disimpan
+Disconnect the other sessions on this database first	Putuskan dulu sesi lain di database ini
+Edit database…	Edit database…
+Its owner, comment, limits … and the statements that change them	Owner, komentar, batas … dan statement yang mengubahnya
+Others can be created from it (CREATE DATABASE … TEMPLATE)	Database lain bisa dibuat darinya (CREATE DATABASE … TEMPLATE)
+PostgreSQL renames or moves a database only while nobody is connected to it.	PostgreSQL hanya bisa mengganti nama atau memindahkan database saat tidak ada yang terhubung ke sana.
+Reading the database's properties…	Membaca properti database…
+The connection itself uses this database, so PostgreSQL cannot rename it: choose another database in the connection's settings first.	Koneksi ini sendiri memakai database ini, jadi PostgreSQL tidak bisa mengganti namanya: pilih database lain di pengaturan koneksi dulu.
+The database's session has uncommitted changes (another tab, the data editor): commit or roll them back first.	Sesi database ini punya perubahan yang belum di-commit (tab lain, editor data): commit atau rollback dulu.
+This database type cannot rename a database.	Tipe database ini tidak bisa mengganti nama database.
+Vacuum, analyze, reindex the whole database	Vacuum, analyze, reindex seluruh database

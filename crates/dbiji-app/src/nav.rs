@@ -187,7 +187,7 @@ fn short_size(bytes: i64) -> String {
 }
 
 /// A size with its unit for hover texts (`2.4 MB`, `812 bytes`).
-fn long_size(bytes: i64) -> String {
+pub(crate) fn long_size(bytes: i64) -> String {
     match short_size(bytes) {
         s if s.ends_with(|c: char| c.is_ascii_digit()) => format!("{s} bytes"),
         s => format!("{} {}B", &s[..s.len() - 1], &s[s.len() - 1..]),
@@ -1384,10 +1384,11 @@ impl Navigator {
             ui.input(|i| (i.key_pressed(Key::ArrowDown), i.key_pressed(Key::ArrowUp), i.key_pressed(Key::ArrowLeft), i.key_pressed(Key::ArrowRight), i.key_pressed(Key::Enter)));
         // Copy the name / drop: only with the pointer over the navigator.
         let pointer_here = ui.ui_contains_pointer();
-        let (copy, delete) = ui.input(|i| {
+        let (copy, delete, rename) = ui.input(|i| {
             (
                 pointer_here && i.events.iter().any(|e| matches!(e, egui::Event::Copy)),
                 pointer_here && (i.key_pressed(Key::Delete) || (i.modifiers.command && i.key_pressed(Key::Backspace))),
+                pointer_here && i.key_pressed(Key::F2),
             )
         });
         if ui.memory(|m| m.focused().is_some()) {
@@ -1425,6 +1426,15 @@ impl Navigator {
             if delete && let NavNode::Object { conn, obj } | NavNode::Child { conn, obj } = &node {
                 // Opens the drop dialog (preview and confirmation).
                 cx.push(AppCommand::DropObjects { connection: conn.clone(), objects: vec![obj.clone()] });
+            }
+            if let NavNode::Database { conn, db } = &node {
+                if delete {
+                    let database = ObjectRef::new(ObjectKind::Database, None, db.clone()).with_database(Some(db.clone()));
+                    cx.push(AppCommand::DropObjects { connection: conn.clone(), objects: vec![database] });
+                }
+                if rename && cx.conns.live(conn).is_some_and(|l| l.dialect.database_edits().name) {
+                    cx.push(AppCommand::EditDatabase { connection: conn.clone(), database: db.clone(), rename: true });
+                }
             }
         }
     }
@@ -1545,15 +1555,7 @@ impl Navigator {
                     });
                 }
             }
-            NavNode::Database { conn, db } => {
-                let schema = SchemaRef { database: Some(db.clone()), schema: None };
-                if item(ui, icon::FILE_SQL, tr("New SQL editor"), &crate::keys::label(cx.keymap, crate::keys::Action::NewSqlEditor)).clicked() {
-                    cx.push(AppCommand::NewSqlEditor { connection: Some(conn.clone()), schema: Some(schema.clone()), text: None });
-                    ui.close();
-                }
-                create_menu_items(ui, cx, conn, Some(db.clone()));
-                ui.menu_button((dbiji_icons::ic(icon::WRENCH), tr("Tools")), |ui| tools_menu(ui, cx, conn, Some(schema.clone())));
-            }
+            NavNode::Database { conn, db } => database_menu(ui, cx, conn, db),
             NavNode::Schema { conn, schema } | NavNode::KindFolder { conn, schema, .. } => {
                 if item(ui, icon::FILE_SQL, tr("New SQL editor"), &crate::keys::label(cx.keymap, crate::keys::Action::NewSqlEditor)).clicked() {
                     cx.push(AppCommand::NewSqlEditor { connection: Some(conn.clone()), schema: Some(schema.clone()), text: None });
@@ -1711,6 +1713,53 @@ fn placeholder(depth: usize, kind: RowKind) -> Row {
         expandable: false,
         expanded: false,
         kind,
+    }
+}
+
+/// Menu of a database node: editors, its properties and rename, new
+/// databases / schemas, maintenance and tools, then drop.
+fn database_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, db: &str) {
+    let schema = SchemaRef { database: Some(db.to_string()), schema: None };
+    let database = ObjectRef::new(ObjectKind::Database, None, db.to_string()).with_database(Some(db.to_string()));
+    let Some(live) = cx.conns.live(conn) else { return };
+    let edits = live.dialect.database_edits();
+    let editable = edits != dbiji_core::DatabaseEdits::default() || live.dialect.database_properties_sql(db).is_some();
+    let maintenance = live.dialect.maintenance_ops().iter().any(|o| o.applies_to.contains(&ObjectKind::Database));
+    let read_only = live.config.read_only;
+    if item(ui, icon::FILE_SQL, tr("New SQL editor"), &crate::keys::label(cx.keymap, crate::keys::Action::NewSqlEditor)).clicked() {
+        cx.push(AppCommand::NewSqlEditor { connection: Some(conn.to_string()), schema: Some(schema.clone()), text: None });
+        ui.close();
+    }
+    ui.separator();
+    if editable && ui.button((dbiji_icons::ic(icon::PENCIL), tr("Edit database…"))).on_hover_text(tr("Its owner, comment, limits … and the statements that change them")).clicked()
+    {
+        cx.push(AppCommand::EditDatabase { connection: conn.to_string(), database: db.to_string(), rename: false });
+        ui.close();
+    }
+    if edits.name && ui.add_enabled(!read_only, egui::Button::new((dbiji_icons::ic(icon::PENCIL_SIMPLE), tr("Rename…"))).shortcut_text("F2")).clicked() {
+        cx.push(AppCommand::EditDatabase { connection: conn.to_string(), database: db.to_string(), rename: true });
+        ui.close();
+    }
+    create_menu_items(ui, cx, conn, Some(db.to_string()));
+    if maintenance && ui.button((dbiji_icons::ic(icon::BROOM), tr("Maintenance"))).on_hover_text(tr("Vacuum, analyze, reindex the whole database")).clicked() {
+        cx.push(AppCommand::OpenMaintenance { connection: conn.to_string(), objects: vec![database.clone()], op: None });
+        ui.close();
+    }
+    ui.menu_button((dbiji_icons::ic(icon::WRENCH), tr("Tools")), |ui| tools_menu(ui, cx, conn, Some(schema.clone())));
+    ui.separator();
+    if item(ui, icon::COPY, tr("Copy name"), COPY_KEYS).clicked() {
+        ui.ctx().copy_text(db.to_string());
+        ui.close();
+    }
+    if item(ui, icon::ARROW_CLOCKWISE, tr("Refresh"), &crate::keys::label(cx.keymap, crate::keys::Action::Refresh)).clicked() {
+        cx.push(AppCommand::RefreshMetadata { connection: conn.to_string(), object: None, schema: Some(schema) });
+        ui.close();
+    }
+    ui.separator();
+    let red = crate::theme::error_color(ui.visuals().dark_mode);
+    if ui.add(egui::Button::new(RichText::new(format!("{} {}", icon::TRASH, tr("Drop…"))).color(red)).shortcut_text(DROP_KEYS)).clicked() {
+        cx.push(AppCommand::DropObjects { connection: conn.to_string(), objects: vec![database] });
+        ui.close();
     }
 }
 

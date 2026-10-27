@@ -3,6 +3,18 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.43 — 2026-10-27
+
+### Added
+- A database's menu in the navigator is complete: Edit database…, Rename… (F2), Maintenance, Copy name, Refresh and Drop… (⌘⌫). Edit database shows what the server tells (owner, encoding, collation, character type, tablespace, connection limit, allow connections, template, comment, size), changes what the database type allows (PostgreSQL: name, owner, tablespace, limits, template, comment; CockroachDB: name, owner, comment; MySQL / MariaDB: character set, collation; SQL Server: name, owner, collation; ClickHouse: name) and shows the statements first. PostgreSQL renames a database only while nobody uses it: DBiji closes its own session on it first and can disconnect the others.
+- SQL functions in typed cells: `now()`, `CURRENT_TIMESTAMP`, `now() - interval '1 day'`, `gen_random_uuid()` … typed in a timestamp, date, number or uuid column are written into the UPDATE / INSERT as typed (marked SQL in the grid) and evaluated by the database. Text columns keep the text.
+- Autocomplete offers PostgreSQL partitions (after their table, "partition of …"), with their table's columns.
+
+### Fixed
+- Typing `now()` in a timestamp column of the record view did nothing visible: the value was refused, and the reason was drawn below the fields, out of sight. Refused values say why above the fields.
+- After saving, cells set to DEFAULT or an SQL function show the value the database stored instead of NULL (the rows are read back).
+- Timestamps typed or pasted as other tools write them are taken: `… UTC`, `… GMT`, `…Z`, `+0700`; a timestamp without time zone ignores an offset in the text (as PostgreSQL does), a date takes a timestamp at midnight, a time ignores an offset.
+
 ## 0.3.42 — 2026-10-27
 
 ### Added

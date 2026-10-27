@@ -9,16 +9,23 @@ pub enum CellValue {
     Value(Value),
     /// The column default (`DEFAULT` in SQL; omitted from INSERT column lists).
     Default,
+    /// SQL the database evaluates (`now()`, `CURRENT_TIMESTAMP` …), written as typed.
+    Expr(String),
 }
 
 impl CellValue {
-    /// The value, with `Default` shown as NULL.
+    /// The value, with `Default` and expressions (known after saving) shown as NULL.
     pub fn value_or_null(&self) -> &Value {
         static NULL: Value = Value::Null;
         match self {
             CellValue::Value(v) => v,
-            CellValue::Default => &NULL,
+            CellValue::Default | CellValue::Expr(_) => &NULL,
         }
+    }
+
+    /// The database gives the value when the row is saved (DEFAULT, an expression).
+    pub fn is_computed(&self) -> bool {
+        matches!(self, CellValue::Default | CellValue::Expr(_))
     }
 }
 
@@ -230,6 +237,7 @@ fn render_update(dialect: &dyn Dialect, table: &str, u: &RowUpdate, mode: Render
             let col = dialect.quote_ident(&c.name);
             match &c.value {
                 CellValue::Default => format!("{col} = DEFAULT"),
+                CellValue::Expr(e) => format!("{col} = {e}"),
                 CellValue::Value(v) => {
                     let p = b.value(v, &c.type_name);
                     format!("{col} = {p}")
@@ -249,6 +257,12 @@ fn render_insert(dialect: &dyn Dialect, table: &str, i: &RowInsert, mode: Render
         return (sql, b.params);
     }
     let cols: Vec<String> = specified.iter().map(|c| dialect.quote_ident(&c.name)).collect();
-    let vals: Vec<String> = specified.iter().map(|c| b.value(c.value.value_or_null(), &c.type_name)).collect();
+    let vals: Vec<String> = specified
+        .iter()
+        .map(|c| match &c.value {
+            CellValue::Expr(e) => e.clone(),
+            v => b.value(v.value_or_null(), &c.type_name),
+        })
+        .collect();
     (format!("INSERT INTO {table} ({}) VALUES ({})", cols.join(", "), vals.join(", ")), b.params)
 }

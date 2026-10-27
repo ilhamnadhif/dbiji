@@ -1,5 +1,6 @@
 //! Modal and floating dialogs owned by the application.
 
+pub mod alter_db;
 pub mod connection;
 pub mod create_db;
 pub mod drop;
@@ -73,6 +74,7 @@ pub struct Dialogs {
     pub import: Option<import::ImportDialog>,
     pub drop: Option<drop::DropDialog>,
     pub create_db: Option<create_db::CreateDatabaseDialog>,
+    pub alter_db: Option<alter_db::AlterDatabaseDialog>,
 }
 
 impl Dialogs {
@@ -135,6 +137,7 @@ impl Dialogs {
             || !self.prompts.is_empty()
             || self.import.is_some()
             || self.create_db.is_some()
+            || self.alter_db.is_some()
             || !self.connection.is_empty()
     }
 
@@ -170,6 +173,11 @@ impl Dialogs {
             && !d.show(ctx, cx)
         {
             self.create_db = None;
+        }
+        if let Some(d) = self.alter_db.as_mut()
+            && !d.show(ctx, cx)
+        {
+            self.alter_db = None;
         }
         if self.about_open {
             let mut open = true;

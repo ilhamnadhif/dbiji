@@ -77,6 +77,11 @@ impl DropDialog {
             match r {
                 Ok(n) => {
                     cx.toasts.success(trf("{} object(s) dropped", &[&n]));
+                    // A dropped database leaves the list of databases.
+                    if self.objects.iter().any(|o| o.kind == ObjectKind::Database) {
+                        cx.push(AppCommand::RefreshMetadata { connection: self.conn.clone(), object: None, schema: None });
+                        return false;
+                    }
                     let mut schemas: Vec<_> = self.objects.iter().map(|o| o.schema_ref()).collect();
                     schemas.dedup();
                     for s in schemas {

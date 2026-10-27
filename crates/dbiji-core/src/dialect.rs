@@ -145,6 +145,65 @@ pub struct NewDatabase {
     pub collation: Option<String>,
 }
 
+/// A database's properties (Edit database…): what the product has, `None` elsewhere.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DatabaseProps {
+    pub name: String,
+    pub owner: Option<String>,
+    /// PostgreSQL encoding; MySQL / MariaDB character set.
+    pub encoding: Option<String>,
+    pub collation: Option<String>,
+    /// PostgreSQL character classification (`LC_CTYPE`).
+    pub ctype: Option<String>,
+    pub tablespace: Option<String>,
+    /// PostgreSQL connection limit (-1: none).
+    pub connection_limit: Option<i64>,
+    pub is_template: Option<bool>,
+    pub allow_connections: Option<bool>,
+    pub comment: Option<String>,
+    pub size_bytes: Option<i64>,
+}
+
+impl DatabaseProps {
+    /// The properties of database `name` from the row of [`Dialect::database_properties_sql`].
+    pub fn from_row(name: &str, row: &[Value]) -> DatabaseProps {
+        let text = |i: usize| row.get(i).filter(|v| !v.is_null()).map(|v| v.to_text().into_owned());
+        let int = |i: usize| row.get(i).and_then(Value::as_i64);
+        let flag = |i: usize| match row.get(i) {
+            Some(Value::Bool(b)) => Some(*b),
+            Some(v) if !v.is_null() => v.as_i64().map(|n| n != 0),
+            _ => None,
+        };
+        DatabaseProps {
+            name: name.to_string(),
+            owner: text(0),
+            encoding: text(1),
+            collation: text(2),
+            ctype: text(3),
+            tablespace: text(4),
+            connection_limit: int(5),
+            is_template: flag(6),
+            allow_connections: flag(7),
+            comment: text(8).filter(|c| !c.is_empty()),
+            size_bytes: int(9),
+        }
+    }
+}
+
+/// The [`DatabaseProps`] a product can change (see [`Dialect::alter_database_sql`]).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DatabaseEdits {
+    pub name: bool,
+    pub owner: bool,
+    pub encoding: bool,
+    pub collation: bool,
+    pub tablespace: bool,
+    pub connection_limit: bool,
+    pub is_template: bool,
+    pub allow_connections: bool,
+    pub comment: bool,
+}
+
 /// A charset / collation / encoding name, or `None` when it is empty or not
 /// a plain name (such values are never put into SQL).
 fn plain_name(v: &Option<String>) -> Option<&str> {
@@ -368,6 +427,120 @@ pub trait Dialect: Send + Sync + 'static {
             DbKind::Sqlite | DbKind::DuckDb | DbKind::Generic => return None,
         }
         Some(sql)
+    }
+
+    /// Query reading a database's [`DatabaseProps`]: one row with its owner,
+    /// encoding, collation, ctype, tablespace, connection limit, is template,
+    /// allow connections, comment and size, in that order (NULL where the
+    /// product has none). `None` where there is nothing to read.
+    fn database_properties_sql(&self, name: &str) -> Option<String> {
+        let n = self.string_literal(name);
+        match self.kind() {
+            DbKind::Postgres => Some(format!(
+                "SELECT pg_catalog.pg_get_userbyid(d.datdba)::text, pg_catalog.pg_encoding_to_char(d.encoding)::text, d.datcollate::text, d.datctype::text, \
+                 t.spcname::text, d.datconnlimit::int8, d.datistemplate, d.datallowconn, pg_catalog.shobj_description(d.oid, 'pg_database'), \
+                 CASE WHEN pg_catalog.has_database_privilege(d.oid, 'CONNECT') THEN pg_catalog.pg_database_size(d.oid) END \
+                 FROM pg_catalog.pg_database d LEFT JOIN pg_catalog.pg_tablespace t ON t.oid = d.dattablespace WHERE d.datname = {n}"
+            )),
+            DbKind::CockroachDb => Some(format!(
+                "SELECT pg_catalog.pg_get_userbyid(d.datdba)::text, pg_catalog.pg_encoding_to_char(d.encoding)::text, d.datcollate::text, d.datctype::text, \
+                 NULL::text, NULL::int8, NULL::bool, NULL::bool, pg_catalog.shobj_description(d.oid, 'pg_database'), NULL::int8 \
+                 FROM pg_catalog.pg_database d WHERE d.datname = {n}"
+            )),
+            DbKind::MySql | DbKind::MariaDb => Some(format!(
+                "SELECT NULL, s.DEFAULT_CHARACTER_SET_NAME, s.DEFAULT_COLLATION_NAME, NULL, NULL, NULL, NULL, NULL, NULL, \
+                 (SELECT CAST(SUM(t.DATA_LENGTH + t.INDEX_LENGTH) AS SIGNED) FROM information_schema.TABLES t WHERE t.TABLE_SCHEMA = s.SCHEMA_NAME) \
+                 FROM information_schema.SCHEMATA s WHERE s.SCHEMA_NAME = {n}"
+            )),
+            DbKind::SqlServer => {
+                Some(format!("SELECT SUSER_SNAME(d.owner_sid), NULL, d.collation_name, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM sys.databases d WHERE d.name = {n}"))
+            }
+            _ => None,
+        }
+    }
+
+    /// What [`alter_database_sql`](Self::alter_database_sql) can change.
+    fn database_edits(&self) -> DatabaseEdits {
+        match self.kind() {
+            DbKind::Postgres => {
+                DatabaseEdits { name: true, owner: true, tablespace: true, connection_limit: true, is_template: true, allow_connections: true, comment: true, ..Default::default() }
+            }
+            DbKind::CockroachDb => DatabaseEdits { name: true, owner: true, comment: true, ..Default::default() },
+            DbKind::MySql | DbKind::MariaDb => DatabaseEdits { encoding: true, collation: true, ..Default::default() },
+            DbKind::SqlServer => DatabaseEdits { name: true, owner: true, collation: true, ..Default::default() },
+            DbKind::ClickHouse => DatabaseEdits { name: true, ..Default::default() },
+            _ => DatabaseEdits::default(),
+        }
+    }
+
+    /// Statements changing database `old` into `new` (what
+    /// [`database_edits`](Self::database_edits) allows); the rename comes last,
+    /// the others name the database as it was. Empty when nothing changed.
+    fn alter_database_sql(&self, old: &DatabaseProps, new: &DatabaseProps) -> Vec<String> {
+        let edits = self.database_edits();
+        let text = |v: &Option<String>| v.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
+        let changed = |a: &Option<String>, b: &Option<String>| text(a) != text(b);
+        let name = self.quote_ident(&old.name);
+        let mut out = Vec::new();
+        if edits.owner
+            && changed(&old.owner, &new.owner)
+            && let Some(o) = text(&new.owner)
+        {
+            let o = self.quote_ident(&o);
+            out.push(match self.kind() {
+                DbKind::SqlServer => format!("ALTER AUTHORIZATION ON DATABASE::{name} TO {o}"),
+                _ => format!("ALTER DATABASE {name} OWNER TO {o}"),
+            });
+        }
+        if edits.tablespace
+            && changed(&old.tablespace, &new.tablespace)
+            && let Some(t) = text(&new.tablespace)
+        {
+            out.push(format!("ALTER DATABASE {name} SET TABLESPACE {}", self.quote_ident(&t)));
+        }
+        let mut with = Vec::new();
+        if let (true, Some(n)) = (edits.connection_limit && old.connection_limit != new.connection_limit, new.connection_limit) {
+            with.push(format!("CONNECTION LIMIT {n}"));
+        }
+        if let (true, Some(b)) = (edits.allow_connections && old.allow_connections != new.allow_connections, new.allow_connections) {
+            with.push(format!("ALLOW_CONNECTIONS {b}"));
+        }
+        if let (true, Some(b)) = (edits.is_template && old.is_template != new.is_template, new.is_template) {
+            with.push(format!("IS_TEMPLATE {b}"));
+        }
+        if !with.is_empty() {
+            out.push(format!("ALTER DATABASE {name} WITH {}", with.join(" ")));
+        }
+        let charset = (edits.encoding && changed(&old.encoding, &new.encoding)).then(|| plain_name(&new.encoding)).flatten();
+        let collation = (edits.collation && changed(&old.collation, &new.collation)).then(|| plain_name(&new.collation)).flatten();
+        match self.kind() {
+            DbKind::MySql | DbKind::MariaDb if charset.is_some() || collation.is_some() => {
+                let mut sql = format!("ALTER DATABASE {name}");
+                if let Some(c) = charset {
+                    sql.push_str(&format!(" CHARACTER SET {c}"));
+                }
+                if let Some(c) = collation {
+                    sql.push_str(&format!(" COLLATE {c}"));
+                }
+                out.push(sql);
+            }
+            DbKind::SqlServer if collation.is_some() => out.push(format!("ALTER DATABASE {name} COLLATE {}", collation.unwrap_or_default())),
+            _ => {}
+        }
+        if edits.comment && changed(&old.comment, &new.comment) {
+            let c = text(&new.comment).map_or_else(|| "NULL".to_string(), |c| self.string_literal(&c));
+            out.push(format!("COMMENT ON DATABASE {name} IS {c}"));
+        }
+        let new_name = new.name.trim();
+        if edits.name && !new_name.is_empty() && new_name != old.name {
+            let to = self.quote_ident(new_name);
+            out.push(match self.kind() {
+                DbKind::SqlServer => format!("ALTER DATABASE {name} MODIFY NAME = {to}"),
+                DbKind::ClickHouse => format!("RENAME DATABASE {name} TO {to}"),
+                _ => format!("ALTER DATABASE {name} RENAME TO {to}"),
+            });
+        }
+        out
     }
 
     /// `CREATE SCHEMA`; `None` when schemas are databases (MySQL, MariaDB,

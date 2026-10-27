@@ -205,6 +205,13 @@ pub enum AppCommand {
         schema: Option<SchemaRef>,
         restore: bool,
     },
+    /// Edit database… / Rename… of a database (its properties and the ALTER statements).
+    EditDatabase {
+        connection: String,
+        database: String,
+        /// Opened with Rename…: the name takes the focus.
+        rename: bool,
+    },
     OpenMaintenance {
         connection: String,
         objects: Vec<ObjectRef>,

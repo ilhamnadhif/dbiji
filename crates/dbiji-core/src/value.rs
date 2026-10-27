@@ -540,9 +540,16 @@ impl Value {
                     Err(format!("'{t}' is not a decimal number"))
                 }
             }
-            DataKind::Date => parse_date(t).map(Value::Date).ok_or_else(|| format!("'{t}' is not a date (expected YYYY-MM-DD)")),
-            DataKind::Time => parse_time(t).map(Value::Time).ok_or_else(|| format!("'{t}' is not a time (expected HH:MM:SS)")),
-            DataKind::DateTime => parse_datetime(t).map(Value::DateTime).ok_or_else(|| format!("'{t}' is not a timestamp (expected YYYY-MM-DD HH:MM:SS)")),
+            // A timestamp at midnight is its date (a time of day would be lost: no date).
+            DataKind::Date => parse_date(t)
+                .or_else(|| datetime_ignoring_zone(t).filter(|d| d.time() == NaiveTime::MIN).map(|d| d.date()))
+                .map(Value::Date)
+                .ok_or_else(|| format!("'{t}' is not a date (expected YYYY-MM-DD)")),
+            // A zone after the time is ignored: the column has none.
+            DataKind::Time => {
+                parse_time(t).or_else(|| split_zone(t).and_then(|(rest, _)| time_only(rest))).map(Value::Time).ok_or_else(|| format!("'{t}' is not a time (expected HH:MM:SS)"))
+            }
+            DataKind::DateTime => datetime_ignoring_zone(t).map(Value::DateTime).ok_or_else(|| format!("'{t}' is not a timestamp (expected YYYY-MM-DD HH:MM:SS)")),
             DataKind::DateTimeTz => parse_datetime_tz(t).map(Value::DateTimeTz).ok_or_else(|| format!("'{t}' is not a timestamp with time zone")),
             DataKind::Uuid => Uuid::parse_str(t).map(Value::Uuid).map_err(|_| format!("'{t}' is not a UUID")),
             DataKind::Json => serde_json::from_str::<serde_json::Value>(t).map(|_| Value::json(t)).map_err(|e| format!("Invalid JSON: {e}")),
@@ -830,7 +837,7 @@ pub fn is_decimal_text(t: &str) -> bool {
     }
 }
 
-pub fn parse_date(t: &str) -> Option<NaiveDate> {
+fn date_only(t: &str) -> Option<NaiveDate> {
     for f in ["%Y-%m-%d", "%Y/%m/%d", "%d.%m.%Y", "%Y%m%d"] {
         if let Ok(d) = NaiveDate::parse_from_str(t, f) {
             return Some(d);
@@ -839,7 +846,7 @@ pub fn parse_date(t: &str) -> Option<NaiveDate> {
     None
 }
 
-pub fn parse_time(t: &str) -> Option<NaiveTime> {
+fn time_only(t: &str) -> Option<NaiveTime> {
     for f in ["%H:%M:%S%.f", "%H:%M:%S", "%H:%M"] {
         if let Ok(v) = NaiveTime::parse_from_str(t, f) {
             return Some(v);
@@ -848,28 +855,112 @@ pub fn parse_time(t: &str) -> Option<NaiveTime> {
     None
 }
 
-pub fn parse_datetime(t: &str) -> Option<NaiveDateTime> {
+/// A date and time without a zone; a date alone is midnight.
+fn naive_datetime(t: &str) -> Option<NaiveDateTime> {
     for f in ["%Y-%m-%d %H:%M:%S%.f", "%Y-%m-%dT%H:%M:%S%.f", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M", "%Y/%m/%d %H:%M:%S%.f", "%d.%m.%Y %H:%M:%S"] {
         if let Ok(v) = NaiveDateTime::parse_from_str(t, f) {
             return Some(v);
         }
     }
-    parse_date(t).and_then(|d| d.and_hms_opt(0, 0, 0))
+    date_only(t).and_then(|d| d.and_hms_opt(0, 0, 0))
+}
+
+/// `t` without the time zone at its end (`+07`, `-05:30`, `+0700`, `Z`, `UTC`,
+/// `GMT`) and that zone's offset.
+fn split_zone(t: &str) -> Option<(&str, FixedOffset)> {
+    let t = t.trim_end();
+    for name in ["UTC", "GMT", "Z", "z"] {
+        if let Some(rest) = t.strip_suffix(name)
+            && rest.ends_with(|c: char| c.is_ascii_digit() || c == ' ')
+        {
+            return Some((rest.trim_end(), FixedOffset::east_opt(0)?));
+        }
+    }
+    let i = t.rfind(['+', '-'])?;
+    let (rest, zone) = t.split_at(i);
+    // After a time: not the '-' of a date.
+    if !rest.contains(':') {
+        return None;
+    }
+    let digits: String = zone[1..].chars().filter(|c| *c != ':').collect();
+    if !matches!(digits.len(), 2 | 4) || !digits.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let (h, m): (i32, i32) = (digits[..2].parse().ok()?, if digits.len() == 4 { digits[2..].parse().ok()? } else { 0 });
+    let secs = (h * 3600 + m * 60) * if zone.starts_with('-') { -1 } else { 1 };
+    Some((rest.trim_end(), FixedOffset::east_opt(secs)?))
+}
+
+pub fn parse_date(t: &str) -> Option<NaiveDate> {
+    date_only(t)
+}
+
+pub fn parse_time(t: &str) -> Option<NaiveTime> {
+    time_only(t)
+}
+
+pub fn parse_datetime(t: &str) -> Option<NaiveDateTime> {
+    naive_datetime(t)
+}
+
+/// A date and time, a zone in the text ignored: the date and time stay as
+/// written (as PostgreSQL reads a `timestamp`).
+fn datetime_ignoring_zone(t: &str) -> Option<NaiveDateTime> {
+    naive_datetime(t).or_else(|| split_zone(t).and_then(|(rest, _)| naive_datetime(rest)))
 }
 
 pub fn parse_datetime_tz(t: &str) -> Option<DateTime<FixedOffset>> {
     if let Ok(v) = DateTime::parse_from_rfc3339(t) {
         return Some(v);
     }
-    for f in ["%Y-%m-%d %H:%M:%S%.f%:z", "%Y-%m-%d %H:%M:%S%.f%z", "%Y-%m-%d %H:%M:%S%.f%#z", "%Y-%m-%dT%H:%M:%S%.f%#z", "%Y-%m-%d %H:%M:%S%#z"] {
-        if let Ok(v) = DateTime::parse_from_str(t, f) {
-            return Some(v);
-        }
+    if let Some((rest, offset)) = split_zone(t)
+        && let Some(naive) = naive_datetime(rest)
+    {
+        return naive.and_local_timezone(offset).single();
     }
     // No offset given: interpret in the local time zone.
-    let naive = parse_datetime(t)?;
+    let naive = naive_datetime(t)?;
     let local = naive.and_local_timezone(chrono::Local).earliest()?;
     Some(local.fixed_offset())
+}
+
+/// `text` reads as SQL for the database to evaluate rather than as a value: a
+/// function call (`now()`, `gen_random_uuid()`, `now() - interval '1 day'`) or a
+/// date / time keyword (`CURRENT_TIMESTAMP`, `CURRENT_DATE`, `SYSDATE` …).
+pub fn is_sql_expression(text: &str) -> bool {
+    const KEYWORDS: [&str; 7] = ["CURRENT_TIMESTAMP", "CURRENT_DATE", "CURRENT_TIME", "LOCALTIMESTAMP", "LOCALTIME", "SYSDATE", "SYSTIMESTAMP"];
+    let t = text.trim();
+    let end = t.find(|c: char| !(c.is_alphanumeric() || c == '_' || c == '.')).unwrap_or(t.len());
+    let (word, rest) = t.split_at(end);
+    if word.is_empty() || word.starts_with(|c: char| c.is_ascii_digit() || c == '.') {
+        return false;
+    }
+    let call = rest.trim_start().starts_with('(');
+    let keyword = KEYWORDS.iter().any(|k| word.eq_ignore_ascii_case(k));
+    (call || keyword) && balanced(t)
+}
+
+/// Parentheses closed and quotes ended (outside of quotes).
+fn balanced(t: &str) -> bool {
+    let (mut depth, mut quote) = (0i32, None);
+    for c in t.chars() {
+        match quote {
+            Some(q) if c == q => quote = None,
+            Some(_) => {}
+            None => match c {
+                '\'' | '"' => quote = Some(c),
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth < 0 {
+                        return false;
+                    }
+                }
+                _ => {}
+            },
+        }
+    }
+    depth == 0 && quote.is_none()
 }
 
 pub fn parse_hex_bytes(t: &str) -> Option<Vec<u8>> {
@@ -1051,6 +1142,57 @@ mod tests {
         assert_eq!(v.to_text(), "2024-01-02 03:04:05.5+07");
         assert_eq!(Value::parse_as("0xff00", DataKind::Binary).unwrap(), Value::bytes(vec![255u8, 0]));
         assert!(Value::parse_as("{bad", DataKind::Json).is_err());
+    }
+
+    #[test]
+    fn timestamps_as_typed_pasted_or_copied() {
+        let text = |t: &str, k: DataKind| Value::parse_as(t, k).map(|v| v.to_text().into_owned());
+        // As the grid shows them (space before the offset), with seconds of offset or a zone name.
+        for (t, expected) in [
+            ("2025-11-24 13:48:03.461 +07:00", "2025-11-24 13:48:03.461+07"),
+            ("2025-11-24 13:48:03.461 +0700", "2025-11-24 13:48:03.461+07"),
+            ("2025-11-24 13:48:03-05:30", "2025-11-24 13:48:03-05:30"),
+            ("2025-11-24T13:48:03Z", "2025-11-24 13:48:03+00"),
+            ("2025-11-24 13:48:03 UTC", "2025-11-24 13:48:03+00"),
+            ("2025-11-24 13:48:03 GMT", "2025-11-24 13:48:03+00"),
+        ] {
+            assert_eq!(text(t, DataKind::DateTimeTz).as_deref(), Ok(expected), "{t}");
+        }
+        // Without a zone: the zone in the text is ignored (as PostgreSQL does).
+        assert_eq!(text("2025-11-24 13:48:03.461 +07:00", DataKind::DateTime).as_deref(), Ok("2025-11-24 13:48:03.461"));
+        assert_eq!(text("2025-11-24T13:48:03Z", DataKind::DateTime).as_deref(), Ok("2025-11-24 13:48:03"));
+        // A date from a timestamp at midnight (no time of day lost), a time with a zone.
+        assert_eq!(text("2025-11-24 00:00:00", DataKind::Date).as_deref(), Ok("2025-11-24"));
+        assert_eq!(text("2025-11-24 00:00:00.000 +07:00", DataKind::Date).as_deref(), Ok("2025-11-24"));
+        assert!(Value::parse_as("2025-11-24 13:48:03", DataKind::Date).is_err());
+        assert_eq!(text("13:48:03.461 +07:00", DataKind::Time).as_deref(), Ok("13:48:03.461"));
+        // Not timestamps.
+        for t in ["2025-13-01 10:00", "now()", "13:48 +7", "2025-11-24 25:00"] {
+            assert!(Value::parse_as(t, DataKind::DateTimeTz).is_err(), "{t}");
+        }
+    }
+
+    #[test]
+    fn sql_expressions() {
+        for t in [
+            "now()",
+            "NOW()",
+            " now() ",
+            "CURRENT_TIMESTAMP",
+            "current_date",
+            "localtimestamp",
+            "sysdate",
+            "gen_random_uuid()",
+            "pg_catalog.now()",
+            "now() - interval '1 day'",
+            "datetime('now', 'localtime')",
+            "CURRENT_TIMESTAMP(3)",
+        ] {
+            assert!(is_sql_expression(t), "{t}");
+        }
+        for t in ["", "now", "abc", "2025-11-24", "1(2)", "now(", "now())", "f('a)", "{\"a\": 1}", "(1)", "current_timestamps"] {
+            assert!(!is_sql_expression(t), "{t}");
+        }
     }
 
     #[test]

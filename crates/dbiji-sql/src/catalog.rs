@@ -5,9 +5,9 @@
 //! lookups are case-insensitive; `schema: None` means the default schema.
 
 use crate::lexicon::ident_eq;
-use dbiji_core::ObjectKind;
 use dbiji_core::ddl::{ForeignKeyDef, SchemaSnapshot, TableKind};
 use dbiji_core::meta::ColumnBrief;
+use dbiji_core::{DbKind, ObjectKind, trf};
 use std::collections::HashMap;
 
 /// A table-like object offered by autocomplete.
@@ -139,18 +139,34 @@ impl SnapshotCatalog {
                 kind,
                 comment: t.comment.clone(),
             });
-            e.columns.push(
-                t.columns
-                    .iter()
-                    .map(|c| ColumnBrief {
-                        name: c.name.clone(),
-                        data_type: c.data_type.clone(),
-                        nullable: c.nullable,
-                        is_primary_key: t.is_pk_column(&c.name),
-                        comment: c.comment.clone(),
-                    })
-                    .collect(),
-            );
+            let columns: Vec<ColumnBrief> = t
+                .columns
+                .iter()
+                .map(|c| ColumnBrief {
+                    name: c.name.clone(),
+                    data_type: c.data_type.clone(),
+                    nullable: c.nullable,
+                    is_primary_key: t.is_pk_column(&c.name),
+                    comment: c.comment.clone(),
+                })
+                .collect();
+            e.columns.push(columns.clone());
+            // PostgreSQL partitions are tables of their own (read by name) with their
+            // table's columns; a MySQL partition is no table.
+            let partitions = if snap.kind == Some(DbKind::Postgres) {
+                t.partitions.as_slice()
+            } else {
+                &[]
+            };
+            for p in partitions {
+                e.tables.push(CatalogTable {
+                    schema: schema.clone(),
+                    name: p.name.clone(),
+                    kind: ObjectKind::Partition,
+                    comment: Some(trf("partition of {}", &[&t.name])),
+                });
+                e.columns.push(columns.clone());
+            }
             let table_schema = t.schema.clone().or_else(|| schema.clone());
             for fk in &t.foreign_keys {
                 let mut fk = fk.clone();

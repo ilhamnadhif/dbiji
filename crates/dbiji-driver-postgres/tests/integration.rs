@@ -915,6 +915,10 @@ async fn metadata_of_every_object_kind() {
         assert_eq!(names(&parts), vec!["events_2024", "events_2025", "events_default"]);
         assert_eq!(parts[2].detail.as_deref(), Some("DEFAULT"));
         assert!(parts.iter().all(|p| p.size_bytes.is_some_and(|b| b >= 0)), "partitions have their size: {:?}", parts.iter().map(|p| p.size_bytes).collect::<Vec<_>>());
+        // Autocomplete's (light) snapshot knows them too.
+        let light = s.schema_snapshot(&SchemaRef::schema(schema.clone()), &SnapshotOptions::light()).await.unwrap();
+        let ev = light.tables.iter().find(|t| t.name == "events").unwrap();
+        assert_eq!(ev.partitions.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["events_2024", "events_2025", "events_default"]);
 
         // table definition
         let def = s.table_definition(&orders).await.unwrap();

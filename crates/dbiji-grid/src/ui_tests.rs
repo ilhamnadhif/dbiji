@@ -399,6 +399,61 @@ fn record_view_picks_several_values_and_copies_them() {
 }
 
 #[test]
+fn record_view_takes_now_in_a_timestamp_and_says_why_a_value_is_refused() {
+    let src = |c: &str| dbiji_core::ColumnSource { database: None, schema: Some("app".into()), table: "services".into(), column: c.into() };
+    let cols = vec![
+        ColumnMeta::new("id", "int", DataKind::Int).with_source(src("id")),
+        ColumnMeta::new("created_at", "timestamptz", DataKind::DateTimeTz).with_source(src("created_at")),
+        ColumnMeta::new("country", "text", DataKind::Text).with_source(src("country")),
+    ];
+    let stamp = Value::parse_as("2025-11-24 13:48:03.461+07", DataKind::DateTimeTz).unwrap();
+    let mut m = ResultModel::from_rows(cols, vec![vec![Value::Int(160), stamp, Value::text("de")]]);
+    let e = crate::model::determine_editability(m.columns(), |_| Some(vec!["id".into()]), false);
+    m.set_editability(e);
+    let mut v = Viewer::new(m);
+    v.state.grid.select_cell(0, 1);
+    v.state.toolbar.view = ResultViewKind::Record;
+    v.frame(vec![]);
+    v.frame(vec![]);
+    let value_of = |v: &Viewer, name: &str| -> Pos2 {
+        let update = v.output.accesskit_update.as_ref().expect("accesskit");
+        update
+            .nodes
+            .iter()
+            .find_map(|(_, n)| {
+                let b = n.bounds()?;
+                (n.label().or(n.value()) == Some(name)).then(|| Pos2::new(b.x1 as f32 + 60.0, ((b.y0 + b.y1) / 2.0) as f32))
+            })
+            .unwrap_or_else(|| panic!("no column name {name}"))
+    };
+    let edit = |v: &mut Viewer, text: &str| {
+        let at = value_of(v, "created_at");
+        v.click(at);
+        v.click(at);
+        // The editor takes the focus.
+        v.frame(vec![]);
+        let all = Event::Key { key: egui::Key::A, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::COMMAND };
+        v.frame_with(vec![all], Modifiers::COMMAND);
+        v.frame(vec![Event::Text(text.into())]);
+        // Another field: the edit ends.
+        let country = value_of(v, "country");
+        v.click(country);
+    };
+    edit(&mut v, "now()");
+    assert!(v.model.is_cell_modified(0, 1), "now() is a change");
+    assert_eq!(v.model.cell(0, 1), Some(Value::text("now()")));
+    // A value that is no timestamp: why, at once.
+    for _ in 0..30 {
+        v.frame(vec![]);
+    }
+    edit(&mut v, "tomorrow");
+    v.frame(vec![]);
+    let reason = v.find("is not a timestamp").expect("the reason is shown");
+    let fields = v.find("country").unwrap();
+    assert!(reason.y < fields.y, "above the fields, in sight");
+}
+
+#[test]
 fn record_view_has_the_grids_menu_and_keys() {
     use crate::test_support::key;
     use egui::Key;

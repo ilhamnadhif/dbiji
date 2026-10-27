@@ -509,8 +509,12 @@ pub(crate) fn paste_into(model: &mut ResultModel, state: &mut DataGridState, tex
             for r in sel.rows(nrows, usize::MAX) {
                 for p in sel.columns(visible.len()) {
                     if sel.contains(r, p) && !model.is_virtual_column(visible[p]) {
-                        let v = if nulls.as_ref().is_some_and(|n| n[0][0]) { Value::Null } else { model.parse_for_column(visible[p], &block[0][0])? };
-                        edits.push((r, visible[p], crate::model::CellValue::Value(v)));
+                        let v = if nulls.as_ref().is_some_and(|n| n[0][0]) {
+                            crate::model::CellValue::Value(Value::Null)
+                        } else {
+                            model.parse_cell_for_column(visible[p], &block[0][0])?
+                        };
+                        edits.push((r, visible[p], v));
                     }
                 }
             }

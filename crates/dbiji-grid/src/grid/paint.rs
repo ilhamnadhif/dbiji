@@ -271,6 +271,8 @@ impl GridFrame<'_> {
                         None => continue,
                     },
                     CellRef::Default => CellLook { text: default_text.into(), color: theme.weak, align: Align::Min, badge: None, suffix: None, checkbox: None },
+                    // Evaluated by the database when saved: as typed, marked as SQL.
+                    CellRef::Expr(e) => CellLook { text: e.into(), color: theme.text, align: Align::Min, badge: Some("SQL"), suffix: None, checkbox: None },
                     CellRef::Value(v) if v.is_null() => CellLook { text: null_text.into(), color: theme.weak, align: Align::Min, badge: None, suffix: None, checkbox: None },
                     CellRef::Value(v) => {
                         // Foreign key values look like others: their button (below) leads on.

@@ -285,6 +285,7 @@ fn row_values(model: &ResultModel, rows: &[usize], columns: &[usize]) -> (Vec<Ve
                     match cells.get(c) {
                         CellRef::Value(v) => (v.clone(), false),
                         CellRef::Default => (Value::Null, true),
+                        CellRef::Expr(e) => (Value::text(e), false),
                         CellRef::Missing => (Value::Null, false),
                     }
                 };
@@ -438,6 +439,10 @@ fn rows_table(
     // The value / column name whose context menu is open.
     let mut menu_resp: Option<egui::Response> = None;
     let menu_open = |r: &egui::Response| r.secondary_clicked() || egui::Popup::is_id_open(&r.ctx, egui::Popup::default_response_id(r));
+    // Above the fields: below them it would be out of sight (they take the height).
+    if let Some(e) = &state.error {
+        ui.colored_label(theme.error, e);
+    }
     ScrollArea::horizontal().auto_shrink([false, false]).show(ui, |ui| {
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
@@ -731,11 +736,11 @@ fn rows_table(
     if let Some((r, c, on)) = toggled {
         match model.set_value(r, c, Value::Bool(on)) {
             Ok(()) => state.error = None,
-            Err(e) => state.error = Some(e),
+            Err(e) => {
+                state.error = Some(e);
+                ui.ctx().request_repaint();
+            }
         }
-    }
-    if let Some(e) = &state.error {
-        ui.colored_label(theme.error, e);
     }
     if let Some((r, c, text)) = commit {
         match model.set_cell(r, c, &text) {
@@ -743,7 +748,11 @@ fn rows_table(
                 state.editing = None;
                 state.error = None;
             }
-            Err(e) => state.error = Some(e),
+            Err(e) => {
+                state.error = Some(e);
+                // Shown above the fields on the next frame.
+                ui.ctx().request_repaint();
+            }
         }
     }
     if let Some((r, c)) = open_value {

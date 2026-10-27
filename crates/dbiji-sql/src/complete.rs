@@ -1041,14 +1041,13 @@ impl Completer<'_> {
                 Some(a) => format!("{name} {a}"),
                 None => name.clone(),
             };
-            self.push(
-                &t.name,
-                insert,
-                kind,
-                detail,
-                if is_related { 680 } else { 600 },
-                0,
-            );
+            // A partition after its table (`api_calls` before `api_calls_2026_01`).
+            let score = match (is_related, t.kind) {
+                (true, _) => 680,
+                (false, ObjectKind::Partition) => 590,
+                _ => 600,
+            };
+            self.push(&t.name, insert, kind, detail, score, 0);
         }
         // Full join proposals, including related tables of other schemas.
         if join {

@@ -441,3 +441,51 @@ fn generate_rows_sql() {
     let ro = ResultModel::from_rows(vec![ColumnMeta::new("a", "int", DataKind::Int)], vec![vec![Value::Null]]);
     assert_eq!(ro.generate_rows_sql(SqlKind::Delete, &[0], &d, "t"), "DELETE FROM t WHERE a IS NULL;");
 }
+
+/// `id`, a `timestamptz` and a text column of app.people.
+fn timestamp_model() -> ResultModel {
+    let mut id = ColumnMeta::new("id", "int4", DataKind::Int).with_source(src("id"));
+    id.nullable = Some(false);
+    let at = ColumnMeta::new("at", "timestamptz", DataKind::DateTimeTz).with_source(src("at"));
+    let note = ColumnMeta::new("note", "text", DataKind::Text).with_source(src("note"));
+    let stamp = Value::parse_as("2025-11-24 13:48:03.461+07", DataKind::DateTimeTz).unwrap();
+    let mut m = ResultModel::from_rows(vec![id, at, note], vec![vec![Value::Int(1), stamp.clone(), Value::text("a")], vec![Value::Int(2), stamp, Value::text("b")]]);
+    m.set_editability(determine_editability(m.columns(), |_| Some(vec!["id".into()]), false));
+    m
+}
+
+#[test]
+fn sql_functions_in_typed_columns_are_saved_as_typed() {
+    let mut m = timestamp_model();
+    let d = PgLike(GenericDialect::new());
+    // now() is no timestamp: the database evaluates it.
+    m.set_cell(0, 1, "now()").unwrap();
+    assert!(m.is_cell_modified(0, 1));
+    assert_eq!(m.row_state(0), RowState::Modified);
+    assert_eq!(m.cell(0, 1), Some(Value::text("now()")), "shown and copied as typed");
+    // In a text column it is text.
+    m.set_cell(1, 2, "now()").unwrap();
+    assert_eq!(m.cell(1, 2), Some(Value::text("now()")));
+    // Not every word: a mistyped value is still refused.
+    assert!(m.set_cell(1, 1, "yesterday").is_err());
+    assert!(m.set_cell(1, 1, "2025-13-01").is_err());
+    let stmts = m.change_statements(&d);
+    assert_eq!(stmts[0].0, "UPDATE app.people SET at = now() WHERE id = $1");
+    assert_eq!(stmts[1], ("UPDATE app.people SET note = $1 WHERE id = $2".to_string(), vec![Value::text("now()"), Value::Int(2)]));
+    assert!(m.change_preview_sql(&d).contains("SET at = now() WHERE id = 1"));
+    // A new row with an expression; a pasted one; generated SQL keeps it.
+    let r = m.add_row(None).unwrap();
+    m.set_cell(r, 0, "3").unwrap();
+    m.set_cell(r, 1, "CURRENT_TIMESTAMP").unwrap();
+    let stmts = m.change_statements(&d);
+    assert_eq!(stmts.last().unwrap(), &("INSERT INTO app.people (id, at) VALUES ($1, CURRENT_TIMESTAMP)".to_string(), vec![Value::Int(3)]));
+    assert!(m.generate_rows_sql(crate::grid::SqlKind::Update, &[0], &d, "app.people").contains("at = now()"));
+    m.paste_block(1, &[vec!["now() - interval '1 day'".into()]], &[1], None).unwrap();
+    assert!(m.change_statements(&d)[1].0.contains("at = now() - interval '1 day'"));
+    // Saved: the values the database gave are shown (read back), not NULL.
+    let stamp = Value::parse_as("2026-10-27 10:00:00+07", DataKind::DateTimeTz).unwrap();
+    m.apply_saved_with(&HashMap::new(), &HashMap::from([(0u32, vec![(1usize, stamp.clone())])]));
+    assert!(!m.has_changes());
+    assert_eq!(m.cell(0, 1), Some(stamp));
+    assert_eq!(m.cell(0, 2), Some(Value::text("a")));
+}

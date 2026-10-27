@@ -355,7 +355,7 @@ impl SchemaSnapshot {
 }
 
 /// What to include when taking a [`SchemaSnapshot`]. Light snapshots
-/// (columns + keys only) are used for autocomplete and ER diagrams.
+/// (columns, keys and partition names) are used for autocomplete and ER diagrams.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SnapshotOptions {
@@ -406,7 +406,7 @@ impl SnapshotOptions {
             constraints: true,
             indexes: false,
             triggers: false,
-            partitions: false,
+            partitions: true,
             views: true,
             view_definitions: false,
             sequences: false,

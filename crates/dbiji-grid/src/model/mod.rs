@@ -189,6 +189,8 @@ pub enum CellRef<'a> {
     Value(&'a Value),
     /// Column default of a new row.
     Default,
+    /// SQL the database evaluates when the row is saved (`now()`).
+    Expr(&'a str),
     /// The column does not exist in this row.
     Missing,
 }
@@ -999,8 +1001,8 @@ impl ResultModel {
     fn validate(&self, col: usize, value: &CellValue, inserted: bool) -> Result<(), String> {
         let meta = &self.columns[col];
         match value {
-            // The database knows the default; nothing to check.
-            CellValue::Default => Ok(()),
+            // The database knows the default and evaluates the expression; nothing to check.
+            CellValue::Default | CellValue::Expr(_) => Ok(()),
             CellValue::Value(v) => {
                 if v.is_null() && meta.nullable == Some(false) && !(inserted && meta.auto_increment == Some(true)) {
                     return Err(trf("Column '{}' does not allow NULL", &[&meta.name]));
@@ -1020,8 +1022,19 @@ impl ResultModel {
     /// Empty input becomes NULL for non-text columns.
     pub fn set_cell(&mut self, row: usize, col: usize, text: &str) -> Result<(), String> {
         self.check_cell(row, col)?;
-        let value = self.parse_for_column(col, text)?;
-        self.set_cells(vec![(row, col, CellValue::Value(value))])
+        let value = self.parse_cell_for_column(col, text)?;
+        self.set_cells(vec![(row, col, value)])
+    }
+
+    /// Parse user input for column `col`: a value, or SQL for the database to
+    /// evaluate (`now()`, `CURRENT_TIMESTAMP`) where the text is no value of the
+    /// column's type. Text columns always take the text.
+    pub fn parse_cell_for_column(&self, col: usize, text: &str) -> Result<CellValue, String> {
+        match self.parse_for_column(col, text) {
+            Ok(v) => Ok(CellValue::Value(v)),
+            Err(_) if dbiji_core::value::is_sql_expression(text) => Ok(CellValue::Expr(text.trim().to_string())),
+            Err(e) => Err(e),
+        }
     }
 
     /// Parse user input for column `col` without changing anything.
@@ -1203,6 +1216,7 @@ impl ResultModel {
                     } else {
                         match cells.get(c) {
                             CellRef::Value(v) => CellValue::Value(v.clone()),
+                            CellRef::Expr(e) => CellValue::Expr(e.to_string()),
                             _ => CellValue::Default,
                         }
                     });
@@ -1287,11 +1301,11 @@ impl ResultModel {
                     continue;
                 }
                 let value = if nulls.and_then(|n| n.get(i)?.get(j).copied()).unwrap_or(false) {
-                    Value::Null
+                    CellValue::Value(Value::Null)
                 } else {
-                    self.parse_for_column(c, text).map_err(|e| trf("Row {}: {}", &[&(row + i + 1), &e]))?
+                    self.parse_cell_for_column(c, text).map_err(|e| trf("Row {}: {}", &[&(row + i + 1), &e]))?
                 };
-                parsed.push((row + i, c, CellValue::Value(value)));
+                parsed.push((row + i, c, value));
             }
         }
         // Check editability of target cells that already exist.
@@ -1498,15 +1512,16 @@ impl ResultModel {
 
     /// After the application committed [`ResultModel::change_statements`]:
     /// write updates into the store, append inserted rows, hide deleted rows.
-    /// `DEFAULT` cells become NULL in the store; refresh the result to see
-    /// server generated values.
+    /// `DEFAULT` and expression cells become NULL in the store; refresh the result
+    /// to see server generated values.
     pub fn apply_saved(&mut self) {
-        self.apply_saved_with(&HashMap::new());
+        self.apply_saved_with(&HashMap::new(), &HashMap::new());
     }
 
     /// [`apply_saved`](Self::apply_saved) with the values the database gave the new
-    /// rows (pending row id → (result column, value)): generated ids, defaults.
-    pub fn apply_saved_with(&mut self, inserted_values: &HashMap<u64, Vec<(usize, Value)>>) {
+    /// rows (pending row id → (result column, value)): generated ids, defaults; and
+    /// the updated rows read back (store row → values): DEFAULT, `now()` ….
+    pub fn apply_saved_with(&mut self, inserted_values: &HashMap<u64, Vec<(usize, Value)>>, updated_values: &HashMap<u32, Vec<(usize, Value)>>) {
         if !self.has_changes() {
             return;
         }
@@ -1525,6 +1540,11 @@ impl ResultModel {
                 for (c, v) in edits {
                     if let Some(slot) = row.get_mut(*c) {
                         *slot = v.value_or_null().clone();
+                    }
+                }
+                for (c, v) in updated_values.get(s).into_iter().flatten() {
+                    if let Some(slot) = row.get_mut(*c) {
+                        *slot = v.clone();
                     }
                 }
                 guard.set(*s as usize, row);
@@ -1624,7 +1644,11 @@ impl ResultModel {
         sorted.dedup();
         for chunk in sorted.chunk_by(|a, b| b == &(a + 1)) {
             self.visit_rows(chunk[0]..chunk[chunk.len() - 1] + 1, |_, cells| {
-                let current = |c: usize| cells.get(c).value().clone();
+                // A pending expression as typed (`now()`), else the value as a literal.
+                let current = |c: usize, t: &str| match cells.get(c) {
+                    CellRef::Expr(e) => e.to_string(),
+                    cell => lit(cell.value(), t),
+                };
                 let original = |c: usize| cells.original(c).cloned().unwrap_or_else(|| cells.get(c).value().clone());
                 let where_clause = cols
                     .iter()
@@ -1643,14 +1667,14 @@ impl ResultModel {
                         // A new row's DEFAULT cells are left out (NULL would fail on an identity column).
                         let given: Vec<&(usize, String, String)> = cols.iter().filter(|(c, _, _)| !matches!(cells.get(*c), CellRef::Default)).collect();
                         let names: Vec<String> = given.iter().map(|(_, n, _)| dialect.quote_ident(n)).collect();
-                        let vals: Vec<String> = given.iter().map(|(c, _, t)| lit(&current(*c), t)).collect();
+                        let vals: Vec<String> = given.iter().map(|(c, _, t)| current(*c, t)).collect();
                         format!("INSERT INTO {table} ({}) VALUES ({});", names.join(", "), vals.join(", "))
                     }
                     SqlKind::Update => {
                         let sets: Vec<String> = cols
                             .iter()
                             .filter(|(c, _, _)| target.is_none() || !keys.contains(c))
-                            .map(|(c, n, t)| format!("{} = {}", dialect.quote_ident(n), lit(&current(*c), t)))
+                            .map(|(c, n, t)| format!("{} = {}", dialect.quote_ident(n), current(*c, t)))
                             .collect();
                         format!("UPDATE {table} SET {} WHERE {where_clause};", sets.join(", "))
                     }
@@ -1679,6 +1703,7 @@ impl<'a> RowCells<'a> {
             return match values.get(col) {
                 Some(CellValue::Value(v)) => CellRef::Value(v),
                 Some(CellValue::Default) => CellRef::Default,
+                Some(CellValue::Expr(e)) => CellRef::Expr(e),
                 None if col < self.model.columns.len() => CellRef::Default,
                 None => CellRef::Missing,
             };
@@ -1689,6 +1714,7 @@ impl<'a> RowCells<'a> {
             return match v {
                 CellValue::Value(v) => CellRef::Value(v),
                 CellValue::Default => CellRef::Default,
+                CellValue::Expr(e) => CellRef::Expr(e),
             };
         }
         match self.base.and_then(|r| r.get(col)) {
@@ -1716,6 +1742,8 @@ impl<'a> RowCells<'a> {
             match self.get(col) {
                 CellRef::Value(v) => Some(v.clone()),
                 CellRef::Default => Some(Value::Null),
+                // Copied and edited as typed.
+                CellRef::Expr(e) => Some(Value::text(e)),
                 CellRef::Missing => None,
             }
         } else {

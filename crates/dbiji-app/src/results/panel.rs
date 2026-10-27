@@ -10,7 +10,7 @@ use crate::results::source::ResultSource;
 use dbiji_core::ddl::TableDef;
 use dbiji_core::meta::{ObjectKind, ObjectRef};
 use dbiji_core::{ColumnMeta, DbResult, Dialect, Row, Value, tr, trf};
-use dbiji_grid::model::ForeignKeyLink;
+use dbiji_grid::model::{CellValue, ForeignKeyLink};
 use dbiji_grid::panels::{ReferencesPanelState, Relation, RelationDirection};
 use dbiji_grid::{DataGridState, EditTarget, GridAction, GridOptions, ReadOnlyReason, ResultModel, ResultViewState, ResultViewer, determine_editability};
 use egui::{RichText, Ui};
@@ -125,7 +125,9 @@ fn same_table(a: &ObjectRef, b_schema: Option<&str>, b_name: &str) -> bool {
     a.name.eq_ignore_ascii_case(b_name) && (a.schema.is_none() || b_schema.is_none() || a.schema.as_deref().map(str::to_lowercase) == b_schema.map(str::to_lowercase))
 }
 
-type SaveOutcome = (u64, bool, HashMap<u64, Vec<(usize, Value)>>);
+/// Rows changed, committed, and the values the database gave the new rows (by
+/// pending id) and the updated ones (by store row).
+type SaveOutcome = (u64, bool, HashMap<u64, Vec<(usize, Value)>>, HashMap<u32, Vec<(usize, Value)>>);
 
 /// How a new row is read back after it was inserted without `RETURNING`.
 struct ReadBack {
@@ -145,21 +147,23 @@ impl ReadBack {
         if self.key.is_empty() || missing > 1 {
             return None;
         }
-        let conds = self
-            .key
-            .iter()
-            .map(|(name, type_name, given)| {
-                let v = match given {
-                    Some(v) => v.clone(),
-                    None => generated.clone()?,
-                };
-                let q = d.quote_ident(name);
-                Some(if v.is_null() { format!("{q} IS NULL") } else { format!("{q} = {}", d.literal(&v, (!type_name.is_empty()).then_some(type_name.as_str()))) })
-            })
-            .collect::<Option<Vec<_>>>()?;
-        let cols: Vec<String> = columns.iter().map(|(_, n, _)| n.clone()).collect();
-        Some(d.select_table(table, Some(&cols), Some(&conds.join(" AND ")), None, Some(1)))
+        let key =
+            self.key.iter().map(|(name, type_name, given)| Some((name.clone(), type_name.clone(), given.clone().or_else(|| generated.clone())?))).collect::<Option<Vec<_>>>()?;
+        Some(select_by_key(d, table, columns, &key))
     }
+}
+
+/// `SELECT` of `columns` of the row of `table` whose key columns (name, type) have these values.
+fn select_by_key(d: &dyn Dialect, table: &ObjectRef, columns: &[(usize, String, String)], key: &[(String, String, Value)]) -> String {
+    let conds: Vec<String> = key
+        .iter()
+        .map(|(name, type_name, v)| {
+            let q = d.quote_ident(name);
+            if v.is_null() { format!("{q} IS NULL") } else { format!("{q} = {}", d.literal(v, (!type_name.is_empty()).then_some(type_name.as_str()))) }
+        })
+        .collect();
+    let cols: Vec<String> = columns.iter().map(|(_, n, _)| n.clone()).collect();
+    d.select_table(table, Some(&cols), Some(&conds.join(" AND ")), None, Some(1))
 }
 
 impl ResultPanel {
@@ -326,9 +330,9 @@ impl ResultPanel {
         {
             self.save_job = None;
             match r {
-                Ok((n, committed, inserted)) => {
+                Ok((n, committed, inserted, updated)) => {
                     self.src.rows_deleted(self.model.deleted_below(self.src.server_rows()));
-                    self.model.apply_saved_with(&inserted);
+                    self.model.apply_saved_with(&inserted, &updated);
                     self.saved_in_tx = (!committed).then(|| self.src.session.rollbacks());
                     if committed {
                         cx.toasts.success(trf("Saved: {} row(s) changed", &[&n]));
@@ -870,6 +874,30 @@ impl ResultPanel {
             }
             reads.push(ReadBack { id: ins.id, stmt, key });
         }
+        // Updated rows given a value by the database (DEFAULT, an expression such as `now()`)
+        // are read back by their key too, so the cell shows it instead of NULL.
+        let updated_reads: Vec<(u32, String)> = cs
+            .updates
+            .iter()
+            .filter(|u| !cs.key_columns.is_empty() && u.changes.iter().any(|c| c.value.is_computed()))
+            .take(MAX_READ_BACK)
+            .filter_map(|u| {
+                let key = u
+                    .key
+                    .iter()
+                    .map(|k| {
+                        let value = match u.changes.iter().find(|c| c.column == k.column).map(|c| &c.value) {
+                            None => k.value.clone(),
+                            Some(CellValue::Value(v)) => v.clone(),
+                            // A key the database computes: the row cannot be found again.
+                            Some(_) => return None,
+                        };
+                        Some((k.name.clone(), k.type_name.clone(), value))
+                    })
+                    .collect::<Option<Vec<_>>>()?;
+                Some((u.row, select_by_key(d.as_ref(), &cs.table, &cs.columns, &key)))
+            })
+            .collect();
         let columns = cs.columns.clone();
         let table = cs.table.clone();
         let s = self.src.session.clone();
@@ -895,7 +923,15 @@ impl ResultPanel {
                     inserted.insert(rb.id, as_values(row));
                 }
             }
-            Ok((applied.rows, applied.committed, inserted))
+            let mut updated: HashMap<u32, Vec<(usize, Value)>> = HashMap::new();
+            for (row, sql) in &updated_reads {
+                if let Ok((_, rows)) = s.query_all(sql, &[]).await
+                    && let Some(r) = rows.first()
+                {
+                    updated.insert(*row, as_values(r));
+                }
+            }
+            Ok((applied.rows, applied.committed, inserted, updated))
         }));
     }
 

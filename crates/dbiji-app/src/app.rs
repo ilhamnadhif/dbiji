@@ -591,6 +591,11 @@ impl DbijiApp {
             AppCommand::ChangePassword { connection } => {
                 self.open_tab(Box::new(crate::tabs::dbtools::ChangePasswordTab::new(connection)));
             }
+            AppCommand::EditDatabase { connection, database, rename } => {
+                if self.conns.is_connected(&connection) {
+                    self.dialogs.alter_db = Some(crate::dialogs::alter_db::AlterDatabaseDialog::new(connection, database, rename));
+                }
+            }
             AppCommand::NewDatabase { connection } => {
                 if self.conns.is_connected(&connection) {
                     self.dialogs.create_db = Some(crate::dialogs::create_db::CreateDatabaseDialog::database(connection));

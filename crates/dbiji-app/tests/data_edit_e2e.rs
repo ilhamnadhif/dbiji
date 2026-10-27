@@ -290,6 +290,57 @@ fn generated_values_show_after_save() {
     }
 }
 
+/// `now()` typed in a timestamp is saved as SQL, and the time the database stored shows at once.
+#[test]
+fn sql_functions_in_timestamps_are_saved_and_read_back() {
+    for (name, url) in servers() {
+        let mut h = H::new(&url);
+        let table = format!("dbiji_ts_{}", &uuid::Uuid::new_v4().simple().to_string()[..8]);
+        let (stamp, func) = match name {
+            "sqlite" => ("TIMESTAMP", "CURRENT_TIMESTAMP"),
+            "postgres" | "cockroach" => ("TIMESTAMPTZ", "now()"),
+            _ => ("DATETIME", "now()"),
+        };
+        h.sql(&format!("CREATE TABLE {table} (id INT PRIMARY KEY, at {stamp}, note VARCHAR(20))"));
+        h.sql(&format!("INSERT INTO {table} VALUES (1, '2020-01-02 03:04:05', 'a')"));
+        let schema = {
+            let live = h.cm.live(&h.id).unwrap();
+            if name == "sqlite" { None } else { live.current_schema.clone().or(live.current_database.clone()) }
+        };
+        let mut view = TableDataView::new(h.id.clone(), ObjectRef::table(schema, table.clone()), None);
+        h.until(&mut view, "rows", |v| v.panel.as_ref().is_some_and(|p| p.model.row_count() == 1 && p.model.is_editable()));
+        let (id_col, at_col) = {
+            let p = view.panel.as_mut().unwrap();
+            let col = |n: &str| p.model.columns().iter().position(|c| c.name.eq_ignore_ascii_case(n)).unwrap();
+            let (id_col, at_col, note_col) = (col("id"), col("at"), col("note"));
+            p.model.set_cell(0, at_col, func).unwrap_or_else(|e| panic!("{name}: {e}"));
+            assert!(p.model.is_cell_modified(0, at_col), "{name}");
+            // In a text column it stays text.
+            p.model.set_cell(0, note_col, "now()").unwrap();
+            let new = p.model.add_row(None).unwrap();
+            p.model.set_cell(new, id_col, "2").unwrap();
+            p.model.set_cell(new, at_col, func).unwrap();
+            (id_col, at_col)
+        };
+        save_and_wait(&mut h, &mut view);
+        let year = chrono::Datelike::year(&chrono::Local::now()).to_string();
+        assert_eq!(h.query(&format!("SELECT note FROM {table} WHERE id = 1"))[0][0], "now()", "{name}");
+        let stored = h.query(&format!("SELECT at FROM {table} ORDER BY id"));
+        let p = view.panel.as_ref().unwrap();
+        for (r, db) in stored.iter().enumerate() {
+            assert!(db[0].starts_with(&year), "{name}: the database evaluated {func}: {db:?}");
+            let row = (0..p.model.row_count()).find(|&d| p.model.cell(d, id_col).is_some_and(|v| v.to_text() == (r + 1).to_string())).unwrap();
+            let shown = p.model.cell(row, at_col).unwrap();
+            assert!(!shown.is_null() && shown.to_text().starts_with(&year), "{name}: row {} shows the stored time without a refresh, not {shown:?}", r + 1);
+        }
+        h.sql(&format!("DROP TABLE {table}"));
+        h.cm.disconnect_all(&h.backend);
+        if let Some(p) = url.strip_prefix("sqlite://") {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+}
+
 #[test]
 fn virtual_model_dictionary_and_virtual_columns() {
     let file = std::env::temp_dir().join(format!("dbiji-vm-e2e-{}.db", uuid::Uuid::new_v4().simple()));

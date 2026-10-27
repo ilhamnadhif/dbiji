@@ -1,6 +1,6 @@
 //! Maintenance operations offered by the dialect (VACUUM, ANALYZE, REINDEX,
-//! OPTIMIZE TABLE ...): option checkboxes, SQL preview and execution on a
-//! dedicated session in auto-commit mode.
+//! OPTIMIZE TABLE ..., TRUNCATE): option checkboxes, SQL preview and execution
+//! on a dedicated session in auto-commit mode.
 
 use super::{SessionState, ToolSession};
 use crate::backend::{Job, Repainter};
@@ -207,6 +207,16 @@ impl MaintenanceTab {
         MaintenanceTab { done: false, conn, objects, op: None, options: BTreeMap::new(), session: ToolSession::new(database), run: None, pending: false, error: None }
     }
 
+    /// Opened on the operation `id` (Truncate… in the navigator's menu).
+    pub fn with_op(mut self, id: Option<String>) -> Self {
+        self.op = id;
+        self
+    }
+
+    fn is_truncate(&self) -> bool {
+        self.op.as_deref() == Some(MaintenanceOp::TRUNCATE)
+    }
+
     /// Dialect of the connection (also when it is not connected).
     fn dialect(&self, cx: &AppContext) -> Option<Arc<dyn Dialect>> {
         cx.conns.live(&self.conn).map(|l| l.dialect.clone()).or_else(|| cx.conns.config(&self.conn).and_then(|c| cx.conns.registry.get(c.kind)).map(|d| d.dialect()))
@@ -225,7 +235,9 @@ impl MaintenanceTab {
     fn ops(&self, cx: &AppContext) -> Vec<MaintenanceOp> {
         let Some(d) = self.dialect(cx) else { return Vec::new() };
         let targets = self.targets(cx);
-        d.maintenance_ops().into_iter().filter(|op| targets.iter().all(|t| op.applies_to.contains(&t.kind))).collect()
+        let mut ops = d.maintenance_ops();
+        ops.push(MaintenanceOp::truncate(d.as_ref()));
+        ops.into_iter().filter(|op| targets.iter().all(|t| op.applies_to.contains(&t.kind))).collect()
     }
 
     fn current_op(&self, cx: &AppContext) -> Option<MaintenanceOp> {
@@ -255,6 +267,7 @@ impl MaintenanceTab {
     /// Statements that will run.
     pub fn preview_sql(&self, cx: &AppContext) -> Vec<String> {
         match (self.dialect(cx), self.op.as_deref()) {
+            (Some(d), Some(MaintenanceOp::TRUNCATE)) => d.truncate_sql(&self.targets(cx), &self.options),
             (Some(d), Some(op)) => d.maintenance_sql(op, &self.targets(cx), &self.options),
             _ => Vec::new(),
         }
@@ -394,9 +407,17 @@ impl MaintenanceTab {
             ui.label(tr("No maintenance operations are available for the selected objects."));
             return;
         }
-        if self.op.as_deref().is_none_or(|id| !ops.iter().any(|o| o.id == id)) {
-            let first = ops[0].id;
-            self.select_op(cx, first);
+        match ops.iter().find(|o| Some(o.id) == self.op.as_deref()) {
+            None => {
+                let first = ops[0].id;
+                self.select_op(cx, first);
+            }
+            // Opened on it: its options' defaults.
+            Some(op) if self.options.is_empty() && !op.options.is_empty() => {
+                let id = op.id;
+                self.select_op(cx, id);
+            }
+            Some(_) => {}
         }
         ui.strong(tr("Operation"));
         let mut chosen = None;
@@ -446,8 +467,18 @@ impl MaintenanceTab {
             ui.add(egui::TextEdit::multiline(&mut t).code_editor().desired_width(f32::INFINITY).desired_rows(2));
         });
         let running = self.is_running();
+        let truncate = self.is_truncate();
+        let red = crate::theme::error_color(ui.visuals().dark_mode);
+        if truncate {
+            ui.label(RichText::new(format!("{} {}", icon::WARNING, tr("Every row of the table(s) is deleted at once, without a transaction to roll back."))).color(red));
+        }
         ui.horizontal(|ui| {
-            if ui.add_enabled(!running && !sql.is_empty(), crate::widgets::primary_button(ui, icon::PLAY, tr("Run"))).clicked() {
+            let run = if truncate {
+                egui::Button::new(RichText::new(format!("{}  {}", icon::ERASER, tr("Truncate"))).color(egui::Color32::WHITE).strong()).fill(red)
+            } else {
+                crate::widgets::primary_button(ui, icon::PLAY, tr("Run"))
+            };
+            if ui.add_enabled(!running && !sql.is_empty(), run).clicked() {
                 self.start(cx);
             }
             if running && ui.button((dbiji_icons::ic(icon::STOP), tr("Cancel"))).clicked() {
@@ -529,8 +560,10 @@ impl TabView for MaintenanceTab {
     }
 
     fn title(&self) -> String {
-        match self.objects.as_slice() {
-            [one] => trf("Maintenance: {}", &[&one.name]),
+        match (self.objects.as_slice(), self.is_truncate()) {
+            ([one], true) => trf("Truncate: {}", &[&one.name]),
+            (_, true) => tr("Truncate").to_string(),
+            ([one], false) => trf("Maintenance: {}", &[&one.name]),
             _ => tr("Maintenance").to_string(),
         }
     }

@@ -208,6 +208,8 @@ pub enum AppCommand {
     OpenMaintenance {
         connection: String,
         objects: Vec<ObjectRef>,
+        /// The operation to open on (`truncate` for Truncate…).
+        op: Option<String>,
     },
     OpenMockData {
         connection: String,

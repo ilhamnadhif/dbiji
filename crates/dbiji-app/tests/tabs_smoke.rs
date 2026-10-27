@@ -109,6 +109,43 @@ impl H {
     }
 }
 
+/// Truncate… in the navigator's menu: the maintenance dialog opened on it empties the table.
+#[test]
+fn truncate_empties_the_table() {
+    let mut h = H::new();
+    let orders = ObjectRef::table(Some("main".into()), "orders");
+    let mut tab = dbiji_app::tabs::dbtools::MaintenanceTab::new(h.id.clone(), vec![orders]).with_op(Some("truncate".into()));
+    h.frames(&mut tab, 3);
+    assert_eq!(tab.title(), "Truncate: orders");
+    {
+        let mut cx = AppContext {
+            backend: &h.backend,
+            conns: &mut h.cm,
+            services: &h.services,
+            settings: &mut h.settings,
+            commands: &mut h.commands,
+            toasts: &mut h.toasts,
+            ops: &mut h.ops,
+            keymap: &h.keymap,
+            tab_active: true,
+            current_tab: Some(1),
+            popup: false,
+        };
+        assert!(tab.available_ops(&cx).iter().any(|o| o == "truncate"), "{:?}", tab.available_ops(&cx));
+        assert_eq!(tab.preview_sql(&cx), ["DELETE FROM main.orders"]);
+        tab.start(&mut cx);
+    }
+    let t0 = Instant::now();
+    while tab.is_running() {
+        assert!(t0.elapsed() < Duration::from_secs(10), "{}", tab.log_text());
+        h.frames(&mut tab, 1);
+    }
+    assert!(tab.error().is_none() && tab.results().iter().all(|r| r.error.is_none()), "{}", tab.log_text());
+    let s = h.cm.live(&h.id).unwrap().main.clone();
+    let (_, rows) = h.backend.block_on(async move { s.query_all("SELECT COUNT(*) FROM orders", &[]).await }).unwrap();
+    assert_eq!(rows[0][0].as_i64(), Some(0));
+}
+
 #[test]
 fn every_tab_draws_without_panicking() {
     let mut h = H::new();

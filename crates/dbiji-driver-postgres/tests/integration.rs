@@ -914,6 +914,7 @@ async fn metadata_of_every_object_kind() {
         let parts = s.list_children(&events, ObjectKind::Partition).await.unwrap();
         assert_eq!(names(&parts), vec!["events_2024", "events_2025", "events_default"]);
         assert_eq!(parts[2].detail.as_deref(), Some("DEFAULT"));
+        assert!(parts.iter().all(|p| p.size_bytes.is_some_and(|b| b >= 0)), "partitions have their size: {:?}", parts.iter().map(|p| p.size_bytes).collect::<Vec<_>>());
 
         // table definition
         let def = s.table_definition(&orders).await.unwrap();

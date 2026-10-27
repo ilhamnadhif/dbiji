@@ -585,8 +585,8 @@ impl DbijiApp {
             AppCommand::OpenBackup { connection, schema, restore } => {
                 self.open_tab(Box::new(crate::tabs::dbtools::BackupTab::new(connection, schema, restore)));
             }
-            AppCommand::OpenMaintenance { connection, objects } => {
-                self.open_tab(Box::new(crate::tabs::dbtools::MaintenanceTab::new(connection, objects)));
+            AppCommand::OpenMaintenance { connection, objects, op } => {
+                self.open_tab(Box::new(crate::tabs::dbtools::MaintenanceTab::new(connection, objects).with_op(op)));
             }
             AppCommand::ChangePassword { connection } => {
                 self.open_tab(Box::new(crate::tabs::dbtools::ChangePasswordTab::new(connection)));

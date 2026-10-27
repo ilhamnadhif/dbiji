@@ -301,6 +301,17 @@ pub trait Dialect: Send + Sync + 'static {
         format!("TRUNCATE TABLE {}", self.qualified_ref(table))
     }
 
+    /// Options of Truncate (Tools › Truncate in DBeaver): (key, label, default).
+    fn truncate_options(&self) -> &'static [(&'static str, &'static str, bool)] {
+        &[]
+    }
+
+    /// Statements emptying `tables` (Truncate) with the [`truncate_options`](Self::truncate_options).
+    fn truncate_sql(&self, tables: &[ObjectRef], options: &BTreeMap<String, bool>) -> Vec<String> {
+        let _ = options;
+        tables.iter().map(|t| self.truncate_table(t)).collect()
+    }
+
     /// Server-level and auxiliary objects shown in the navigator (roles,
     /// tablespaces, settings, users, status …); see [`crate::catalog`].
     fn catalog_folders(&self) -> Vec<crate::catalog::CatalogFolder> {

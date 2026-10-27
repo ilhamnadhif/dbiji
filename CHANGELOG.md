@@ -3,6 +3,14 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.42 — 2026-10-27
+
+### Added
+- Truncate… in a table's (and a partition's) menu, as Tools › Truncate in DBeaver: the SQL to run and the database's options. PostgreSQL: only the table itself (ONLY), restart identity (RESTART IDENTITY), cascade to the tables referencing it (CASCADE), several tables in one statement; CockroachDB: cascade; MySQL / MariaDB: ignore foreign keys (FOREIGN_KEY_CHECKS = 0). It is also in Maintenance.
+
+### Changed
+- PostgreSQL partitions in the navigator show their size, as tables do; their bounds (FOR VALUES …) are on hover.
+
 ## 0.3.41 — 2026-10-25
 
 ### Fixed

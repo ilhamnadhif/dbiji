@@ -75,6 +75,10 @@ fn split_routine_identity(identity: &str, schema: Option<&str>) -> (String, Opti
     }
 }
 
+/// Space of the table `c` with its indexes and TOAST; a partitioned table: its partitions'.
+const TABLE_SIZE: &str = "CASE WHEN c.relkind = 'p' THEN (SELECT sum(pg_catalog.pg_total_relation_size(ch.inhrelid))::int8 FROM pg_catalog.pg_inherits ch WHERE ch.inhparent = c.oid) \
+                          ELSE pg_catalog.pg_total_relation_size(c.oid) END";
+
 impl PgSession {
     pub(crate) async fn list_databases_impl(&self) -> DbResult<Vec<DatabaseInfo>> {
         let size = if self.is_cockroach() { "NULL::int8" } else { "CASE WHEN d.datname = current_database() THEN pg_catalog.pg_database_size(d.oid) END" };
@@ -159,13 +163,7 @@ impl PgSession {
                     ObjectKind::Sequence if !self.is_cockroach() => "(SELECT pg_catalog.format_type(s.seqtypid, NULL) FROM pg_catalog.pg_sequence s WHERE s.seqrelid = c.oid)",
                     _ => "NULL::text",
                 };
-                // With its indexes and TOAST; a partitioned table: its partitions'.
-                let size = if self.is_cockroach() || !matches!(kind, ObjectKind::Table | ObjectKind::MaterializedView) {
-                    "NULL::int8"
-                } else {
-                    "CASE WHEN c.relkind = 'p' THEN (SELECT sum(pg_catalog.pg_total_relation_size(i.inhrelid))::int8 FROM pg_catalog.pg_inherits i WHERE i.inhparent = c.oid) \
-                     ELSE pg_catalog.pg_total_relation_size(c.oid) END"
-                };
+                let size = if self.is_cockroach() || !matches!(kind, ObjectKind::Table | ObjectKind::MaterializedView) { "NULL::int8" } else { TABLE_SIZE };
                 let sql = format!(
                     "SELECT c.relname::text, d.description, c.reltuples::int8, c.relkind::text, c.relpersistence::text, {detail}, {size} \
                      FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
@@ -442,14 +440,18 @@ impl PgSession {
                 Ok(out)
             }
             ObjectKind::Partition => {
+                // Its size, as the tables show theirs (the bounds go to the tooltip).
+                let size = if self.is_cockroach() { "NULL::int8" } else { TABLE_SIZE };
                 let rows = self
                     .q(
-                        "SELECT c.relname::text, n.nspname::text, pg_catalog.pg_get_expr(c.relpartbound, c.oid), c.reltuples::int8, d.description \
-                         FROM pg_catalog.pg_inherits i JOIN pg_catalog.pg_class c ON c.oid = i.inhrelid \
-                         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
-                         JOIN pg_catalog.pg_class p ON p.oid = i.inhparent JOIN pg_catalog.pg_namespace pn ON pn.oid = p.relnamespace \
-                         LEFT JOIN pg_catalog.pg_description d ON d.objoid = c.oid AND d.classoid = 'pg_catalog.pg_class'::regclass AND d.objsubid = 0 \
-                         WHERE pn.nspname = $1 AND p.relname = $2 AND coalesce(c.relispartition, false) ORDER BY c.relname",
+                        &format!(
+                            "SELECT c.relname::text, n.nspname::text, pg_catalog.pg_get_expr(c.relpartbound, c.oid), c.reltuples::int8, d.description, {size} \
+                             FROM pg_catalog.pg_inherits i JOIN pg_catalog.pg_class c ON c.oid = i.inhrelid \
+                             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
+                             JOIN pg_catalog.pg_class p ON p.oid = i.inhparent JOIN pg_catalog.pg_namespace pn ON pn.oid = p.relnamespace \
+                             LEFT JOIN pg_catalog.pg_description d ON d.objoid = c.oid AND d.classoid = 'pg_catalog.pg_class'::regclass AND d.objsubid = 0 \
+                             WHERE pn.nspname = $1 AND p.relname = $2 AND coalesce(c.relispartition, false) ORDER BY c.relname"
+                        ),
                         &[P::Name(schema), P::Name(table)],
                     )
                     .await?;
@@ -460,6 +462,7 @@ impl PgSession {
                     let mut o = ObjectInfo::new(obj).with_comment(r.os(4)?);
                     o.detail = r.os(2)?;
                     o.row_estimate = r.oi(3)?.filter(|n| *n >= 0);
+                    o.size_bytes = r.oi(5)?;
                     out.push(o);
                 }
                 Ok(out)

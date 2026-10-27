@@ -2780,3 +2780,7 @@ Commands	Perintah
 More actions	Tindakan lain
 Open the referenced row in {}	Buka baris yang dirujuk di {}
 Show the DDL formatted with the SQL editor's formatter settings	Tampilkan DDL yang diformat dengan pengaturan formatter SQL editor
+Truncate…	Truncate…
+Delete every row of the table	Hapus semua baris tabel
+Every row of the table(s) is deleted at once, without a transaction to roll back.	Semua baris tabel dihapus sekaligus, tanpa transaksi yang bisa di-rollback.
+Truncate: {}	Truncate: {}

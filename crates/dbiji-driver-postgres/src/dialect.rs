@@ -334,6 +334,36 @@ impl Dialect for PgDialect {
         true
     }
 
+    fn truncate_options(&self) -> &'static [(&'static str, &'static str, bool)] {
+        const CASCADE: (&str, &str, bool) = ("cascade", "Cascade: also truncate the tables that reference it by a foreign key (CASCADE)", false);
+        if self.kind == DbKind::CockroachDb {
+            return &[CASCADE];
+        }
+        &[
+            ("only", "Only the table itself, not its child tables (ONLY)", false),
+            ("restart_identity", "Restart identity: the sequences of its columns start over (RESTART IDENTITY)", false),
+            CASCADE,
+        ]
+    }
+
+    /// One statement for all the tables: tables referencing each other are emptied together.
+    fn truncate_sql(&self, tables: &[ObjectRef], options: &BTreeMap<String, bool>) -> Vec<String> {
+        if tables.is_empty() {
+            return Vec::new();
+        }
+        let on = |k: &str| options.get(k).copied().unwrap_or(false);
+        let only = on("only") && self.kind != DbKind::CockroachDb;
+        let names: Vec<String> = tables.iter().map(|t| format!("{}{}", if only { "ONLY " } else { "" }, self.qualified_ref(t))).collect();
+        let mut sql = format!("TRUNCATE TABLE {}", names.join(", "));
+        if on("restart_identity") && self.kind != DbKind::CockroachDb {
+            sql.push_str(" RESTART IDENTITY");
+        }
+        if on("cascade") {
+            sql.push_str(" CASCADE");
+        }
+        vec![sql]
+    }
+
     fn maintenance_ops(&self) -> Vec<MaintenanceOp> {
         let mut ops = Vec::new();
         if self.kind == DbKind::Postgres {
@@ -540,6 +570,18 @@ impl Dialect for PgDialect {
 mod tests {
     use super::*;
     use chrono::NaiveDate;
+
+    #[test]
+    fn truncate_with_options() {
+        let d = PgDialect::new();
+        let t = [ObjectRef::table(Some("public".into()), "orders"), ObjectRef::table(Some("public".into()), "Lines")];
+        let opts = |on: &[&str]| on.iter().map(|k| (k.to_string(), true)).collect::<BTreeMap<_, _>>();
+        assert_eq!(d.truncate_sql(&t, &opts(&[])), ["TRUNCATE TABLE public.orders, public.\"Lines\""]);
+        assert_eq!(d.truncate_sql(&t, &opts(&["only", "restart_identity", "cascade"])), ["TRUNCATE TABLE ONLY public.orders, ONLY public.\"Lines\" RESTART IDENTITY CASCADE"]);
+        let c = PgDialect::cockroach();
+        assert_eq!(c.truncate_options().len(), 1);
+        assert_eq!(c.truncate_sql(&t[..1], &opts(&["only", "restart_identity", "cascade"])), ["TRUNCATE TABLE public.orders CASCADE"]);
+    }
 
     #[test]
     fn returned_rows_read_like_query_rows() {

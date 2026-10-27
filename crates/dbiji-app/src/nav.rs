@@ -161,6 +161,20 @@ pub(crate) fn connection_detail(cfg: &ConnectionConfig) -> String {
 }
 
 /// A size as DBeaver shows it in the navigator: `512`, `16K`, `2.4M`, `57M`, `1.2G`.
+/// Size shown at the right of a table or partition (as in DBeaver), with the
+/// size, estimated rows and its detail (bounds, engine …) on hover.
+fn size_badge(o: &ObjectInfo) -> Option<(String, String)> {
+    let b = o.size_bytes.filter(|b| *b >= 0)?;
+    let mut tip = format!("{}: {}", tr("Size"), long_size(b));
+    if let Some(r) = o.row_estimate.filter(|r| *r >= 0) {
+        tip.push_str(&format!("\n{}: ~{r}", tr("Estimated rows")));
+    }
+    if let Some(d) = &o.detail {
+        tip.push_str(&format!("\n{d}"));
+    }
+    Some((short_size(b), tip))
+}
+
 fn short_size(bytes: i64) -> String {
     let mut v = bytes as f64;
     for unit in ["", "K", "M", "G", "T"] {
@@ -800,16 +814,7 @@ impl Navigator {
                 badge: None,
                 logo: None,
                 tint: None,
-                size: o.size_bytes.filter(|b| *b >= 0).map(|b| {
-                    let mut tip = format!("{}: {}", tr("Size"), long_size(b));
-                    if let Some(r) = o.row_estimate.filter(|r| *r >= 0) {
-                        tip.push_str(&format!("\n{}: ~{r}", tr("Estimated rows")));
-                    }
-                    if let Some(d) = &o.detail {
-                        tip.push_str(&format!("\n{d}"));
-                    }
-                    (short_size(b), tip)
-                }),
+                size: size_badge(o),
                 expandable: has_children,
                 expanded,
                 kind: RowKind::Node,
@@ -859,13 +864,14 @@ impl Navigator {
                                 node: NavNode::Child { conn: conn.to_string(), obj: c.obj.clone() },
                                 depth: depth + 1,
                                 label: c.obj.name.clone(),
-                                detail: c.detail.clone(),
+                                // A partition with its size shows only that, as a table (its bounds on hover).
+                                detail: if c.size_bytes.is_some() { None } else { c.detail.clone() },
                                 icon: kind_icon(c.obj.kind),
                                 icon_color: None,
                                 badge: None,
                                 logo: None,
                                 tint: None,
-                                size: None,
+                                size: size_badge(c),
                                 expandable: false,
                                 expanded: false,
                                 kind: RowKind::Node,
@@ -1856,7 +1862,7 @@ pub fn object_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, obj: &ObjectRef
                 ui.close();
             }
             if ui.button((dbiji_icons::ic(icon::BROOM), tr("Maintenance"))).clicked() {
-                cx.push(AppCommand::OpenMaintenance { connection: c.clone(), objects: vec![obj.clone()] });
+                cx.push(AppCommand::OpenMaintenance { connection: c.clone(), objects: vec![obj.clone()], op: None });
                 ui.close();
             }
         }
@@ -1885,7 +1891,7 @@ pub fn object_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, obj: &ObjectRef
         && cx.conns.live(conn).is_some_and(|l| l.dialect.maintenance_ops().iter().any(|o| o.applies_to.contains(&ObjectKind::Trigger)))
         && ui.button((dbiji_icons::ic(icon::BROOM), tr("Maintenance"))).on_hover_text(tr("Enable or disable the trigger")).clicked()
     {
-        cx.push(AppCommand::OpenMaintenance { connection: conn.to_string(), objects: vec![obj.clone()] });
+        cx.push(AppCommand::OpenMaintenance { connection: conn.to_string(), objects: vec![obj.clone()], op: None });
         ui.close();
     }
     if obj.table.is_none()
@@ -1909,6 +1915,13 @@ pub fn object_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, obj: &ObjectRef
     }
     ui.separator();
     let red = crate::theme::error_color(ui.visuals().dark_mode);
+    // Truncate (Tools › Truncate in DBeaver): its options and SQL in the maintenance dialog.
+    if matches!(obj.kind, ObjectKind::Table | ObjectKind::Partition)
+        && ui.add(egui::Button::new(RichText::new(format!("{} {}", icon::ERASER, tr("Truncate…"))).color(red))).on_hover_text(tr("Delete every row of the table")).clicked()
+    {
+        cx.push(AppCommand::OpenMaintenance { connection: c.clone(), objects: vec![obj.clone()], op: Some(dbiji_core::admin::MaintenanceOp::TRUNCATE.to_string()) });
+        ui.close();
+    }
     if ui.add(egui::Button::new(RichText::new(format!("{} {}", icon::TRASH, tr("Drop…"))).color(red)).shortcut_text(keys(DROP_KEYS))).clicked() {
         cx.push(AppCommand::DropObjects { connection: c, objects: vec![obj.clone()] });
         ui.close();

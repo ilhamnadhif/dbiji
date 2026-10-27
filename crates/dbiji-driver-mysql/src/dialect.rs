@@ -403,6 +403,23 @@ impl Dialect for MySqlDialect {
         MAINTENANCE.to_vec()
     }
 
+    fn truncate_options(&self) -> &'static [(&'static str, &'static str, bool)] {
+        &[(
+            "no_fk_checks",
+            "Ignore foreign keys while truncating (FOREIGN_KEY_CHECKS = 0)",
+            false,
+        )]
+    }
+
+    fn truncate_sql(&self, tables: &[ObjectRef], options: &BTreeMap<String, bool>) -> Vec<String> {
+        let mut out: Vec<String> = tables.iter().map(|t| self.truncate_table(t)).collect();
+        if !out.is_empty() && options.get("no_fk_checks").copied().unwrap_or(false) {
+            out.insert(0, "SET FOREIGN_KEY_CHECKS = 0".to_string());
+            out.push("SET FOREIGN_KEY_CHECKS = 1".to_string());
+        }
+        out
+    }
+
     fn maintenance_sql(
         &self,
         op: &str,
@@ -536,6 +553,25 @@ mod tests {
 
     fn my80() -> MySqlDialect {
         MySqlDialect::for_server(ServerProfile::new(Flavor::MySql, (8, 0, 36)))
+    }
+
+    #[test]
+    fn truncate_without_foreign_key_checks() {
+        let d = my80();
+        let t = [ObjectRef::table(Some("shop".into()), "order")];
+        assert_eq!(
+            d.truncate_sql(&t, &BTreeMap::new()),
+            ["TRUNCATE TABLE shop.`order`"]
+        );
+        let off = BTreeMap::from([("no_fk_checks".to_string(), true)]);
+        assert_eq!(
+            d.truncate_sql(&t, &off),
+            [
+                "SET FOREIGN_KEY_CHECKS = 0",
+                "TRUNCATE TABLE shop.`order`",
+                "SET FOREIGN_KEY_CHECKS = 1"
+            ]
+        );
     }
 
     #[test]

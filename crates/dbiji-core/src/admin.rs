@@ -116,6 +116,23 @@ pub struct MaintenanceOp {
     pub needs_autocommit: bool,
 }
 
+impl MaintenanceOp {
+    /// Id of Truncate, offered for the tables of every dialect.
+    pub const TRUNCATE: &'static str = "truncate";
+
+    /// Truncate with the options of `dialect` (see [`crate::Dialect::truncate_options`]).
+    pub fn truncate(dialect: &dyn crate::Dialect) -> Self {
+        MaintenanceOp {
+            id: Self::TRUNCATE,
+            label: "Truncate",
+            description: "Delete every row of the table at once; it cannot be undone",
+            applies_to: &[ObjectKind::Table, ObjectKind::Partition],
+            options: dialect.truncate_options(),
+            needs_autocommit: false,
+        }
+    }
+}
+
 /// External program invocation (pg_dump, mysqldump, psql ...).
 #[derive(Debug, Clone, Default)]
 pub struct CommandSpec {

@@ -233,7 +233,7 @@ fn read_only_connections_block_writes() {
 }
 
 /// An editor opened on a database node (a database, no schema) completes
-/// the tables of its current schema, partitioned tables included (it
+/// the tables of its current schema, partitioned tables and their partitions included (it
 /// offered only keywords).
 #[test]
 fn tables_complete_in_an_editor_opened_on_a_database() {
@@ -261,16 +261,14 @@ fn tables_complete_in_an_editor_opened_on_a_database() {
     h.until(&mut tab, "session", |t| t.session_ready());
     let typed = "SELECT * FROM dbiji_c".to_string();
     h.until(&mut tab, "partitioned table offered", |t| t.completion_labels(&typed).contains(&charges));
-    assert!(!t_has_partitions(&tab.completion_labels(&typed), &charges), "partitions are not offered");
+    // Its partitions too (they are tables of their own), after it.
+    let labels = tab.completion_labels(&typed);
+    let at = |name: &str| labels.iter().position(|l| l == name).unwrap_or_else(|| panic!("{name} offered: {labels:?}"));
+    assert!(at(&charges) < at(&format!("{charges}_2025")), "{labels:?}");
     assert!(tab.completion_labels("SELECT * FROM dbiji_s").contains(&subs));
     for t in [&charges, &subs] {
         let drop = format!("DROP TABLE {t}");
         let s = main.clone();
         let _ = h.backend.block_on(async move { s.execute_update(&drop, &[]).await });
     }
-}
-
-/// A partition (`<table>_2025`) among the offered labels.
-fn t_has_partitions(labels: &[String], table: &str) -> bool {
-    labels.iter().any(|l| l.starts_with(&format!("{table}_")))
 }

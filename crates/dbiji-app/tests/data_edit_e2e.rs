@@ -135,9 +135,17 @@ impl H {
     }
 
     fn try_sql(&self, sql: &str) -> Result<(), String> {
+        self.try_sql_within(sql, Duration::from_secs(3600))
+    }
+
+    /// [`try_sql`](Self::try_sql) giving up after `limit` (a call that never returns).
+    fn try_sql_within(&self, sql: &str, limit: Duration) -> Result<(), String> {
         let s = self.cm.live(&self.id).unwrap().main.clone();
         let owned = sql.to_string();
-        self.backend.block_on(async move { s.execute_update(&owned, &[]).await }).map(|_| ()).map_err(|e| e.to_string())
+        match self.backend.block_on(async move { tokio::time::timeout(limit, s.execute_update(&owned, &[])).await }) {
+            Ok(r) => r.map(|_| ()).map_err(|e| e.to_string()),
+            Err(_) => Err(format!("no answer in {limit:?}")),
+        }
     }
 
     fn sql(&self, sql: &str) {
@@ -473,27 +481,31 @@ fn manual_commit_reorder_while_loading() {
         h.cm.disconnect(&backend, &id);
         drop(h);
         at(format!("[{name}] drop table"));
-        // statement_timeout bounds each try even where lock_timeout does not apply
-        // (a CI run once hung here).
-        setup.sql("SET lock_timeout = '2s'");
-        setup.sql("SET statement_timeout = '10s'");
+        // Clean-up only. CI runs (PostgreSQL 11) hung here several times with no call
+        // returning, lock_timeout and statement_timeout set: each try is bounded on the
+        // client too, and a table that cannot be dropped is reported (with what holds
+        // it, read on a new connection) and left in the throw-away CI database.
+        let limit = Duration::from_secs(15);
+        let _ = setup.try_sql_within("SET lock_timeout = '2s'", limit);
+        let _ = setup.try_sql_within("SET statement_timeout = '10s'", limit);
         let t0 = Instant::now();
-        while let Err(e) = setup.try_sql(&format!("DROP TABLE IF EXISTS {table}")) {
-            if t0.elapsed() >= Duration::from_secs(60) {
-                // Who still holds the table (the panic's message is lost when the watchdog ends the run).
+        while let Err(e) = setup.try_sql_within(&format!("DROP TABLE IF EXISTS {table}"), limit) {
+            if t0.elapsed() >= Duration::from_secs(45) {
                 let holders = if name == "postgres" {
-                    format!(
-                        "{:?}",
-                        setup.query(&format!(
-                            "SELECT a.pid::text, coalesce(a.state, ''), coalesce(a.application_name, ''), left(a.query, 120) FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid WHERE l.relation = '{table}'::regclass AND a.pid <> pg_backend_pid()"
-                        ))
-                    )
+                    let probe = H::new(&url);
+                    let s = probe.cm.live(&probe.id).unwrap().main.clone();
+                    let sql = format!(
+                        "SELECT a.pid::text, coalesce(a.state, ''), coalesce(a.application_name, ''), coalesce(a.wait_event, ''), left(a.query, 120) \
+                         FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid WHERE l.relation = '{table}'::regclass AND a.pid <> pg_backend_pid()"
+                    );
+                    let rows = probe.backend.block_on(async move { tokio::time::timeout(limit, s.query_all(&sql, &[])).await });
+                    format!("{rows:?}")
                 } else {
                     String::new()
                 };
                 use std::io::Write;
-                let _ = writeln!(std::io::stderr(), "[{name}] DROP TABLE: {e}; held by {holders}");
-                panic!("[{name}] DROP TABLE: {e}; held by {holders}");
+                let _ = writeln!(std::io::stderr(), "[{name}] DROP TABLE {table} not done after {:?}: {e}; held by {holders}", t0.elapsed());
+                break;
             }
             std::thread::sleep(Duration::from_millis(200));
         }
@@ -509,14 +521,20 @@ fn watchdog(test: &'static str, limit: Duration) -> Arc<std::sync::Mutex<String>
     let watched = stage.clone();
     std::thread::spawn(move || {
         let t0 = Instant::now();
+        // The stage and since when it runs.
+        let (mut last, mut since) = (String::from("start"), Instant::now());
         while t0.elapsed() < limit {
             std::thread::sleep(Duration::from_millis(500));
-            if watched.lock().unwrap().is_empty() {
+            let now = watched.lock().unwrap().clone();
+            if now.is_empty() {
                 return;
+            }
+            if now != last {
+                (last, since) = (now, Instant::now());
             }
         }
         use std::io::Write;
-        let _ = writeln!(std::io::stderr(), "{test} hung at: {}", watched.lock().unwrap());
+        let _ = writeln!(std::io::stderr(), "{test} hung at: {last} (for {:?})", since.elapsed());
         std::process::exit(101);
     });
     stage

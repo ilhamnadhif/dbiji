@@ -3,7 +3,7 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
-## 0.3.43 — 2026-10-27
+## 0.3.44 — 2026-10-27
 
 ### Added
 - A database's menu in the navigator is complete: Edit database…, Rename… (F2), Maintenance, Copy name, Refresh and Drop… (⌘⌫). Edit database shows what the server tells (owner, encoding, collation, character type, tablespace, connection limit, allow connections, template, comment, size), changes what the database type allows (PostgreSQL: name, owner, tablespace, limits, template, comment; CockroachDB: name, owner, comment; MySQL / MariaDB: character set, collation; SQL Server: name, owner, collation; ClickHouse: name) and shows the statements first. PostgreSQL renames a database only while nobody uses it: DBiji closes its own session on it first and can disconnect the others.

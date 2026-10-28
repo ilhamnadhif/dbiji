@@ -1216,7 +1216,7 @@ impl Navigator {
                 }
                 let resp = match &r.node {
                     NavNode::Connection(id) if matches!(cx.conns.status(id), ConnStatus::Lost) => {
-                        resp.on_hover_text(tr("The connection to the server was lost: double-click to reconnect"))
+                        resp.on_hover_text(tr("The connection to the server was lost: unfold it to reconnect"))
                     }
                     _ => resp,
                 };
@@ -1301,24 +1301,20 @@ impl Navigator {
     }
 
     fn toggle(&mut self, node: &NavNode, cx: &mut AppContext) {
-        // A lost connection (red) is connected again instead of being folded.
-        if let NavNode::Connection(id) = node
-            && matches!(cx.conns.status(id), ConnStatus::Lost)
-        {
-            cx.push(AppCommand::Reconnect(id.clone()));
-            self.expanded.insert(node.clone());
-            return;
-        }
+        // Folding never connects (a lost connection, red, stays as it is).
         if self.expanded.contains(node) {
             self.expanded.remove(node);
-        } else {
-            if let NavNode::Connection(id) = node
-                && !cx.conns.is_connected(id)
-            {
+            return;
+        }
+        // Unfolding a connection connects it; a lost one (red) is connected again.
+        if let NavNode::Connection(id) = node {
+            if matches!(cx.conns.status(id), ConnStatus::Lost) {
+                cx.push(AppCommand::Reconnect(id.clone()));
+            } else if !cx.conns.is_connected(id) {
                 cx.push(AppCommand::Connect(id.clone()));
             }
-            self.expanded.insert(node.clone());
         }
+        self.expanded.insert(node.clone());
     }
 
     /// Double click / Enter.

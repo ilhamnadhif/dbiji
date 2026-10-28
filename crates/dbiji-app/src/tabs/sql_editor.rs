@@ -375,7 +375,7 @@ impl SqlEditorTab {
             };
         }
         // "Connection lost" ends once the connection is back (Reconnect): a new session.
-        let lost_text = tr("The connection to the server was lost: reconnect it (double-click it in the navigator).");
+        let lost_text = tr("The connection to the server was lost: reconnect it (unfold it in the navigator, or Reconnect in its menu).");
         if matches!(&self.session, SessionSlot::Failed(m) if m == lost_text) && cx.conns.live(&conn).is_some_and(|l| !l.main.is_closed()) {
             self.session = SessionSlot::None;
         }

@@ -443,6 +443,25 @@ fn foreign_key_navigation_keeps_each_tables_columns() {
     no_errors(&mut h, "foreign key navigation");
 }
 
+/// A lost connection (red) folds without connecting; unfolding it reconnects.
+#[test]
+fn a_lost_connection_reconnects_only_when_unfolded() {
+    let (_dir, mut h, conn) = setup();
+    wait(&mut h, "Tables folder", |h| nav_row(h, "Tables").is_some());
+    // The server went away: the connection's session is closed.
+    let (backend, main) = (h.state().backend.clone(), h.state().conns.live(&conn).unwrap().main.clone());
+    backend.block_on(async move { main.close().await });
+    let lost = |h: &H| matches!(h.state().conns.status(&conn), dbiji_app::conn::ConnStatus::Lost);
+    wait(&mut h, "lost", |h| lost(h));
+    nav_double_click(&mut h, "dbiji-sample.db");
+    frames(&mut h, 20);
+    assert!(lost(&h), "folding does not reconnect");
+    assert!(nav_row(&h, "Tables").is_none(), "folded");
+    nav_double_click(&mut h, "dbiji-sample.db");
+    wait(&mut h, "reconnected", |h| h.state().conns.is_connected(&conn) && !lost(h));
+    wait(&mut h, "unfolded", |h| nav_row(h, "Tables").is_some());
+}
+
 /// The text field on the same row as (to the right of) a label.
 fn field_right_of(h: &mut H, label: &str, text: &str) {
     pause(h);

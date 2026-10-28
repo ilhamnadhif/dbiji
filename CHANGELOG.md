@@ -3,6 +3,11 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.45 — 2026-10-28
+
+### Fixed
+- Folding a connection whose server was lost (red) connected it again. Folding only folds; unfolding it reconnects.
+
 ## 0.3.44 — 2026-10-27
 
 ### Added

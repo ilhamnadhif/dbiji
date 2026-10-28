@@ -2692,7 +2692,7 @@ Cannot start the task scheduler	Tidak dapat memulai penjadwal tugas
 Cannot use schema {}	Tidak dapat memakai schema {}
 The table was created, the statements after the failing one were not run; it is shown as it is now.	Tabel sudah dibuat, statement setelah yang gagal tidak dijalankan; tabel ditampilkan sesuai keadaannya sekarang.
 The session has uncommitted changes (another tab, the data editor): commit or roll them back before changing the table.	Sesi masih punya perubahan yang belum di-commit (tab lain, editor data): commit atau rollback dulu sebelum mengubah tabel.
-The connection to the server was lost: double-click to reconnect	Koneksi ke server terputus: klik dua kali untuk menyambung ulang
+The connection to the server was lost: unfold it to reconnect	Koneksi ke server terputus: buka (expand) untuk menyambung ulang
 The session has uncommitted changes (another tab, the data editor): commit or roll them back before dropping objects.	Sesi masih punya perubahan yang belum di-commit (tab lain, editor data): commit atau rollback dulu sebelum menghapus objek.
 Uncommitted transactions	Transaksi yang belum di-commit
 Disconnecting rolls back the uncommitted changes of:	Memutus koneksi akan me-rollback perubahan yang belum di-commit dari:
@@ -2703,7 +2703,7 @@ Discard and close	Buang dan tutup
 Reloading the rows discards the {} pending change(s). Save them first to keep them.	Memuat ulang baris akan membuang {} perubahan yang tertunda. Simpan dulu untuk mempertahankannya.
 Discard and reload	Buang dan muat ulang
 The connection was lost: the uncommitted changes were rolled back by the server.	Koneksi terputus: perubahan yang belum di-commit di-rollback oleh server.
-The connection to the server was lost: reconnect it (double-click it in the navigator).	Koneksi ke server terputus: sambungkan ulang (klik dua kali di navigator).
+The connection to the server was lost: reconnect it (unfold it in the navigator, or Reconnect in its menu).	Koneksi ke server terputus: sambungkan ulang (buka di navigator, atau Reconnect di menunya).
 Uncommitted transaction	Transaksi belum di-commit
 "{}" has uncommitted changes; closing it rolls them back.	"{}" punya perubahan yang belum di-commit; menutupnya akan me-rollback perubahan itu.
 Roll back and close	Rollback dan tutup

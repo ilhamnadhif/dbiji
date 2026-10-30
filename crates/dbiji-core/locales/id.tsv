@@ -2805,3 +2805,4 @@ Vacuum, analyze, reindex the whole database	Vacuum, analyze, reindex seluruh dat
 Tab: grid · ← →: rows · ↑ ↓: fields · type, Enter: edit · ⌘C: copy	Tab: grid · ← →: baris · ↑ ↓: kolom · ketik, Enter: ubah · ⌘C: salin
 Tab: grid · ↑ ↓: fields · type, Enter: edit · ⌘C: copy	Tab: grid · ↑ ↓: kolom · ketik, Enter: ubah · ⌘C: salin
 Type, Enter or double-click to edit	Ketik, Enter, atau klik ganda untuk mengubah
+DBiji could not open its window: {}\n\nIt needs OpenGL 2.0 or later; updating the graphics driver usually helps.	DBiji tidak bisa membuka jendelanya: {}\n\nDBiji membutuhkan OpenGL 2.0 atau lebih baru; memperbarui driver grafis biasanya membantu.

@@ -13,7 +13,8 @@
 #
 # The packages are made with nfpm and the AppImage with appimagetool, both
 # downloaded into target/ at pinned versions when missing. The binary links
-# only to glibc (2.34 or later: build on Ubuntu 22.04 or older for it); the
+# only to glibc, at the version of the system it is built on: CI builds in
+# AlmaLinux 9 (glibc 2.34), so it runs there and on everything newer. The
 # window system and OpenGL libraries are loaded when it starts, so the
 # packages depend on them.
 set -euo pipefail

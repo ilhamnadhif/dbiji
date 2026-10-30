@@ -229,6 +229,14 @@ pub fn run() -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("DBiji failed: {e}");
+            tracing::error!("DBiji failed: {e}");
+            // Started from a menu, the Dock or Explorer, nobody sees the console.
+            let _ = rfd::MessageDialog::new()
+                .set_level(rfd::MessageLevel::Error)
+                .set_title("DBiji")
+                .set_description(dbiji_core::trf("DBiji could not open its window: {}\n\nIt needs OpenGL 2.0 or later; updating the graphics driver usually helps.", &[&e]))
+                .set_buttons(rfd::MessageButtons::Ok)
+                .show();
             ExitCode::FAILURE
         }
     }

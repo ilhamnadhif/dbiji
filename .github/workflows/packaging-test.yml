@@ -19,12 +19,29 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: scripts/bundle-windows.ps1
         shell: pwsh
+      - name: Start the app (first frame) and take a screenshot
+        shell: pwsh
+        run: |
+          $env:DBIJI_HOME = Join-Path $env:RUNNER_TEMP 'dbiji-home'
+          $p = Start-Process -FilePath target\release\dbiji.exe -ArgumentList '--exit-after-first-frame' -PassThru -Wait
+          Write-Host "first frame: exit $($p.ExitCode)"
+          Get-ChildItem -Recurse "$env:DBIJI_HOME\logs" -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName -Tail 20 }
+          $app = Start-Process -FilePath target\release\dbiji.exe -PassThru
+          Start-Sleep -Seconds 12
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          $bmp.Save("$PWD\dist\windows-shot.png")
+          Write-Host "still running: $(-not $app.HasExited)"
+          if (-not $app.HasExited) { Stop-Process -Id $app.Id }
       - uses: actions/upload-artifact@v7
         with:
           name: windows
           path: |
             dist/*.exe
             dist/*.zip
+            dist/*.png
 
   windows-clippy-and-tests:
     runs-on: windows-2022
@@ -44,25 +61,46 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-22.04, ubuntu-22.04-arm]
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
     runs-on: ${{ matrix.runner }}
+    container: almalinux:9
     steps:
+      - name: Build tools
+        run: dnf install -y --setopt=install_weak_deps=False gcc gcc-c++ make git binutils findutils tar gzip which file diffutils
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - run: scripts/bundle-linux.sh
-      - run: objdump -p target/release/dbiji | grep NEEDED
-      - name: Install and start the packages
-        if: matrix.runner == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update && sudo apt-get install -y ./dist/DBiji-*-linux-amd64.deb
-          dbiji --version
-          dpkg -L dbiji
-          docker run --rm -v "$PWD/dist:/dist" fedora:41 bash -c 'dnf install -y /dist/DBiji-*-linux-x86_64.rpm >/dev/null && dbiji --version'
-          docker run --rm -v "$PWD/dist:/dist" archlinux:latest bash -c 'pacman -Sy --noconfirm >/dev/null && pacman -U --noconfirm /dist/DBiji-*-linux-x86_64.pkg.tar.zst >/dev/null && dbiji --version'
-          docker run --rm -v "$PWD/dist:/dist" opensuse/tumbleweed bash -c 'zypper --non-interactive --no-gpg-checks install --allow-unsigned-rpm /dist/DBiji-*-linux-x86_64.rpm >/dev/null && dbiji --version'
-          docker run --rm -v "$PWD/dist:/dist" debian:12 bash -c 'apt-get update >/dev/null && apt-get install -y /dist/DBiji-*-linux-amd64.deb >/dev/null && dbiji --version'
-          chmod +x dist/*.AppImage && APPIMAGE_EXTRACT_AND_RUN=1 dist/DBiji-*-linux-x86_64.AppImage --version
       - uses: actions/upload-artifact@v7
         with:
           name: linux-${{ matrix.runner }}
           path: dist/DBiji-*-linux-*
+
+  linux-install:
+    needs: linux-bundle
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: linux-ubuntu-24.04
+          path: dist
+      - name: Install on each distribution
+        run: |
+          ls -l dist
+          docker run --rm -v "$PWD/dist:/dist" rockylinux:9 bash -c 'dnf install -y /dist/DBiji-*-linux-x86_64.rpm >/dev/null && dbiji --version'
+          docker run --rm -v "$PWD/dist:/dist" fedora:41 bash -c 'dnf install -y /dist/DBiji-*-linux-x86_64.rpm >/dev/null && dbiji --version'
+          docker run --rm -v "$PWD/dist:/dist" opensuse/tumbleweed bash -c 'zypper --non-interactive --no-gpg-checks install --allow-unsigned-rpm /dist/DBiji-*-linux-x86_64.rpm >/dev/null && dbiji --version'
+          docker run --rm -v "$PWD/dist:/dist" archlinux:latest bash -c 'pacman -Sy --noconfirm >/dev/null && pacman -U --noconfirm /dist/DBiji-*-linux-x86_64.pkg.tar.zst >/dev/null && dbiji --version'
+          docker run --rm -v "$PWD/dist:/dist" debian:12 bash -c 'apt-get update >/dev/null && apt-get install -y /dist/DBiji-*-linux-amd64.deb >/dev/null && dbiji --version'
+          docker run --rm -v "$PWD/dist:/dist" ubuntu:22.04 bash -c 'apt-get update >/dev/null && apt-get install -y /dist/DBiji-*-linux-amd64.deb >/dev/null && dbiji --version'
+      - name: Start the app on X11 (Xvfb, Mesa) and take a screenshot
+        run: |
+          sudo apt-get update && sudo apt-get install -y ./dist/DBiji-*-linux-amd64.deb xvfb imagemagick libgl1-mesa-dri
+          export DBIJI_HOME="$RUNNER_TEMP/dbiji-home"
+          xvfb-run -a dbiji --exit-after-first-frame; echo "first frame: exit $?"
+          xvfb-run -a -s "-screen 0 1400x900x24" bash -c 'dbiji & sleep 12; import -window root dist/linux-shot.png; kill %1'
+          chmod +x dist/*.AppImage && APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a dist/DBiji-*-linux-x86_64.AppImage --exit-after-first-frame; echo "AppImage first frame: exit $?"
+          tail -20 "$DBIJI_HOME"/logs/* || true
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-shot
+          path: dist/*.png

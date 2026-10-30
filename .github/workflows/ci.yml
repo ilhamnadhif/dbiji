@@ -179,14 +179,12 @@ jobs:
           name: benchmarks
           path: bench.json
 
-  # A pushed tag (scripts/release.sh --ci) is built, published and put into the
-  # Homebrew cask here, once the tests passed.
+  # A pushed tag (scripts/release.sh --ci) is built for macOS, Windows and
+  # Linux here, then published (and put into the Homebrew cask) once the tests
+  # passed.
   bundle:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [unit-tests, integration, integration-oldest]
     runs-on: macos-14
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -195,10 +193,58 @@ jobs:
       - run: scripts/bundle-macos.sh --universal
       - uses: actions/upload-artifact@v7
         with:
-          name: dmg
+          name: macos
           path: |
             dist/*.dmg
             dist/*.zip
+
+  bundle-windows:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-2022
+    env:
+      # aws-lc (TLS) uses its prebuilt assembly: the runner has no NASM.
+      AWS_LC_SYS_PREBUILT_NASM: 1
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - run: scripts/bundle-windows.ps1
+        shell: pwsh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: |
+            dist/*.exe
+            dist/*.zip
+
+  # Built on Ubuntu 22.04: the binary needs glibc 2.34 or later (Ubuntu 22.04,
+  # Debian 12, Fedora 35, RHEL 9 and newer).
+  bundle-linux:
+    if: startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      matrix:
+        runner: [ubuntu-22.04, ubuntu-22.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - run: scripts/bundle-linux.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-${{ matrix.runner }}
+          path: dist/DBiji-*-linux-*
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [unit-tests, integration, integration-oldest, bundle, bundle-windows, bundle-linux]
+    runs-on: macos-14
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
       - name: Publish the release and update the Homebrew cask
         env:
           GH_TOKEN: ${{ github.token }}

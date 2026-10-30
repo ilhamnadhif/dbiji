@@ -105,13 +105,25 @@ pub struct Release {
     pub version: String,
     /// Release page.
     pub url: String,
-    /// The macOS disk image, when the release has one.
+    /// What this system downloads (the macOS disk image, the Windows
+    /// installer), when the release has it.
     pub download_url: Option<String>,
     pub notes: String,
     /// When it was published (`YYYY-MM-DD`).
     pub date: Option<String>,
     /// `DBiji-<version>.zip`, installed in place by the updater.
     pub archive: Option<Asset>,
+}
+
+/// Whether the asset `name` is the download for `os` ([`std::env::consts::OS`]):
+/// the macOS disk image, the Windows installer. Linux has none: its release
+/// page lists the packages (deb, rpm, Arch, AppImage, tar.gz) to choose from.
+fn is_download_for(os: &str, name: &str) -> bool {
+    match os {
+        "macos" => name.ends_with(".dmg"),
+        "windows" => name.ends_with("-windows-x64-setup.exe"),
+        _ => false,
+    }
 }
 
 /// Parse the GitHub "latest release" response.
@@ -122,10 +134,12 @@ pub fn parse_release(json: &str) -> Option<Release> {
     }
     let tag = v.get("tag_name")?.as_str()?;
     let url = v.get("html_url").and_then(|u| u.as_str()).unwrap_or(RELEASES_PAGE).to_string();
-    let download_url = v
-        .get("assets")
-        .and_then(|a| a.as_array())
-        .and_then(|assets| assets.iter().filter_map(|a| a.get("browser_download_url")?.as_str()).find(|u| u.ends_with(".dmg")).map(str::to_string));
+    let download_url = v.get("assets").and_then(|a| a.as_array()).and_then(|assets| {
+        assets
+            .iter()
+            .find(|a| a.get("name").and_then(|n| n.as_str()).is_some_and(|n| is_download_for(std::env::consts::OS, n)))
+            .and_then(|a| Some(a.get("browser_download_url")?.as_str()?.to_string()))
+    });
     let notes = v.get("body").and_then(|b| b.as_str()).unwrap_or("").replace("\r\n", "\n").trim().to_string();
     let version = tag.trim_start_matches(['v', 'V']).to_string();
     let wanted = archive_name(&version);
@@ -516,7 +530,9 @@ impl Updates {
                     ui.add_space(4.0);
                     ui.label(RichText::new(tr("Installing it from here needs DBiji in the Applications folder; download the new version instead.")).weak().small());
                 }
-                ui.weak(tr("Homebrew: brew upgrade --cask dbiji"));
+                if cfg!(target_os = "macos") {
+                    ui.weak(tr("Homebrew: brew upgrade --cask dbiji"));
+                }
                 ui.separator();
                 ui.horizontal(|ui| {
                     if ui.button(tr("Skip this version")).clicked() {
@@ -778,10 +794,22 @@ mod tests {
         let json = r####"{"tag_name":"v0.3.0","html_url":"https://github.com/ilhamnadhif/dbiji/releases/tag/v0.3.0","draft":false,"prerelease":false,
             "published_at":"2026-12-01T08:00:00Z","body":"### Fixed\r\n- Things","assets":[
             {"name":"DBiji-0.3.0.zip","size":1234,"digest":"sha256:ABCD","browser_download_url":"https://x/DBiji-0.3.0.zip"},
+            {"name":"DBiji-0.3.0-windows-x64.zip","size":3456,"browser_download_url":"https://x/DBiji-0.3.0-windows-x64.zip"},
+            {"name":"DBiji-0.3.0-windows-x64-setup.exe","size":4567,"browser_download_url":"https://x/DBiji-0.3.0-windows-x64-setup.exe"},
+            {"name":"DBiji-0.3.0-linux-amd64.deb","size":5678,"browser_download_url":"https://x/DBiji-0.3.0-linux-amd64.deb"},
             {"name":"DBiji-0.3.0.dmg","size":2345,"browser_download_url":"https://x/DBiji-0.3.0.dmg"}]}"####;
         let r = parse_release(json).unwrap();
         assert_eq!(r.version, "0.3.0");
-        assert_eq!(r.download_url.as_deref(), Some("https://x/DBiji-0.3.0.dmg"));
+        // This system's download: the disk image, the installer; on Linux the release page.
+        let download = match std::env::consts::OS {
+            "macos" => Some("https://x/DBiji-0.3.0.dmg"),
+            "windows" => Some("https://x/DBiji-0.3.0-windows-x64-setup.exe"),
+            _ => None,
+        };
+        assert_eq!(r.download_url.as_deref(), download);
+        assert!(is_download_for("macos", "DBiji-0.3.0.dmg") && !is_download_for("macos", "DBiji-0.3.0.zip"));
+        assert!(is_download_for("windows", "DBiji-0.3.0-windows-x64-setup.exe") && !is_download_for("windows", "DBiji-0.3.0-windows-x64.zip"));
+        assert!(!is_download_for("linux", "DBiji-0.3.0-linux-amd64.deb"));
         assert_eq!(r.notes, "### Fixed\n- Things");
         assert_eq!(r.date.as_deref(), Some("2026-12-01"));
         let a = r.archive.unwrap();

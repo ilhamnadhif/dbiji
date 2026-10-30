@@ -50,7 +50,13 @@ impl Locale {
 
 static CURRENT: AtomicU8 = AtomicU8::new(0);
 
-const ID_TSV: &str = include_str!("../locales/id.tsv");
+/// `locales/id.tsv`, zlib-compressed by build.rs.
+static ID_TSV: LazyLock<String> = LazyLock::new(|| {
+    let mut tsv = String::new();
+    let zz: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/id.tsv.zz"));
+    std::io::Read::read_to_string(&mut flate2::read::ZlibDecoder::new(zz), &mut tsv).expect("bundled translations");
+    tsv
+});
 
 fn unescape(s: &str) -> std::borrow::Cow<'static, str> {
     if !s.contains('\\') {
@@ -95,7 +101,7 @@ fn parse_table(tsv: &'static str) -> HashMap<&'static str, &'static str> {
     map
 }
 
-static ID_TABLE: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| parse_table(ID_TSV));
+static ID_TABLE: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| parse_table(ID_TSV.as_str()));
 
 pub fn set_locale(locale: Locale) {
     CURRENT.store(
@@ -191,5 +197,11 @@ mod tests {
         assert_eq!(t.get("Hello"), Some(&"Halo"));
         assert_eq!(t.get("Line\nTwo"), Some(&"Baris\nDua"));
         assert!(!t.contains_key("Empty"));
+    }
+
+    #[test]
+    fn bundled_table_inflates() {
+        assert_eq!(ID_TABLE.get("Cancel"), Some(&"Batal"));
+        assert!(ID_TABLE.len() > 1000, "{}", ID_TABLE.len());
     }
 }

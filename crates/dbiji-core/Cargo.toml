@@ -21,6 +21,10 @@ base64.workspace = true
 hex.workspace = true
 sys-locale.workspace = true
 tracing.workspace = true
+flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
+
+[build-dependencies]
+flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
 
 [dev-dependencies]
 tokio = { workspace = true }

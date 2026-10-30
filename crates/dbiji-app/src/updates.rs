@@ -16,8 +16,14 @@ use egui::{Context, RichText};
 use egui_phosphor::regular as icon;
 use std::time::Duration;
 
-/// The release notes of every version, newest first.
-pub const CHANGELOG: &str = include_str!("../../../CHANGELOG.md");
+/// The release notes of every version, newest first (`CHANGELOG.md`,
+/// zlib-compressed by build.rs).
+pub static CHANGELOG: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    let mut notes = String::new();
+    let zz: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/CHANGELOG.md.zz"));
+    std::io::Read::read_to_string(&mut flate2::read::ZlibDecoder::new(zz), &mut notes).expect("bundled release notes");
+    notes
+});
 
 /// Latest release of the repository (GitHub REST API).
 const RELEASES_API: &str = "https://api.github.com/repos/ilhamnadhif/dbiji/releases/latest";
@@ -291,7 +297,7 @@ impl Updates {
             if existing_install {
                 // Installed before notes were tracked: show this version's notes.
                 let since = seen.as_deref().or(Some("0"));
-                let notes = notes_since(CHANGELOG, if seen.is_some() { since } else { None }, current);
+                let notes = notes_since(&CHANGELOG, if seen.is_some() { since } else { None }, current);
                 let notes: Vec<Notes> = if seen.is_some() { notes } else { notes.into_iter().take(1).collect() };
                 if !notes.is_empty() {
                     self.whats_new = Some(notes);
@@ -315,7 +321,7 @@ impl Updates {
 
     /// Show the notes of this version (Help menu).
     pub fn show_whats_new(&mut self) {
-        let notes = notes_since(CHANGELOG, None, current_version());
+        let notes = notes_since(&CHANGELOG, None, current_version());
         self.whats_new = Some(notes.into_iter().take(1).collect());
     }
 
@@ -786,7 +792,7 @@ mod tests {
         assert_eq!(notes_since(LOG, Some("0.1.0"), "0.2.0").len(), 1);
         assert!(notes_since(LOG, Some("0.3.0"), "0.3.0").is_empty());
         // the built-in changelog has this version
-        assert!(parse_changelog(CHANGELOG).iter().any(|n| n.version == current_version()), "CHANGELOG.md lists {}", current_version());
+        assert!(parse_changelog(&CHANGELOG).iter().any(|n| n.version == current_version()), "CHANGELOG.md lists {}", current_version());
     }
 
     #[test]

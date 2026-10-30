@@ -454,6 +454,76 @@ fn record_view_takes_now_in_a_timestamp_and_says_why_a_value_is_refused() {
 }
 
 #[test]
+fn record_view_copies_values_as_they_are_and_edits_by_typing() {
+    let src = |c: &str| dbiji_core::ColumnSource { database: None, schema: Some("app".into()), table: "api_calls".into(), column: c.into() };
+    let json = r#"{"ResultCode":"200","ResultDesc":"SUCCESS"}"#;
+    let cols = vec![
+        ColumnMeta::new("id", "int", DataKind::Int).with_source(src("id")),
+        ColumnMeta::new("url", "text", DataKind::Text).with_source(src("url")),
+        ColumnMeta::new("response_body", "text", DataKind::Text).with_source(src("response_body")),
+        ColumnMeta::new("note", "text", DataKind::Text).with_source(src("note")),
+    ];
+    let mut m = ResultModel::from_rows(cols, vec![vec![Value::Int(12), Value::text("https://api.example/x"), Value::text(json), Value::text("a")]]);
+    let e = crate::model::determine_editability(m.columns(), |_| Some(vec!["id".into()]), false);
+    m.set_editability(e);
+    let mut v = Viewer::new(m);
+    v.state.grid.select_cell(0, 1);
+    v.state.toolbar.view = ResultViewKind::Record;
+    v.frame(vec![]);
+    v.frame(vec![]);
+    let value_of = |v: &Viewer, name: &str| -> Pos2 {
+        let update = v.output.accesskit_update.as_ref().expect("accesskit");
+        update
+            .nodes
+            .iter()
+            .find_map(|(_, n)| {
+                let b = n.bounds()?;
+                (n.label().or(n.value()) == Some(name)).then(|| Pos2::new(b.x1 as f32 + 60.0, ((b.y0 + b.y1) / 2.0) as f32))
+            })
+            .unwrap_or_else(|| panic!("no column name {name}"))
+    };
+    // Two fields picked (⌘-click) and copied: the values as they are.
+    v.click(value_of(&v, "url"));
+    let body = value_of(&v, "response_body");
+    let cmd = Modifiers::COMMAND;
+    v.frame_with(vec![Event::PointerMoved(body)], cmd);
+    v.frame_with(vec![press(body, PointerButton::Primary, cmd)], cmd);
+    v.frame_with(vec![release(body, PointerButton::Primary, cmd)], cmd);
+    v.frame(vec![Event::Copy]);
+    let copied = v.output.commands.iter().find_map(|c| match c {
+        egui::OutputCommand::CopyText(t) => Some(t.clone()),
+        _ => None,
+    });
+    assert_eq!(copied.as_deref(), Some(format!("https://api.example/x\n{json}").as_str()));
+    // Typing edits the field (no double click), Enter keeps it, the keyboard goes on.
+    v.click(value_of(&v, "note"));
+    v.frame(vec![Event::Text("b".into())]);
+    v.frame(vec![]);
+    v.frame(vec![Event::Text("c".into())]);
+    let key = |k: egui::Key| Event::Key { key: k, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
+    v.frame(vec![key(egui::Key::Enter)]);
+    v.frame(vec![]);
+    assert_eq!(v.model.cell(0, 3), Some(Value::text("bc")), "typed over the value");
+    assert!(v.model.is_cell_modified(0, 3));
+    // ↑: the field above; typing there, Escape: nothing changes.
+    v.frame(vec![key(egui::Key::ArrowUp)]);
+    v.frame(vec![Event::Text("x".into())]);
+    v.frame(vec![]);
+    v.frame(vec![key(egui::Key::Escape)]);
+    v.frame(vec![]);
+    v.frame(vec![]);
+    assert_eq!(v.model.cell(0, 2), Some(Value::text(json)));
+    assert!(!v.model.is_cell_modified(0, 2));
+    // Enter on a field edits its value as it is; typing one character and Enter saves it.
+    v.frame(vec![key(egui::Key::ArrowDown)]);
+    v.frame(vec![Event::Text("z".into())]);
+    v.frame(vec![]);
+    v.frame(vec![key(egui::Key::Enter)]);
+    v.frame(vec![]);
+    assert_eq!(v.model.cell(0, 3), Some(Value::text("z")), "one typed character is a change");
+}
+
+#[test]
 fn record_view_has_the_grids_menu_and_keys() {
     use crate::test_support::key;
     use egui::Key;

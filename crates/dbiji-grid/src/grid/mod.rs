@@ -367,10 +367,10 @@ impl<'a> DataGrid<'a> {
     }
 }
 
-/// [`DataGrid::copy_text`] and which copied cells are NULL (row by row).
-/// Copied text, its cell count, which cells are NULL, and whether cells
+/// [`DataGrid::copy_text`] and its cells: the copied text, its cell count, the
+/// text of each cell and which are NULL (row by row), and whether cells
 /// between the copied ones were left out (a ⌘-click selection).
-type CopiedText = (String, usize, Vec<Vec<bool>>, bool);
+type CopiedText = (String, usize, Vec<Vec<String>>, Vec<Vec<bool>>, bool);
 
 /// Copy the selection (see [`CopiedText`]).
 pub(crate) fn copy_text_and_nulls(model: &ResultModel, state: &DataGridState, options: &GridOptions, opts: &CopyOptions) -> Result<CopiedText, String> {
@@ -382,8 +382,13 @@ pub(crate) fn copy_text_and_nulls(model: &ResultModel, state: &DataGridState, op
     let cells = data.cell_count();
     let dialect = options.dialect.as_deref();
     let nulls = data.rows.iter().map(|r| r.cells.iter().map(|c| c.as_ref().is_some_and(Value::is_null)).collect()).collect();
+    let texts = data
+        .rows
+        .iter()
+        .map(|r| r.cells.iter().zip(&data.columns).map(|(c, col)| c.as_ref().map(|v| crate::copy::cell_text(v, col, &opts, &options.format)).unwrap_or_default()).collect())
+        .collect();
     let gaps = data.rows.iter().any(|r| r.cells.iter().any(Option::is_none));
-    Ok((crate::copy::render(&data, &opts, &options.format, dialect), cells, nulls, gaps))
+    Ok((crate::copy::render(&data, &opts, &options.format, dialect), cells, texts, nulls, gaps))
 }
 
 /// Insert a new row after the active row (or at the end) and select it.
@@ -473,15 +478,15 @@ pub(crate) fn selection_copy_data_limited(model: &ResultModel, state: &DataGridS
 
 /// Paste clipboard text at the active cell.
 pub(crate) fn paste_into(model: &mut ResultModel, state: &mut DataGridState, text: &str) -> Result<usize, String> {
-    // Text DBiji copied itself: its NULLs and its single cell are known.
-    let own = state.rt.last_copy.as_ref().filter(|(t, ..)| !text.is_empty() && t == text);
-    if own.is_some_and(|(.., gaps)| *gaps) {
+    // Text DBiji copied itself: its cells (values with tabs, line breaks and quotes
+    // are copied as they are, so the text alone does not tell them) and NULLs.
+    let own = state.rt.last_copy.as_ref().filter(|c| !text.is_empty() && c.text == text);
+    if own.is_some_and(|c| c.gaps) {
         return Err(tr("Cells copied with gaps between them cannot be pasted: copy a block").to_string());
     }
-    let remembered = own.map(|(_, n, _)| n.clone());
-    let block = match &remembered {
-        Some(n) if n.len() == 1 && n[0].len() == 1 => vec![vec![text.to_string()]],
-        Some(n) => Some(crate::copy::parse_own_copy(text)).filter(|b| b.len() == n.len()).unwrap_or_else(|| parse_clipboard_table(text)),
+    let remembered = own.map(|c| c.nulls.clone());
+    let block = match own {
+        Some(c) => c.cells.clone(),
         None => parse_clipboard_table(text),
     };
     if block.is_empty() {

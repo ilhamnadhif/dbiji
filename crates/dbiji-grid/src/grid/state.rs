@@ -118,11 +118,8 @@ pub(crate) struct Runtime {
     pub fetch_requested_at: Option<usize>,
     /// Store that count belongs to (a refresh brings a new store, with the same count again).
     pub fetch_store: usize,
-    /// Text of the last plain copy and which of its cells were NULL: pasted back,
-    /// those stay NULL (not ''), and one copied cell stays one value (its line
-    /// breaks, tabs and quotes are part of the value, not a table). The flag:
-    /// cells between the copied ones were left out.
-    pub last_copy: Option<(String, Vec<Vec<bool>>, bool)>,
+    /// The last plain copy: pasted back, its cells are the copied ones.
+    pub last_copy: Option<LastCopy>,
     /// Scroll the active cell into view on the next frame.
     pub scroll_to_active: bool,
     pub copy_dialog: bool,
@@ -152,6 +149,20 @@ pub(crate) struct Runtime {
     pub header_popup: Option<(usize, egui::Rect, bool)>,
     /// Take the keyboard focus on the next frame.
     pub focus_request: bool,
+}
+
+/// What the last plain copy put on the clipboard. Pasted back, the cells are
+/// the copied ones (their line breaks, tabs and quotes are part of the values,
+/// not of a table) and NULLs stay NULL (not '').
+#[derive(Debug, Clone)]
+pub(crate) struct LastCopy {
+    pub text: String,
+    /// Text of each cell, row by row.
+    pub cells: Vec<Vec<String>>,
+    /// Which cells were NULL.
+    pub nulls: Vec<Vec<bool>>,
+    /// Cells between the copied ones were left out (a ⌘-click selection).
+    pub gaps: bool,
 }
 
 /// The painted body of the last frame. When the fetch task holds the row

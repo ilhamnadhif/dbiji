@@ -3,6 +3,16 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.46 — 2026-10-30
+
+### Changed
+- The record view edits like the grid: typing on a field starts editing it with what is typed, Enter / F2 edit its value, ↑ ↓ go to the field above / below, and after Enter the keyboard goes on in the record.
+
+### Fixed
+- Copying several cells (⌘C, in the grid and the record view) wrapped values with quotes, tabs or line breaks in quotes and doubled the quotes inside (`"{""a"":1}"`). Values are copied as they are, as in DBeaver; pasted back into DBiji they are the same cells. Advanced copy keeps its quoting options for spreadsheets.
+- In the record view, a value typed over a field and confirmed at once was not saved when the edit was started from the keyboard or the menu.
+- In the record view, ↑ / ↓ right after an edit could move the keyboard to the toolbar's ORDER BY field.
+
 ## 0.3.45 — 2026-10-28
 
 ### Fixed

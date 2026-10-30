@@ -469,6 +469,28 @@ fn copied_null_pastes_back_as_its_own_row() {
 }
 
 #[test]
+fn copied_values_are_as_they_are_and_paste_back_exactly() {
+    let json = r#"{"TransactionID":"7R2p","Amount":0,"IsRecurring":false}"#;
+    let multi = "line 1\n\"quoted\"\tand a tab";
+    let mut m = editable_model(6);
+    m.set_value(0, 1, Value::text(json)).unwrap();
+    m.set_value(1, 1, Value::text(multi)).unwrap();
+    let mut h = GridHarness::new(m);
+    h.click_at(h.cell_center(0, 1), PointerButton::Primary, Modifiers::NONE);
+    h.key(Key::ArrowDown, Modifiers::SHIFT);
+    h.frame(vec![Event::Copy]);
+    // As stored: no quotes around the values, none doubled.
+    let text = h.copied().unwrap();
+    assert_eq!(text, format!("{json}\n{multi}"));
+    // Pasted back: the same two values (the line break and tab inside one of them included).
+    h.click_at(h.cell_center(3, 1), PointerButton::Primary, Modifiers::NONE);
+    h.frame(vec![Event::Paste(text)]);
+    assert_eq!(h.model.cell(3, 1), Some(Value::text(json)));
+    assert_eq!(h.model.cell(4, 1), Some(Value::text(multi)));
+    assert_eq!(h.model.cell(5, 1), Some(Value::text("name 5")), "nothing more");
+}
+
+#[test]
 fn columns_fit_header_and_first_values_until_sized_by_hand() {
     let long = "2024-07-30 19:18:46.838 +0700 and some more text";
     let mut m = editable_model(10);

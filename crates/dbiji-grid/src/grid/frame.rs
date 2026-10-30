@@ -163,13 +163,17 @@ pub(super) struct GridFrame<'a> {
     pub detached: bool,
 }
 
+/// A cell a view edits: row, column, the text to start with, the value's text before.
+pub(crate) type CellEdit = (usize, usize, String, String);
+
 /// The body's context menu of `resp` and the dialogs its items open, shown
 /// by another view of the grid's rows (the record view): the items, and the
 /// editing keys when `keys`, act on `cells` (row, model column); the view's
 /// own items (`own`) come first.
 /// Afterwards the grid's selection is what it was, unless an item changed it
-/// (a new row is selected). Returns the actions, and the cell "Edit cell"
-/// opened (row, column, text), for the view's own editor.
+/// (a new row is selected). Returns the actions, and the cell "Edit cell" or
+/// typing opened (row, column, text, the value's text before), for the view's
+/// own editor.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn detached_menu(
     model: &mut ResultModel,
@@ -181,7 +185,7 @@ pub(crate) fn detached_menu(
     keys: bool,
     cells: &[(usize, usize)],
     own: impl FnOnce(&mut Ui),
-) -> (Vec<GridAction>, Option<(usize, usize, String)>) {
+) -> (Vec<GridAction>, Option<CellEdit>) {
     let font = options.font.clone().unwrap_or_else(|| TextStyle::Body.resolve(ui.style()));
     let geo = compute_geometry(model, state, options, ui.max_rect(), font.size * 1.3, font.size * 0.6);
     let before = state.rt.selection.clone();
@@ -232,12 +236,12 @@ pub(crate) fn detached_menu(
         state.rt.selection = before;
     }
     // The grid's editor and list of values are not shown here: the view edits.
-    let edit = state
-        .rt
-        .editing
-        .take()
-        .map(|e| (e.row, e.col, e.text))
-        .or_else(|| state.rt.dropdown.take().map(|d| (d.row, d.col, model.cell(d.row, d.col).filter(|v| !v.is_null()).map(|v| v.to_text().into_owned()).unwrap_or_default())));
+    let edit = state.rt.editing.take().map(|e| (e.row, e.col, e.text, e.original)).or_else(|| {
+        state.rt.dropdown.take().map(|d| {
+            let text = model.cell(d.row, d.col).filter(|v| !v.is_null()).map(|v| v.to_text().into_owned()).unwrap_or_default();
+            (d.row, d.col, text.clone(), text)
+        })
+    });
     (actions, edit)
 }
 

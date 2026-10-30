@@ -640,6 +640,7 @@ impl GridFrame<'_> {
     /// as its menu shows them; moving, copying and Tab are the view's.
     pub(super) fn detached_keys(&mut self, ui: &Ui) {
         let events = ui.input(|i| i.events.clone());
+        let mut handled_space = false;
         for ev in events {
             match ev {
                 Event::Key { key, pressed: true, modifiers: m, .. } => match key {
@@ -673,10 +674,21 @@ impl GridFrame<'_> {
                             && self.model.column_kind(col) == DataKind::Bool
                         {
                             self.toggle_bool(row, col);
+                            handled_space = true;
                         }
                     }
                     _ => {}
                 },
+                // Typing starts editing the cell with what is typed (as in the grid).
+                Event::Text(t) if !(handled_space && t == " ") => {
+                    let cmd = ui.input(|i| i.modifiers.command || i.modifiers.ctrl);
+                    if !cmd && !t.chars().all(char::is_control) {
+                        if let Some((row, col)) = self.active() {
+                            self.start_edit(row, col, Some(t));
+                        }
+                        break;
+                    }
+                }
                 Event::Paste(text) => self.paste(&text),
                 _ => {}
             }
@@ -686,9 +698,9 @@ impl GridFrame<'_> {
     /// Copy the selection to the clipboard.
     pub fn copy_selection(&mut self, opts: &CopyOptions) {
         match super::copy_text_and_nulls(self.model, self.state, self.options, opts) {
-            Ok((text, cells, nulls, gaps)) => {
+            Ok((text, cells, texts, nulls, gaps)) => {
                 let plain = opts.format == CopyFormat::Tsv && !opts.include_header && !opts.include_row_numbers;
-                self.state.rt.last_copy = plain.then(|| (text.clone(), nulls, gaps));
+                self.state.rt.last_copy = plain.then(|| super::state::LastCopy { text: text.clone(), cells: texts, nulls, gaps });
                 self.ctx.copy_text(text);
                 self.actions.push(GridAction::Copied { cells, format: opts.format });
                 let msg = if opts.format == CopyFormat::Tsv && !opts.include_header {

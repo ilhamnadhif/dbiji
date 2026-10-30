@@ -186,7 +186,7 @@ impl<'a> RecordView<'a> {
             focus.request_focus();
         }
         if focus.has_focus() && state.editing.is_none() {
-            ui.memory_mut(|m| m.set_focus_lock_filter(focus.id, egui::EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: false }));
+            keep_arrows(ui, focus.id);
             ui.input(|i| {
                 if i.key_pressed(Key::Tab) {
                     actions.push(GridAction::SwitchView(ResultViewKind::Grid));
@@ -239,7 +239,7 @@ impl<'a> RecordView<'a> {
                     actions.push(state.prefs(options));
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(RichText::new(format!("{}  {}", icon::KEYBOARD, tr("Tab: grid · ← →: rows · ⌘C: copy"))).small().weak())
+                    ui.label(RichText::new(format!("{}  {}", icon::KEYBOARD, tr("Tab: grid · ← →: rows · ↑ ↓: fields · type, Enter: edit · ⌘C: copy"))).small().weak())
                         .on_hover_text(tr("Tab: back to the grid · ← →: previous / next row. Click a value or a column name to select it, ⇧-click or ⌘-click to select more; ⌘C copies the selection. Right-click for the grid's menu (Set NULL, rows, filters…); its keys work here too."));
                     if !state.column_filter.trim().is_empty() {
                         let needle = state.column_filter.to_lowercase();
@@ -298,6 +298,16 @@ fn row_values(model: &ResultModel, rows: &[usize], columns: &[usize]) -> (Vec<Ve
     (all, fresh)
 }
 
+/// Arrows and Tab stay with the view (rows, fields, back to the grid). The lock
+/// filter takes effect a frame after the focus came (Enter in a field gives it
+/// back): egui's own move to the widget above / below is cancelled meanwhile.
+fn keep_arrows(ui: &Ui, id: egui::Id) {
+    ui.memory_mut(|m| {
+        m.set_focus_lock_filter(id, egui::EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: false });
+        m.move_focus(egui::FocusDirection::None);
+    });
+}
+
 /// Selected rows side by side: the header ("3 selected rows", the column
 /// filter, Hide empty) above the table of [`rows_table`].
 fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOptions, state: &mut RecordViewState, ui: &mut Ui, mut rows: Vec<usize>) -> Vec<GridAction> {
@@ -311,7 +321,7 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
     }
     focus.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, trf("Record view, {} rows", &[&rows.len()])));
     if focus.has_focus() && state.editing.is_none() {
-        ui.memory_mut(|m| m.set_focus_lock_filter(focus.id, egui::EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: false }));
+        keep_arrows(ui, focus.id);
         if ui.input(|i| i.key_pressed(Key::Tab)) {
             actions.push(GridAction::SwitchView(ResultViewKind::Grid));
         }
@@ -330,7 +340,7 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
                 actions.push(state.prefs(options));
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(RichText::new(format!("{}  {}", icon::KEYBOARD, tr("Tab: grid · ⌘C: copy"))).small().weak()).on_hover_text(tr(
+                ui.label(RichText::new(format!("{}  {}", icon::KEYBOARD, tr("Tab: grid · ↑ ↓: fields · type, Enter: edit · ⌘C: copy"))).small().weak()).on_hover_text(tr(
                     "Click a value or a column name to select it, ⇧-click or ⌘-click to select more; ⌘C copies the selection. Right-click for the grid's menu (Set NULL, rows, filters…); its keys work here too.",
                 ));
                 let needle = state.column_filter.trim().to_lowercase();
@@ -427,6 +437,22 @@ fn rows_table(
     let mut open_value: Option<(usize, usize)> = None;
     // A foreign key value's button was clicked: open the row it references.
     let mut follow: Option<(usize, usize)> = None;
+    // ↑ / ↓: the field above / below (then type, Enter or F2 to edit it, as in the grid).
+    let mut moved_to: Option<(usize, usize)> = None;
+    if focus.has_focus() && state.editing.is_none() {
+        let (up, down) = ui.input(|i| (i.key_pressed(Key::ArrowUp) && !i.modifiers.any(), i.key_pressed(Key::ArrowDown) && !i.modifiers.any()));
+        let at = state.pick_anchor.or_else(|| state.picked.first().copied()).or_else(|| grid.active_cell()).filter(|(r, c)| rows.contains(r) && order.contains(c));
+        if (up || down)
+            && let Some((r, c)) = at
+            && let Some(i) = order.iter().position(|x| *x == c)
+            && let Some(j) = if up { i.checked_sub(1) } else { Some(i + 1).filter(|j| *j < order.len()) }
+        {
+            let cell = (r, order[j]);
+            state.picked = vec![cell];
+            state.pick_anchor = Some(cell);
+            moved_to = Some(cell);
+        }
+    }
     let picked = state.picked.clone();
     // The cell a ⇧-click block starts from has the border (as the grid's active cell).
     let anchor = state.pick_anchor.filter(|a| picked.contains(a)).or_else(|| picked.first().copied());
@@ -522,8 +548,13 @@ fn rows_table(
                                 if let Some((_, _, text, original)) = state.editing.as_mut() {
                                     let te = ui.add_sized([widths[j], row_h], TextEdit::singleline(text).margin(egui::Margin::symmetric(7, 0)).vertical_align(egui::Align::Center));
                                     if te.lost_focus() {
+                                        let (escape, enter) = ui.input(|inp| (inp.key_pressed(Key::Escape), inp.key_pressed(Key::Enter)));
+                                        // Ended with the keyboard: the keyboard goes on in the record (↑ ↓, typing).
+                                        if escape || enter {
+                                            state.focus_request = true;
+                                        }
                                         // Unchanged text is no edit (a NULL would become '').
-                                        if ui.input(|inp| inp.key_pressed(Key::Escape)) || text == original {
+                                        if escape || text == original {
                                             state.editing = None;
                                         } else {
                                             commit = Some((r, c, text.clone()));
@@ -541,6 +572,9 @@ fn rows_table(
                             ui.painter().vline(rect.left(), rect.y_range(), egui::Stroke::new(1.0, theme.line));
                             if anchor == Some((r, c)) {
                                 ui.painter().rect_stroke(rect.shrink(1.0), 2.0, egui::Stroke::new(1.5, theme.active_border), egui::StrokeKind::Inside);
+                            }
+                            if moved_to == Some((r, c)) {
+                                resp.scroll_to_me(None);
                             }
                             let inner = rect.shrink2(egui::vec2(8.0, 0.0));
                             let Some((v, is_default, modified)) = values.get(j).and_then(|vs| vs.get(i)) else { continue };
@@ -597,7 +631,7 @@ fn rows_table(
                                 Some(t) => resp.on_hover_text(clip(&t)),
                                 None => resp,
                             };
-                            let resp = if can_edit && !boolean { resp.on_hover_text(tr("Double-click to edit")) } else { resp };
+                            let resp = if can_edit && !boolean { resp.on_hover_text(tr("Type, Enter or double-click to edit")) } else { resp };
                             if resp.clicked() {
                                 clicked_cell = Some((r, c, mods));
                                 focus.request_focus();
@@ -711,8 +745,8 @@ fn rows_table(
     let keys = focus.has_focus() && state.editing.is_none();
     let (menu_actions, edit) = crate::grid::detached_menu(model, grid, options, ui.id().with("record_menu"), ui, menu_resp.as_ref(), keys, &cells, |ui| copy_menu(ui, &mut copy));
     actions.extend(menu_actions);
-    if let Some((r, c, text)) = edit {
-        state.editing = Some((r, c, text.clone(), text));
+    if let Some((r, c, text, original)) = edit {
+        state.editing = Some((r, c, text, original));
         state.editing_anchor = model.row_anchor(r);
         state.error = None;
     }
@@ -730,7 +764,7 @@ fn rows_table(
         }
     }
     // One row: the grid's active cell follows (side by side it would drop the other rows).
-    if let (true, Some((r, c))) = (single, select) {
+    if let (true, Some((r, c))) = (single, select.or(moved_to)) {
         grid.select_cell(r, c);
     }
     if let Some((r, c, on)) = toggled {
@@ -783,19 +817,18 @@ fn copy_menu(ui: &mut Ui, copy: &mut Option<bool>) {
 
 /// The picked cells as tab-separated text laid out as shown: a line per
 /// column (in `order`), a value per row, empty between picked cells; the
-/// column name first with `name_of`. Values with tabs, line breaks or quotes
-/// are quoted (as spreadsheets read them).
+/// column name first with `name_of`. Values are written as they are (no
+/// quotes added, as the grid's plain copy).
 fn picked_text(picked: &[(usize, usize)], rows: &[usize], order: &[usize], name_of: Option<impl Fn(usize) -> String>, text_of: impl Fn(usize, usize) -> Option<String>) -> String {
-    let quote = |t: String| if t.contains(['\t', '\n', '\r', '"']) { format!("\"{}\"", t.replace('"', "\"\"")) } else { t };
     let out_rows: Vec<usize> = rows.iter().copied().filter(|r| picked.iter().any(|p| p.0 == *r)).collect();
     let mut lines = Vec::new();
     for &c in order.iter().filter(|&&c| picked.iter().any(|p| p.1 == c)) {
         let mut fields = Vec::new();
         if let Some(name) = &name_of {
-            fields.push(quote(name(c)));
+            fields.push(name(c));
         }
         for &r in &out_rows {
-            fields.push(if picked.contains(&(r, c)) { quote(text_of(r, c).unwrap_or_default()) } else { String::new() });
+            fields.push(if picked.contains(&(r, c)) { text_of(r, c).unwrap_or_default() } else { String::new() });
         }
         lines.push(fields.join("\t"));
     }
@@ -812,7 +845,8 @@ mod tests {
         let picked = [(1, 1), (2, 1), (2, 3)];
         let names = |c: usize| ["id", "name", "flag", "category"][c].to_string();
         // A line per column, a value per row, empty where a cell was not picked.
-        assert_eq!(picked_text(&picked, &[1, 2], &[0, 1, 2, 3], None::<fn(usize) -> String>, text), "v11\tv21\n\t\"a\tb\"");
-        assert_eq!(picked_text(&picked, &[1, 2], &[0, 1, 2, 3], Some(names), text), "name\tv11\tv21\ncategory\t\t\"a\tb\"");
+        // The values as they are (no quotes added).
+        assert_eq!(picked_text(&picked, &[1, 2], &[0, 1, 2, 3], None::<fn(usize) -> String>, text), "v11\tv21\n\ta\tb");
+        assert_eq!(picked_text(&picked, &[1, 2], &[0, 1, 2, 3], Some(names), text), "name\tv11\tv21\ncategory\t\ta\tb");
     }
 }

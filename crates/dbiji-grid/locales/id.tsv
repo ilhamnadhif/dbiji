@@ -408,3 +408,6 @@ Stop the query	Hentikan query
 Rows, NULLs, distinct values, the smallest and the largest, over all rows of the query	Baris, NULL, nilai unik, terkecil dan terbesar, dari semua baris query
 Statistics of the whole column	Statistik seluruh kolom
 Open the referenced row in {}	Buka baris yang dirujuk di {}
+Tab: grid · ← →: rows · ↑ ↓: fields · type, Enter: edit · ⌘C: copy	Tab: grid · ← →: baris · ↑ ↓: kolom · ketik, Enter: ubah · ⌘C: salin
+Tab: grid · ↑ ↓: fields · type, Enter: edit · ⌘C: copy	Tab: grid · ↑ ↓: kolom · ketik, Enter: ubah · ⌘C: salin
+Type, Enter or double-click to edit	Ketik, Enter, atau klik ganda untuk mengubah

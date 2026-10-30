@@ -100,9 +100,11 @@ impl Default for CopyOptions {
 }
 
 impl CopyOptions {
-    /// Options of the plain copy (Cmd+C): TSV, no header, raw values.
+    /// Options of the plain copy (Cmd+C): TSV, no header, raw values written as
+    /// they are (as in DBeaver: no quotes around a value with quotes, tabs or line
+    /// breaks; Advanced copy quotes for spreadsheets).
     pub fn plain() -> Self {
-        CopyOptions { include_header: false, ..Default::default() }
+        CopyOptions { include_header: false, quote: QuoteMode::Never, ..Default::default() }
     }
 
     fn effective_delimiter(&self) -> &str {
@@ -176,7 +178,7 @@ pub fn render(data: &CopyData, opts: &CopyOptions, fmt: &FormatOptions, dialect:
     }
 }
 
-fn cell_text(v: &Value, col: &CopyColumn, opts: &CopyOptions, fmt: &FormatOptions) -> String {
+pub(crate) fn cell_text(v: &Value, col: &CopyColumn, opts: &CopyOptions, fmt: &FormatOptions) -> String {
     if v.is_null() {
         return opts.null_text.clone();
     }
@@ -440,18 +442,8 @@ fn render_xml(data: &CopyData, opts: &CopyOptions, fmt: &FormatOptions) -> Strin
 /// rows of fields. Quoted fields may contain tabs, quotes (`""`) and line
 /// breaks. A trailing line break is ignored.
 pub fn parse_clipboard_table(text: &str) -> Vec<Vec<String>> {
-    parse_table(text, true)
-}
-
-/// Parse DBiji's own copied text: a last line break is a last empty field
-/// (a copied NULL or empty text).
-pub(crate) fn parse_own_copy(text: &str) -> Vec<Vec<String>> {
-    parse_table(text, false)
-}
-
-fn parse_table(text: &str, trim_last_break: bool) -> Vec<Vec<String>> {
     let text = text.replace("\r\n", "\n");
-    let text = if trim_last_break { text.strip_suffix('\n').unwrap_or(&text) } else { &text };
+    let text = text.strip_suffix('\n').unwrap_or(&text);
     if text.is_empty() {
         return Vec::new();
     }
@@ -525,7 +517,8 @@ mod tests {
 
     #[test]
     fn plain_tsv_and_single_cell() {
-        assert_eq!(r(&CopyOptions::plain()), "1\t\"a\tb\"\t2024-01-02\n1234\t\t");
+        // The values as they are: no quotes added around a tab, a quote or a line break.
+        assert_eq!(r(&CopyOptions::plain()), "1\ta\tb\t2024-01-02\n1234\t\t");
         let single = CopyData {
             columns: vec![CopyColumn { name: "x".into(), ..Default::default() }],
             rows: vec![CopyRow { number: 1, cells: vec![Some(Value::text("line1\nline2 \"q\""))] }],
@@ -582,10 +575,7 @@ mod tests {
         assert_eq!(parse_clipboard_table("\"x\ty\"\t\"multi\nline\"\t\"q\"\"q\"\nz\t\t"), vec![vec!["x\ty", "multi\nline", "q\"q"], vec!["z", "", ""]]);
         assert_eq!(parse_clipboard_table("single value"), vec![vec!["single value"]]);
         assert!(parse_clipboard_table("").is_empty());
-        // Round trip with the plain copy format.
-        let copied = r(&CopyOptions::plain());
-        let parsed = parse_clipboard_table(&copied);
-        assert_eq!(parsed[0], vec!["1", "a\tb", "2024-01-02"]);
-        assert_eq!(parsed[1], vec!["1234", "", ""]);
+        // JSON as copied (no quotes around it) reads back as it is.
+        assert_eq!(parse_clipboard_table("{\"a\":\"x\"}\t2"), vec![vec!["{\"a\":\"x\"}", "2"]]);
     }
 }

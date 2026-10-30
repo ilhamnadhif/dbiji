@@ -2802,3 +2802,6 @@ The connection itself uses this database, so PostgreSQL cannot rename it: choose
 The database's session has uncommitted changes (another tab, the data editor): commit or roll them back first.	Sesi database ini punya perubahan yang belum di-commit (tab lain, editor data): commit atau rollback dulu.
 This database type cannot rename a database.	Tipe database ini tidak bisa mengganti nama database.
 Vacuum, analyze, reindex the whole database	Vacuum, analyze, reindex seluruh database
+Tab: grid · ← →: rows · ↑ ↓: fields · type, Enter: edit · ⌘C: copy	Tab: grid · ← →: baris · ↑ ↓: kolom · ketik, Enter: ubah · ⌘C: salin
+Tab: grid · ↑ ↓: fields · type, Enter: edit · ⌘C: copy	Tab: grid · ↑ ↓: kolom · ketik, Enter: ubah · ⌘C: salin
+Type, Enter or double-click to edit	Ketik, Enter, atau klik ganda untuk mengubah

@@ -163,8 +163,17 @@ pub(super) struct GridFrame<'a> {
     pub detached: bool,
 }
 
-/// A cell a view edits: row, column, the text to start with, the value's text before.
-pub(crate) type CellEdit = (usize, usize, String, String);
+/// A cell a view edits.
+pub(crate) struct CellEdit {
+    pub row: usize,
+    pub col: usize,
+    /// The text to start with.
+    pub text: String,
+    /// The value's text before.
+    pub original: String,
+    /// Started by typing: the editor, never the list of values.
+    pub typed: bool,
+}
 
 /// The body's context menu of `resp` and the dialogs its items open, shown
 /// by another view of the grid's rows (the record view): the items, and the
@@ -236,10 +245,10 @@ pub(crate) fn detached_menu(
         state.rt.selection = before;
     }
     // The grid's editor and list of values are not shown here: the view edits.
-    let edit = state.rt.editing.take().map(|e| (e.row, e.col, e.text, e.original)).or_else(|| {
+    let edit = state.rt.editing.take().map(|e| CellEdit { row: e.row, col: e.col, text: e.text, original: e.original, typed: e.typed }).or_else(|| {
         state.rt.dropdown.take().map(|d| {
             let text = model.cell(d.row, d.col).filter(|v| !v.is_null()).map(|v| v.to_text().into_owned()).unwrap_or_default();
-            (d.row, d.col, text.clone(), text)
+            CellEdit { row: d.row, col: d.col, text: text.clone(), original: text, typed: false }
         })
     });
     (actions, edit)

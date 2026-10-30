@@ -3,6 +3,17 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.47 — 2026-10-30
+
+### Changed
+- The record view edits enum and dictionary fields with the grid's list of values (with its search) instead of a text box, and Enter / F2 / double-click select the field's text as in the grid, so typing replaces it.
+
+### Fixed
+- Enter on a cell in the grid did nothing: the editor opened and the same Enter closed it at once (F2 and double-click worked).
+- The cell editor's text started at the cell's border instead of where the cell draws it.
+- In the record view, a refused value's message was drawn against the left edge, and the field was not outlined in red as in the grid.
+- In a narrow record view, the keyboard hint was drawn over "Hide empty"; it is cut short with "…" (the full text is in its tooltip).
+
 ## 0.3.46 — 2026-10-30
 
 ### Changed

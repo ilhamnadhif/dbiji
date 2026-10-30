@@ -1,11 +1,13 @@
 //! Record view: one row transposed (column | value), editable (FR-D5).
 
 use crate::format::PreparedFormat;
-use crate::grid::{DataGridState, GridAction, GridOptions, ResultViewKind};
+use crate::grid::state::Dropdown;
+use crate::grid::{DataGridState, GridAction, GridOptions, ListChoice, ResultViewKind};
 use crate::model::{CellRef, ResultModel, RowAnchor, RowState};
 use crate::theme::GridTheme;
 use dbiji_core::value::single_line;
 use dbiji_core::{Value, tr, trf};
+use egui::text::{CCursor, CCursorRange};
 use egui::{Button, Key, RichText, ScrollArea, TextEdit, Ui};
 use egui_phosphor::regular as icon;
 
@@ -84,6 +86,11 @@ pub struct RecordViewState {
     editing: Option<(usize, usize, String, String)>,
     /// The record being edited: the editor closes when the row shows another one.
     editing_anchor: Option<RowAnchor>,
+    /// The editor just opened: its text selected (Enter, F2, double-click) or
+    /// the cursor after it (typed), as the grid's.
+    select_text: Option<bool>,
+    /// The list of values of an enum / dictionary field, as in the grid.
+    dropdown: Option<Dropdown>,
     error: Option<String>,
     /// Last shown values: ((generation, row, columns), values) for frames where the store is busy.
     cache: Option<RecordCache>,
@@ -105,9 +112,36 @@ pub struct RecordViewState {
     hidden_empty: usize,
 }
 
+impl RecordViewState {
+    /// Edit row `r`'s field `c`: an enum / dictionary column opens its list
+    /// of values (unless typed into), any other the editor, as in the grid.
+    fn start_edit(&mut self, model: &ResultModel, r: usize, c: usize, text: String, original: String, typed: bool) {
+        self.error = None;
+        if !typed && (model.dictionary(c).is_some() || model.enum_values(c).is_some()) {
+            self.editing = None;
+            self.dropdown = Some(Dropdown { row: r, anchor: model.row_anchor(r), col: c, search: String::new(), just_opened: true });
+        } else {
+            self.dropdown = None;
+            self.editing = Some((r, c, text, original));
+            self.editing_anchor = model.row_anchor(r);
+            self.select_text = Some(!typed);
+        }
+    }
+}
+
 /// NULL or empty text (hidden by "Hide empty").
 fn is_empty_value(v: &Value) -> bool {
     v.is_null() || matches!(v, Value::Text(s) if s.is_empty())
+}
+
+/// The keyboard hint at the right of the toolbar: cut short with "…" when the toolbar is narrow
+/// (the full text is in the tooltip), never drawn over the controls.
+fn keys_hint(ui: &mut Ui, text: &str, more: &str) {
+    if ui.available_width() < 40.0 {
+        return;
+    }
+    let label = egui::Label::new(RichText::new(format!("{}  {}", icon::KEYBOARD, text)).small().weak()).truncate();
+    ui.add(label).on_hover_text(format!("{text}\n\n{more}"));
 }
 
 /// The "Hide empty" toggle; true when it changed.
@@ -166,6 +200,11 @@ impl<'a> RecordView<'a> {
             && state.editing_anchor.and_then(|a| model.anchored_row(a, *r)) != Some(*r)
         {
             state.editing = None;
+        }
+        if let Some(d) = &state.dropdown
+            && d.anchor.and_then(|a| model.anchored_row(a, d.row)) != Some(d.row)
+        {
+            state.dropdown = None;
         }
         let nrows = model.row_count();
         if nrows == 0 {
@@ -239,13 +278,16 @@ impl<'a> RecordView<'a> {
                     actions.push(state.prefs(options));
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(RichText::new(format!("{}  {}", icon::KEYBOARD, tr("Tab: grid · ← →: rows · ↑ ↓: fields · type, Enter: edit · ⌘C: copy"))).small().weak())
-                        .on_hover_text(tr("Tab: back to the grid · ← →: previous / next row. Click a value or a column name to select it, ⇧-click or ⌘-click to select more; ⌘C copies the selection. Right-click for the grid's menu (Set NULL, rows, filters…); its keys work here too."));
                     if !state.column_filter.trim().is_empty() {
                         let needle = state.column_filter.to_lowercase();
                         let shown = grid.visible_columns().into_iter().filter(|&c| model.column_name(c).to_lowercase().contains(&needle)).count();
                         ui.label(RichText::new(trf("{} of {} columns", &[&shown, &total_columns])).small().weak());
                     }
+                    keys_hint(
+                        ui,
+                        tr("Tab: grid · ← →: rows · ↑ ↓: fields · type, Enter: edit · ⌘C: copy"),
+                        tr("Tab: back to the grid · ← →: previous / next row. Click a value or a column name to select it, ⇧-click or ⌘-click to select more; ⌘C copies the selection. Right-click for the grid's menu (Set NULL, rows, filters…); its keys work here too."),
+                    );
                 });
             });
         });
@@ -262,6 +304,7 @@ impl<'a> RecordView<'a> {
         if let Some(r) = go_to {
             grid.select_cell(r, active_col);
             state.editing = None;
+            state.dropdown = None;
             state.error = None;
         }
         let row = go_to.unwrap_or(row);
@@ -340,14 +383,16 @@ fn show_rows(model: &mut ResultModel, grid: &mut DataGridState, options: &GridOp
                 actions.push(state.prefs(options));
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(RichText::new(format!("{}  {}", icon::KEYBOARD, tr("Tab: grid · ↑ ↓: fields · type, Enter: edit · ⌘C: copy"))).small().weak()).on_hover_text(tr(
-                    "Click a value or a column name to select it, ⇧-click or ⌘-click to select more; ⌘C copies the selection. Right-click for the grid's menu (Set NULL, rows, filters…); its keys work here too.",
-                ));
                 let needle = state.column_filter.trim().to_lowercase();
                 if !needle.is_empty() {
                     let shown = grid.visible_columns().into_iter().filter(|&c| model.column_name(c).to_lowercase().contains(&needle)).count();
                     ui.label(RichText::new(trf("{} of {} columns", &[&shown, &total_columns])).small().weak());
                 }
+                keys_hint(
+                    ui,
+                    tr("Tab: grid · ↑ ↓: fields · type, Enter: edit · ⌘C: copy"),
+                    tr("Click a value or a column name to select it, ⇧-click or ⌘-click to select more; ⌘C copies the selection. Right-click for the grid's menu (Set NULL, rows, filters…); its keys work here too."),
+                );
             });
         });
     });
@@ -464,10 +509,14 @@ fn rows_table(
     let mods = ui.input(|i| i.modifiers);
     // The value / column name whose context menu is open.
     let mut menu_resp: Option<egui::Response> = None;
+    // Where the field of the open list of values is.
+    let mut list_at: Option<egui::Rect> = None;
     let menu_open = |r: &egui::Response| r.secondary_clicked() || egui::Popup::is_id_open(&r.ctx, egui::Popup::default_response_id(r));
     // Above the fields: below them it would be out of sight (they take the height).
     if let Some(e) = &state.error {
-        ui.colored_label(theme.error, e);
+        egui::Frame::new().inner_margin(egui::Margin::symmetric(8, 3)).show(ui, |ui| {
+            ui.colored_label(theme.error, format!("{}  {e}", icon::WARNING_CIRCLE));
+        });
     }
     ScrollArea::horizontal().auto_shrink([false, false]).show(ui, |ui| {
         ui.vertical(|ui| {
@@ -546,7 +595,20 @@ fn rows_table(
                         for (j, &r) in rows.iter().enumerate() {
                             if state.editing.as_ref().is_some_and(|(er, ec, _, _)| *er == r && *ec == c) {
                                 if let Some((_, _, text, original)) = state.editing.as_mut() {
-                                    let te = ui.add_sized([widths[j], row_h], TextEdit::singleline(text).margin(egui::Margin::symmetric(7, 0)).vertical_align(egui::Align::Center));
+                                    let id = ui.id().with(("record_edit", r, c));
+                                    let te = ui
+                                        .add_sized([widths[j], row_h], TextEdit::singleline(text).id(id).margin(egui::Margin::symmetric(7, 0)).vertical_align(egui::Align::Center));
+                                    if let Some(all) = state.select_text.take() {
+                                        let mut st = egui::text_edit::TextEditState::load(ui.ctx(), id).unwrap_or_default();
+                                        let n = text.chars().count();
+                                        let range = if all { CCursorRange::two(CCursor::new(0), CCursor::new(n)) } else { CCursorRange::one(CCursor::new(n)) };
+                                        st.cursor.set_char_range(Some(range));
+                                        st.store(ui.ctx(), id);
+                                    }
+                                    // A value it refused: the field is outlined in red, as the grid's editor.
+                                    if state.error.is_some() {
+                                        ui.painter().rect_stroke(te.rect, 2.0, egui::Stroke::new(1.5, theme.error), egui::StrokeKind::Inside);
+                                    }
                                     if te.lost_focus() {
                                         let (escape, enter) = ui.input(|inp| (inp.key_pressed(Key::Escape), inp.key_pressed(Key::Enter)));
                                         // Ended with the keyboard: the keyboard goes on in the record (↑ ↓, typing).
@@ -646,12 +708,13 @@ fn rows_table(
                                 let multi = matches!(v, Value::Text(s) if s.contains('\n')) || matches!(v, Value::Bytes(_));
                                 if can_edit && !multi {
                                     let text = if v.is_null() { String::new() } else { v.to_text().into_owned() };
-                                    state.editing = Some((r, c, text.clone(), text));
-                                    state.editing_anchor = model.row_anchor(r);
-                                    state.error = None;
+                                    state.start_edit(model, r, c, text.clone(), text, false);
                                 } else {
                                     open_value = Some((r, c));
                                 }
+                            }
+                            if state.dropdown.as_ref().is_some_and(|d| d.row == r && d.col == c) {
+                                list_at = Some(rect);
                             }
                         }
                     });
@@ -673,6 +736,23 @@ fn rows_table(
             }
         });
     });
+    // The list of values, under its field (closed when the field is not shown).
+    if let Some(mut dd) = state.dropdown.take()
+        && let Some(at) = list_at
+    {
+        match crate::grid::value_list(model, &mut dd, ui.id().with("record_list"), ui, at) {
+            ListChoice::Open => state.dropdown = Some(dd),
+            ListChoice::Picked(choice) => {
+                let result = match choice {
+                    Some(k) => model.set_cell(dd.row, dd.col, &k),
+                    None => model.set_null(dd.row, dd.col),
+                };
+                state.error = result.err();
+                state.focus_request = true;
+            }
+            ListChoice::Closed => state.focus_request = true,
+        }
+    }
     // The picked cells follow the clicks.
     let order_ref = &order;
     let block = |a: (usize, usize), b: (usize, usize)| -> Vec<(usize, usize)> {
@@ -742,13 +822,11 @@ fn rows_table(
     {
         cells.push(cell);
     }
-    let keys = focus.has_focus() && state.editing.is_none();
+    let keys = focus.has_focus() && state.editing.is_none() && state.dropdown.is_none();
     let (menu_actions, edit) = crate::grid::detached_menu(model, grid, options, ui.id().with("record_menu"), ui, menu_resp.as_ref(), keys, &cells, |ui| copy_menu(ui, &mut copy));
     actions.extend(menu_actions);
-    if let Some((r, c, text, original)) = edit {
-        state.editing = Some((r, c, text, original));
-        state.editing_anchor = model.row_anchor(r);
-        state.error = None;
+    if let Some(e) = edit {
+        state.start_edit(model, e.row, e.col, e.text, e.original, e.typed);
     }
     if let Some(names) = copy {
         let shown: Vec<(usize, usize)> = state.picked.iter().copied().filter(|(r, c)| rows.contains(r) && order.contains(c)).collect();

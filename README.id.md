@@ -2,8 +2,8 @@
 
 **Klien database SQL yang ringan, ditulis sepenuhnya dengan Rust.**
 
-DBiji adalah alternatif native untuk DBeaver pada database SQL: satu biner kecil, tanpa JVM, tanpa
-Electron. Terbuka dalam sekitar 0,1 detik, CPU 0 % saat diam, memakai sekitar 70 MB memori — dan
+DBiji adalah alternatif native untuk DBeaver pada database SQL di macOS, Windows, dan Linux: satu
+biner kecil, tanpa JVM, tanpa Electron. Terbuka dalam sekitar 0,1 detik, CPU 0 % saat diam, memakai sekitar 70 MB memori — dan
 hasil query jutaan baris tidak perlu muat di memori.
 
 [English](README.md)
@@ -22,8 +22,9 @@ hasil query jutaan baris tidak perlu muat di memori.
   record / JSON / XML, panel nilai, grafik, dan peta untuk kolom geometri.
 - **Aman secara bawaan**: tipe koneksi development / test / production, konfirmasi untuk
   `DELETE`/`UPDATE` tanpa `WHERE` dan `DROP`, koneksi read-only, sesi terpisah per editor.
-- **Koneksi** lewat SSH tunnel, proxy SOCKS5 / HTTP, dan SSL. Kata sandi disimpan di **macOS
-  Keychain** atau brankas terenkripsi dengan kata sandi master — tidak pernah di file.
+- **Koneksi** lewat SSH tunnel, proxy SOCKS5 / HTTP, dan SSL. Kata sandi disimpan di keychain sistem
+  (macOS Keychain, Windows Credential Manager, GNOME Keyring / KWallet) atau brankas terenkripsi
+  dengan kata sandi master — tidak pernah di file.
 - **Impor** koneksi dari DBeaver, `~/.pgpass`, dan URL.
 - **Fitur lain yang biasa dipakai pengguna DBeaver**: ekspor / impor (CSV, JSON, SQL, XLSX, XML,
   Parquet …), migrasi antar database, data uji, diagram ER, query builder visual, schema compare dan
@@ -36,9 +37,21 @@ hasil query jutaan baris tidak perlu muat di memori.
 
 ## Instalasi
 
-Membutuhkan macOS 12 Monterey atau lebih baru, di Apple Silicon maupun Intel.
+Setiap [rilis](https://github.com/ilhamnadhif/dbiji/releases/latest) dibuat untuk macOS, Windows, dan
+Linux:
 
-### Installer satu baris (disarankan)
+| Sistem | Unduhan |
+| --- | --- |
+| macOS 12 atau lebih baru (Apple Silicon, Intel) | `DBiji-<versi>.dmg`, atau [installer satu baris](#macos) / [Homebrew](#homebrew) |
+| Windows 10 / 11 (x64) | `DBiji-<versi>-windows-x64-setup.exe` (installer) atau `-windows-x64.zip` (portable) |
+| Ubuntu 22.04+, Debian 12+, Linux Mint, Pop!_OS | `DBiji-<versi>-linux-amd64.deb` (`arm64` untuk ARM) |
+| Fedora, RHEL / Rocky / Alma 9+, openSUSE | `DBiji-<versi>-linux-x86_64.rpm` (`aarch64` untuk ARM) |
+| Arch Linux, Manjaro, EndeavourOS | `DBiji-<versi>-linux-x86_64.pkg.tar.zst` (`aarch64` untuk ARM) |
+| Linux lainnya | `DBiji-<versi>-linux-x86_64.AppImage` atau `.tar.gz` (`aarch64` untuk ARM) |
+
+### macOS
+
+**Installer satu baris** (disarankan):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/ilhamnadhif/dbiji/master/scripts/install.sh | bash
@@ -48,11 +61,7 @@ Script ini mengunduh rilis terbaru, memeriksanya (SHA-256 yang diterbitkan GitHu
 bundle id dan versi), memasang `DBiji.app` ke `/Applications`, lalu membukanya. Jalankan lagi untuk
 memperbarui. Untuk memasang versi tertentu, berikan versinya: `… | bash -s -- v0.3.0`.
 
-### Disk image
-
-Unduh **`DBiji-<versi>.dmg`** dari
-[rilis terbaru](https://github.com/ilhamnadhif/dbiji/releases/latest), buka, lalu seret **DBiji** ke
-**Applications**.
+**Disk image**: unduh **`DBiji-<versi>.dmg`**, buka, lalu seret **DBiji** ke **Applications**.
 
 > **“DBiji” tidak bisa dibuka / “Apple could not verify…”?** Build rilis belum dinotarisasi Apple,
 > jadi macOS memblokir aplikasi yang diunduh lewat browser. Pilih salah satu:
@@ -68,12 +77,53 @@ Unduh **`DBiji-<versi>.dmg`** dari
 brew install --cask ./packaging/homebrew/dbiji.rb
 ```
 
+### Windows
+
+Jalankan **`DBiji-<versi>-windows-x64-setup.exe`**. Installer memasang DBiji untuk user Anda (tanpa
+hak administrator; pilih “all users” di dialog pertamanya untuk memasang bagi semua user),
+menambahkannya ke Start menu, dan bisa dihapus di **Settings → Apps**. Untuk memperbarui, jalankan
+installer versi baru.
+
+Untuk salinan **portable**, ekstrak `DBiji-<versi>-windows-x64.zip` lalu jalankan `dbiji.exe`
+(dengan `--portable <FOLDER>` agar pengaturan dan datanya disimpan di folder itu).
+
+> **“Windows protected your PC”?** Build belum ditandatangani (code-signed), jadi SmartScreen
+> memperingatkan unduhan baru: klik **More info → Run anyway**.
+
+### Linux
+
+Unduh paket untuk distro Anda lalu pasang:
+
+```sh
+# Ubuntu, Debian, Linux Mint, Pop!_OS
+sudo apt install ./DBiji-<versi>-linux-amd64.deb
+# Fedora, RHEL / Rocky / Alma
+sudo dnf install ./DBiji-<versi>-linux-x86_64.rpm
+# openSUSE
+sudo zypper install --allow-unsigned-rpm ./DBiji-<versi>-linux-x86_64.rpm
+# Arch Linux, Manjaro, EndeavourOS
+sudo pacman -U ./DBiji-<versi>-linux-x86_64.pkg.tar.zst
+```
+
+Di distro lain, pakai **AppImage** (`chmod +x DBiji-*.AppImage`, lalu jalankan) atau ekstrak
+**tar.gz** ke `~/.local` (programnya, entri menu, dan ikonnya):
+`tar -xzf DBiji-<versi>-linux-x86_64.tar.gz -C ~/.local --strip-components=1`.
+
+Setelah itu DBiji ada di menu aplikasi (atau jalankan `dbiji`). Dibutuhkan glibc 2.34 atau lebih baru
+(Ubuntu 22.04, Debian 12, Fedora 35, RHEL 9 dan yang lebih baru), X11 atau Wayland dengan OpenGL.
+Kata sandi disimpan di keyring desktop lewat Secret Service (GNOME Keyring, KWallet) dan dialog file
+memakai XDG desktop portal — GNOME, KDE, dan kebanyakan desktop punya keduanya; tanpa keyring, DBiji
+menyimpan kata sandi di brankasnya dengan kata sandi master. Untuk memperbarui, pasang paket versi
+baru.
+
 ### Dari source
 
 ```sh
-cargo build --release -p dbiji-app                     # target/release/dbiji
+cargo build --release -p dbiji-app                     # target/release/dbiji (dbiji.exe)
 cargo build --release -p dbiji-app --features duckdb   # dengan engine DuckDB tertanam
-scripts/bundle-macos.sh                                # dist/DBiji.app, DBiji-<versi>.dmg dan .zip
+scripts/bundle-macos.sh                                # macOS: dist/DBiji.app, DBiji-<versi>.dmg dan .zip
+scripts/bundle-linux.sh                                # Linux: .deb, .rpm, paket Arch, AppImage dan .tar.gz
+pwsh scripts/bundle-windows.ps1                        # Windows: installer dan .zip (perlu Inno Setup 6)
 ```
 
 ## Mulai
@@ -90,7 +140,9 @@ Bahasa antarmuka dan tema diatur di **Settings → General**.
 
 Jika Anda mengizinkan, DBiji mencari rilis baru setiap kali dibuka dan setiap 6 jam. Versi baru
 membuka dialog berisi versi saat ini, versi baru, dan apa saja yang baru (jika ditemukan belakangan,
-muncul tombol **Update** di toolbar tanpa mengganggu pekerjaan Anda). **Install update** lalu:
+muncul tombol **Update** di toolbar tanpa mengganggu pekerjaan Anda). Di Windows, **Download**
+mengunduh installer baru (jalankan di atas versi yang terpasang); di Linux membuka halaman rilis
+berisi paket-paketnya. Di macOS, **Install update**:
 
 1. mengunduh versi baru dan memverifikasinya (ukuran, SHA-256 yang diterbitkan GitHub, bundle id,
    versi dan tanda tangan kode);
@@ -134,7 +186,8 @@ dbiji --bench all                    benchmark startup, memori, grid, dan editor
 | Palet perintah | `⇧⌘P` |
 | Simpan skrip / data | `⌘S` |
 
-Semua pintasan bisa diubah di **Settings → Keyboard shortcuts** (preset DBiji atau DBeaver).
+Di Windows dan Linux, `⌘` adalah `Ctrl`, `⌥` adalah `Alt`, dan `⌃` juga `Ctrl`. Semua pintasan bisa
+diubah di **Settings → Keyboard shortcuts** (preset DBiji atau DBeaver).
 
 ## Performa
 
@@ -154,10 +207,12 @@ Diukur pada build rilis (Apple M1 Pro) dengan `dbiji --bench all`:
 - Tanpa telemetri. DBiji hanya terhubung ke server yang Anda atur dan, jika diaktifkan, ke penyedia
   AI Anda serta ke GitHub untuk pemeriksaan pembaruan (satu permintaan anonim sehari untuk rilis
   terbaru; ditanyakan sekali, bisa diubah di Settings → General).
-- Kata sandi dan kunci API disimpan di macOS Keychain atau `vault.bin` (Argon2id +
-  XChaCha20-Poly1305); file konfigurasi ditulis dengan mode 0600.
+- Kata sandi dan kunci API disimpan di penyimpanan kredensial sistem (macOS Keychain, Windows
+  Credential Manager, Secret Service di Linux) atau `vault.bin` (Argon2id + XChaCha20-Poly1305);
+  file konfigurasi ditulis dengan mode 0600.
 - Pengaturan, koneksi, skrip, riwayat, dan task ada di
-  `~/Library/Application Support/dev.dbiji.DBiji/` (atau `DBIJI_HOME` / `--portable`).
+  `~/Library/Application Support/dev.dbiji.DBiji/` di macOS, `%APPDATA%\dbiji\DBiji\` di Windows, dan
+  `~/.config/dbiji/` + `~/.local/share/dbiji/` di Linux (atau `DBIJI_HOME` / `--portable`).
 
 ## Build dan pengujian
 
@@ -181,7 +236,7 @@ Struktur proyek ada di [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), matriks par
 
 - Oracle, Db2, Firebird, H2, dan Trino belum didukung (belum ada driver jaringan Rust).
 - Kerberos dan autentikasi multi-faktor MySQL belum didukung.
-- Build rilis belum dinotarisasi.
+- Build rilis belum dinotarisasi (macOS) atau ditandatangani (Windows).
 
 ## Lisensi
 

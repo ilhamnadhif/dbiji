@@ -3,6 +3,14 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.48 — 2026-10-30
+
+### Added
+- DBiji for Windows and Linux. Every release now has, besides the macOS disk image:
+  - Windows 10 / 11 (x64): an installer (`DBiji-<version>-windows-x64-setup.exe`, per user, no administrator rights) and a portable `.zip`;
+  - Linux (x86_64 and ARM64): a `.deb` (Ubuntu, Debian, Linux Mint), an `.rpm` (Fedora, RHEL, openSUSE), an Arch Linux package, an AppImage and a `.tar.gz`.
+  On Windows passwords are kept in the Credential Manager, on Linux in the desktop's keyring (Secret Service). The update dialog's Download gets the Windows installer; on Linux it opens the release page.
+
 ## 0.3.47 — 2026-10-30
 
 ### Changed

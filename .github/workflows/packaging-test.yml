@@ -14,7 +14,6 @@ jobs:
     runs-on: windows-2022
     env:
       AWS_LC_SYS_PREBUILT_NASM: 1
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -37,16 +36,10 @@ jobs:
             else { Shot "$name-stuck"; Write-Host "${name}: no first frame in 40 s"; Stop-Process -Id $p.Id -Force }
             Get-ChildItem -Recurse "$env:DBIJI_HOME\logs" -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName -Tail 15 }
           }
+          # No OpenGL 2 on the runner: the Direct3D 12 fallback (WARP).
           FirstFrame 'target\release\dbiji.exe' 'native'
-          # The same with Mesa's software OpenGL next to a copy.
-          gh release download --repo pal1000/mesa-dist-win --pattern '*-release-msvc.7z' --dir "$env:RUNNER_TEMP\mesa"
-          7z x (Get-ChildItem "$env:RUNNER_TEMP\mesa\*.7z").FullName "-o$env:RUNNER_TEMP\mesa\x" | Out-Null
-          New-Item -ItemType Directory -Force soft | Out-Null
-          Copy-Item target\release\dbiji.exe soft\
-          Copy-Item "$env:RUNNER_TEMP\mesa\x\x64\*.dll" soft\
-          FirstFrame 'soft\dbiji.exe' 'mesa'
-          $app = Start-Process -FilePath soft\dbiji.exe -PassThru
-          Start-Sleep -Seconds 12
+          $app = Start-Process -FilePath target\release\dbiji.exe -PassThru
+          Start-Sleep -Seconds 15
           Shot 'windows-shot'
           Write-Host "still running: $(-not $app.HasExited)"
           if (-not $app.HasExited) { Stop-Process -Id $app.Id -Force }

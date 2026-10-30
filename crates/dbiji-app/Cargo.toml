@@ -78,6 +78,11 @@ muda = { version = "0.21.2", default-features = false }
 objc2 = "0.6.5"
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSUserDefaults", "NSDictionary", "NSString", "NSValue", "NSObject"] }
 
+# Windows without OpenGL 2 draws with Direct3D 12 instead (see run()).
+[target.'cfg(windows)'.dependencies]
+eframe = { workspace = true, features = ["wgpu_no_default_features"] }
+wgpu = { version = "30", default-features = false, features = ["std", "parking_lot", "dx12"] }
+
 [target.'cfg(windows)'.build-dependencies]
 # dbiji.exe's icon and version information (build.rs).
 winresource = { version = "0.1.34", default-features = false }

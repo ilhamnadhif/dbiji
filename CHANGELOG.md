@@ -10,6 +10,8 @@ notes of a new version once after it was updated (Help → What's new).
   - Windows 10 / 11 (x64): an installer (`DBiji-<version>-windows-x64-setup.exe`, per user, no administrator rights) and a portable `.zip`;
   - Linux (x86_64 and ARM64): a `.deb` (Ubuntu, Debian, Linux Mint), an `.rpm` (Fedora, RHEL, openSUSE), an Arch Linux package, an AppImage and a `.tar.gz`.
   On Windows passwords are kept in the Credential Manager, on Linux in the desktop's keyring (Secret Service). The update dialog's Download gets the Windows installer; on Linux it opens the release page.
+  Windows without OpenGL 2.0 (a virtual machine, Remote Desktop, no graphics driver) draws the window with Direct3D 12 instead.
+- When the window cannot open at all, DBiji says why in a dialog instead of quitting silently.
 
 ## 0.3.47 — 2026-10-30
 

@@ -98,7 +98,7 @@ mod tests {
             let p = l.local_addr().unwrap().port();
             drop(l);
             let addr: SocketAddr = ([127, 0, 0, 1], p).into();
-            if let Err(e) = std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(500))
+            if let Err(e) = std::net::TcpStream::connect_timeout(&addr, Duration::from_secs(3))
                 && e.kind() == std::io::ErrorKind::ConnectionRefused
             {
                 port = p;

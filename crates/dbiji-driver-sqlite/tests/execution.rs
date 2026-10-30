@@ -775,7 +775,7 @@ async fn manual_transactions() {
 async fn attached_databases() {
     let dir = tempfile::tempdir().unwrap();
     let main_path = file_in(dir.path(), "main.db");
-    let aux_path = file_in(dir.path(), "aux.db");
+    let aux_path = file_in(dir.path(), "attached.db");
     let mut aux = connect(&aux_path).await;
     exec(&mut aux, "CREATE TABLE items(id INTEGER PRIMARY KEY, name TEXT); INSERT INTO items(name) VALUES ('x')").await;
     close(aux).await;

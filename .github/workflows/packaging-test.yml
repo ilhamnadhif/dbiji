@@ -1,4 +1,4 @@
-# Temporary: builds the Windows and Linux bundles on this branch (no release).
+# Temporary: builds the Windows bundle on this branch (no release) and starts it.
 name: Packaging test
 
 on:
@@ -14,28 +14,44 @@ jobs:
     runs-on: windows-2022
     env:
       AWS_LC_SYS_PREBUILT_NASM: 1
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - run: scripts/bundle-windows.ps1
         shell: pwsh
-      - name: Start the app (first frame) and take a screenshot
+      - name: Start the app (first frame) and take screenshots
         shell: pwsh
         run: |
           $env:DBIJI_HOME = Join-Path $env:RUNNER_TEMP 'dbiji-home'
-          $p = Start-Process -FilePath target\release\dbiji.exe -ArgumentList '--exit-after-first-frame' -PassThru -Wait
-          Write-Host "first frame: exit $($p.ExitCode)"
-          Get-ChildItem -Recurse "$env:DBIJI_HOME\logs" -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName -Tail 20 }
-          $app = Start-Process -FilePath target\release\dbiji.exe -PassThru
-          Start-Sleep -Seconds 12
           Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
-          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
-          $bmp.Save("$PWD\dist\windows-shot.png")
+          function Shot($name) {
+            $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+            [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+            $bmp.Save("$PWD\dist\$name.png")
+          }
+          function FirstFrame($exe, $name) {
+            $p = Start-Process -FilePath $exe -ArgumentList '--exit-after-first-frame' -PassThru
+            if ($p.WaitForExit(40000)) { Write-Host "${name}: first frame, exit $($p.ExitCode)" }
+            else { Shot "$name-stuck"; Write-Host "${name}: no first frame in 40 s"; Stop-Process -Id $p.Id -Force }
+            Get-ChildItem -Recurse "$env:DBIJI_HOME\logs" -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName -Tail 15 }
+          }
+          FirstFrame 'target\release\dbiji.exe' 'native'
+          # The same with Mesa's software OpenGL next to a copy.
+          gh release download --repo pal1000/mesa-dist-win --pattern '*-release-msvc.7z' --dir "$env:RUNNER_TEMP\mesa"
+          7z x (Get-ChildItem "$env:RUNNER_TEMP\mesa\*.7z").FullName "-o$env:RUNNER_TEMP\mesa\x" | Out-Null
+          New-Item -ItemType Directory -Force soft | Out-Null
+          Copy-Item target\release\dbiji.exe soft\
+          Copy-Item "$env:RUNNER_TEMP\mesa\x\x64\*.dll" soft\
+          FirstFrame 'soft\dbiji.exe' 'mesa'
+          $app = Start-Process -FilePath soft\dbiji.exe -PassThru
+          Start-Sleep -Seconds 12
+          Shot 'windows-shot'
           Write-Host "still running: $(-not $app.HasExited)"
-          if (-not $app.HasExited) { Stop-Process -Id $app.Id }
+          if (-not $app.HasExited) { Stop-Process -Id $app.Id -Force }
       - uses: actions/upload-artifact@v7
+        if: always()
         with:
           name: windows
           path: |
@@ -43,7 +59,7 @@ jobs:
             dist/*.zip
             dist/*.png
 
-  windows-clippy-and-tests:
+  windows-tests:
     runs-on: windows-2022
     env:
       AWS_LC_SYS_PREBUILT_NASM: 1
@@ -52,55 +68,5 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - run: cargo clippy --keep-going --workspace --exclude dbiji-driver-duckdb --all-targets -- -D warnings
-        continue-on-error: true
+      - run: cargo clippy --workspace --exclude dbiji-driver-duckdb --all-targets -- -D warnings
       - run: cargo test --workspace --exclude dbiji-driver-duckdb --no-fail-fast
-        continue-on-error: true
-
-  linux-bundle:
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [ubuntu-24.04, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
-    container: almalinux:9
-    steps:
-      - name: Build tools
-        run: dnf install -y --setopt=install_weak_deps=False gcc gcc-c++ make git binutils findutils tar gzip which file diffutils
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - run: scripts/bundle-linux.sh
-      - uses: actions/upload-artifact@v7
-        with:
-          name: linux-${{ matrix.runner }}
-          path: dist/DBiji-*-linux-*
-
-  linux-install:
-    needs: linux-bundle
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          name: linux-ubuntu-24.04
-          path: dist
-      - name: Install on each distribution
-        run: |
-          ls -l dist
-          docker run --rm -v "$PWD/dist:/dist" rockylinux:9 bash -c 'dnf install -y /dist/DBiji-*-linux-x86_64.rpm >/dev/null && dbiji --version'
-          docker run --rm -v "$PWD/dist:/dist" fedora:41 bash -c 'dnf install -y /dist/DBiji-*-linux-x86_64.rpm >/dev/null && dbiji --version'
-          docker run --rm -v "$PWD/dist:/dist" opensuse/tumbleweed bash -c 'zypper --non-interactive --no-gpg-checks install --allow-unsigned-rpm /dist/DBiji-*-linux-x86_64.rpm >/dev/null && dbiji --version'
-          docker run --rm -v "$PWD/dist:/dist" archlinux:latest bash -c 'pacman -Sy --noconfirm >/dev/null && pacman -U --noconfirm /dist/DBiji-*-linux-x86_64.pkg.tar.zst >/dev/null && dbiji --version'
-          docker run --rm -v "$PWD/dist:/dist" debian:12 bash -c 'apt-get update >/dev/null && apt-get install -y /dist/DBiji-*-linux-amd64.deb >/dev/null && dbiji --version'
-          docker run --rm -v "$PWD/dist:/dist" ubuntu:22.04 bash -c 'apt-get update >/dev/null && apt-get install -y /dist/DBiji-*-linux-amd64.deb >/dev/null && dbiji --version'
-      - name: Start the app on X11 (Xvfb, Mesa) and take a screenshot
-        run: |
-          sudo apt-get update && sudo apt-get install -y ./dist/DBiji-*-linux-amd64.deb xvfb imagemagick libgl1-mesa-dri
-          export DBIJI_HOME="$RUNNER_TEMP/dbiji-home"
-          xvfb-run -a dbiji --exit-after-first-frame; echo "first frame: exit $?"
-          xvfb-run -a -s "-screen 0 1400x900x24" bash -c 'dbiji & sleep 12; import -window root dist/linux-shot.png; kill %1'
-          chmod +x dist/*.AppImage && APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a dist/DBiji-*-linux-x86_64.AppImage --exit-after-first-frame; echo "AppImage first frame: exit $?"
-          tail -20 "$DBIJI_HOME"/logs/* || true
-      - uses: actions/upload-artifact@v7
-        with:
-          name: linux-shot
-          path: dist/*.png

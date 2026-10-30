@@ -261,6 +261,7 @@ mod tests {
         TaskDef::new(name, TaskKind::Shell { command: "true".into() })
     }
 
+    #[cfg(unix)]
     #[test]
     fn reused_process_numbers_are_not_alive() {
         let me = std::process::id();

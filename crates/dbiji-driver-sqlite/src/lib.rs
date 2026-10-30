@@ -555,13 +555,18 @@ mod tests {
     fn commands() {
         let d = SqliteDriver::new();
         let p = params("/data/app.db");
+        // made absolute (on Windows with the current drive)
+        let db = std::path::absolute("/data/app.db")
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
         let opts = BackupOptions {
             output: "/backups/app.sql".into(),
             ..Default::default()
         };
         let cmd = d.backup_command(&p, &opts).unwrap();
         assert_eq!(cmd.program, "sqlite3");
-        assert_eq!(cmd.args, vec!["-readonly", "/data/app.db", ".dump --nosys"]);
+        assert_eq!(cmd.args, vec!["-readonly", db.as_str(), ".dump --nosys"]);
         assert_eq!(
             cmd.stdout_file.as_deref(),
             Some(Path::new("/backups/app.sql"))
@@ -574,7 +579,7 @@ mod tests {
         let cmd = d.backup_command(&p, &opts).unwrap();
         assert_eq!(cmd.args[2], ".backup main \"/backups/it's.db\"");
         let cmd = d.client_command(&p, Path::new("/s.sql")).unwrap();
-        assert_eq!(cmd.args, vec!["-bail", "/data/app.db"]);
+        assert_eq!(cmd.args, vec!["-bail", db.as_str()]);
         assert_eq!(cmd.stdin_file.as_deref(), Some(Path::new("/s.sql")));
         let r = d
             .restore_command(
@@ -586,7 +591,7 @@ mod tests {
                 },
             )
             .unwrap();
-        assert_eq!(r.args, vec!["/data/app.db", ".restore main '/b.db'"]);
+        assert_eq!(r.args, vec![db.as_str(), ".restore main '/b.db'"]);
         assert!(
             d.backup_command(
                 &params(":memory:"),

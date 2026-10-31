@@ -1724,7 +1724,9 @@ pub fn map_type(
                 return m;
             }
         }
-        DbKind::Generic => {}
+        // Document / key-value stores carry no SQL type names: keep the value's
+        // logical kind (the `is_native` fallback below picks the column type).
+        DbKind::Generic | DbKind::MongoDb | DbKind::Redis => {}
     }
     let _ = rest;
     if is_native(&base) {

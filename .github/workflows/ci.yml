@@ -86,6 +86,16 @@ jobs:
           CLICKHOUSE_PASSWORD: dbiji
           CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
         ports: ["58123:8123"]
+      mongodb:
+        image: mongo:7
+        ports: ["57017:27017"]
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping: 1})'" --health-interval 5s --health-timeout 5s --health-retries 30
+      redis:
+        image: redis:7
+        ports: ["56379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 30
     env:
       DBIJI_TEST_PG: postgres://dbiji:dbiji@127.0.0.1:55432/dbiji
       DBIJI_TEST_MYSQL: mysql://root:dbiji@127.0.0.1:53306/dbiji
@@ -93,6 +103,8 @@ jobs:
       DBIJI_TEST_CLICKHOUSE: http://dbiji:dbiji@127.0.0.1:58123
       DBIJI_TEST_COCKROACH: cockroachdb://root@127.0.0.1:26257/defaultdb?sslmode=disable
       DBIJI_TEST_MSSQL: sqlserver://sa:Dbiji_test1@127.0.0.1:51433/master
+      DBIJI_TEST_MONGO: 127.0.0.1:57017
+      DBIJI_TEST_REDIS: 127.0.0.1:56379
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -106,7 +118,8 @@ jobs:
       - name: Driver and end-to-end integration tests
         run: >-
           cargo test -p dbiji-driver-postgres -p dbiji-driver-mysql -p dbiji-driver-sqlite
-          -p dbiji-driver-clickhouse -p dbiji-driver-duckdb -p dbiji-driver-mssql -p dbiji-transfer
+          -p dbiji-driver-clickhouse -p dbiji-driver-duckdb -p dbiji-driver-mssql
+          -p dbiji-driver-mongodb -p dbiji-driver-redis -p dbiji-transfer
           -p dbiji-compare -p dbiji-tasks -p dbiji-app -- --test-threads=4
 
   # The oldest server versions DBiji supports: catalog columns, syntax or TLS
@@ -167,11 +180,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build release
         run: cargo build --release -p dbiji-app
-      - name: Binary size (< 40 MB)
+      # The MongoDB and Redis drivers (official `mongodb` and `redis` crates)
+      # added ~7 MiB: the budget grew from 40 MiB to 48 MiB with them.
+      - name: Binary size (< 48 MB)
         run: |
           size=$(stat -f%z target/release/dbiji)
           echo "binary size: $size bytes"
-          test "$size" -lt 41943040
+          test "$size" -lt 50331648
       - name: Headless benchmarks (startup, memory, grid, editor)
         run: target/release/dbiji --bench all --bench-report bench.json
       - uses: actions/upload-artifact@v7

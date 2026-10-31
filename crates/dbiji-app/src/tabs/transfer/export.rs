@@ -635,11 +635,17 @@ impl ExportTab {
 
     fn format_page(&mut self, ui: &mut Ui, cx: &mut AppContext) {
         section(ui, tr("Format"));
+        // SQL INSERT statements describe tables: a document or key/value store
+        // has none, so its rows are exported as data (CSV, JSON, …).
+        let sql_source = cx.conns.config(&self.conn).is_none_or(|c| !c.kind.is_shell());
         ui.horizontal_wrapped(|ui| {
-            for f in ExportFormat::ALL {
+            for f in ExportFormat::ALL.into_iter().filter(|f| sql_source || *f != ExportFormat::Sql) {
                 ui.selectable_value(&mut self.settings.format, f, tr(f.label()));
             }
         });
+        if !sql_source && self.settings.format == ExportFormat::Sql {
+            self.settings.format = ExportFormat::Json;
+        }
         let format = self.settings.format;
         let id = self.uid;
         let o = &mut self.settings.options;

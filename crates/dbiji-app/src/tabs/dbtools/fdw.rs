@@ -42,7 +42,8 @@ pub fn wrapper_of(kind: DbKind) -> Option<&'static str> {
         DbKind::SqlServer => Some("tds_fdw"),
         DbKind::ClickHouse => Some("clickhouse_fdw"),
         DbKind::DuckDb => Some("duckdb_fdw"),
-        DbKind::Generic => None,
+        // No foreign data wrapper reads a document or key/value store.
+        DbKind::MongoDb | DbKind::Redis | DbKind::Generic => None,
     }
 }
 
@@ -115,7 +116,7 @@ pub fn fdw_script(spec: &FdwSpec) -> Result<String, String> {
         DbKind::SqlServer => vec![("servername", spec.host.clone()), ("port", port), ("database", db.to_string())],
         DbKind::ClickHouse => vec![("host", spec.host.clone()), ("port", port), ("dbname", db.to_string()), ("driver", "http".into())],
         DbKind::Sqlite | DbKind::DuckDb => vec![("database", file.to_string())],
-        DbKind::Generic => Vec::new(),
+        DbKind::MongoDb | DbKind::Redis | DbKind::Generic => Vec::new(),
     };
     options.retain(|(_, v)| !v.is_empty());
     let options = options.iter().map(|(k, v)| format!("{k} {}", lit(v))).collect::<Vec<_>>().join(", ");

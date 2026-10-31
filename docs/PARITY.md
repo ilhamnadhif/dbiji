@@ -183,9 +183,11 @@ Legend: ✅ implemented and tested · 🟡 implemented, partially tested ·
 | PostgreSQL | ✅ | `dbiji-driver-postgres` (66 unit, 23 integration) *(env)* |
 | MySQL, MariaDB | ✅ | `dbiji-driver-mysql` (67 unit, 34 integration × 2 servers) *(env)* |
 | SQLite | ✅ | `dbiji-driver-sqlite` (87) |
-| SQL Server | ✅ | `dbiji-driver-mssql` (39 unit, 6 integration) *(env)* |
+| SQL Server | ✅ | `dbiji-driver-mssql` (43 unit, 6 integration) *(env)*. 2012 and newer over TLS 1.2+; 2008 and older offer TLS 1.0 only, which rustls does not implement — connect with SSL `disable` when the server does not force encryption, otherwise the server needs an upgrade |
 | ClickHouse | ✅ | `dbiji-driver-clickhouse` (54 unit, 5 integration) *(env)* |
 | DuckDB | ✅ | `dbiji-driver-duckdb` (43), optional `duckdb` feature |
+| MongoDB | ✅ | `dbiji-driver-mongodb` (19): shell language (`db.c.find({…})`), documents as rows, collections / indexes / sampled fields, explain *(no server in CI)* |
+| Redis | ✅ | `dbiji-driver-redis` (15): commands one per line, replies as tables, keys as tables, databases as schemas, session manager and dashboard *(no server in CI)* |
 | CockroachDB | ✅ | PostgreSQL driver with CockroachDB catalog adjustments; `dbiji-app` end-to-end suites (execution, cancel, schema compare gate, data editing, editor) run against CockroachDB *(env `DBIJI_TEST_COCKROACH`)* |
 | Oracle | ⛔ | Only driver needs Oracle's native client library (OCI), excluded by the full-Rust rule (PRD §7) |
 | Db2, Firebird, H2, Trino | ⛔ | No usable pure-Rust network driver yet (PRD §7: "only if a viable Rust driver exists") |
@@ -196,7 +198,7 @@ Measured with `dbiji --bench all` on the release build (macOS, Apple M1 Pro):
 
 | Target | Result |
 | --- | --- |
-| Binary < 40 MB | 37.0 MB (without DuckDB) |
+| Binary < 48 MB | 44.1 MiB (without DuckDB); 37.0 MiB before the MongoDB and Redis drivers, which the budget grew for |
 | Cold start < 1 s | 105 ms to the first frame |
 | Idle memory < 120 MB | 69 MB |
 | 3 connections + 5 result tabs < 250 MB | 83 MB (20 000 rows fetched per tab) |

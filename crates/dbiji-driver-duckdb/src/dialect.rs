@@ -916,6 +916,7 @@ pub static DUCKDB_SYNTAX: SqlSyntax = SqlSyntax {
     // identifiers are case-insensitive (even quoted ones) but keep their case
     ident_case: IdentCase::Preserve,
     case_sensitive_names: false,
+    shell: None,
 };
 
 /// True when `ident` must be quoted.

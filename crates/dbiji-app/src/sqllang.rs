@@ -59,6 +59,25 @@ fn entry_kind(k: CompletionKind) -> EntryKind {
     }
 }
 
+/// Words of the shell language that start with the word before the cursor.
+fn shell_completion(text: &str, cursor: usize, syntax: &dbiji_core::SqlSyntax) -> dbiji_sql::CompletionResult {
+    use dbiji_sql::{CompletionItem, CompletionKind, CompletionResult};
+    let cursor = cursor.min(text.len());
+    let start = text[..cursor].rfind(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$' || c == '.')).map(|i| i + 1).unwrap_or(0);
+    let word = &text[start..cursor];
+    let lower = word.to_ascii_lowercase();
+    let mut items = Vec::new();
+    for k in syntax.keywords.iter().chain(syntax.functions.iter()) {
+        if lower.is_empty() || k.to_ascii_lowercase().starts_with(&lower) {
+            // An exact prefix match scores higher, so the closest command is first.
+            let score = if k.to_ascii_lowercase() == lower { 3 } else { 1 };
+            items.push(CompletionItem { label: (*k).to_string(), insert: (*k).to_string(), kind: CompletionKind::Keyword, detail: None, score, cursor_back: 0 });
+        }
+    }
+    items.sort_by(|a, b| b.score.cmp(&a.score).then(a.label.cmp(&b.label)));
+    CompletionResult { replace_start: start, replace_end: cursor, items }
+}
+
 fn text_key(text: &str) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -112,7 +131,13 @@ impl EditorLanguage for SqlLanguage {
             Some(c) => c.as_ref(),
             None => &empty,
         };
-        let r = dbiji_sql::complete(text, cursor, self.dialect.as_ref(), catalog, &self.completion);
+        // A shell language (MongoDB, Redis) has no SQL analysis: only its
+        // keywords (methods, commands) and its templates are offered.
+        let r = if self.syntax.shell.is_some() {
+            shell_completion(text, cursor, &self.syntax)
+        } else {
+            dbiji_sql::complete(text, cursor, self.dialect.as_ref(), catalog, &self.completion)
+        };
         // Templates whose name starts with the word before the cursor.
         let cursor = cursor.min(text.len());
         let word_start = text[..cursor].rfind(|c: char| !(c.is_alphanumeric() || c == '_')).map(|i| i + 1).unwrap_or(0);
@@ -146,6 +171,10 @@ impl EditorLanguage for SqlLanguage {
     fn should_auto_complete(&self, text: &str, cursor: usize, typed: char) -> bool {
         if typed == '.' {
             return true;
+        }
+        if self.syntax.shell.is_some() {
+            // Shell methods follow `.`; commands start a line.
+            return typed == ' ' && cursor <= text.len() && text[..cursor].trim_end_matches(' ').ends_with('\n');
         }
         // After "FROM " / "JOIN " / "INTO " / "UPDATE " offer tables right away.
         if typed == ' ' {
@@ -253,5 +282,20 @@ mod tests {
         let hl = lang.highlight("select 1 -- note");
         assert!(hl.iter().any(|(_, s)| *s == TokenStyle::Keyword));
         assert!(hl.iter().any(|(_, s)| *s == TokenStyle::Comment));
+    }
+
+    #[test]
+    fn a_shell_language_offers_its_own_words_and_snippets() {
+        let mut lang = SqlLanguage::new(Arc::new(dbiji_driver_redis::RedisDialect::new()));
+        lang.kind = Some(dbiji_core::DbKind::Redis);
+        lang.templates = Some(dbiji_config::TemplateLibrary::default());
+        // Redis commands and its own snippets, never SQL keywords or templates.
+        let list = lang.complete("HG", 2).expect("proposals");
+        assert!(list.items.iter().any(|i| i.label == "HGETALL"), "{:?}", list.items.iter().map(|i| &i.label).collect::<Vec<_>>());
+        assert!(list.items.iter().any(|i| i.label == "hgetall" && i.insert.starts_with("HGETALL ")), "{:?}", list.items.iter().map(|i| (&i.label, &i.insert)).collect::<Vec<_>>());
+        assert!(!list.items.iter().any(|i| i.label.eq_ignore_ascii_case("SELECT")));
+        assert!(!list.items.iter().any(|i| i.label == "sel"), "{:?}", list.items.iter().map(|i| &i.label).collect::<Vec<_>>());
+        // Highlighting follows the same syntax.
+        assert!(lang.highlight("GET user:1").iter().any(|(_, s)| *s == TokenStyle::Keyword));
     }
 }

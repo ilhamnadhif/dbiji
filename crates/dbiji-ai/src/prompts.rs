@@ -35,6 +35,12 @@ fn dialect_notes(kind: DbKind) -> &'static str {
             "ClickHouse: analytical column store; use LIMIT, toDate / toStartOfInterval for time buckets, avoid row-by-row UPDATE/DELETE (they are mutations), and prefer aggregate functions such as uniq / quantile."
         }
         DbKind::DuckDb => "DuckDB: PostgreSQL-like syntax plus conveniences such as GROUP BY ALL, QUALIFY, list functions and direct reading of files; use LIMIT.",
+        DbKind::MongoDb => {
+            "MongoDB: answer with shell syntax on one collection at a time (`db.collection.find({...}, {...}).sort({...}).limit(n)`, `aggregate([...])`, `countDocuments({...})`), use the aggregation pipeline instead of joins, and never write SQL."
+        }
+        DbKind::Redis => {
+            "Redis: answer with Redis commands (one per line), for example `GET key`, `HSCAN key 0`, `SCAN 0 MATCH pattern COUNT 100`, `ZRANGE key 0 -1 WITHSCORES`; there are no tables, joins or SQL."
+        }
         DbKind::Generic => "Standard SQL: avoid vendor specific syntax.",
     }
 }

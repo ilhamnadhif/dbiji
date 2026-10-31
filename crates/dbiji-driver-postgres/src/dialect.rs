@@ -32,6 +32,7 @@ static PG_SYNTAX: SqlSyntax = SqlSyntax {
     extra_ident_chars: "$",
     ident_case: IdentCase::Lower,
     case_sensitive_names: false,
+    shell: None,
 };
 
 /// Lexical description of PostgreSQL, usable without a dialect instance

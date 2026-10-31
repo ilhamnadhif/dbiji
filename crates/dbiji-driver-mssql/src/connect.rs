@@ -129,13 +129,39 @@ async fn connect_once(params: &ConnectParams, host: &str, port: u16, level: Encr
     match Client::connect(config, tcp.compat_write()).await {
         Ok(c) => Ok(c),
         Err(tiberius::error::Error::Routing { host, port }) => Err((DbError::connection(format!("redirected to {host}:{port}")), Some((host, port)))),
-        Err(e) => {
-            let mut err = map_error(e, None);
-            if err.kind == ErrorKind::Connection && err.message.contains("Protocol error") {
-                err = err.with_hint("Check the TLS mode: the server may require (or not support) encryption");
-            }
-            Err((err, None))
-        }
+        Err(e) => Err((with_tls_hint(map_error(e, None)), None)),
+    }
+}
+
+/// Explain a TLS handshake failure, which is what a server speaking only
+/// TLS 1.0/1.1 produces: `rustls` (and therefore every driver here) offers
+/// TLS 1.2 and 1.3 only.
+///
+/// SQL Server 2005 and older negotiate TLS 1.0, so they cannot complete the
+/// handshake with this build no matter which encryption mode is chosen — the
+/// login packet itself is always encrypted from SQL Server 2005 on.
+fn with_tls_hint(err: DbError) -> DbError {
+    if err.kind == ErrorKind::Connection && err.message.contains("Protocol error") {
+        return err.with_hint("Check the TLS mode: the server may require (or not support) encryption");
+    }
+    if err.kind != ErrorKind::Tls {
+        return err;
+    }
+    let m = err.message.to_ascii_lowercase();
+    let legacy = m.contains("protocol version") || m.contains("peer is incompatible") || m.contains("tls12notoffered") || m.contains("no cipher suites");
+    if legacy {
+        err.with_hint(
+            "The server only offers TLS 1.0/1.1 (SQL Server 2008 and older), which this build does not support: \
+             TLS 1.2 is the minimum. Set the SSL mode to `disable` to connect without TLS when the server does \
+             not force encryption, or upgrade the server.",
+        )
+    } else if m.contains("certificate") || m.contains("unsupportedcertversion") {
+        err.with_hint(
+            "SQL Server's self-signed certificate was rejected. Choose the `require` TLS mode, set \
+             `trust_server_certificate` in Driver properties, or give the server a proper certificate.",
+        )
+    } else {
+        err
     }
 }
 
@@ -156,7 +182,7 @@ pub async fn open(params: &ConnectParams) -> DbResult<MsClient> {
                 port = p;
             }
             Err((e, None)) => {
-                if params.ssl.mode == SslMode::Prefer && level == EncryptionLevel::On && e.kind == ErrorKind::Tls {
+                if should_retry_without_tls(params.ssl.mode, level, &e) {
                     level = EncryptionLevel::NotSupported;
                     continue;
                 }
@@ -165,6 +191,20 @@ pub async fn open(params: &ConnectParams) -> DbResult<MsClient> {
         }
     }
     Err(DbError::connection("Too many server redirects while connecting"))
+}
+
+/// `prefer` means "TLS when the server offers it": when the handshake itself
+/// fails, the connection is retried once without TLS.
+///
+/// The failure is not always classified as TLS — a server that only speaks
+/// TLS 1.0/1.1 (SQL Server 2008 and older) closes the socket after our TLS 1.2
+/// ClientHello, which arrives as a connection error — so every failure of the
+/// first, encrypted attempt is retried unencrypted.
+fn should_retry_without_tls(mode: SslMode, level: EncryptionLevel, err: &DbError) -> bool {
+    if mode != SslMode::Prefer || level != EncryptionLevel::On {
+        return false;
+    }
+    matches!(err.kind, ErrorKind::Tls | ErrorKind::Connection)
 }
 
 #[cfg(test)]
@@ -184,6 +224,31 @@ mod tests {
         assert!(matches!(encryption_for(SslMode::Prefer), (EncryptionLevel::On, false)));
         assert!(matches!(encryption_for(SslMode::Require), (EncryptionLevel::Required, false)));
         assert!(matches!(encryption_for(SslMode::VerifyFull), (EncryptionLevel::Required, true)));
+    }
+
+    #[test]
+    fn prefer_retries_without_tls_on_a_failed_handshake() {
+        let tls = DbError::tls("received fatal alert");
+        let dropped = DbError::connection("Network error: connection reset by peer");
+        let auth = DbError::auth("Login failed for user 'sa'");
+        assert!(should_retry_without_tls(SslMode::Prefer, EncryptionLevel::On, &tls));
+        assert!(should_retry_without_tls(SslMode::Prefer, EncryptionLevel::On, &dropped));
+        // A refused login is conclusive: TLS worked, the credentials did not.
+        assert!(!should_retry_without_tls(SslMode::Prefer, EncryptionLevel::On, &auth));
+        // Already unencrypted, or encryption was not optional.
+        assert!(!should_retry_without_tls(SslMode::Prefer, EncryptionLevel::NotSupported, &tls));
+        assert!(!should_retry_without_tls(SslMode::Require, EncryptionLevel::Required, &tls));
+        assert!(!should_retry_without_tls(SslMode::VerifyFull, EncryptionLevel::Required, &tls));
+    }
+
+    #[test]
+    fn legacy_tls_and_certificates_get_a_hint() {
+        let legacy = with_tls_hint(DbError::tls("received fatal alert: protocol version: peer is incompatible: Tls12NotOffered"));
+        assert!(legacy.hint.as_deref().unwrap_or_default().contains("TLS 1.2"), "{legacy:?}");
+        let cert = with_tls_hint(DbError::tls("the server's certificate was rejected during the TLS handshake"));
+        assert!(cert.hint.as_deref().unwrap_or_default().contains("trust_server_certificate"), "{cert:?}");
+        let other = with_tls_hint(DbError::tls("something else"));
+        assert!(other.hint.is_none());
     }
 
     #[test]

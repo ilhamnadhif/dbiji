@@ -165,6 +165,7 @@ Save credentials	Simpan kredensial
 Save password	Simpan password
 Schemas	Skema
 Search data	Cari data
+The data search reads SQL tables; this database has none.	Pencarian data membaca tabel SQL; database ini tidak punya tabel SQL.
 Search metadata	Cari metadata
 Search…	Cari…
 Separate connection for each SQL editor	Koneksi terpisah untuk tiap editor SQL
@@ -282,7 +283,7 @@ Select none	Kosongkan pilihan
 Size:	Ukuran:
 Skip	Lewati
 Statistics	Statistik
-Supported: postgres://, mysql://, mariadb://, sqlserver://, clickhouse://, sqlite:, duckdb:, jdbc:…	Didukung: postgres://, mysql://, mariadb://, sqlserver://, clickhouse://, sqlite:, duckdb:, jdbc:…
+Supported: postgres://, mysql://, mariadb://, sqlserver://, clickhouse://, mongodb://, redis://, sqlite:, duckdb:, jdbc:…	Didukung: postgres://, mysql://, mariadb://, sqlserver://, clickhouse://, sqlite:, duckdb:, jdbc:…
 Table	Tabel
 The connection is closed.	Koneksi ditutup.
 The data editor is not available.	Editor data tidak tersedia.
@@ -1277,6 +1278,8 @@ where	where
 {}x more rows than estimated	{}x lebih banyak baris dari perkiraan
 AI Assistant	Asisten AI
 ALTER ... DROP removes part of the object	ALTER ... DROP menghapus sebagian objek
+FLUSH removes every key of the database	FLUSH menghapus semua key di database
+The command stops or reconfigures the server	Perintah ini menghentikan atau mengubah konfigurasi server
 Aggregates	Agregat
 Alter	Ubah
 Application	Aplikasi

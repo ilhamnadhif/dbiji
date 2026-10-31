@@ -564,6 +564,9 @@ impl ResultPanel {
 
     fn current_sql(&self, dialect: &dyn Dialect) -> String {
         match &self.table {
+            // A document or key/value store is read by its own statement: the
+            // SQL filter and ordering do not apply to it.
+            Some(t) if dialect.kind().is_shell() => dialect.table_data_query(t, None),
             Some(t) => dialect.select_table(t, None, self.where_clause.as_deref(), self.order_by.as_deref(), None),
             None => {
                 let base = self.base_sql.trim().trim_end_matches(';');
@@ -1286,6 +1289,9 @@ impl ResultPanel {
                     // Not while a save runs: edits made then would be marked saved with it.
                     allow_editing: !cx.conns.config(&self.conn).is_some_and(|c| c.read_only) && self.save_job.is_none(),
                     record_hide_empty: cx.settings.results.record_hide_empty,
+                    // Count and statistics wrap the statement in SQL: a shell
+                    // (MongoDB, Redis) result has none.
+                    sql_actions: !cx.conns.config(&self.conn).is_some_and(|c| c.kind.is_shell()),
                     ..Default::default()
                 };
                 // Messages appear in the toolbar next to the status.

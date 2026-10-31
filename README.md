@@ -13,7 +13,7 @@ millions of rows never have to fit in memory.
 ## Highlights
 
 - **Many databases, one interface**: PostgreSQL, CockroachDB, MySQL, MariaDB, SQLite, SQL Server,
-  ClickHouse and (optional) DuckDB.
+  ClickHouse, MongoDB, Redis and (optional) DuckDB.
 - **SQL editor** with schema-aware autocomplete (tables, columns, joins, aliases, CTEs), templates,
   `:name` / `${name}` parameters, `@set` / `@include` / `@export`, formatter, outline, error markers,
   explain plans (text, tree, diagram) and a searchable query history.
@@ -164,6 +164,8 @@ export DBIJI_TEST_PG=postgres://dbiji:dbiji@127.0.0.1:55432/dbiji
 export DBIJI_TEST_MYSQL=mysql://root:dbiji@127.0.0.1:53306/dbiji
 export DBIJI_TEST_MARIADB=mariadb://root:dbiji@127.0.0.1:53307/dbiji
 export DBIJI_TEST_COCKROACH='cockroachdb://root@127.0.0.1:26257/defaultdb?sslmode=disable'
+export DBIJI_TEST_MONGO=127.0.0.1:27018   # mongod on that port
+export DBIJI_TEST_REDIS=127.0.0.1:6390   # redis-server on that port
 cargo test -p dbiji-app
 ```
 
@@ -177,7 +179,7 @@ before running `scripts/bundle-macos.sh`.
 | `dbiji-app` | The application: window, tabs, navigator, execution engine, CLI |
 | `dbiji-core` | Shared contract: values, driver/session traits, metadata, DDL, dialects, row store, i18n |
 | `dbiji-sql` | Tokenizer, splitter, formatter, autocomplete, analysis, parameters |
-| `dbiji-driver-*` | PostgreSQL, MySQL, SQLite, SQL Server, ClickHouse, DuckDB drivers |
+| `dbiji-driver-*` | PostgreSQL, MySQL, SQLite, SQL Server, ClickHouse, DuckDB, MongoDB, Redis drivers |
 | `dbiji-editor` / `dbiji-grid` / `dbiji-visual` | Editor widget, data grid, diagrams and charts |
 | `dbiji-config` / `dbiji-net` | Settings, secrets, importers / SSH tunnels and proxies |
 | `dbiji-transfer` / `dbiji-compare` / `dbiji-tasks` / `dbiji-ai` | Data transfer, compare, tasks, AI |
@@ -188,6 +190,9 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the DBeaver parity matr
 ## Known limitations
 
 - Oracle, Db2, Firebird, H2 and Trino are not supported (no pure-Rust network driver yet).
+- MongoDB and Redis have no SQL: their editors take the shell language (`db.users.find({…})`) and
+  Redis commands (`HGETALL session:9`), one statement per line or `;`. Cell editing, SQL tools
+  (query builder, ER diagram, table designer, data search) and transactions do not apply to them.
 - Kerberos and MySQL multi-factor authentication are not supported.
 - Release builds are not notarized yet.
 

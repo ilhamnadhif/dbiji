@@ -4,7 +4,7 @@
 //! can be saved as a task.
 
 use super::{
-    MessageLog, Running, TaskSaver, combo, connection_combo, connection_name, current_schema, error_text, next_uid, not_connected, on_error_options, progress_ui, schema_combo,
+    MessageLog, Running, TaskSaver, combo, connection_combo_sql, connection_name, current_schema, error_text, next_uid, not_connected, on_error_options, progress_ui, schema_combo,
     schema_tables, section, steps_ui, table_def_of,
 };
 use crate::cx::AppContext;
@@ -464,7 +464,9 @@ impl MigrationTab {
         egui::Grid::new(("mig_target", id)).num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
             ui.label(tr("Connection"));
             ui.horizontal(|ui| {
-                if connection_combo(ui, cx, ("mig_conn", id), &mut self.target_conn) {
+                // Rows are written with SQL INSERT: a shell language has none.
+                // Rows are written with SQL INSERT: a shell language has none.
+                if connection_combo_sql(ui, cx, ("mig_conn", id), &mut self.target_conn, true) {
                     self.target_schema = None;
                 }
                 if let Some(t) = self.target_conn.clone()

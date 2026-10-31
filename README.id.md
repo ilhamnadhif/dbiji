@@ -13,7 +13,7 @@ hasil query jutaan baris tidak perlu muat di memori.
 ## Sorotan
 
 - **Banyak database, satu antarmuka**: PostgreSQL, CockroachDB, MySQL, MariaDB, SQLite, SQL Server,
-  ClickHouse, dan (opsional) DuckDB.
+  ClickHouse, MongoDB, Redis, dan (opsional) DuckDB.
 - **Editor SQL** dengan autocomplete sesuai skema (tabel, kolom, join, alias, CTE), template,
   parameter `:nama` / `${nama}`, `@set` / `@include` / `@export`, pemformat, outline, penanda error,
   execution plan (teks, pohon, diagram), dan riwayat query yang bisa dicari.
@@ -180,6 +180,9 @@ Struktur proyek ada di [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), matriks par
 ## Keterbatasan
 
 - Oracle, Db2, Firebird, H2, dan Trino belum didukung (belum ada driver jaringan Rust).
+- MongoDB dan Redis tidak memakai SQL: editornya memakai bahasa shell (`db.users.find({…})`) dan
+  perintah Redis (`HGETALL session:9`), satu pernyataan per baris atau `;`. Edit sel, alat SQL
+  (query builder, diagram ER, desainer tabel, pencarian data), dan transaksi tidak berlaku di sana.
 - Kerberos dan autentikasi multi-faktor MySQL belum didukung.
 - Build rilis belum dinotarisasi.
 

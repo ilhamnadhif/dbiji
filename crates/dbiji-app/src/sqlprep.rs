@@ -121,7 +121,9 @@ fn add_spans(text: &str, spans: &[StatementSpan], cfg: &PrepConfig, out: &mut Pr
         }
         let info = dbiji_sql::classify(stmt, cfg.syntax);
         let mut missing = Vec::new();
-        let sql = substitute(stmt, cfg, &out.variables, &mut missing);
+        // A shell language (MongoDB, Redis) uses `:` and `$` itself: its text
+        // is sent as written, never substituted.
+        let sql = if cfg.syntax.shell.is_some() { stmt.to_string() } else { substitute(stmt, cfg, &out.variables, &mut missing) };
         for m in missing {
             if !out.missing.contains(&m) {
                 out.missing.push(m);

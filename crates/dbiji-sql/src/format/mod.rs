@@ -227,6 +227,10 @@ const ROUTINE_WORDS: &[&str] = &[
 
 /// Format a script.
 pub fn format_sql(src: &str, syntax: &SqlSyntax, opts: &FormatOptions) -> String {
+    // A shell language (MongoDB, Redis) is not SQL: its text is left as written.
+    if syntax.shell.is_some() {
+        return src.to_string();
+    }
     let (out, _) = format_inner(src, syntax, opts);
     if equivalent(src, &out, syntax) {
         out

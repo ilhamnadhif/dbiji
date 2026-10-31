@@ -4,7 +4,8 @@ Source: DBeaver Community `a9c14c1` (2026-10-18), 160 plugins, ≈1 M lines of
 Java. The inventory was taken from every plugin's `plugin.xml` (commands,
 views, editors, preference pages, tools, tasks, dashboards, navigator object
 folders) and the preference message bundles, then compared with DBiji's UI
-strings and code. NoSQL plugins, databases without a pure-Rust driver
+strings and code. NoSQL plugins other than the MongoDB and Redis drivers
+DBiji ships (see PARITY.md), databases without a pure-Rust driver
 (Oracle, Db2, …, see PARITY.md) and Eclipse/Java specifics (JDBC driver
 manager, Maven/classpath, workspace resources, PRO upsell, usage statistics)
 are out of scope.

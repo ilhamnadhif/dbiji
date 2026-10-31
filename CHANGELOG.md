@@ -3,6 +3,22 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## Unreleased
+
+### Added
+- MongoDB connections (`dbiji-driver-mongodb`, the official Rust driver). Statements are the shell language — `db.users.find({age: {$gt: 30}}).sort({age: -1}).limit(20)`, `db.orders.aggregate([…])`, `insertOne` / `updateMany` / `deleteMany` / `createIndex` / `drop`, `db.runCommand({…})`, `show collections`, `show databases`, `use shop` — split at `;` or a line break outside brackets, so chained calls and multi-line documents stay one statement. Documents are rows: one column per top-level field (the union over the first documents), nested values as JSON; `find` and `aggregate` stream. The navigator shows databases, collections, their indexes and the fields sampled from the documents; the DDL tab writes `db.createCollection(…)` and one `createIndex(…)` per index; explain shows the winning plan stages.
+- Redis connections (`dbiji-driver-redis`, RESP3). One command per line (`GET user:1`, `HGETALL session:9`, `SCAN 0 MATCH order:* COUNT 100`, `ZRANGE rank 0 -1 WITHSCORES`), replies shaped into tables (a map as `field`/`value`, a scan with its cursor, sorted sets with their scores). Databases are shown as schemas, a key as a table with its fields as columns; `View data` reads the key whatever its type (`DBIJI.KEYDATA key`), the DDL tab writes the commands that recreate it. Session manager, server dashboard (clients, memory, keyspace, per-database key counts) and `CLIENT KILL` work; `INFO`, `CONFIG GET` and the other read commands are allowed on read-only connections.
+- `mongodb://`, `mongodb+srv://`, `redis://` and `rediss://` connection URLs (and `jdbc:` variants) are imported; DBeaver connections of MongoDB and Redis are recognised.
+- Shell templates in the editor: `find`, `aggr`, `insdoc`, `scan`, `hgetall` … The SQL templates are not offered for MongoDB and Redis, which have no SQL.
+- MongoDB and Redis logos, brand colours and the shell keywords (MongoDB methods and aggregation operators, Redis commands) for highlighting and autocomplete.
+
+### Fixed
+- Connecting to SQL Server 2008 and older failed with an opaque TLS error. `prefer` now retries without TLS after *any* failed handshake (a legacy server closes the socket after our TLS 1.2 hello, which arrived as a connection error and skipped the old fallback), and TLS failures name their cause and the way out: a legacy TLS version, or a rejected self-signed certificate (`require` mode or `trust_server_certificate`). TLS 1.0/1.1 itself stays unsupported: rustls offers 1.2 and 1.3 only, so such a server needs SSL `disable` (when it does not force encryption) or an upgrade.
+
+### Changed
+- The release binary grows by about 7 MiB (37 → 44 MiB) for the MongoDB and Redis clients; the size budget is now 48 MB. Both driver crates are compiled with `opt-level = "z"`.
+- The SQL-only tools are hidden for MongoDB and Redis instead of failing: query builder, ER diagram, table designer, data search, import, count and column statistics, smart commit and the SQL templates. Their editor keeps its own splitter and classifier (`SqlSyntax::shell`), no `:name` substitution and no SQL formatter.
+
 ## 0.3.46 — 2026-10-30
 
 ### Changed

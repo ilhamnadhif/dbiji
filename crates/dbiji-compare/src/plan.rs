@@ -404,7 +404,7 @@ pub(crate) fn transaction_statements(kind: DbKind) -> Option<(&'static str, &'st
     match kind {
         DbKind::MySql | DbKind::MariaDb => Some(("START TRANSACTION", "COMMIT")),
         DbKind::SqlServer => Some(("BEGIN TRANSACTION", "COMMIT TRANSACTION")),
-        DbKind::ClickHouse => None,
+        DbKind::ClickHouse | DbKind::MongoDb | DbKind::Redis => None,
         _ => Some(("BEGIN", "COMMIT")),
     }
 }

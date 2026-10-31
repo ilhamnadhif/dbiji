@@ -20,12 +20,27 @@ pub enum DbKind {
     SqlServer,
     ClickHouse,
     DuckDb,
+    /// Document store, queried with the shell syntax (`db.coll.find({...})`).
+    MongoDb,
+    /// Key/value store, queried with its own commands (`GET key`, `SCAN 0`).
+    Redis,
     /// ANSI SQL, used when no connection is attached (e.g. a scratch editor).
     Generic,
 }
 
 impl DbKind {
-    pub const ALL: [DbKind; 8] = [DbKind::Postgres, DbKind::MySql, DbKind::MariaDb, DbKind::Sqlite, DbKind::SqlServer, DbKind::CockroachDb, DbKind::ClickHouse, DbKind::DuckDb];
+    pub const ALL: [DbKind; 10] = [
+        DbKind::Postgres,
+        DbKind::MySql,
+        DbKind::MariaDb,
+        DbKind::Sqlite,
+        DbKind::SqlServer,
+        DbKind::CockroachDb,
+        DbKind::ClickHouse,
+        DbKind::DuckDb,
+        DbKind::MongoDb,
+        DbKind::Redis,
+    ];
 
     pub fn display_name(self) -> &'static str {
         match self {
@@ -37,6 +52,8 @@ impl DbKind {
             DbKind::SqlServer => "SQL Server",
             DbKind::ClickHouse => "ClickHouse",
             DbKind::DuckDb => "DuckDB",
+            DbKind::MongoDb => "MongoDB",
+            DbKind::Redis => "Redis",
             DbKind::Generic => "SQL",
         }
     }
@@ -48,6 +65,8 @@ impl DbKind {
             DbKind::MySql | DbKind::MariaDb => Some(3306),
             DbKind::SqlServer => Some(1433),
             DbKind::ClickHouse => Some(8123),
+            DbKind::MongoDb => Some(27017),
+            DbKind::Redis => Some(6379),
             DbKind::Sqlite | DbKind::DuckDb | DbKind::Generic => None,
         }
     }
@@ -69,6 +88,10 @@ impl DbKind {
             DbKind::CockroachDb => Some("defaultdb"),
             DbKind::SqlServer => Some("master"),
             DbKind::ClickHouse => Some("default"),
+            // A MongoDB session needs a database name; `test` is the shell's default.
+            DbKind::MongoDb => Some("test"),
+            // Redis database numbers start at 0.
+            DbKind::Redis => Some("0"),
             _ => None,
         }
     }
@@ -76,6 +99,11 @@ impl DbKind {
     /// Embedded / file based engines need a path instead of host and port.
     pub fn is_file_based(self) -> bool {
         matches!(self, DbKind::Sqlite | DbKind::DuckDb)
+    }
+
+    /// Document / key-value stores queried with a shell language, not SQL.
+    pub fn is_shell(self) -> bool {
+        matches!(self, DbKind::MongoDb | DbKind::Redis)
     }
 
     /// Engines speaking the PostgreSQL wire protocol.
@@ -98,6 +126,8 @@ impl DbKind {
             DbKind::SqlServer => "sqlserver",
             DbKind::ClickHouse => "clickhouse",
             DbKind::DuckDb => "duckdb",
+            DbKind::MongoDb => "mongodb",
+            DbKind::Redis => "redis",
             DbKind::Generic => "generic",
         }
     }
@@ -115,6 +145,8 @@ impl DbKind {
             "sqlserver" | "mssql" | "sql_server" | "microsoft" | "jtds" => DbKind::SqlServer,
             "clickhouse" => DbKind::ClickHouse,
             "duckdb" => DbKind::DuckDb,
+            "mongodb" | "mongo" | "documentdb" => DbKind::MongoDb,
+            "redis" | "rediss" | "valkey" | "keydb" | "dragonfly" => DbKind::Redis,
             "generic" | "sql" => DbKind::Generic,
             _ => return None,
         })
@@ -640,6 +672,23 @@ mod tests {
         assert!(f.matches("app_users"));
         assert!(!f.matches("app_users_old"));
         assert!(!f.matches("other"));
+    }
+
+    #[test]
+    fn shell_kinds_have_their_own_defaults() {
+        assert_eq!(DbKind::MongoDb.default_port(), Some(27017));
+        assert_eq!(DbKind::Redis.default_port(), Some(6379));
+        assert_eq!(DbKind::MongoDb.default_database(), Some("test"));
+        assert_eq!(DbKind::Redis.default_database(), Some("0"));
+        assert!(DbKind::MongoDb.is_shell() && DbKind::Redis.is_shell());
+        assert!(!DbKind::Postgres.is_shell());
+        assert_eq!(DbKind::from_id("mongodb+srv"), None);
+        assert_eq!(DbKind::from_id("mongo"), Some(DbKind::MongoDb));
+        assert_eq!(DbKind::from_id("valkey"), Some(DbKind::Redis));
+        assert_eq!(DbKind::MongoDb.id(), "mongodb");
+        assert_eq!(DbKind::Redis.id(), "redis");
+        // The JSON tag is the lowercase id, so the file stays readable.
+        assert_eq!(serde_json::to_string(&DbKind::MongoDb).unwrap(), "\"mongodb\"");
     }
 
     #[test]

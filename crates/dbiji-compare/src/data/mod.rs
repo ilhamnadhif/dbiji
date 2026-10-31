@@ -554,6 +554,13 @@ pub async fn run_data_compare(
     if job.source.key_columns.is_empty() {
         return Err(DbError::config(tr("Data compare needs at least one key column")));
     }
+    // The comparison reads rows with SQL (filters, orderings, counts): a
+    // document or key/value store has none.
+    for d in [src_dialect, dst_dialect] {
+        if d.kind().is_shell() {
+            return Err(DbError::unsupported(format!("Data compare needs SQL on both sides; {} speaks its own commands", d.kind().display_name())));
+        }
+    }
     if !job.target.key_columns.is_empty() && job.target.key_columns.len() != job.source.key_columns.len() {
         return Err(DbError::config(tr("Source and target must have the same number of key columns")));
     }

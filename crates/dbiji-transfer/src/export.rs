@@ -176,6 +176,9 @@ impl ExportItem {
     fn sql(&self, dialect: &dyn Dialect) -> String {
         match self {
             ExportItem::Query { sql, .. } => sql.clone(),
+            // A shell language (MongoDB, Redis) has its own read statement;
+            // the SQL WHERE clause of the item does not apply to it.
+            ExportItem::Table { table, where_clause } if dialect.kind().is_shell() => dialect.table_data_query(table, None),
             ExportItem::Table { table, where_clause } => dialect.select_table(table, None, where_clause.as_deref(), None, None),
         }
     }

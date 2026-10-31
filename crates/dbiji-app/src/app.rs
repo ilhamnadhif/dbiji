@@ -513,7 +513,7 @@ impl DbijiApp {
                 // A view has rows but no table definition: SELECT * from it.
                 if kind == "select" && matches!(object.kind, dbiji_core::meta::ObjectKind::View | dbiji_core::meta::ObjectKind::MaterializedView) {
                     if let Some(live) = self.conns.live(&connection) {
-                        let text = format!("{};\n", live.dialect.select_table(&object, None, None, None, None));
+                        let text = format!("{};\n", live.dialect.table_data_query(&object, None));
                         self.commands.push(AppCommand::NewSqlEditor { connection: Some(connection), schema: Some(object.schema_ref()), text: Some(text) });
                     }
                     return;

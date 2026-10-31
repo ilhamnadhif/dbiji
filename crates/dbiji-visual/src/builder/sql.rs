@@ -270,7 +270,9 @@ impl QueryModel {
                 | DbKind::MariaDb
                 | DbKind::Sqlite
                 | DbKind::DuckDb
-                | DbKind::ClickHouse => sql.push_str(&format!("\nLIMIT {n}")),
+                | DbKind::ClickHouse
+                | DbKind::MongoDb
+                | DbKind::Redis => sql.push_str(&format!("\nLIMIT {n}")),
             }
         }
         sql

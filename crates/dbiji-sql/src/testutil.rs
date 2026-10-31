@@ -153,6 +153,7 @@ pub(crate) fn pg() -> SqlSyntax {
         extra_ident_chars: "$",
         ident_case: IdentCase::Lower,
         case_sensitive_names: false,
+        shell: None,
     }
 }
 
@@ -181,6 +182,7 @@ pub(crate) fn mysql() -> SqlSyntax {
         extra_ident_chars: "$",
         ident_case: IdentCase::Preserve,
         case_sensitive_names: false,
+        shell: None,
     }
 }
 
@@ -209,6 +211,7 @@ pub(crate) fn sqlite() -> SqlSyntax {
         extra_ident_chars: "",
         ident_case: IdentCase::Preserve,
         case_sensitive_names: false,
+        shell: None,
     }
 }
 
@@ -237,6 +240,7 @@ pub(crate) fn tsql() -> SqlSyntax {
         extra_ident_chars: "#@$",
         ident_case: IdentCase::Preserve,
         case_sensitive_names: false,
+        shell: None,
     }
 }
 

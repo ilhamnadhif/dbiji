@@ -17,6 +17,8 @@ fn svg(kind: DbKind) -> Option<(&'static str, bool)> {
         DbKind::CockroachDb => (include_str!("../assets/db/cockroachlabs.svg"), false),
         DbKind::ClickHouse => (include_str!("../assets/db/clickhouse.svg"), true),
         DbKind::DuckDb => (include_str!("../assets/db/duckdb.svg"), true),
+        DbKind::MongoDb => (include_str!("../assets/db/mongodb.svg"), false),
+        DbKind::Redis => (include_str!("../assets/db/redis.svg"), false),
         DbKind::Generic => return None,
     })
 }

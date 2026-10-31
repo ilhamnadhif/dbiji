@@ -10,6 +10,8 @@ pub fn register_all(reg: &mut DriverRegistry) {
     reg.register(Arc::new(dbiji_driver_mssql::SqlServerDriver::new()));
     reg.register(Arc::new(dbiji_driver_clickhouse::ClickHouseDriver::new()));
     reg.register(Arc::new(dbiji_driver_sqlite::SqliteDriver::new()));
+    reg.register(Arc::new(dbiji_driver_mongodb::MongoDriver::new()));
+    reg.register(Arc::new(dbiji_driver_redis::RedisDriver::new()));
     #[cfg(feature = "duckdb")]
     reg.register(Arc::new(dbiji_driver_duckdb::DuckDbDriver::new()));
 }

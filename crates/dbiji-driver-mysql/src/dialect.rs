@@ -40,6 +40,7 @@ pub const fn mysql_syntax() -> SqlSyntax {
         extra_ident_chars: "$",
         ident_case: IdentCase::Preserve,
         case_sensitive_names: false,
+        shell: None,
     }
 }
 

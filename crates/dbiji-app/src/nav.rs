@@ -225,6 +225,8 @@ pub fn db_icon(kind: DbKind) -> &'static str {
     match kind {
         DbKind::Sqlite | DbKind::DuckDb => icon::FILE_SQL,
         DbKind::ClickHouse => icon::CHART_BAR,
+        DbKind::MongoDb => icon::FOLDERS,
+        DbKind::Redis => icon::KEY,
         _ => icon::DATABASE,
     }
 }
@@ -1571,15 +1573,18 @@ impl Navigator {
                         ui.close();
                     }
                 }
-                if ui.button((dbiji_icons::ic(icon::TABLE), tr("Create table"))).clicked() {
+                // Tables are created with SQL: a document or key/value store has
+                // no designer, ER diagram or SQL import.
+                let sql = cx.conns.live(conn).is_none_or(|l| !l.kind().is_shell());
+                if sql && ui.button((dbiji_icons::ic(icon::TABLE), tr("Create table"))).clicked() {
                     cx.push(AppCommand::CreateTable { connection: conn.clone(), schema: schema.clone() });
                     ui.close();
                 }
-                if ui.button((dbiji_icons::ic(icon::GRAPH), tr("ER diagram"))).clicked() {
+                if sql && ui.button((dbiji_icons::ic(icon::GRAPH), tr("ER diagram"))).clicked() {
                     cx.push(AppCommand::OpenErDiagram { connection: conn.clone(), schema: schema.clone(), tables: Vec::new() });
                     ui.close();
                 }
-                if ui.button((dbiji_icons::ic(icon::DOWNLOAD), tr("Import data"))).clicked() {
+                if sql && ui.button((dbiji_icons::ic(icon::DOWNLOAD), tr("Import data"))).clicked() {
                     cx.push(AppCommand::OpenImport { connection: conn.clone(), table: None, schema: Some(schema.clone()) });
                     ui.close();
                 }
@@ -1812,7 +1817,9 @@ pub fn tools_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, schema: Option<S
         cx.push(AppCommand::OpenBackup { connection: conn.to_string(), schema: schema.clone(), restore: true });
         ui.close();
     }
-    if ui.button((dbiji_icons::ic(icon::BLUEPRINT), tr("Query builder"))).clicked() {
+    // The query builder writes SQL.
+    let sql = cx.conns.live(conn).is_none_or(|l| !l.kind().is_shell());
+    if sql && ui.button((dbiji_icons::ic(icon::BLUEPRINT), tr("Query builder"))).clicked() {
         cx.push(AppCommand::OpenQueryBuilder { connection: conn.to_string(), schema: schema.clone() });
         ui.close();
     }
@@ -1820,7 +1827,9 @@ pub fn tools_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, schema: Option<S
         cx.push(AppCommand::OpenSearch { connection: Some(conn.to_string()), data: false });
         ui.close();
     }
-    if ui.button((dbiji_icons::ic(icon::TEXT_AA), tr("Search data"))).clicked() {
+    // The data search runs SQL over tables; document and key/value stores have none.
+    let sql_data = cx.conns.live(conn).is_none_or(|l| !matches!(l.config.kind, DbKind::MongoDb | DbKind::Redis));
+    if sql_data && ui.button((dbiji_icons::ic(icon::TEXT_AA), tr("Search data"))).clicked() {
         cx.push(AppCommand::OpenSearch { connection: Some(conn.to_string()), data: true });
         ui.close();
     }
@@ -1865,7 +1874,10 @@ pub fn object_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, obj: &ObjectRef
         cx.push(AppCommand::OpenObject { connection: c.clone(), object: obj.clone(), page: ObjectPage::Ddl });
         ui.close();
     }
-    if obj.kind.is_table_like() {
+    // Document and key/value stores have no table designer, ER diagram or SQL
+    // statements: their objects offer the data, the DDL and the exports only.
+    let sql = cx.conns.live(conn).is_none_or(|l| !l.kind().is_shell());
+    if obj.kind.is_table_like() && sql {
         if ui.button((dbiji_icons::ic(icon::PENCIL), tr("Edit table"))).clicked() {
             cx.push(AppCommand::EditTable { connection: c.clone(), table: obj.clone() });
             ui.close();
@@ -1875,21 +1887,23 @@ pub fn object_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, obj: &ObjectRef
             ui.close();
         }
     }
-    ui.menu_button((dbiji_icons::ic(icon::FILE_SQL), tr("Generate SQL")), |ui| {
-        for (label, kind) in [("SELECT", "select"), ("INSERT", "insert"), ("UPDATE", "update"), ("DELETE", "delete"), ("UPSERT", "upsert"), ("DDL", "ddl")] {
-            if (obj.kind.is_table_like() || kind == "ddl" || kind == "select") && ui.button(label).clicked() {
-                cx.push(AppCommand::GenerateSql { connection: c.clone(), object: obj.clone(), kind: kind.to_string() });
-                ui.close();
+    if sql {
+        ui.menu_button((dbiji_icons::ic(icon::FILE_SQL), tr("Generate SQL")), |ui| {
+            for (label, kind) in [("SELECT", "select"), ("INSERT", "insert"), ("UPDATE", "update"), ("DELETE", "delete"), ("UPSERT", "upsert"), ("DDL", "ddl")] {
+                if (obj.kind.is_table_like() || kind == "ddl" || kind == "select") && ui.button(label).clicked() {
+                    cx.push(AppCommand::GenerateSql { connection: c.clone(), object: obj.clone(), kind: kind.to_string() });
+                    ui.close();
+                }
             }
-        }
-    });
+        });
+    }
     if obj.kind.has_data() {
         ui.separator();
         if ui.button((dbiji_icons::ic(icon::EXPORT), tr("Export data"))).clicked() {
             cx.push(AppCommand::OpenExport { connection: c.clone(), objects: vec![obj.clone()], sql: None });
             ui.close();
         }
-        if obj.kind.is_table_like() {
+        if obj.kind.is_table_like() && sql {
             if ui.button((dbiji_icons::ic(icon::DOWNLOAD), tr("Import data"))).clicked() {
                 cx.push(AppCommand::OpenImport { connection: c.clone(), table: Some(obj.clone()), schema: Some(obj.schema_ref()) });
                 ui.close();

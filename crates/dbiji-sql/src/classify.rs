@@ -132,6 +132,10 @@ pub enum Danger {
     Truncate,
     /// `ALTER ... DROP` (columns, constraints, partitions ...).
     AlterDrop,
+    /// Redis `FLUSHDB` / `FLUSHALL`: every key of a database goes.
+    Flush,
+    /// A command that stops or reconfigures the server (`SHUTDOWN`, `DEBUG`).
+    ServerCommand,
 }
 
 impl Danger {
@@ -143,6 +147,8 @@ impl Danger {
             Danger::Drop => "DROP permanently removes the object",
             Danger::Truncate => "TRUNCATE removes every row",
             Danger::AlterDrop => "ALTER ... DROP removes part of the object",
+            Danger::Flush => "FLUSH removes every key of the database",
+            Danger::ServerCommand => "The command stops or reconfigures the server",
         }
     }
 }
@@ -207,6 +213,9 @@ impl StatementInfo {
 
 /// Classify one statement.
 pub fn classify(stmt: &str, syntax: &SqlSyntax) -> StatementInfo {
+    if let Some(shell) = syntax.shell {
+        return crate::shell::classify_shell(stmt, shell);
+    }
     let tokens = tokenize(stmt, syntax);
     classify_tokens(stmt, &tokens, syntax)
 }
@@ -217,6 +226,12 @@ pub fn split_and_classify(
     syntax: &SqlSyntax,
     opts: &SplitOptions,
 ) -> Vec<(StatementSpan, StatementInfo)> {
+    if let Some(shell) = syntax.shell {
+        return crate::shell::split_shell(src)
+            .into_iter()
+            .map(|s| (s, crate::shell::classify_shell(s.text(src), shell)))
+            .collect();
+    }
     let split = split_tokens(src, syntax, opts);
     split
         .statements

@@ -528,7 +528,7 @@ impl Prep {
                 let ddl = session.lock().await.object_ddl(&object).await.map_err(|e| e.with_context(trf("Reading the definition of {}", &[&object.display_path()])))?;
                 input.ddl = Some(ddl);
                 if sample && object.kind.has_data() {
-                    let sql = dialect.limit_query(&dialect.select_table(&object, None, None, None, None), SAMPLE_ROWS, 0);
+                    let sql = dialect.table_data_query(&object, Some(SAMPLE_ROWS));
                     if let Ok((cols, rows)) = session.query_all(&sql, &[]).await {
                         let mut text = cols.iter().map(|c| c.name.as_str()).collect::<Vec<_>>().join("\t");
                         for r in rows {

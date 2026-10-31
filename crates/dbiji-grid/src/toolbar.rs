@@ -379,12 +379,20 @@ pub struct ResultToolbar<'a> {
     model: &'a mut ResultModel,
     grid: &'a mut DataGridState,
     state: &'a mut ToolbarState,
+    /// Offer the actions that build SQL (count the rows with a wrapping query).
+    sql_actions: bool,
 }
 
 impl<'a> ResultToolbar<'a> {
     /// New toolbar.
     pub fn new(model: &'a mut ResultModel, grid: &'a mut DataGridState, state: &'a mut ToolbarState) -> Self {
-        ResultToolbar { model, grid, state }
+        ResultToolbar { model, grid, state, sql_actions: true }
+    }
+
+    /// Turn the SQL-only actions off (document and key-value stores).
+    pub fn sql_actions(mut self, on: bool) -> Self {
+        self.sql_actions = on;
+        self
     }
 
     /// Show it. Returns actions for the application.
@@ -394,7 +402,7 @@ impl<'a> ResultToolbar<'a> {
     /// right the status, a message of the application and the fetch
     /// buttons next to the row count they change.
     pub fn show(self, ui: &mut Ui) -> Vec<GridAction> {
-        let ResultToolbar { model, grid, state } = self;
+        let ResultToolbar { model, grid, state, sql_actions } = self;
         let mut actions = Vec::new();
         auto_refresh_tick(ui, model, grid.is_editing(), state, &mut actions);
         ui.horizontal(|ui| {
@@ -505,7 +513,7 @@ impl<'a> ResultToolbar<'a> {
             // --- right: fetch buttons, status, messages (right to left)
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let fetching = model.fetch.fetching;
-                if ui.add_enabled(!model.fetch.counting, Button::new(dbiji_icons::ic(icon::HASH))).on_hover_text(tr("Calculate total row count")).clicked() {
+                if sql_actions && ui.add_enabled(!model.fetch.counting, Button::new(dbiji_icons::ic(icon::HASH))).on_hover_text(tr("Calculate total row count")).clicked() {
                     actions.push(GridAction::CountTotal);
                 }
                 if model.fetch.has_more {

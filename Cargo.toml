@@ -22,6 +22,8 @@ dbiji-driver-sqlite = { path = "crates/dbiji-driver-sqlite" }
 dbiji-driver-mssql = { path = "crates/dbiji-driver-mssql" }
 dbiji-driver-clickhouse = { path = "crates/dbiji-driver-clickhouse" }
 dbiji-driver-duckdb = { path = "crates/dbiji-driver-duckdb" }
+dbiji-driver-mongodb = { path = "crates/dbiji-driver-mongodb" }
+dbiji-driver-redis = { path = "crates/dbiji-driver-redis" }
 dbiji-net = { path = "crates/dbiji-net" }
 dbiji-config = { path = "crates/dbiji-config" }
 dbiji-transfer = { path = "crates/dbiji-transfer" }
@@ -48,6 +50,8 @@ mysql_async = { version = "0.37", default-features = false, features = ["default
 rusqlite = { version = "0.40", features = ["bundled", "column_metadata", "backup", "functions", "hooks", "limits"] }
 tiberius = { version = "0.13", default-features = false, features = ["tds73", "chrono", "rustls", "sql-browser-tokio"] }
 duckdb = { version = "1.10506", features = ["bundled"] }
+mongodb = { version = "3.9", default-features = false, features = ["compat-3-0-0", "rustls-tls-aws-lc"] }
+redis = { version = "1.8", default-features = false, features = ["tokio-comp", "tokio-rustls-comp", "aio"] }
 
 # --- TLS / network / crypto
 rustls = { version = "0.23", features = ["aws_lc_rs", "logging", "std", "tls12"] }
@@ -124,6 +128,17 @@ lto = "fat"
 codegen-units = 1
 strip = true
 panic = "unwind"
+
+# The MongoDB and Redis clients are large and rarely on the hot path: their
+# code is optimised for size, the rest of the binary for speed.
+[profile.release.package.mongodb]
+opt-level = "z"
+
+[profile.release.package.bson]
+opt-level = "z"
+
+[profile.release.package.redis]
+opt-level = "z"
 
 [profile.bench]
 inherits = "release"

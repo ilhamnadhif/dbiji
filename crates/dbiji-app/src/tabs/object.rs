@@ -551,7 +551,10 @@ impl TabView for ObjectEditorTab {
             if self.obj.kind.has_data() {
                 pages.push((ObjectPage::Statistics, tr("Statistics")));
             }
-            if self.obj.kind.is_table_like() {
+            // The ER diagram is SQL (tables and foreign keys): a collection or
+            // a key has none.
+            let sql = cx.conns.live(&self.conn).is_none_or(|l| !l.kind().is_shell());
+            if self.obj.kind.is_table_like() && sql {
                 pages.push((ObjectPage::Diagram, tr("Diagram")));
             }
             for (p, label) in pages {

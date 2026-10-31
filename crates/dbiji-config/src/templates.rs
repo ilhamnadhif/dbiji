@@ -129,7 +129,38 @@ pub fn builtin_templates() -> Vec<SqlTemplate> {
         SqlTemplate::new("expa", "Explain analyze", "EXPLAIN ANALYZE ${cursor}").for_kind(DbKind::Postgres),
         SqlTemplate::new("now", "Current timestamp", "CURRENT_TIMESTAMP${cursor}"),
         SqlTemplate::new("today", "Today's date literal", "DATE '${date}'${cursor}"),
+        // The shell languages have no SQL: their own snippets replace the SQL ones.
+        SqlTemplate::new("find", "Find documents", "db.${table}.find({${cursor}}).limit(20)").for_kind(DbKind::MongoDb),
+        SqlTemplate::new("find1", "Find one document", "db.${table}.findOne({${cursor}})").for_kind(DbKind::MongoDb),
+        SqlTemplate::new(
+            "aggr",
+            "Aggregate pipeline",
+            "db.${table}.aggregate([\n    {$match: {${cursor}}},\n    {$group: {_id: null, n: {$sum: 1}}}\n])",
+        )
+        .for_kind(DbKind::MongoDb),
+        SqlTemplate::new("cnt", "Count documents", "db.${table}.countDocuments({${cursor}})").for_kind(DbKind::MongoDb),
+        SqlTemplate::new("insdoc", "Insert a document", "db.${table}.insertOne({${cursor}})").for_kind(DbKind::MongoDb),
+        SqlTemplate::new("upddoc", "Update documents", "db.${table}.updateMany({${cursor}}, {$set: {}})")
+            .for_kind(DbKind::MongoDb),
+        SqlTemplate::new("deldoc", "Delete documents", "db.${table}.deleteMany({${cursor}})").for_kind(DbKind::MongoDb),
+        SqlTemplate::new("idx", "Create an index", "db.${table}.createIndex({${cursor}: 1})").for_kind(DbKind::MongoDb),
+        SqlTemplate::new("colls", "List collections", "show collections${cursor}").for_kind(DbKind::MongoDb),
+        SqlTemplate::new("dbs", "List databases", "show databases${cursor}").for_kind(DbKind::MongoDb),
+        SqlTemplate::new("get", "Get a key", "GET ${cursor}").for_kind(DbKind::Redis),
+        SqlTemplate::new("set", "Set a key", "SET ${cursor}").for_kind(DbKind::Redis),
+        SqlTemplate::new("hgetall", "All fields of a hash", "HGETALL ${cursor}").for_kind(DbKind::Redis),
+        SqlTemplate::new("lrange", "List range", "LRANGE ${cursor} 0 -1").for_kind(DbKind::Redis),
+        SqlTemplate::new("smembers", "Set members", "SMEMBERS ${cursor}").for_kind(DbKind::Redis),
+        SqlTemplate::new("zrange", "Sorted set range", "ZRANGE ${cursor} 0 -1 WITHSCORES").for_kind(DbKind::Redis),
+        SqlTemplate::new("scan", "Scan keys", "SCAN 0 MATCH ${cursor}* COUNT 100").for_kind(DbKind::Redis),
+        SqlTemplate::new("ttl", "Time to live", "TTL ${cursor}").for_kind(DbKind::Redis),
+        SqlTemplate::new("info", "Server information", "INFO${cursor}").for_kind(DbKind::Redis),
     ]
+}
+
+/// Do the generic (SQL) templates apply to `kind`? Not to a shell language.
+fn generic_applies(kind: Option<DbKind>) -> bool {
+    !kind.is_some_and(|k| k.is_shell())
 }
 
 /// User templates plus built-ins.
@@ -219,13 +250,15 @@ impl TemplateLibrary {
     /// wins over a generic one; user templates win over built-ins.
     pub fn find(&self, name: &str, kind: Option<DbKind>) -> Option<SqlTemplate> {
         let all = self.all();
-        let candidates = all.iter().filter(|t| t.enabled && t.name == name);
+        let candidates = all
+            .iter()
+            .filter(|t| t.enabled && t.name.eq_ignore_ascii_case(name));
         let mut generic = None;
         for t in candidates {
             if t.kind.is_some() && t.kind == kind {
                 return Some(t.clone());
             }
-            if t.kind.is_none() && generic.is_none() {
+            if t.kind.is_none() && generic.is_none() && generic_applies(kind) {
                 generic = Some(t.clone());
             }
         }
@@ -238,7 +271,12 @@ impl TemplateLibrary {
             .all()
             .into_iter()
             .filter(|t| {
-                t.enabled && t.name.starts_with(prefix) && (t.kind.is_none() || t.kind == kind)
+                // The name is typed in any case: `HG` finds `hgetall`.
+                t.enabled
+                    && t.name
+                        .to_ascii_lowercase()
+                        .starts_with(&prefix.to_ascii_lowercase())
+                    && (t.kind == kind || (t.kind.is_none() && generic_applies(kind)))
             })
             .map(|t| t.name)
             .collect();

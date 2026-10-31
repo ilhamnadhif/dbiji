@@ -327,7 +327,7 @@ impl<'a> ResultViewer<'a> {
             actions.extend(FilterBar::new(model, &mut state.grid, &mut state.toolbar).dialect(options.dialect.clone()).show(ui));
         });
         Panel::bottom(id.with("toolbar")).frame(bar_frame).show(ui, |ui| {
-            actions.extend(ResultToolbar::new(model, &mut state.grid, &mut state.toolbar).show(ui));
+            actions.extend(ResultToolbar::new(model, &mut state.grid, &mut state.toolbar).sql_actions(options.sql_actions).show(ui));
         });
         // Errors in a pop-up: a refused edit or a failed save each time, a failed fetch once.
         if let Some((message, true)) = state.toolbar.notice.clone() {

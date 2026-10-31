@@ -84,7 +84,7 @@ struct Savepoints {
 
 fn savepoint_sql(kind: DbKind) -> Option<Savepoints> {
     match kind {
-        DbKind::DuckDb | DbKind::ClickHouse => None,
+        DbKind::DuckDb | DbKind::ClickHouse | DbKind::MongoDb | DbKind::Redis => None,
         DbKind::SqlServer => Some(Savepoints { create: "SAVE TRANSACTION", release: None, rollback: "ROLLBACK TRANSACTION" }),
         _ => Some(Savepoints { create: "SAVEPOINT", release: Some("RELEASE SAVEPOINT"), rollback: "ROLLBACK TO SAVEPOINT" }),
     }
@@ -180,6 +180,11 @@ impl<'a> BatchWriter<'a> {
 
     /// Switch the session into the transaction mode of the scope.
     pub(crate) async fn begin(&mut self) -> DbResult<()> {
+        // Rows are written with SQL INSERT: a document or key/value store
+        // cannot take them (its own shell language would have to be used).
+        if self.dialect.kind().is_shell() {
+            return Err(DbError::unsupported(format!("Rows cannot be imported into {}: it has no SQL INSERT", self.dialect.kind().display_name())));
+        }
         let mode = self.session.transaction_mode();
         if mode == TransactionMode::Manual && self.session.in_transaction() {
             return Err(DbError::config("The session has an open transaction; commit or roll it back before writing data"));

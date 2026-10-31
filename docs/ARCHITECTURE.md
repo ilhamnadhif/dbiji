@@ -23,7 +23,7 @@ changed, so the application uses ~0% CPU while idle.
          │                           │
    dbiji-grid / dbiji-editor   drivers: postgres (+CockroachDB), mysql (+MariaDB),
    dbiji-visual (egui          sqlite, mssql (tiberius), clickhouse (HTTP), duckdb
-   widgets)                    (embedded, optional feature)
+   widgets)                    (optional), mongodb (shell language), redis
          │
    dbiji-config (settings, connections, secrets: Keychain / encrypted vault,
    DBeaver / pgpass / URL import, query history, projects & scripts)
@@ -37,7 +37,7 @@ changed, so the application uses ~0% CPU while idle.
 | --- | --- |
 | `dbiji-core` | Shared contract: `Value`/`DataKind`/`ColumnMeta`, `Driver`/`Session`/`QueryCursor` traits, metadata, DDL and plan models, `Dialect` + ANSI DDL helpers, `RowStore` (paged, spills to disk), `Secret`, i18n. |
 | `dbiji-sql` | Dialect-aware tokenizer, statement splitter (DELIMITER, GO, compound blocks, dollar quotes), classifier (read-only enforcement, dangerous statements), formatter, autocomplete and semantic analysis, parameters, client commands, outline, spell checker, SQL generation, fuzzy matching. |
-| `dbiji-driver-*` | One crate per product. Each implements `Driver`, `Session`, `QueryCursor`, `Dialect` and `DdlGenerator` and reads metadata from the system catalogs. |
+| `dbiji-driver-*` | One crate per product. Each implements `Driver`, `Session`, `QueryCursor`, `Dialect` and `DdlGenerator` and reads metadata from the system catalogs. MongoDB and Redis set `SqlSyntax::shell`: `dbiji-sql` then splits and classifies their statements with the shell rules instead of SQL, and `Dialect::table_data_query` gives the data editor their own read statement. |
 | `dbiji-net` | SSH tunnels (russh) and SOCKS5/HTTP CONNECT proxies, all exposed as a local TCP forwarder so every driver works through them unchanged. |
 | `dbiji-config` | Paths, settings, keymaps, connection store, secret stores, importers, query history (SQLite), projects/scripts/bookmarks/virtual model, SQL templates. |
 | `dbiji-transfer` | Streaming exporters (CSV, JSON, SQL, XLSX, Markdown, HTML, XML, TXT, DBUnit, PHP, Parquet), importers (CSV, XLSX, XML, JSON), type inference, migration between databases, mock data. |

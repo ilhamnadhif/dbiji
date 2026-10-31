@@ -66,6 +66,10 @@ pub fn diagnostics(
     syntax: &SqlSyntax,
     catalog: &dyn CompletionCatalog,
 ) -> Vec<Diagnostic> {
+    // The analysis is SQL: a shell language (MongoDB, Redis) has no tables to check.
+    if syntax.shell.is_some() {
+        return Vec::new();
+    }
     let tokens = tokenize(stmt, syntax);
     check(stmt, &tokens, catalog, &[])
 }
@@ -78,6 +82,9 @@ pub fn script_diagnostics(
     catalog: &dyn CompletionCatalog,
     opts: &SplitOptions,
 ) -> Vec<Diagnostic> {
+    if syntax.shell.is_some() {
+        return Vec::new();
+    }
     let split = split_tokens(src, syntax, opts);
     let mut created: Vec<(Option<String>, String)> = Vec::new();
     let mut out = Vec::new();

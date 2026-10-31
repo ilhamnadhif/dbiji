@@ -21,6 +21,16 @@ pub enum IdentCase {
     Preserve,
 }
 
+/// Non-SQL query language spoken by a driver: statements are split and
+/// classified by [`crate::dialect::Shell`] rules instead of SQL ones.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Shell {
+    /// MongoDB shell (`db.coll.find({...})`, `show collections`).
+    Mongo,
+    /// Redis commands (`GET key`, `SCAN 0 MATCH user:*`).
+    Redis,
+}
+
 /// Lexical description of a dialect, consumed by the tokenizer, highlighter,
 /// statement splitter and autocomplete.
 #[derive(Debug, Clone)]
@@ -71,6 +81,10 @@ pub struct SqlSyntax {
     /// Unquoted names are case sensitive (ClickHouse): a formatter must not
     /// change the case of a keyword-like name (`database`, `rows`, `table`).
     pub case_sensitive_names: bool,
+    /// The driver speaks a shell language, not SQL: the splitter ends
+    /// statements at `;` and at line breaks outside brackets, and the
+    /// classifier reads the command name.
+    pub shell: Option<Shell>,
 }
 
 impl SqlSyntax {
@@ -98,6 +112,7 @@ impl SqlSyntax {
             extra_ident_chars: "",
             ident_case: IdentCase::Upper,
             case_sensitive_names: false,
+            shell: None,
         }
     }
 
@@ -302,6 +317,14 @@ pub trait Dialect: Send + Sync + 'static {
         format!("SELECT {select_list} FROM ({}) dbiji_cnt", ansi::strip_trailing_semicolon(sql))
     }
 
+    /// Statement that reads the rows of `table` for the data editor.
+    ///
+    /// SQL products keep the `SELECT` of [`select_table`](Self::select_table);
+    /// a document or key/value store returns its own command.
+    fn table_data_query(&self, table: &ObjectRef, limit: Option<u64>) -> String {
+        self.select_table(table, None, None, None, limit)
+    }
+
     /// `SELECT` for browsing a table in the data editor.
     fn select_table(&self, table: &ObjectRef, columns: Option<&[String]>, where_clause: Option<&str>, order_by: Option<&str>, limit: Option<u64>) -> String {
         let cols = match columns {
@@ -424,7 +447,8 @@ pub trait Dialect: Send + Sync + 'static {
                 }
             }
             DbKind::CockroachDb | DbKind::ClickHouse => {}
-            DbKind::Sqlite | DbKind::DuckDb | DbKind::Generic => return None,
+            // A MongoDB database is created by its first collection.
+            DbKind::Sqlite | DbKind::DuckDb | DbKind::MongoDb | DbKind::Redis | DbKind::Generic => return None,
         }
         Some(sql)
     }

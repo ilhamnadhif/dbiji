@@ -296,6 +296,13 @@ pub async fn run_migration(
     let started = Instant::now();
     let src_dialect = source.dialect();
     let dst_dialect = target.dialect();
+    // Migration writes rows with SQL INSERT and creates tables with DDL: a
+    // document or key/value store is not a side of it.
+    for d in [&src_dialect, &dst_dialect] {
+        if d.kind().is_shell() {
+            return Err(DbError::unsupported(format!("Migration needs SQL on both sides; {} speaks its own commands", d.kind().display_name())));
+        }
+    }
     let mut src = cancellable(source.open(), cancel, None).await?;
     let mut dst = match cancellable(target.open(), cancel, None).await {
         Ok(s) => s,

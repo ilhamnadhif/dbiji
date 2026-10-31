@@ -328,6 +328,13 @@ pub fn map_driver(provider: &str, driver: &str) -> Option<DbKind> {
             DbKind::DuckDb
         } else if s.contains("clickhouse") {
             DbKind::ClickHouse
+        } else if s.contains("mongo") {
+            DbKind::MongoDb
+        } else if ["redis", "valkey", "keydb", "dragonfly"]
+            .iter()
+            .any(|p| s.contains(p))
+        {
+            DbKind::Redis
         } else if ["mssql", "sqlserver", "sql_server", "jtds"]
             .iter()
             .any(|p| s.contains(p))

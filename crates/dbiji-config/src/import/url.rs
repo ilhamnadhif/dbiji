@@ -76,6 +76,8 @@ fn kind_for_scheme(scheme: &str) -> Option<DbKind> {
         "clickhouse" | "ch" | "clickhouse+http" | "clickhouse+https" | "clickhouses" => {
             DbKind::ClickHouse
         }
+        "mongodb" | "mongo" | "mongodb+srv" => DbKind::MongoDb,
+        "redis" | "rediss" | "valkey" | "valkeys" => DbKind::Redis,
         _ => return None,
     })
 }
@@ -122,7 +124,8 @@ fn parse_bool(v: &str) -> Option<bool> {
 /// `sqlite:relative`, `jdbc:` variants of all of them (`jdbc:postgresql://`,
 /// `jdbc:mysql://`, `jdbc:mariadb://`, `jdbc:sqlite:path`,
 /// `jdbc:sqlserver://h:p;databaseName=x;user=..;password=..`, `jdbc:clickhouse://`,
-/// `jdbc:duckdb:`) and plain file paths ending in `.db`, `.sqlite`,
+/// `jdbc:duckdb:`, `mongodb://`, `mongodb+srv://`, `redis://`, `rediss://`)
+/// and plain file paths ending in `.db`, `.sqlite`,
 /// `.sqlite3`, `.db3`, `.duckdb`. Recognised query parameters: `sslmode` /
 /// `ssl-mode` / `sslMode`, `ssl` / `useSSL`, `sslrootcert`, `sslcert`,
 /// `sslkey`, `application_name`, `options`, `connect_timeout`, `user`,
@@ -371,7 +374,10 @@ fn parse_network_url(
                 (true, false, DbKind::SqlServer) => SslMode::VerifyFull,
                 (true, false, _) => SslMode::Require,
             };
-        } else if matches!(scheme, "clickhouse+https" | "clickhouses") {
+        } else if matches!(
+            scheme,
+            "clickhouse+https" | "clickhouses" | "rediss" | "valkeys"
+        ) {
             cfg.ssl.mode = SslMode::Require;
         }
     }
@@ -478,6 +484,8 @@ fn scheme_for(kind: DbKind) -> &'static str {
         DbKind::ClickHouse => "clickhouse",
         DbKind::Sqlite => "sqlite",
         DbKind::DuckDb => "duckdb",
+        DbKind::MongoDb => "mongodb",
+        DbKind::Redis => "redis",
         DbKind::Generic => "sql",
     }
 }

@@ -193,7 +193,10 @@ pub fn common_types(kind: DbKind) -> &'static [&'static str] {
             "INTERVAL",
             "JSON",
         ],
-        DbKind::Generic => &["INTEGER", "BIGINT", "SMALLINT", "DECIMAL", "REAL", "DOUBLE PRECISION", "BOOLEAN", "VARCHAR", "CHAR", "CLOB", "BLOB", "DATE", "TIME", "TIMESTAMP"],
+        // No DDL for document / key-value stores: the designer is not offered.
+        DbKind::MongoDb | DbKind::Redis | DbKind::Generic => {
+            &["INTEGER", "BIGINT", "SMALLINT", "DECIMAL", "REAL", "DOUBLE PRECISION", "BOOLEAN", "VARCHAR", "CHAR", "CLOB", "BLOB", "DATE", "TIME", "TIMESTAMP"]
+        }
     }
 }
 
@@ -217,12 +220,12 @@ fn new_column_types(kind: DbKind) -> ((&'static str, &'static str), (&'static st
         DbKind::SqlServer => (("int", ""), ("nvarchar", "255")),
         DbKind::ClickHouse => (("UInt64", ""), ("String", "")),
         DbKind::DuckDb => (("INTEGER", ""), ("VARCHAR", "")),
-        DbKind::Generic => (("INTEGER", ""), ("VARCHAR", "255")),
+        DbKind::MongoDb | DbKind::Redis | DbKind::Generic => (("INTEGER", ""), ("VARCHAR", "255")),
     }
 }
 
 fn supports_auto_increment(kind: DbKind) -> bool {
-    !matches!(kind, DbKind::ClickHouse | DbKind::DuckDb)
+    !matches!(kind, DbKind::ClickHouse | DbKind::DuckDb | DbKind::MongoDb | DbKind::Redis)
 }
 
 /// DDL runs in one transaction (all or nothing).

@@ -60,15 +60,24 @@ pub struct Notes {
 }
 
 /// The `## <version> …` sections of a changelog.
+///
+/// A heading that is not a version (`## Unreleased`) starts no section: its
+/// text belongs to no release and is skipped.
 pub fn parse_changelog(text: &str) -> Vec<Notes> {
     let mut out: Vec<Notes> = Vec::new();
+    let mut in_unnumbered = false;
     for line in text.lines() {
         if let Some(head) = line.strip_prefix("## ") {
             let head = head.trim().trim_start_matches('[');
             let (version, rest) = head.split_once(|c: char| c.is_whitespace() || c == ']').unwrap_or((head, ""));
+            let version = version.trim_start_matches(['v', 'V']).to_string();
+            in_unnumbered = !version.starts_with(|c: char| c.is_ascii_digit());
+            if in_unnumbered {
+                continue;
+            }
             let date = rest.trim().trim_start_matches(['-', '—', '–', ']', ' ']).trim().to_string();
-            out.push(Notes { version: version.trim_start_matches(['v', 'V']).to_string(), date, body: String::new() });
-        } else if let Some(n) = out.last_mut() {
+            out.push(Notes { version, date, body: String::new() });
+        } else if !in_unnumbered && let Some(n) = out.last_mut() {
             n.body.push_str(line);
             n.body.push('\n');
         }
@@ -755,6 +764,15 @@ mod tests {
         assert!(is_newer("0.2.0", "0.2.0-beta.1"));
         assert!(!is_newer("0.2.0-rc1", "0.2.0"));
         assert!(!is_newer("0.1.0", "0.1.0"));
+    }
+
+    #[test]
+    fn unnumbered_sections_are_skipped() {
+        let text = "# Changelog\n\n## Unreleased\n\n### Added\n- New\n\n## 0.2.0 — 2026-10-18\n\n- B\n";
+        let n = parse_changelog(text);
+        assert_eq!(n.len(), 1);
+        assert_eq!(n[0].version, "0.2.0");
+        assert_eq!(n[0].body, "- B");
     }
 
     #[test]

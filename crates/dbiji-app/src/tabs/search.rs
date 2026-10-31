@@ -103,6 +103,9 @@ pub fn match_predicate(d: &dyn Dialect, column: &str, text: &str, case_sensitive
             let p = lit(&like_contains(text, kind));
             if case_sensitive { format!("{c} LIKE {p} ESCAPE {esc}") } else { format!("LOWER({c}) LIKE LOWER({p}) ESCAPE {esc}") }
         }
+        // Document and key/value stores have no SQL: the tab refuses to run
+        // the data search for them (see `start_data`).
+        DbKind::MongoDb | DbKind::Redis => String::new(),
     }
 }
 
@@ -500,6 +503,11 @@ impl SearchTab {
 
     fn start_data(&mut self, cx: &mut AppContext) {
         self.notice = None;
+        if self.conn.as_ref().and_then(|c| cx.conns.live(c)).is_some_and(|l| matches!(l.config.kind, DbKind::MongoDb | DbKind::Redis)) {
+            self.notice = Some(tr("The data search reads SQL tables; this database has none.").to_string());
+            self.data_requested = false;
+            return;
+        }
         let text = self.text.clone();
         if text.trim().is_empty() {
             self.notice = Some(tr("Enter the text to find.").to_string());

@@ -434,6 +434,7 @@ impl GridFrame<'_> {
         }
         // The header's tooltip summarises the fetched rows; this asks the server.
         if !self.model.is_virtual_column(col)
+            && self.options.sql_actions
             && item(ui, icon::CHART_BAR, tr("Statistics of the whole column"), None)
                 .on_hover_text(tr("Rows, NULLs, distinct values, the smallest and the largest, over all rows of the query"))
                 .clicked()

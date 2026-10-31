@@ -101,6 +101,8 @@ fn lexical(kind: DbKind) -> SqlSyntax {
             s.backslash_escapes = true;
         }
         DbKind::Generic => {}
+        // Not SQL: the shell syntaxes are checked by their drivers.
+        DbKind::MongoDb | DbKind::Redis => {}
     }
     s
 }
@@ -114,6 +116,7 @@ fn parser_dialect(kind: DbKind) -> Box<dyn ParserDialect> {
         DbKind::ClickHouse => Box::new(ClickHouseDialect {}),
         DbKind::DuckDb => Box::new(DuckDbDialect {}),
         DbKind::Generic => Box::new(GenericDialect {}),
+        DbKind::MongoDb | DbKind::Redis => Box::new(GenericDialect {}),
     }
 }
 
@@ -168,6 +171,10 @@ fn checkable(stmt: &str, kind: DbKind) -> bool {
 /// Parse `stmt` with the `sqlparser` dialect for `kind`; `None` when it
 /// parses or is not checked (see the module docs).
 pub fn syntax_check(stmt: &str, kind: DbKind) -> Option<SyntaxIssue> {
+    // Document and key/value stores are not SQL: `sqlparser` would reject them.
+    if matches!(kind, DbKind::MongoDb | DbKind::Redis) {
+        return None;
+    }
     if !checkable(stmt, kind) {
         return None;
     }

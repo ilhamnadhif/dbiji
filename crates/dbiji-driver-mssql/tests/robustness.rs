@@ -1,9 +1,13 @@
 //! Arbitrary-input robustness: the hand written T-SQL scanners, the plan
 //! parser and the dialect helpers must never panic.
 
+use dbiji_core::config::{ConnectionConfig, SslMode};
 use dbiji_core::dialect::Dialect;
-use dbiji_driver_mssql::MsSqlDialect;
+use dbiji_core::driver::{ConnectParams, Driver};
+use dbiji_core::{DbKind, ErrorKind, Secret};
 use dbiji_driver_mssql::sqltext::*;
+use dbiji_driver_mssql::{MsSqlDialect, SqlServerDriver};
+use std::time::Duration;
 
 /// Deterministic pseudo random strings over a nasty alphabet.
 fn samples() -> Vec<String> {
@@ -70,4 +74,98 @@ fn scanners_never_panic() {
         let _ = d.ddl().map_type(dbiji_core::DbKind::Postgres, &s, dbiji_core::value::DataKind::Text);
         let _ = d.ddl().map_type(dbiji_core::DbKind::ClickHouse, &s, dbiji_core::value::DataKind::Text);
     }
+}
+
+/// Counts the TCP connections a failing attempt opens, so a "retried without
+/// TLS" claim can be checked instead of assumed.
+struct DroppingServer {
+    port: u16,
+    accepted: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    task: tokio::task::JoinHandle<()>,
+}
+
+impl DroppingServer {
+    async fn start() -> DroppingServer {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        let accepted = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = accepted.clone();
+        // A server that speaks TLS 1.0 only (SQL Server 2005 and older) answers
+        // our TLS 1.2 ClientHello by dropping the connection.
+        let task = tokio::spawn(async move {
+            loop {
+                match listener.accept().await {
+                    Ok((sock, _)) => {
+                        counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        drop(sock);
+                    }
+                    Err(_) => return,
+                }
+            }
+        });
+        DroppingServer { port, accepted, task }
+    }
+
+    fn connections(&self) -> usize {
+        self.accepted.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+impl Drop for DroppingServer {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
+fn params_for(port: u16, mode: SslMode) -> ConnectParams {
+    let mut cfg = ConnectionConfig::new(DbKind::SqlServer, "legacy");
+    cfg.host = "127.0.0.1".into();
+    cfg.port = Some(port);
+    cfg.user = Some("sa".into());
+    cfg.ssl.mode = mode;
+    cfg.init.connect_timeout_secs = 5;
+    ConnectParams::from_config(&cfg, Some(Secret::new("pw")))
+}
+
+/// A server that speaks TLS 1.0 only (SQL Server 2005 and older) answers our
+/// TLS 1.2 ClientHello with a fatal alert or closes the socket. `prefer` must
+/// then try again without TLS; `require` must not.
+#[tokio::test]
+async fn a_legacy_tls_server_is_retried_without_tls() {
+    let server = DroppingServer::start().await;
+
+    let err = SqlServerDriver::new().connect(&params_for(server.port, SslMode::Prefer)).await.err().expect("no connection");
+    assert!(matches!(err.kind, ErrorKind::Connection | ErrorKind::Tls), "{err:?}");
+    assert!(!err.message.is_empty());
+    // Two attempts: the encrypted one, then the plain one.
+    assert_eq!(server.connections(), 2, "prefer must retry without TLS once");
+
+    let before = server.connections();
+    let err = SqlServerDriver::new().connect(&params_for(server.port, SslMode::Require)).await.err().expect("no connection");
+    assert!(matches!(err.kind, ErrorKind::Tls | ErrorKind::Connection), "{err:?}");
+    // `require` means TLS or nothing: one attempt, no downgrade.
+    assert_eq!(server.connections() - before, 1, "require must not downgrade to plain TCP");
+
+    // `disable` goes straight to plain TCP (SQL Server 2005 does not force
+    // encryption by default, so this is the way in for those servers).
+    let before = server.connections();
+    let _ = SqlServerDriver::new().connect(&params_for(server.port, SslMode::Disable)).await;
+    assert_eq!(server.connections() - before, 1, "disable must not attempt TLS");
+}
+
+/// A refused port is a connection error naming the address, and it returns
+/// long before the connect timeout.
+#[tokio::test]
+async fn a_closed_port_fails_as_a_connection_error() {
+    let mut cfg = ConnectionConfig::new(DbKind::SqlServer, "closed");
+    cfg.host = "127.0.0.1".into();
+    cfg.port = Some(1);
+    cfg.user = Some("sa".into());
+    cfg.ssl.mode = SslMode::VerifyFull;
+    cfg.init.connect_timeout_secs = 2;
+    let params = ConnectParams::from_config(&cfg, Some(Secret::new("pw")));
+    let started = std::time::Instant::now();
+    let err = SqlServerDriver::new().connect(&params).await.err().expect("no connection");
+    assert!(matches!(err.kind, ErrorKind::Connection | ErrorKind::Timeout), "{err:?}");
+    assert!(started.elapsed() < Duration::from_secs(10));
 }

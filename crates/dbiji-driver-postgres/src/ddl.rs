@@ -1154,7 +1154,8 @@ pub(crate) fn map_type(source: DbKind, data_type: &str, kind: DataKind) -> Strin
                 _ => default_type_for(kind).to_string(),
             }
         }
-        DbKind::Generic => {
+        // Document / key-value stores carry no SQL type names: map by logical kind.
+        DbKind::Generic | DbKind::MongoDb | DbKind::Redis => {
             let k = DataKind::guess_from_type_name(raw);
             match k {
                 DataKind::Text if base.starts_with("varchar") || base.starts_with("character varying") => with_args("varchar", &args),

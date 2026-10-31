@@ -689,9 +689,10 @@ pub(crate) fn reload_table_def(cx: &mut AppContext, conn: &str, table: &ObjectRe
     }
 }
 
-/// Connection picker over all configured connections.
-pub(crate) fn connection_combo(ui: &mut Ui, cx: &AppContext, id: impl std::hash::Hash + std::fmt::Debug, value: &mut Option<String>) -> bool {
-    let conns: Vec<(String, String)> = cx.conns.configs().iter().map(|c| (c.id.clone(), c.name.clone())).collect();
+/// Connection picker; `sql_only` leaves out document and key/value stores,
+/// which take no SQL rows (import and migration write rows with `INSERT`).
+pub(crate) fn connection_combo_sql(ui: &mut Ui, cx: &AppContext, id: impl std::hash::Hash + std::fmt::Debug, value: &mut Option<String>, sql_only: bool) -> bool {
+    let conns: Vec<(String, String)> = cx.conns.configs().iter().filter(|c| !sql_only || !c.kind.is_shell()).map(|c| (c.id.clone(), c.name.clone())).collect();
     let current = value.as_ref().and_then(|v| conns.iter().find(|(i, _)| i == v)).map(|(_, n)| n.clone()).unwrap_or_else(|| tr("Choose…").to_string());
     let mut changed = false;
     egui::ComboBox::from_id_salt(id).selected_text(current).width(200.0).show_ui(ui, |ui| {

@@ -37,6 +37,8 @@ dbiji-driver-postgres.workspace = true
 dbiji-driver-mssql.workspace = true
 dbiji-driver-clickhouse.workspace = true
 dbiji-driver-sqlite.workspace = true
+dbiji-driver-mongodb.workspace = true
+dbiji-driver-redis.workspace = true
 dbiji-driver-duckdb = { workspace = true, optional = true }
 dbiji-transfer.workspace = true
 eframe.workspace = true

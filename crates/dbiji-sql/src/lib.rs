@@ -28,6 +28,7 @@
 //! | [`generate`](mod@generate) | [`select_sql`](fn@select_sql), [`rows_insert_sql`](fn@rows_insert_sql) ... | SQL generation |
 //! | [`fuzzy`](mod@fuzzy) | [`fuzzy_score`](fn@fuzzy_score), [`fuzzy_indices`](fn@fuzzy_indices) | command palette |
 //! | [`position`](mod@position) | [`line_col`](fn@line_col), [`char_pos_to_byte`](fn@char_pos_to_byte) | error positions |
+//! | [`shell`](mod@shell) | [`split_shell`](fn@split_shell), [`classify_shell`](fn@classify_shell) | MongoDB / Redis scripts |
 //! | [`syntax_check`](mod@syntax_check) | [`syntax_check`](fn@syntax_check) | pre-execution warnings |
 
 #![warn(missing_docs)]
@@ -45,6 +46,7 @@ pub mod highlight;
 pub mod outline;
 pub mod params;
 pub mod position;
+pub mod shell;
 pub mod spell;
 pub mod split;
 pub mod syntax_check;
@@ -108,6 +110,7 @@ pub use highlight::{HighlightClass, highlight};
 pub use outline::{OutlineItem, OutlineKind, outline};
 pub use params::{ParamKind, ParamOptions, ParamRef, find_parameters, parameter_names, substitute};
 pub use position::{char_pos_to_byte, line_col, offset_of_line};
+pub use shell::{classify_shell, split_shell};
 pub use spell::{SpellChecker, SpellIssue, check_spelling};
 pub use split::{BlankLineMode, SplitOptions, StatementSpan, split_statements, statement_at};
 pub use syntax_check::{SyntaxIssue, syntax_check};

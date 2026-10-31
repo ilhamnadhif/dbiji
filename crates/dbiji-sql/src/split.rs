@@ -118,6 +118,9 @@ pub(crate) struct Split {
 
 /// Split a script into statements.
 pub fn split_statements(src: &str, syntax: &SqlSyntax, opts: &SplitOptions) -> Vec<StatementSpan> {
+    if syntax.shell.is_some() {
+        return crate::shell::split_shell(src);
+    }
     split_tokens(src, syntax, opts)
         .statements
         .into_iter()
@@ -139,6 +142,9 @@ pub fn statement_at(
     opts: &SplitOptions,
 ) -> Option<StatementSpan> {
     let offset = floor_char_boundary(src, offset);
+    if syntax.shell.is_some() {
+        return crate::shell::statement_at(src, offset);
+    }
     let split = split_tokens(src, syntax, opts);
     let spans: Vec<StatementSpan> = split.statements.iter().map(|s| s.span).collect();
     pick_statement(&spans, src, offset)

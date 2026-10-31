@@ -37,6 +37,7 @@ pub const fn clickhouse_syntax() -> SqlSyntax {
         extra_ident_chars: "",
         ident_case: IdentCase::Preserve,
         case_sensitive_names: true,
+        shell: None,
     }
 }
 

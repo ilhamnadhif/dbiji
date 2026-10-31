@@ -379,6 +379,7 @@ pub static SQLITE_SYNTAX: SqlSyntax = SqlSyntax {
     extra_ident_chars: "$",
     ident_case: IdentCase::Preserve,
     case_sensitive_names: false,
+    shell: None,
 };
 
 /// True when `ident` must be quoted in SQLite: empty, not a plain

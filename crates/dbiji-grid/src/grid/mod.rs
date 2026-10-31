@@ -96,6 +96,9 @@ pub struct GridOptions {
     pub max_tooltip_chars: usize,
     /// Record view: hide the columns that are NULL or empty.
     pub record_hide_empty: bool,
+    /// Offer the SQL-only actions (count the rows with a wrapping query):
+    /// false for document / key-value stores that have no SQL.
+    pub sql_actions: bool,
 }
 
 impl std::fmt::Debug for GridOptions {
@@ -134,6 +137,7 @@ impl Default for GridOptions {
             max_copy_cells: 1_000_000,
             max_tooltip_chars: 2_000,
             record_hide_empty: false,
+            sql_actions: true,
         }
     }
 }

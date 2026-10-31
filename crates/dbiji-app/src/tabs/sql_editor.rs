@@ -694,7 +694,10 @@ impl SqlEditorTab {
             let k = dbiji_sql::classify(&p.sql, self.lang.syntax()).kind;
             matches!(k, dbiji_sql::StatementKind::Create | dbiji_sql::StatementKind::Alter | dbiji_sql::StatementKind::Drop | dbiji_sql::StatementKind::Rename)
         });
-        let smart = cx.settings.execution.smart_commit && prepared.has_writes && session.tx_state().mode == TransactionMode::Auto;
+        // Smart commit needs transactions: document and key/value stores commit
+        // every statement on its own.
+        let transactional = cx.conns.live(&conn).is_none_or(|l| l.driver.info().capabilities.transactions);
+        let smart = cx.settings.execution.smart_commit && transactional && prepared.has_writes && session.tx_state().mode == TransactionMode::Auto;
         let opts = ExecOpts {
             fetch_size: cx.settings.results.effective_fetch_size() as usize,
             stop_on_error: cx.settings.execution.stop_on_error,
@@ -1324,10 +1327,14 @@ impl SqlEditorTab {
             })
             .response
             .on_hover_text(tr("More editor commands"));
-            ui.separator();
-            // Transaction controls.
+            // Transaction controls: a driver without transactions (MongoDB,
+            // Redis) commits every statement on its own, so they are hidden.
+            let transactional = self.conn.as_ref().and_then(|c| cx.conns.live(c)).is_none_or(|l| l.driver.info().capabilities.transactions);
+            if transactional {
+                ui.separator();
+            }
             let tx = match &self.session {
-                SessionSlot::Ready(s) => Some(s.tx_state()),
+                SessionSlot::Ready(s) if transactional => Some(s.tx_state()),
                 _ => None,
             };
             let manual = tx.as_ref().is_some_and(|t| t.mode == TransactionMode::Manual);

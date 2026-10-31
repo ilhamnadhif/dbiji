@@ -110,7 +110,7 @@ impl ChangePasswordTab {
             let changed: DbResult<()> = async {
                 let mut s = driver.connect(&params).await?;
                 let r = async {
-                    crate::conn::init_session(s.as_mut(), &cfg, &params).await?;
+                    crate::conn::init_session(s.as_mut(), &cfg, &params, driver.as_ref()).await?;
                     dbiji_core::driver::execute_update(s.as_mut(), &sql, &[]).await?;
                     if s.transaction_mode() == TransactionMode::Manual {
                         s.commit().await?;

@@ -696,7 +696,7 @@ impl SqlEditorTab {
         });
         // Smart commit needs transactions: document and key/value stores commit
         // every statement on its own.
-        let transactional = cx.conns.live(&conn).is_none_or(|l| l.driver.info().capabilities.transactions);
+        let transactional = self.transactional(cx);
         let smart = cx.settings.execution.smart_commit && transactional && prepared.has_writes && session.tx_state().mode == TransactionMode::Auto;
         let opts = ExecOpts {
             fetch_size: cx.settings.results.effective_fetch_size() as usize,
@@ -1067,7 +1067,18 @@ impl SqlEditorTab {
         }
     }
 
+    /// The connection's driver supports transactions. A document or key/value
+    /// store (MongoDB, Redis) commits every command on its own, so the commit
+    /// controls and smart commit are hidden and manual commit is not offered.
+    fn transactional(&self, cx: &AppContext) -> bool {
+        self.conn.as_ref().and_then(|c| cx.conns.live(c)).is_none_or(|l| l.driver.info().capabilities.transactions)
+    }
+
     fn set_tx_mode(&mut self, cx: &mut AppContext, mode: TransactionMode) {
+        if mode == TransactionMode::Manual && !self.transactional(cx) {
+            cx.toasts.info(tr("This connection has no transactions: every command commits on its own."));
+            return;
+        }
         let Some(s) = self.session(cx) else { return };
         // Leaving manual mode commits the open transaction: its failure is reported like a Commit's.
         if mode == TransactionMode::Auto && s.tx_state().in_transaction {
@@ -1329,7 +1340,7 @@ impl SqlEditorTab {
             .on_hover_text(tr("More editor commands"));
             // Transaction controls: a driver without transactions (MongoDB,
             // Redis) commits every statement on its own, so they are hidden.
-            let transactional = self.conn.as_ref().and_then(|c| cx.conns.live(c)).is_none_or(|l| l.driver.info().capabilities.transactions);
+            let transactional = self.transactional(cx);
             if transactional {
                 ui.separator();
             }

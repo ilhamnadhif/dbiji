@@ -279,7 +279,7 @@ impl AlterDatabaseDialog {
             }
             let mut s = driver.connect(&params).await?;
             let r = async {
-                crate::conn::init_session(s.as_mut(), &cfg, &params).await?;
+                crate::conn::init_session(s.as_mut(), &cfg, &params, driver.as_ref()).await?;
                 s.set_transaction_mode(TransactionMode::Auto).await?;
                 if disconnect_others {
                     dbiji_core::driver::query_all(s.as_mut(), &terminate, &[]).await.map_err(|e| e.with_context(terminate.clone()))?;

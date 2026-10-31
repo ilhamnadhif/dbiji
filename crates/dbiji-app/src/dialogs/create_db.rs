@@ -182,7 +182,7 @@ impl CreateDatabaseDialog {
             self.job = Some(cx.backend.spawn(async move {
                 let mut s = driver.connect(&params).await?;
                 let r = async {
-                    crate::conn::init_session(s.as_mut(), &cfg, &params).await?;
+                    crate::conn::init_session(s.as_mut(), &cfg, &params, driver.as_ref()).await?;
                     // Outside any transaction: CREATE DATABASE cannot run in one.
                     s.set_transaction_mode(TransactionMode::Auto).await?;
                     dbiji_core::driver::execute_update(s.as_mut(), &stmt, &[]).await.map_err(|e| e.with_context(stmt.clone()))?;

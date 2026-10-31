@@ -93,7 +93,7 @@ impl SessionFactory for AppSessionFactory {
         let mut s = tokio::time::timeout(timeout, self.driver.connect(&self.params))
             .await
             .map_err(|_| DbError::timeout(trf("Connection timed out after {}s", &[&timeout.as_secs()])))??;
-        init_session(s.as_mut(), &self.config, &self.params).await?;
+        init_session(s.as_mut(), &self.config, &self.params, self.driver.as_ref()).await?;
         Ok(s)
     }
 

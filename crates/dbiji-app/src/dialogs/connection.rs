@@ -460,13 +460,17 @@ impl ConnectionDialog {
                 ui.checkbox(&mut self.cfg.read_only, tr("Read-only"));
             });
             ui.end_row();
-            ui.label(tr("Auto-commit"));
-            ui.horizontal(|ui| {
-                ui.radio_value(&mut self.auto_commit_choice, 0, tr("Connection type default"));
-                ui.radio_value(&mut self.auto_commit_choice, 1, tr("On"));
-                ui.radio_value(&mut self.auto_commit_choice, 2, tr("Off (manual commit)"));
-            });
-            ui.end_row();
+            // A driver without transactions (Redis, MongoDB) commits every
+            // command on its own: the choice could only fail at connect time.
+            if cx.conns.registry.get(self.cfg.kind).is_some_and(|d| d.info().capabilities.transactions) {
+                ui.label(tr("Auto-commit"));
+                ui.horizontal(|ui| {
+                    ui.radio_value(&mut self.auto_commit_choice, 0, tr("Connection type default"));
+                    ui.radio_value(&mut self.auto_commit_choice, 1, tr("On"));
+                    ui.radio_value(&mut self.auto_commit_choice, 2, tr("Off (manual commit)"));
+                });
+                ui.end_row();
+            }
         });
         if self.cfg.kind.is_file_based() {
             return;

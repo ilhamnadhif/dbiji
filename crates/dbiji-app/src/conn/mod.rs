@@ -191,7 +191,7 @@ impl LiveConnection {
             let label = format!("{} / {db}", cfg.name);
             *entry = Loadable::Loading(backend.spawn(async move {
                 let mut s = driver.connect(&params).await?;
-                init_session(s.as_mut(), &cfg, &params).await?;
+                init_session(s.as_mut(), &cfg, &params, driver.as_ref()).await?;
                 Ok(SessionHandle::new(s, label, Some(db)))
             }));
         }
@@ -255,7 +255,7 @@ impl LiveConnection {
         let tab_sessions = self.tab_sessions.clone();
         async move {
             let mut s = driver.connect(&params).await?;
-            init_session(s.as_mut(), &cfg, &params).await?;
+            init_session(s.as_mut(), &cfg, &params, driver.as_ref()).await?;
             let handle = SessionHandle::new(s, label, database);
             // Weak: a session its tab dropped (closed while opening) closes instead of staying open.
             let mut list = tab_sessions.lock();
@@ -266,9 +266,21 @@ impl LiveConnection {
     }
 }
 
+/// Whether a new session starts in manual commit: the connection asks for it
+/// and its driver has transactions. A store that commits every command on its
+/// own (Redis, MongoDB) cannot honour it — it keeps committing and stays
+/// usable instead of refusing to open.
+fn starts_in_manual_commit(params: &ConnectParams, driver: &dyn Driver) -> bool {
+    !params.auto_commit && driver.info().capabilities.transactions
+}
+
 /// Apply transaction mode, default schema and init SQL after connecting.
-pub async fn init_session(s: &mut dyn dbiji_core::Session, cfg: &ConnectionConfig, params: &ConnectParams) -> DbResult<()> {
-    if !params.auto_commit {
+///
+/// A store that commits every command on its own (Redis, MongoDB) cannot
+/// honour `auto_commit = false`: it keeps committing and the connection stays
+/// usable, instead of refusing to open.
+pub async fn init_session(s: &mut dyn dbiji_core::Session, cfg: &ConnectionConfig, params: &ConnectParams, driver: &dyn Driver) -> DbResult<()> {
+    if starts_in_manual_commit(params, driver) {
         s.set_transaction_mode(TransactionMode::Manual).await?;
     }
     if let Some(schema) = cfg.init.default_schema.as_deref().filter(|s| !s.is_empty())
@@ -475,7 +487,7 @@ async fn connect_task(
     let timeout = params.connect_timeout + Duration::from_secs(5);
     let mut session =
         tokio::time::timeout(timeout, driver.connect(&params)).await.map_err(|_| DbError::timeout(format!("Connection timed out after {}s", timeout.as_secs())))??;
-    init_session(session.as_mut(), &cfg, &params).await?;
+    init_session(session.as_mut(), &cfg, &params, driver.as_ref()).await?;
     let database = session.current_database().await.ok().flatten();
     let schema = session.current_schema().await.ok().flatten();
     let server = session.server_info().clone();
@@ -979,6 +991,24 @@ impl NetConnector for DirectNet {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A connection asking for manual commit must not ask a driver that has no
+    /// transactions: Redis answered "MULTI / EXEC are written as commands" and
+    /// the connection could not be opened at all.
+    #[test]
+    fn a_connection_without_transactions_never_starts_in_manual_commit() {
+        let params = |kind: DbKind, auto_commit: bool| {
+            let mut p = ConnectParams::from_config(&ConnectionConfig::new(kind, "x"), None);
+            p.auto_commit = auto_commit;
+            p
+        };
+        let redis = dbiji_driver_redis::RedisDriver::new();
+        assert!(!starts_in_manual_commit(&params(DbKind::Redis, false), &redis));
+        let sqlite = dbiji_driver_sqlite::SqliteDriver::new();
+        assert!(starts_in_manual_commit(&params(DbKind::Sqlite, false), &sqlite));
+        // Auto-commit on: no manual mode is asked for, whatever the driver.
+        assert!(!starts_in_manual_commit(&params(DbKind::Sqlite, true), &sqlite));
+    }
 
     #[test]
     fn session_time_zones() {

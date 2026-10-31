@@ -75,7 +75,7 @@ impl AppTaskExecutor {
             params.database = Some(db.to_string());
             let opened = async {
                 let mut s = c.driver.connect(&params).await?;
-                crate::conn::init_session(s.as_mut(), &c.config, &params).await?;
+                crate::conn::init_session(s.as_mut(), &c.config, &params, c.driver.as_ref()).await?;
                 DbResult::Ok(s)
             }
             .await;

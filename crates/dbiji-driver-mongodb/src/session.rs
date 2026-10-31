@@ -15,7 +15,7 @@ use dbiji_core::dialect::Dialect;
 use dbiji_core::driver::{ServerInfo, parse_version_number};
 use dbiji_core::meta::*;
 use dbiji_core::plan::{PlanNode, QueryPlan};
-use dbiji_core::{CancelHandle, ColumnMeta, ConnectParams, DbError, DbKind, DbResult, ExecOptions, QueryCursor, ResultHeader, Row, ServerMessage, Session, TransactionMode, Value};
+use dbiji_core::{CancelHandle, ColumnMeta, ConnectParams, DbError, DbKind, DbResult, ErrorKind, ExecOptions, QueryCursor, ResultHeader, Row, ServerMessage, Session, TransactionMode, Value};
 use futures::TryStreamExt;
 use mongodb::bson::{Bson, Document, doc};
 use mongodb::options::{ClientOptions, Credential, FindOptions, ServerAddress, Tls, TlsOptions};
@@ -66,10 +66,22 @@ impl MongoSession {
         // would otherwise wait 2× before the error appears.
         let attempt_timeout = params.connect_timeout.max(Duration::from_millis(500)) / choices.len() as u32;
         let mut last = None;
+        // The database the user is checked in: the URI rule, the connection's
+        // database, else `admin`.
+        let source = auth_source(params);
         for (i, choice) in choices.iter().enumerate() {
-            match Self::open(params, *choice, attempt_timeout).await {
+            match Self::open(params, *choice, attempt_timeout, source.as_deref()).await {
                 Ok(session) => return Ok(session),
                 Err(e) => {
+                    // A user created in `admin` (Atlas, or the first user of a
+                    // `mongod`) is not found in the database the connection
+                    // opens: check the other place once before giving up.
+                    if let (ErrorKind::Auth, Some(fallback)) = (e.kind, auth_source_fallback(params))
+                        && let Ok(session) = Self::open(params, *choice, attempt_timeout, Some(fallback)).await
+                    {
+                        tracing::debug!("MongoDB authenticated the user in {fallback}, not in {}", source.as_deref().unwrap_or("admin"));
+                        return Ok(session);
+                    }
                     if i + 1 == choices.len() || !worth_retrying(&e) {
                         return Err(e);
                     }
@@ -81,7 +93,7 @@ impl MongoSession {
         Err(last.unwrap_or_else(|| DbError::connection("Could not connect to MongoDB")))
     }
 
-    async fn open(params: &ConnectParams, tls: TlsChoice, timeout: Duration) -> DbResult<MongoSession> {
+    async fn open(params: &ConnectParams, tls: TlsChoice, timeout: Duration, source: Option<&str>) -> DbResult<MongoSession> {
         let mut options = options_for(params, tls, timeout).await?;
         options.app_name = Some(params.application_name.clone());
         options.connect_timeout = Some(timeout);
@@ -101,14 +113,7 @@ impl MongoSession {
                 Tls::Enabled(t)
             }
         });
-        if let Some(user) = params.user.as_deref().filter(|u| !u.is_empty()) {
-            let mut credential = Credential::default();
-            credential.username = Some(user.to_string());
-            credential.password = params.password.as_ref().map(|p| p.expose().to_string());
-            credential.source = params.property("authSource").or(params.property("authsource")).map(str::to_string);
-            credential.mechanism = params.property("authMechanism").and_then(|m| m.parse().ok());
-            options.credential = Some(credential);
-        }
+        options.credential = credential(params, source);
         if let Some(direct) = params.property("directConnection").or(params.property("direct_connection")) {
             options.direct_connection = Some(direct == "true" || direct == "1");
         }
@@ -341,8 +346,46 @@ fn is_srv(params: &ConnectParams) -> bool {
 /// plaintext, and one that only speaks an old TLS version refuses ours). A
 /// refused login, a version mismatch or a DNS failure is conclusive.
 fn worth_retrying(err: &DbError) -> bool {
-    use dbiji_core::ErrorKind;
     matches!(err.kind, ErrorKind::Connection | ErrorKind::Tls | ErrorKind::Io) && !err.message.contains("wire version")
+}
+
+/// The credential of a connection, or `None` when it names no user (the
+/// server then answers as an unauthenticated client). `source` is the database
+/// the user is checked in.
+fn credential(params: &ConnectParams, source: Option<&str>) -> Option<Credential> {
+    let user = params.user.as_deref().filter(|user| !user.is_empty())?;
+    let mut credential = Credential::default();
+    credential.username = Some(user.to_string());
+    credential.password = params.password.as_ref().map(|password| password.expose().to_string());
+    credential.source = source.map(str::to_string);
+    credential.mechanism = params.property("authMechanism").and_then(|mechanism| mechanism.parse().ok());
+    Some(credential)
+}
+
+/// The `authSource` property, when the connection sets one.
+fn explicit_auth_source(params: &ConnectParams) -> Option<&str> {
+    params.property("authSource").or_else(|| params.property("authsource")).filter(|source| !source.is_empty())
+}
+
+/// The other database a user may be defined in when the first attempt is
+/// refused: `admin`, for a user created there (Atlas, or the first user of a
+/// `mongod`) while the connection opens another database.
+fn auth_source_fallback(params: &ConnectParams) -> Option<&'static str> {
+    let database = params.database.as_deref().filter(|db| !db.is_empty())?;
+    (explicit_auth_source(params).is_none() && database != "admin").then_some("admin")
+}
+
+/// Database a user is authenticated against: the `authSource` property, else
+/// the connection's database — the URI specification's `defaultauthdb` — else
+/// `None`, which the driver reads as `admin`.
+///
+/// A user created with `use shop; db.createUser(…)` is defined in `shop` only:
+/// checking the credentials against `admin` answers
+/// `SCRAM failure: Authentication failed.` (code 18).
+pub(crate) fn auth_source(params: &ConnectParams) -> Option<String> {
+    explicit_auth_source(params)
+        .map(str::to_string)
+        .or_else(|| params.database.clone().filter(|db| !db.is_empty()))
 }
 
 /// Driver options for one attempt: the hosts (a seed list through DNS for
@@ -1172,5 +1215,63 @@ fn is_write(cmd: &ShellCommand) -> bool {
             !READ_COMMANDS.iter().any(|c| c.eq_ignore_ascii_case(name))
         }
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn params(database: Option<&str>, properties: &[(&str, &str)]) -> ConnectParams {
+        ConnectParams {
+            kind: DbKind::MongoDb,
+            host: "localhost".into(),
+            port: 27017,
+            tls_server_name: None,
+            database: database.map(str::to_string),
+            user: Some("clerk".into()),
+            password: Some(dbiji_core::Secret::new("secret")),
+            file_path: None,
+            ssl: Default::default(),
+            properties: properties.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            application_name: "DBiji".into(),
+            connect_timeout: Duration::from_secs(5),
+            read_only: false,
+            auto_commit: true,
+        }
+    }
+
+    #[test]
+    fn the_credential_authenticates_in_the_uri_database() {
+        let p = params(Some("shop"), &[]);
+        let source = auth_source(&p);
+        let c = credential(&p, source.as_deref()).expect("a credential");
+        assert_eq!(c.username.as_deref(), Some("clerk"));
+        assert_eq!(c.password.as_deref(), Some("secret"));
+        assert_eq!(c.source.as_deref(), Some("shop"));
+
+        // An explicit authSource wins over the database, whatever its spelling.
+        let p = params(Some("shop"), &[("authSource", "admin")]);
+        assert_eq!(auth_source(&p).as_deref(), Some("admin"));
+        let p = params(Some("shop"), &[("authsource", "admin")]);
+        assert_eq!(auth_source(&p).as_deref(), Some("admin"));
+        // Without either, the driver's own default (admin) applies.
+        assert_eq!(auth_source(&params(None, &[])), None);
+        // A password without a user names nobody: no credential.
+        let mut p = params(Some("shop"), &[]);
+        p.user = None;
+        assert!(credential(&p, Some("shop")).is_none());
+    }
+
+    #[test]
+    fn a_refused_login_falls_back_to_admin_once() {
+        // The connection opens `shop`: the user may live there (URI rule) or
+        // in `admin` (Atlas, the first `mongod` user).
+        assert_eq!(auth_source_fallback(&params(Some("shop"), &[])), Some("admin"));
+        // `admin` is already the fallback: no second attempt.
+        assert_eq!(auth_source_fallback(&params(Some("admin"), &[])), None);
+        assert_eq!(auth_source_fallback(&params(None, &[])), None);
+        // An explicit authSource is authoritative.
+        assert_eq!(auth_source_fallback(&params(Some("shop"), &[("authSource", "users")])), None);
     }
 }

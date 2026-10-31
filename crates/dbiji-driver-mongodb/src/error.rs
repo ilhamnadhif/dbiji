@@ -87,11 +87,25 @@ fn wire_version_to_version(wire: &str) -> String {
     }
 }
 
+/// An authentication failure, with the database the user is checked in.
+///
+/// The driver's `Display` appends its own debug fields ("Kind: SCRAM failure:
+/// Authentication failed., labels: {}, source: Some(Error { … })"), so the
+/// inner text is what the user gets to read.
+fn auth_failure(message: String) -> DbError {
+    DbError::auth(message).with_hint(
+        "The server rejected the user name or password. A MongoDB user belongs to one database: \
+         DBiji checks the authSource property, else the connection's database, then admin. Check \
+         the password, and set authSource to the database where the user was created (`use shop; \
+         db.createUser(…)` defines it in shop).",
+    )
+}
+
 /// Maps an error of the MongoDB driver.
 pub fn map_error(e: &MongoError) -> DbError {
     let message = e.to_string();
     match e.kind.as_ref() {
-        MongoErrorKind::Authentication { .. } => DbError::auth(message),
+        MongoErrorKind::Authentication { message, .. } => auth_failure(message.clone()),
         MongoErrorKind::InvalidArgument { .. } => DbError::config(message),
         MongoErrorKind::Command(c) => {
             let kind = match c.code {
@@ -137,7 +151,7 @@ pub fn map_error(e: &MongoError) -> DbError {
         _ => {
             let lower = message.to_ascii_lowercase();
             if lower.contains("authentication failed") {
-                DbError::auth(message)
+                auth_failure(message)
             } else if lower.contains("timed out") || lower.contains("timeout") {
                 DbError::timeout(message)
             } else {
@@ -188,6 +202,16 @@ mod tests {
         // A refusal without a number still says what is needed.
         let hint = wire_version_hint("wire version too old").expect("a hint");
         assert!(hint.contains("MongoDB 4.2 or newer"), "{hint}");
+    }
+
+    #[test]
+    fn an_authentication_failure_names_the_database_it_checks() {
+        let err = auth_failure("SCRAM failure: Authentication failed.".into());
+        assert_eq!(err.kind, ErrorKind::Auth);
+        assert_eq!(err.message, "SCRAM failure: Authentication failed.");
+        let hint = err.hint.expect("a hint");
+        assert!(hint.contains("authSource"), "{hint}");
+        assert!(!err.message.contains("labels"), "{}", err.message);
     }
 
     #[test]

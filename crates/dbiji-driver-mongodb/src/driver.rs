@@ -14,7 +14,8 @@ use std::sync::Arc;
 /// MongoDB driver (the official `mongodb` crate).
 ///
 /// Connection properties (`ConnectParams::properties`):
-/// * `authSource` – database the user is defined in (default `admin`);
+/// * `authSource` – database the user is defined in (default: the
+///   connection's database, else `admin`);
 /// * `authMechanism` – `SCRAM-SHA-256`, `SCRAM-SHA-1`, `MONGODB-X509` …;
 /// * `tls` – `true` forces TLS when the TLS mode is `prefer`;
 /// * `replicaSet` – replica set name, for a seed list behind a proxy;
@@ -91,7 +92,7 @@ impl Driver for MongoDriver {
             args.push("-u".into());
             args.push(user.to_string());
             args.push("--authenticationDatabase".into());
-            args.push(params.property("authSource").unwrap_or("admin").to_string());
+            args.push(crate::session::auth_source(params).unwrap_or_else(|| "admin".into()));
         }
         if let Some(db) = params.database.as_deref().filter(|d| !d.is_empty()) {
             args.push(db.to_string());
@@ -139,5 +140,40 @@ mod tests {
         assert_eq!(cmd.program, "mongosh");
         assert!(!cmd.args.iter().any(|a| a.contains("secret")));
         assert!(cmd.args.contains(&"/tmp/a.js".to_string()));
+    }
+
+    #[test]
+    fn the_client_command_authenticates_in_the_uri_database() {
+        let d = MongoDriver::new();
+        let mut params = dbiji_core::driver::ConnectParams {
+            kind: DbKind::MongoDb,
+            host: "localhost".into(),
+            port: 27017,
+            tls_server_name: None,
+            database: Some("shop".into()),
+            user: Some("clerk".into()),
+            password: None,
+            file_path: None,
+            ssl: Default::default(),
+            properties: Default::default(),
+            application_name: "DBiji".into(),
+            connect_timeout: std::time::Duration::from_secs(10),
+            read_only: false,
+            auto_commit: true,
+        };
+        let auth_db = |params: &dbiji_core::driver::ConnectParams| {
+            let cmd = d.client_command(params, Path::new("/tmp/a.js")).unwrap();
+            let i = cmd.args.iter().position(|a| a == "--authenticationDatabase").expect("an auth database");
+            cmd.args[i + 1].clone()
+        };
+        // The URI rule: the database in the connection string, else admin.
+        assert_eq!(auth_db(&params), "shop");
+        // An explicit authSource wins over the database.
+        params.properties.insert("authSource".into(), "admin".into());
+        assert_eq!(auth_db(&params), "admin");
+        // Without either the driver's default applies.
+        params.database = None;
+        params.properties.clear();
+        assert_eq!(auth_db(&params), "admin");
     }
 }

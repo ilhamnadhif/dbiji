@@ -338,6 +338,46 @@ pub fn lighten(c: Color32, t: f32) -> Color32 {
     Color32::from_rgb(mix(c.r()), mix(c.g()), mix(c.b()))
 }
 
+/// `c` mixed with black by `t` (0 … 1).
+pub fn darken(c: Color32, t: f32) -> Color32 {
+    let mix = |a: u8| (a as f32 * (1.0 - t)).round() as u8;
+    Color32::from_rgb(mix(c.r()), mix(c.g()), mix(c.b()))
+}
+
+/// `top` (premultiplied, e.g. from `gamma_multiply`) painted over the opaque `bottom`.
+pub fn over(top: Color32, bottom: Color32) -> Color32 {
+    let rest = 1.0 - top.a() as f32 / 255.0;
+    let mix = |t: u8, b: u8| (t as f32 + b as f32 * rest).round().min(255.0) as u8;
+    Color32::from_rgb(mix(top.r(), bottom.r()), mix(top.g(), bottom.g()), mix(top.b(), bottom.b()))
+}
+
+/// Relative luminance (WCAG 2).
+fn luminance(c: Color32) -> f32 {
+    let lin = |v: u8| {
+        let v = v as f32 / 255.0;
+        if v <= 0.040_45 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+    };
+    0.2126 * lin(c.r()) + 0.7152 * lin(c.g()) + 0.0722 * lin(c.b())
+}
+
+/// Contrast ratio of two colours (1 … 21, WCAG 2).
+pub fn contrast(a: Color32, b: Color32) -> f32 {
+    let (la, lb) = (luminance(a), luminance(b));
+    (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
+}
+
+/// `c` made lighter (on a darker `bg`) or darker until it has a contrast of
+/// 4.5 against `bg`, so that a logo's thin lines stay legible on a tinted or
+/// selected row; `c` itself when it has that already.
+pub fn legible_on(c: Color32, bg: Color32) -> Color32 {
+    let lighter = luminance(c) >= luminance(bg);
+    (0..=10).map(|i| i as f32 / 10.0).map(|t| if lighter { lighten(c, t) } else { darken(c, t) }).find(|&x| contrast(x, bg) >= 4.5).unwrap_or(if lighter {
+        Color32::WHITE
+    } else {
+        Color32::BLACK
+    })
+}
+
 pub fn success_color(dark_mode: bool) -> Color32 {
     if dark_mode { Color32::from_rgb(110, 200, 120) } else { Color32::from_rgb(30, 130, 50) }
 }
@@ -356,6 +396,29 @@ mod tests {
 
     fn inter(ctx: &Context) -> usize {
         ctx.data(|d| d.get_temp::<Theme>(egui::Id::new("dbiji-font-theme"))).map_or(0, |t| font_definitions(t).font_data["Inter"].font.len())
+    }
+
+    /// One-colour logos (MySQL, MariaDB, CockroachDB) on every row of the
+    /// navigator: plain, tinted by a connection type, selected, hovered.
+    #[test]
+    fn database_logos_are_legible_on_every_row() {
+        use dbiji_core::DbKind;
+        for theme in [Theme::Light, Theme::Dark] {
+            let v = visuals(theme);
+            let tints = dbiji_core::config::ConnectionType::builtins().into_iter().filter_map(|t| connection_marker(t.color)).map(|t| over(t.gamma_multiply(0.22), v.panel_fill));
+            let rows: Vec<Color32> = [v.panel_fill, over(v.selection.bg_fill, v.panel_fill), over(v.widgets.hovered.weak_bg_fill, v.panel_fill)].into_iter().chain(tints).collect();
+            for kind in [DbKind::MySql, DbKind::MariaDb, DbKind::CockroachDb] {
+                for &bg in &rows {
+                    let c = legible_on(logo_color(kind, theme == Theme::Dark), bg);
+                    assert!(contrast(c, bg) >= 4.5, "{theme:?} {kind:?} {c:?} on {bg:?}: {}", contrast(c, bg));
+                }
+            }
+        }
+        // The dark theme's MySQL logo on a test connection's green row was too faint.
+        let v = visuals(Theme::Dark);
+        let green = over(connection_marker(dbiji_core::config::ConnectionType::test().color).unwrap().gamma_multiply(0.22), v.panel_fill);
+        assert!(contrast(logo_color(DbKind::MySql, true), green) < 4.5);
+        assert_eq!(legible_on(Color32::WHITE, Color32::BLACK), Color32::WHITE);
     }
 
     #[test]

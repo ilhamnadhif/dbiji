@@ -3,6 +3,11 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.50 — 2026-10-31
+
+### Fixed
+- In the dark theme, the MySQL logo was hard to see on a test connection's green row of the navigator. The one-colour logos (MySQL, MariaDB, CockroachDB) are drawn lighter or darker where needed so that they stand out from their row (tinted by the connection type, selected or under the mouse) in both themes.
+
 ## 0.3.49 — 2026-10-31
 
 ### Fixed

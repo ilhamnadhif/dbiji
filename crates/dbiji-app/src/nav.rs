@@ -1164,13 +1164,17 @@ impl Navigator {
                     RowKind::Error(e) => egui::WidgetInfo::labeled(egui::WidgetType::Label, true, e),
                     RowKind::Empty => egui::WidgetInfo::labeled(egui::WidgetType::Label, true, tr("(empty)")),
                 });
-                if selected {
-                    ui.painter().rect_filled(rect, 3.0, ui.visuals().selection.bg_fill);
+                let fill = if selected {
+                    Some(ui.visuals().selection.bg_fill)
                 } else if resp.hovered() {
-                    ui.painter().rect_filled(rect, 3.0, ui.visuals().widgets.hovered.weak_bg_fill);
-                } else if let Some(t) = r.tint {
-                    ui.painter().rect_filled(rect, 3.0, t.gamma_multiply(0.22));
+                    Some(ui.visuals().widgets.hovered.weak_bg_fill)
+                } else {
+                    r.tint.map(|t| t.gamma_multiply(0.22))
+                };
+                if let Some(fill) = fill {
+                    ui.painter().rect_filled(rect, 3.0, fill);
                 }
+                let row_bg = fill.map_or(ui.visuals().panel_fill, |f| crate::theme::over(f, ui.visuals().panel_fill));
                 let mut x = rect.left() + 4.0 + r.depth as f32 * 14.0;
                 let y = rect.center().y;
                 let text_color = if selected { ui.visuals().selection.stroke.color } else { ui.visuals().text_color() };
@@ -1224,7 +1228,7 @@ impl Navigator {
                 // A connection: its database's logo (the icon when there is none).
                 let logo_rect = egui::Rect::from_center_size(egui::pos2(x + 8.0, y), egui::vec2(font.size + 5.0, font.size + 5.0));
                 let icon_rect = match r.logo {
-                    Some(kind) if crate::dblogo::paint(ui, kind, logo_rect, icol) => logo_rect,
+                    Some(kind) if crate::dblogo::paint(ui, kind, logo_rect, crate::theme::legible_on(icol, row_bg)) => logo_rect,
                     _ => ui.painter().text(egui::pos2(x, y), egui::Align2::LEFT_CENTER, r.icon, dbiji_icons::fill_font(ui.ctx(), font.size), icol),
                 };
                 if let Some(badge) = r.badge {

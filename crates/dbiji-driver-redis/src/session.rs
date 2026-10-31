@@ -339,9 +339,17 @@ fn connection_url(params: &ConnectParams) -> String {
     let scheme = if tls { "rediss" } else { "redis" };
     let mut url = String::from(scheme);
     url.push_str("://");
-    if let Some(user) = params.user.as_deref().filter(|u| !u.is_empty()) {
-        url.push_str(&percent_encode(user));
-        if let Some(password) = params.password.as_ref().filter(|p| !p.is_empty()) {
+    // Redis 6 ACLs allow a user name, but a password-only server (the `default`
+    // user) is the common case: `redis://:password@host` is the URL form for
+    // it. Requiring a user name would silently drop the password and fail
+    // every command with NOAUTH.
+    let user = params.user.as_deref().filter(|u| !u.is_empty());
+    let password = params.password.as_ref().filter(|p| !p.is_empty());
+    if user.is_some() || password.is_some() {
+        if let Some(user) = user {
+            url.push_str(&percent_encode(user));
+        }
+        if let Some(password) = password {
             url.push(':');
             url.push_str(&percent_encode(password.expose()));
         }
@@ -817,6 +825,35 @@ mod tests {
         assert_eq!(connection_url(&params), "rediss://app:p%40ss%20word@cache:6379/3#insecure");
         params.ssl.mode = SslMode::VerifyFull;
         assert_eq!(connection_url(&params), "rediss://app:p%40ss%20word@cache:6379/3");
+    }
+
+    /// A password-only server (no ACL user) must still authenticate: the URL
+    /// keeps the empty user name and redis-rs parses it as `AUTH <password>`.
+    #[test]
+    fn a_password_without_a_user_is_kept() {
+        use dbiji_core::config::SslConfig;
+        let params = ConnectParams {
+            kind: DbKind::Redis,
+            host: "cache".into(),
+            port: 6379,
+            tls_server_name: None,
+            database: Some("3".into()),
+            user: None,
+            password: Some("p@ss word".into()),
+            file_path: None,
+            ssl: SslConfig::default(),
+            properties: Default::default(),
+            application_name: "DBiji".into(),
+            connect_timeout: Duration::from_secs(5),
+            read_only: false,
+            auto_commit: true,
+        };
+        assert_eq!(connection_url(&params), "redis://:p%40ss%20word@cache:6379/3");
+        let client = Client::open(connection_url(&params)).expect("the URL is valid");
+        let info = client.get_connection_info().redis_settings();
+        assert_eq!(info.username(), None);
+        assert_eq!(info.password(), Some("p@ss word"));
+        assert_eq!(info.protocol(), redis::ProtocolVersion::RESP2);
     }
 
     #[test]

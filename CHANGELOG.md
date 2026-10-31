@@ -13,6 +13,9 @@ notes of a new version once after it was updated (Help → What's new).
 - MongoDB and Redis logos, brand colours and the shell keywords (MongoDB methods and aggregation operators, Redis commands) for highlighting and autocomplete.
 
 ### Fixed
+- MongoDB connections failed against servers the driver does not accept, and against anything reached through a `mongodb+srv://` URI, with no useful message. The URI importer accepted `mongodb+srv://` but the driver was built without DNS resolution, so it dialled the seed name on port 27017. SRV resolution is back on, the URI now marks the connection (`srv`), and a version refusal reads "DBiji needs MongoDB 4.4 or newer; this server reports wire version 8 (MongoDB 4.2 and older)" instead of the driver's raw topology dump.
+- MongoDB `prefer` (the default) only ever tried plain TCP: MongoDB has no in-band TLS negotiation, so a server that requires TLS was unreachable. It now tries both modes — plain then TLS for a direct host, TLS then plain for an SRV seed list — within one connect timeout, and stops at a refused login or a version mismatch, which the other mode cannot fix.
+- A MongoDB connection that could not be opened reported "Server selection timeout: … labels: {…}, source: None". It now says "No server answered at host:port: I/O error: Connection refused", with the driver's dump kept as the detail.
 - Connecting to SQL Server 2008 and older failed with an opaque TLS error. `prefer` now retries without TLS after *any* failed handshake (a legacy server closes the socket after our TLS 1.2 hello, which arrived as a connection error and skipped the old fallback), and TLS failures name their cause and the way out: a legacy TLS version, or a rejected self-signed certificate (`require` mode or `trust_server_certificate`). TLS 1.0/1.1 itself stays unsupported: rustls offers 1.2 and 1.3 only, so such a server needs SSL `disable` (when it does not force encryption) or an upgrade.
 
 ### Changed

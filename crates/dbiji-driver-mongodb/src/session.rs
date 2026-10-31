@@ -41,14 +41,66 @@ pub struct MongoSession {
     closed: bool,
 }
 
+/// How a connection encrypts its traffic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TlsChoice {
+    /// Plain TCP.
+    Off,
+    /// TLS without certificate validation (`require`).
+    Insecure,
+    /// TLS with chain and host name validation (`verify-ca`, `verify-full`).
+    Verify,
+}
+
 impl MongoSession {
     /// Connect with the parameters resolved by the application.
+    ///
+    /// MongoDB has no in-band TLS negotiation: the handshake happens before
+    /// the first byte of the protocol. `prefer` therefore tries one mode and
+    /// then the other — plain first for a direct host, TLS first for an
+    /// `mongodb+srv://` seed list (the URI specification makes TLS the default
+    /// there).
     pub async fn connect(params: &ConnectParams) -> DbResult<MongoSession> {
-        let mut options = ClientOptions::default();
-        options.hosts = vec![ServerAddress::Tcp { host: params.host.clone(), port: Some(params.port) }];
+        let choices = tls_choices(params);
+        // Two attempts must not take twice the connect timeout: a mistyped host
+        // would otherwise wait 2× before the error appears.
+        let attempt_timeout = params.connect_timeout.max(Duration::from_millis(500)) / choices.len() as u32;
+        let mut last = None;
+        for (i, choice) in choices.iter().enumerate() {
+            match Self::open(params, *choice, attempt_timeout).await {
+                Ok(session) => return Ok(session),
+                Err(e) => {
+                    if i + 1 == choices.len() || !worth_retrying(&e) {
+                        return Err(e);
+                    }
+                    tracing::debug!("MongoDB with {:?} failed ({}); trying the other TLS mode", choice, e.message);
+                    last = Some(e);
+                }
+            }
+        }
+        Err(last.unwrap_or_else(|| DbError::connection("Could not connect to MongoDB")))
+    }
+
+    async fn open(params: &ConnectParams, tls: TlsChoice, timeout: Duration) -> DbResult<MongoSession> {
+        let mut options = options_for(params, tls, timeout).await?;
         options.app_name = Some(params.application_name.clone());
-        options.connect_timeout = Some(params.connect_timeout.max(Duration::from_millis(500)));
-        options.server_selection_timeout = Some(params.connect_timeout.max(Duration::from_secs(1)));
+        options.connect_timeout = Some(timeout);
+        options.server_selection_timeout = Some(timeout);
+        options.tls = Some(match tls {
+            TlsChoice::Off => Tls::Disabled,
+            TlsChoice::Insecure => {
+                let mut t = TlsOptions::default();
+                // `require` trusts any certificate, as the SQL and MySQL drivers do.
+                t.allow_invalid_certificates = Some(true);
+                Tls::Enabled(t)
+            }
+            TlsChoice::Verify => {
+                let mut t = TlsOptions::default();
+                t.allow_invalid_certificates = Some(false);
+                t.ca_file_path = params.ssl.ca_cert.as_deref().filter(|c| !c.is_empty()).map(std::path::PathBuf::from);
+                Tls::Enabled(t)
+            }
+        });
         if let Some(user) = params.user.as_deref().filter(|u| !u.is_empty()) {
             let mut credential = Credential::default();
             credential.username = Some(user.to_string());
@@ -57,7 +109,6 @@ impl MongoSession {
             credential.mechanism = params.property("authMechanism").and_then(|m| m.parse().ok());
             options.credential = Some(credential);
         }
-        options.tls = tls_for(params)?;
         if let Some(direct) = params.property("directConnection").or(params.property("direct_connection")) {
             options.direct_connection = Some(direct == "true" || direct == "1");
         }
@@ -66,14 +117,13 @@ impl MongoSession {
         }
         let client = Client::with_options(options).map_err(|e| map_error(&e).with_context("Connecting to MongoDB"))?;
         let admin = client.database("admin");
-        let hello = admin.run_command(doc! {"buildInfo": 1}).await;
-        let info = match hello {
-            Ok(build) => {
-                let version = build.get_str("version").unwrap_or("").to_string();
-                ServerInfo { product: "MongoDB".into(), version_number: parse_version_number(&version), version, session_id: None }
-            }
-            Err(e) => return Err(map_error_with(&e, "Reading the server version")),
-        };
+        // A round trip now, so a TLS, authentication or version failure is
+        // reported for the attempt that caused it instead of on the first
+        // statement.
+        admin.run_command(doc! {"ping": 1}).await.map_err(|e| map_error_with(&e, "Connecting to MongoDB"))?;
+        let build = admin.run_command(doc! {"buildInfo": 1}).await.map_err(|e| map_error_with(&e, "Reading the server version"))?;
+        let version = build.get_str("version").unwrap_or("").to_string();
+        let info = ServerInfo { product: "MongoDB".into(), version_number: parse_version_number(&version), version, session_id: None };
         let database = params.database.clone().filter(|d| !d.is_empty()).unwrap_or_else(|| "test".into());
         Ok(MongoSession { client, database, dialect: Arc::new(MongoDialect::new()), info, read_only: params.read_only, closed: false })
     }
@@ -267,27 +317,53 @@ impl MongoSession {
     }
 }
 
-/// TLS settings of the connection: `prefer` leaves the driver's default (off
-/// unless the URL asked for it), the verify modes check the chain.
-fn tls_for(params: &ConnectParams) -> DbResult<Option<Tls>> {
+/// The TLS modes to try, in order. `prefer` means "whichever works": plain
+/// first for a direct host, TLS first for a seed list.
+fn tls_choices(params: &ConnectParams) -> Vec<TlsChoice> {
     use dbiji_core::config::SslMode;
-    let requested = params.property("tls").or(params.property("ssl")).is_some_and(|v| v == "true" || v == "1");
-    let mode = if requested { SslMode::Require } else { params.ssl.mode };
-    Ok(match mode {
-        SslMode::Disable => Some(Tls::Disabled),
-        SslMode::Prefer => None,
-        SslMode::Require => {
-            let mut tls = TlsOptions::default();
-            tls.allow_invalid_certificates = Some(true);
-            Some(Tls::Enabled(tls))
-        }
-        SslMode::VerifyCa | SslMode::VerifyFull => {
-            let mut tls = TlsOptions::default();
-            tls.allow_invalid_certificates = Some(false);
-            tls.ca_file_path = params.ssl.ca_cert.as_deref().filter(|c| !c.is_empty()).map(std::path::PathBuf::from);
-            Some(Tls::Enabled(tls))
-        }
-    })
+    match params.ssl.mode {
+        SslMode::Disable => vec![TlsChoice::Off],
+        SslMode::Require => vec![TlsChoice::Insecure],
+        SslMode::VerifyCa | SslMode::VerifyFull => vec![TlsChoice::Verify],
+        SslMode::Prefer if is_srv(params) => vec![TlsChoice::Insecure, TlsChoice::Off],
+        SslMode::Prefer => vec![TlsChoice::Off, TlsChoice::Insecure],
+    }
+}
+
+/// A connection made through a `mongodb+srv://` seed list.
+fn is_srv(params: &ConnectParams) -> bool {
+    params.property("srv").is_some_and(|v| v == "true" || v == "1")
+}
+
+/// Is another attempt with the other TLS mode worth it?
+///
+/// A failed handshake or a closed socket is (a server that requires TLS refuses
+/// plaintext, and one that only speaks an old TLS version refuses ours). A
+/// refused login, a version mismatch or a DNS failure is conclusive.
+fn worth_retrying(err: &DbError) -> bool {
+    use dbiji_core::ErrorKind;
+    matches!(err.kind, ErrorKind::Connection | ErrorKind::Tls | ErrorKind::Io) && !err.message.contains("wire version")
+}
+
+/// Driver options for one attempt: the hosts (a seed list through DNS for
+/// `mongodb+srv://`, one host otherwise).
+async fn options_for(params: &ConnectParams, _tls: TlsChoice, timeout: Duration) -> DbResult<ClientOptions> {
+    if is_srv(params) {
+        let host = params.host.trim();
+        let uri = match params.database.as_deref().filter(|d| !d.is_empty()) {
+            Some(db) => format!("mongodb+srv://{host}/{db}"),
+            None => format!("mongodb+srv://{host}"),
+        };
+        // The lookup is DNS: bound it by the connect timeout.
+        let parsed = tokio::time::timeout(timeout, ClientOptions::parse(&uri))
+            .await
+            .map_err(|_| DbError::timeout(format!("Resolving {host} took longer than the connect timeout")))?
+            .map_err(|e| map_error_with(&e, &format!("Resolving the seed list of {host}")))?;
+        return Ok(parsed);
+    }
+    let mut options = ClientOptions::default();
+    options.hosts = vec![ServerAddress::Tcp { host: params.host.clone(), port: Some(params.port) }];
+    Ok(options)
 }
 
 /// What a statement produced before it becomes a cursor.

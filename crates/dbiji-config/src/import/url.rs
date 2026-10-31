@@ -76,7 +76,8 @@ fn kind_for_scheme(scheme: &str) -> Option<DbKind> {
         "clickhouse" | "ch" | "clickhouse+http" | "clickhouse+https" | "clickhouses" => {
             DbKind::ClickHouse
         }
-        "mongodb" | "mongo" | "mongodb+srv" => DbKind::MongoDb,
+        "mongodb" | "mongo" => DbKind::MongoDb,
+        "mongodb+srv" => DbKind::MongoDb,
         "redis" | "rediss" | "valkey" | "valkeys" => DbKind::Redis,
         _ => return None,
     })
@@ -386,6 +387,12 @@ fn parse_network_url(
     }
     if let Some(i) = instance {
         cfg.properties.insert("instance".into(), i);
+    }
+    // `mongodb+srv://` resolves its hosts through DNS TXT/SRV records: the
+    // driver has to know, or it would connect to the seed name on port 27017.
+    if scheme == "mongodb+srv" {
+        cfg.properties.insert("srv".into(), "true".into());
+        cfg.port = None;
     }
     cfg.host = host;
     if port.is_some() {
@@ -736,6 +743,22 @@ mod tests {
         assert_eq!(c.kind, DbKind::SqlServer);
         let (c, _) = parse("jdbc:jtds:sqlserver://legacy:1433/old");
         assert_eq!((c.kind, c.host.as_str()), (DbKind::SqlServer, "legacy"));
+    }
+
+    #[test]
+    fn mongodb_srv_keeps_the_seed_list() {
+        let (c, _) = parse("mongodb+srv://app:pw@cluster0.example.net/shop?retryWrites=true");
+        assert_eq!(c.kind, DbKind::MongoDb);
+        // The seed name is not a host to dial: the driver resolves the SRV
+        // records, so no port is pinned and the flag says how to connect.
+        assert_eq!(c.host, "cluster0.example.net");
+        assert_eq!(c.port, None);
+        assert_eq!(c.properties.get("srv").map(String::as_str), Some("true"));
+        assert_eq!(c.database.as_deref(), Some("shop"));
+        // A plain mongodb:// URI dials the host directly.
+        let (c, _) = parse("mongodb://h:27018/shop");
+        assert_eq!(c.port, Some(27018));
+        assert!(!c.properties.contains_key("srv"));
     }
 
     #[test]

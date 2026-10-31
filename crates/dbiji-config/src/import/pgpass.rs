@@ -114,6 +114,7 @@ impl PgPass {
             std::fs::read_to_string(path)
                 .map_err(|e| DbError::io(format!("Cannot read {}: {e}", path.display())))?,
         );
+        #[cfg_attr(not(unix), allow(unused_mut))]
         let mut p = PgPass::parse(&text);
         #[cfg(unix)]
         {

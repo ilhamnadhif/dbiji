@@ -154,6 +154,7 @@ fn setup() -> (Dir, H, String) {
     // Help › Check for updates… never contacts GitHub from the tests.
     unsafe {
         std::env::set_var("HOME", &dir.0);
+        std::env::set_var("USERPROFILE", &dir.0);
         std::env::set_var("DBIJI_UPDATE_URL", "off");
     }
     let mut h = harness(&dir.0);
@@ -460,6 +461,23 @@ fn a_lost_connection_reconnects_only_when_unfolded() {
     nav_double_click(&mut h, "dbiji-sample.db");
     wait(&mut h, "reconnected", |h| h.state().conns.is_connected(&conn) && !lost(h));
     wait(&mut h, "unfolded", |h| nav_row(h, "Tables").is_some());
+}
+
+/// The connection was dropped (the laptop slept): it connects again by itself
+/// and turns green, without unfolding or Reconnect.
+#[test]
+fn a_dropped_connection_connects_again_by_itself() {
+    let (_dir, mut h, conn) = setup();
+    wait(&mut h, "Tables folder", |h| nav_row(h, "Tables").is_some());
+    let (backend, main) = (h.state().backend.clone(), h.state().conns.live(&conn).unwrap().main.clone());
+    let dropped = main.clone();
+    backend.block_on(async move { dropped.close_from_server().await });
+    assert!(main.is_lost());
+    wait(&mut h, "connected again", |h| matches!(h.state().conns.status(&conn), dbiji_app::conn::ConnStatus::Connected) && !h.state().conns.live(&conn).unwrap().main.same(&main));
+    assert!(nav_row(&h, "Tables").is_some(), "still unfolded");
+    // The new session works.
+    let main = h.state().conns.live(&conn).unwrap().main.clone();
+    assert!(backend.block_on(async move { main.ping().await }).is_ok());
 }
 
 /// The text field on the same row as (to the right of) a label.
@@ -987,14 +1005,16 @@ fn tool_tabs_run() {
     assert!(toasts.iter().any(|t| t.reveal.as_deref() == Some(csv.as_path())), "{:?}", toasts.iter().map(|t| &t.title).collect::<Vec<_>>());
     settle(&mut h, "export");
 
-    // Backup of the SQLite database.
-    nav_menu(&mut h, "dbiji-sample.db", &["Tools ⏵", "Backup"]);
-    click(&mut h, "Start backup");
-    let backup = wait_file(&mut h, &dir.0, "backup file", |n| n.starts_with("dbiji-sample") && n.ends_with(".sql"));
-    let dump = std::fs::read_to_string(&backup).unwrap();
-    assert!(dump.contains("CREATE TABLE customer") && dump.contains("INSERT INTO"), "{}", &dump[..dump.len().min(400)]);
-    wait(&mut h, "backup pop-up closed", |h| h.state().popups.is_empty());
-    settle(&mut h, "backup");
+    // Backup of the SQLite database (with the sqlite3 tool, which Windows lacks).
+    if std::process::Command::new("sqlite3").arg("-version").output().is_ok() {
+        nav_menu(&mut h, "dbiji-sample.db", &["Tools ⏵", "Backup"]);
+        click(&mut h, "Start backup");
+        let backup = wait_file(&mut h, &dir.0, "backup file", |n| n.starts_with("dbiji-sample") && n.ends_with(".sql"));
+        let dump = std::fs::read_to_string(&backup).unwrap();
+        assert!(dump.contains("CREATE TABLE customer") && dump.contains("INSERT INTO"), "{}", &dump[..dump.len().min(400)]);
+        wait(&mut h, "backup pop-up closed", |h| h.state().popups.is_empty());
+        settle(&mut h, "backup");
+    }
 
     // Maintenance (the default operation) on customer.
     nav_menu(&mut h, "customer", &["Maintenance"]);
@@ -1675,6 +1695,7 @@ fn create_database_from_the_navigator() {
     // SAFETY: the walkthroughs run one at a time (SERIAL).
     unsafe {
         std::env::set_var("HOME", &dir.0);
+        std::env::set_var("USERPROFILE", &dir.0);
         std::env::set_var("DBIJI_UPDATE_URL", "off");
     }
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();

@@ -706,7 +706,7 @@ async fn attached_temp_and_virtual_tables() {
     let dir = tempfile::tempdir().unwrap();
     let mut s = connect_with(
         ":memory:",
-        &[("attach.aux", &file_in(dir.path(), "aux.db"))],
+        &[("attach.aux", &file_in(dir.path(), "attached.db"))],
     )
     .await;
     exec(

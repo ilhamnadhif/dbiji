@@ -1,0 +1,6 @@
+# Source and scripts keep LF line endings on every system (tests read the
+# sources; the shell scripts run in Linux containers).
+* text=auto eol=lf
+*.ico binary
+*.png binary
+*.icns binary

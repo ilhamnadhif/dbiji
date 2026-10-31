@@ -550,3 +550,25 @@ fn a_hovered_header_summarises_its_loaded_values() {
     assert!(text.contains("Loaded rows: 10 · NULLs: 1 · Distinct: 9"), "{text}");
     assert!(text.contains("Min: name 0 · Max: name 9"), "{text}");
 }
+
+#[test]
+fn enter_and_f2_open_the_editor_and_keep_it_open() {
+    let mut h = GridHarness::new(editable_model(5));
+    for k in [Key::Enter, Key::F2] {
+        h.click_at(h.cell_center(1, 1), PointerButton::Primary, Modifiers::NONE);
+        h.frame(vec![]);
+        h.key(k, Modifiers::NONE);
+        assert!(h.state.is_editing(), "{k:?} opens the editor (not closed by the same key)");
+        h.frame(vec![]);
+        assert!(h.state.is_editing());
+        h.key(Key::Escape, Modifiers::NONE);
+        assert!(!h.state.is_editing());
+    }
+    // Enter opens, a second Enter commits what was typed.
+    h.key(Key::Enter, Modifiers::NONE);
+    h.frame(vec![Event::Text("x".into())]);
+    h.frame(vec![]);
+    h.key(Key::Enter, Modifiers::NONE);
+    assert!(!h.state.is_editing());
+    assert_eq!(h.model.cell(1, 1), Some(Value::text("x")));
+}

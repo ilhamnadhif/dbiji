@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Publishes the release of the pushed tag from CI (the bundle job, after the
-# tests passed and dist/ was built) and points the Homebrew cask at its DMG.
+# Publishes the release of the pushed tag from CI (the publish job, after the
+# tests passed and the bundle jobs built dist/) and points the Homebrew cask at
+# its DMG.
 # Installed copies are offered the release once it is published.
 #
 #   GITHUB_REF_NAME=v1.2.3 GH_TOKEN=... scripts/ci-publish.sh
@@ -14,7 +15,15 @@ cd "$(dirname "$0")/.."
 TAG="${GITHUB_REF_NAME:?the tag to publish}"
 VERSION="${TAG#v}"
 BRANCH="master"
-FILES=("dist/DBiji-$VERSION.dmg" "dist/DBiji-$VERSION.zip")
+# macOS (the updater installs the .zip), Windows, and Linux for x86_64 and aarch64.
+FILES=("dist/DBiji-$VERSION.dmg" "dist/DBiji-$VERSION.zip"
+    "dist/DBiji-$VERSION-windows-x64-setup.exe" "dist/DBiji-$VERSION-windows-x64.zip")
+for arch in x86_64 aarch64; do
+    case "$arch" in x86_64) deb=amd64 ;; aarch64) deb=arm64 ;; esac
+    FILES+=("dist/DBiji-$VERSION-linux-$arch.tar.gz" "dist/DBiji-$VERSION-linux-$arch.AppImage"
+        "dist/DBiji-$VERSION-linux-$deb.deb" "dist/DBiji-$VERSION-linux-$arch.rpm"
+        "dist/DBiji-$VERSION-linux-$arch.pkg.tar.zst")
+done
 CASK="packaging/homebrew/dbiji.rb"
 
 fail() { echo "Error: $*" >&2; exit 1; }

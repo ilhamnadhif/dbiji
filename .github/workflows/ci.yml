@@ -30,15 +30,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-14]
+        os: [ubuntu-24.04, macos-14, windows-2022]
     runs-on: ${{ matrix.os }}
+    env:
+      # aws-lc (TLS) on Windows: its prebuilt assembly, as the runner has no NASM.
+      AWS_LC_SYS_PREBUILT_NASM: 1
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - name: Linux GUI dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libgl1-mesa-dev libwayland-dev libxcb1-dev libxcursor-dev libxrandr-dev libxi-dev libgtk-3-dev
       - uses: Swatinem/rust-cache@v2
+      # Code only Windows compiles (the lint job runs on Linux).
+      - if: runner.os == 'Windows'
+        run: cargo clippy --workspace --exclude dbiji-driver-duckdb --all-targets -- -D warnings
       - run: cargo test --workspace --exclude dbiji-driver-duckdb
 
   integration:
@@ -194,14 +202,12 @@ jobs:
           name: benchmarks
           path: bench.json
 
-  # A pushed tag (scripts/release.sh --ci) is built, published and put into the
-  # Homebrew cask here, once the tests passed.
+  # A pushed tag (scripts/release.sh --ci) is built for macOS, Windows and
+  # Linux here, then published (and put into the Homebrew cask) once the tests
+  # passed.
   bundle:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [unit-tests, integration, integration-oldest]
     runs-on: macos-14
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -210,10 +216,61 @@ jobs:
       - run: scripts/bundle-macos.sh --universal
       - uses: actions/upload-artifact@v7
         with:
-          name: dmg
+          name: macos
           path: |
             dist/*.dmg
             dist/*.zip
+
+  bundle-windows:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-2022
+    env:
+      # aws-lc (TLS) uses its prebuilt assembly: the runner has no NASM.
+      AWS_LC_SYS_PREBUILT_NASM: 1
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - run: scripts/bundle-windows.ps1
+        shell: pwsh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: |
+            dist/*.exe
+            dist/*.zip
+
+  # Built in AlmaLinux 9: the binary needs its glibc (2.34) or later (RHEL /
+  # Rocky / Alma 9, Ubuntu 22.04, Debian 12, Fedora 35 and newer).
+  bundle-linux:
+    if: startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    container: almalinux:9
+    steps:
+      - name: Build tools
+        run: dnf install -y --setopt=install_weak_deps=False gcc gcc-c++ make git binutils findutils tar gzip which file diffutils
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - run: scripts/bundle-linux.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-${{ matrix.runner }}
+          path: dist/DBiji-*-linux-*
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [unit-tests, integration, integration-oldest, bundle, bundle-windows, bundle-linux]
+    runs-on: macos-14
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
       - name: Publish the release and update the Homebrew cask
         env:
           GH_TOKEN: ${{ github.token }}

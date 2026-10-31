@@ -16,8 +16,14 @@ use egui::{Context, RichText};
 use egui_phosphor::regular as icon;
 use std::time::Duration;
 
-/// The release notes of every version, newest first.
-pub const CHANGELOG: &str = include_str!("../../../CHANGELOG.md");
+/// The release notes of every version, newest first (`CHANGELOG.md`,
+/// zlib-compressed by build.rs).
+pub static CHANGELOG: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    let mut notes = String::new();
+    let zz: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/CHANGELOG.md.zz"));
+    std::io::Read::read_to_string(&mut flate2::read::ZlibDecoder::new(zz), &mut notes).expect("bundled release notes");
+    notes
+});
 
 /// Latest release of the repository (GitHub REST API).
 const RELEASES_API: &str = "https://api.github.com/repos/ilhamnadhif/dbiji/releases/latest";
@@ -114,13 +120,25 @@ pub struct Release {
     pub version: String,
     /// Release page.
     pub url: String,
-    /// The macOS disk image, when the release has one.
+    /// What this system downloads (the macOS disk image, the Windows
+    /// installer), when the release has it.
     pub download_url: Option<String>,
     pub notes: String,
     /// When it was published (`YYYY-MM-DD`).
     pub date: Option<String>,
     /// `DBiji-<version>.zip`, installed in place by the updater.
     pub archive: Option<Asset>,
+}
+
+/// Whether the asset `name` is the download for `os` ([`std::env::consts::OS`]):
+/// the macOS disk image, the Windows installer. Linux has none: its release
+/// page lists the packages (deb, rpm, Arch, AppImage, tar.gz) to choose from.
+fn is_download_for(os: &str, name: &str) -> bool {
+    match os {
+        "macos" => name.ends_with(".dmg"),
+        "windows" => name.ends_with("-windows-x64-setup.exe"),
+        _ => false,
+    }
 }
 
 /// Parse the GitHub "latest release" response.
@@ -131,10 +149,12 @@ pub fn parse_release(json: &str) -> Option<Release> {
     }
     let tag = v.get("tag_name")?.as_str()?;
     let url = v.get("html_url").and_then(|u| u.as_str()).unwrap_or(RELEASES_PAGE).to_string();
-    let download_url = v
-        .get("assets")
-        .and_then(|a| a.as_array())
-        .and_then(|assets| assets.iter().filter_map(|a| a.get("browser_download_url")?.as_str()).find(|u| u.ends_with(".dmg")).map(str::to_string));
+    let download_url = v.get("assets").and_then(|a| a.as_array()).and_then(|assets| {
+        assets
+            .iter()
+            .find(|a| a.get("name").and_then(|n| n.as_str()).is_some_and(|n| is_download_for(std::env::consts::OS, n)))
+            .and_then(|a| Some(a.get("browser_download_url")?.as_str()?.to_string()))
+    });
     let notes = v.get("body").and_then(|b| b.as_str()).unwrap_or("").replace("\r\n", "\n").trim().to_string();
     let version = tag.trim_start_matches(['v', 'V']).to_string();
     let wanted = archive_name(&version);
@@ -286,7 +306,7 @@ impl Updates {
             if existing_install {
                 // Installed before notes were tracked: show this version's notes.
                 let since = seen.as_deref().or(Some("0"));
-                let notes = notes_since(CHANGELOG, if seen.is_some() { since } else { None }, current);
+                let notes = notes_since(&CHANGELOG, if seen.is_some() { since } else { None }, current);
                 let notes: Vec<Notes> = if seen.is_some() { notes } else { notes.into_iter().take(1).collect() };
                 if !notes.is_empty() {
                     self.whats_new = Some(notes);
@@ -310,7 +330,7 @@ impl Updates {
 
     /// Show the notes of this version (Help menu).
     pub fn show_whats_new(&mut self) {
-        let notes = notes_since(CHANGELOG, None, current_version());
+        let notes = notes_since(&CHANGELOG, None, current_version());
         self.whats_new = Some(notes.into_iter().take(1).collect());
     }
 
@@ -525,7 +545,9 @@ impl Updates {
                     ui.add_space(4.0);
                     ui.label(RichText::new(tr("Installing it from here needs DBiji in the Applications folder; download the new version instead.")).weak().small());
                 }
-                ui.weak(tr("Homebrew: brew upgrade --cask dbiji"));
+                if cfg!(target_os = "macos") {
+                    ui.weak(tr("Homebrew: brew upgrade --cask dbiji"));
+                }
                 ui.separator();
                 ui.horizontal(|ui| {
                     if ui.button(tr("Skip this version")).clicked() {
@@ -788,7 +810,7 @@ mod tests {
         assert_eq!(notes_since(LOG, Some("0.1.0"), "0.2.0").len(), 1);
         assert!(notes_since(LOG, Some("0.3.0"), "0.3.0").is_empty());
         // the built-in changelog has this version
-        assert!(parse_changelog(CHANGELOG).iter().any(|n| n.version == current_version()), "CHANGELOG.md lists {}", current_version());
+        assert!(parse_changelog(&CHANGELOG).iter().any(|n| n.version == current_version()), "CHANGELOG.md lists {}", current_version());
     }
 
     #[test]
@@ -796,10 +818,22 @@ mod tests {
         let json = r####"{"tag_name":"v0.3.0","html_url":"https://github.com/ilhamnadhif/dbiji/releases/tag/v0.3.0","draft":false,"prerelease":false,
             "published_at":"2026-12-01T08:00:00Z","body":"### Fixed\r\n- Things","assets":[
             {"name":"DBiji-0.3.0.zip","size":1234,"digest":"sha256:ABCD","browser_download_url":"https://x/DBiji-0.3.0.zip"},
+            {"name":"DBiji-0.3.0-windows-x64.zip","size":3456,"browser_download_url":"https://x/DBiji-0.3.0-windows-x64.zip"},
+            {"name":"DBiji-0.3.0-windows-x64-setup.exe","size":4567,"browser_download_url":"https://x/DBiji-0.3.0-windows-x64-setup.exe"},
+            {"name":"DBiji-0.3.0-linux-amd64.deb","size":5678,"browser_download_url":"https://x/DBiji-0.3.0-linux-amd64.deb"},
             {"name":"DBiji-0.3.0.dmg","size":2345,"browser_download_url":"https://x/DBiji-0.3.0.dmg"}]}"####;
         let r = parse_release(json).unwrap();
         assert_eq!(r.version, "0.3.0");
-        assert_eq!(r.download_url.as_deref(), Some("https://x/DBiji-0.3.0.dmg"));
+        // This system's download: the disk image, the installer; on Linux the release page.
+        let download = match std::env::consts::OS {
+            "macos" => Some("https://x/DBiji-0.3.0.dmg"),
+            "windows" => Some("https://x/DBiji-0.3.0-windows-x64-setup.exe"),
+            _ => None,
+        };
+        assert_eq!(r.download_url.as_deref(), download);
+        assert!(is_download_for("macos", "DBiji-0.3.0.dmg") && !is_download_for("macos", "DBiji-0.3.0.zip"));
+        assert!(is_download_for("windows", "DBiji-0.3.0-windows-x64-setup.exe") && !is_download_for("windows", "DBiji-0.3.0-windows-x64.zip"));
+        assert!(!is_download_for("linux", "DBiji-0.3.0-linux-amd64.deb"));
         assert_eq!(r.notes, "### Fixed\n- Things");
         assert_eq!(r.date.as_deref(), Some("2026-12-01"));
         let a = r.archive.unwrap();

@@ -2157,6 +2157,7 @@ Their {} entries are removed too.	Entri {} miliknya juga dihapus.
 Thinking…	Berpikir…
 This connection asks for its password at every connect; tasks can only use saved passwords.	Koneksi ini meminta kata sandi setiap terhubung; task hanya bisa memakai kata sandi tersimpan.
 This connection does not save its password; the task cannot connect without it.	Koneksi ini tidak menyimpan kata sandinya; task tidak bisa terhubung tanpanya.
+This connection has no transactions: every command commits on its own.	Koneksi ini tidak punya transaksi: setiap perintah di-commit sendiri.
 This database commits each DDL statement on its own; a failure leaves the statements before it applied.	Database ini melakukan commit setiap statement DDL sendiri; kegagalan membiarkan statement sebelumnya tetap diterapkan.
 This local time does not exist (daylight saving time change)	Waktu lokal ini tidak ada (perubahan daylight saving time)
 This task was created by a transfer wizard; its settings are shown read-only. Create it again from the wizard to change them.	Task ini dibuat oleh wizard transfer; pengaturannya hanya bisa dibaca. Buat ulang dari wizard untuk mengubahnya.
@@ -2808,3 +2809,4 @@ Vacuum, analyze, reindex the whole database	Vacuum, analyze, reindex seluruh dat
 Tab: grid · ← →: rows · ↑ ↓: fields · type, Enter: edit · ⌘C: copy	Tab: grid · ← →: baris · ↑ ↓: kolom · ketik, Enter: ubah · ⌘C: salin
 Tab: grid · ↑ ↓: fields · type, Enter: edit · ⌘C: copy	Tab: grid · ↑ ↓: kolom · ketik, Enter: ubah · ⌘C: salin
 Type, Enter or double-click to edit	Ketik, Enter, atau klik ganda untuk mengubah
+DBiji could not open its window: {}\n\nIt needs OpenGL 2.0 or later; updating the graphics driver usually helps.	DBiji tidak bisa membuka jendelanya: {}\n\nDBiji membutuhkan OpenGL 2.0 atau lebih baru; memperbarui driver grafis biasanya membantu.

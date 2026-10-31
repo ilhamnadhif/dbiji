@@ -1,9 +1,11 @@
 //! Inline cell editor and the dictionary / enum dropdown.
 
 use super::frame::{GridFrame, PAD};
+use super::state::Dropdown;
+use crate::model::ResultModel;
 use dbiji_core::{tr, trf};
 use egui::text::{CCursor, CCursorRange};
-use egui::{Align, EventFilter, Frame, Key, Layout, Margin, Popup, PopupCloseBehavior, Rect, ScrollArea, Stroke, StrokeKind, TextEdit, Ui, UiBuilder, pos2, vec2};
+use egui::{Align, EventFilter, Frame, Id, Key, Layout, Margin, Popup, PopupCloseBehavior, Rect, ScrollArea, Stroke, StrokeKind, TextEdit, Ui, UiBuilder, pos2, vec2};
 
 impl GridFrame<'_> {
     /// Show the inline text editor when a cell is being edited.
@@ -38,8 +40,8 @@ impl GridFrame<'_> {
             TextEdit::singleline(&mut text)
                 .id(editor_id)
                 .font(font)
-                .frame(Frame::NONE)
-                .margin(Margin::symmetric(PAD as i8, 0))
+                // A custom frame replaces `margin`: the padding goes on the frame, so the text sits where the cell drew it.
+                .frame(Frame::NONE.inner_margin(Margin::symmetric(PAD as i8, 0)))
                 .desired_width(rect.width())
                 .min_size(vec2(rect.width(), rect.height()))
                 .horizontal_align(if numeric { Align::Max } else { Align::Min })
@@ -52,7 +54,8 @@ impl GridFrame<'_> {
         painter.rect_stroke(rect, 0.0, Stroke::new(2.0, border), StrokeKind::Inside);
         let Some(session) = self.state.rt.editing.as_mut() else { return };
         session.text = text;
-        if session.just_started {
+        let started = session.just_started;
+        if started {
             session.just_started = false;
             output.response.request_focus();
             let mut st = output.state.clone();
@@ -64,6 +67,10 @@ impl GridFrame<'_> {
         }
         if output.response.changed() {
             session.error = None;
+        }
+        // The key that opened the editor (Enter, F2) is not one for it: it would close it at once.
+        if started {
+            return;
         }
         let (enter, tab, shift, esc) = ui.input(|i| (i.key_pressed(Key::Enter), i.key_pressed(Key::Tab), i.modifiers.shift, i.key_pressed(Key::Escape)));
         let focused = output.response.has_focus();
@@ -110,78 +117,100 @@ impl GridFrame<'_> {
         }
         let (sx, sy) = (self.state.rt.scroll_x, self.state.rt.scroll_y);
         let cell = self.geo.cell_rect(dd.row, pos, sx, sy);
-        let entries: Vec<(String, Option<String>)> = match (self.model.dictionary(dd.col), self.model.enum_values(dd.col)) {
-            (Some(d), _) => d.entries().iter().map(|(k, v)| (k.clone(), Some(v.clone()))).collect(),
-            (None, Some(e)) => e.iter().map(|v| (v.clone(), None)).collect(),
-            (None, None) => Vec::new(),
-        };
-        let current = self.model.cell(dd.row, dd.col).map(|v| v.to_text().into_owned()).unwrap_or_default();
-        let nullable = self.model.column_meta(dd.col).is_none_or(|m| m.nullable != Some(false));
-        let mut chosen: Option<Option<String>> = None;
-        let search_id = self.id.with("dropdown_search");
-        let needle = dd.search.to_lowercase();
-        let filtered: Vec<&(String, Option<String>)> = entries
-            .iter()
-            .filter(|(k, d)| needle.is_empty() || k.to_lowercase().contains(&needle) || d.as_ref().is_some_and(|d| d.to_lowercase().contains(&needle)))
-            .take(1000)
-            .collect();
-        let just_opened = dd.just_opened;
-        let resp = Popup::new(self.id.with("dropdown"), ui.ctx().clone(), cell, ui.layer_id())
-            .open(true)
-            .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
-            .width(cell.width().max(240.0))
-            .show(|ui| {
-                let te = ui.add(TextEdit::singleline(&mut dd.search).id(search_id).hint_text(tr("Search…")).return_key(None).desired_width(f32::INFINITY));
-                if just_opened {
-                    te.request_focus();
+        match value_list(self.model, &mut dd, self.id, ui, cell) {
+            ListChoice::Open => self.state.rt.dropdown = Some(dd),
+            ListChoice::Picked(choice) => {
+                let result = match choice {
+                    Some(k) => self.model.set_cell(dd.row, dd.col, &k),
+                    None => self.model.set_null(dd.row, dd.col),
+                };
+                if let Err(e) = result {
+                    self.notify(e, true);
                 }
-                // The Enter that opened the dropdown must not pick an entry.
-                if !just_opened
-                    && te.has_focus()
-                    && ui.input(|i| i.key_pressed(Key::Enter))
-                    && let Some((k, _)) = filtered.first()
-                {
-                    chosen = Some(Some(k.clone()));
+                self.state.rt.dropdown = None;
+                ui.memory_mut(|m| m.request_focus(self.id));
+            }
+            ListChoice::Closed => {
+                self.state.rt.dropdown = None;
+                ui.memory_mut(|m| m.request_focus(self.id));
+            }
+        }
+    }
+}
+
+/// What the list of values of a cell did this frame.
+pub(crate) enum ListChoice {
+    /// Still open.
+    Open,
+    /// A value was picked (`None`: NULL).
+    Picked(Option<String>),
+    /// Closed without a pick (Escape, a click outside).
+    Closed,
+}
+
+/// The list of values (with a search) of a dictionary / enum column, under
+/// `cell`: the grid's and the record view's.
+pub(crate) fn value_list(model: &ResultModel, dd: &mut Dropdown, id: Id, ui: &Ui, cell: Rect) -> ListChoice {
+    let entries: Vec<(String, Option<String>)> = match (model.dictionary(dd.col), model.enum_values(dd.col)) {
+        (Some(d), _) => d.entries().iter().map(|(k, v)| (k.clone(), Some(v.clone()))).collect(),
+        (None, Some(e)) => e.iter().map(|v| (v.clone(), None)).collect(),
+        (None, None) => Vec::new(),
+    };
+    let current = model.cell(dd.row, dd.col).map(|v| v.to_text().into_owned()).unwrap_or_default();
+    let nullable = model.column_meta(dd.col).is_none_or(|m| m.nullable != Some(false));
+    let mut chosen: Option<Option<String>> = None;
+    let search_id = id.with("dropdown_search");
+    let needle = dd.search.to_lowercase();
+    let filtered: Vec<&(String, Option<String>)> = entries
+        .iter()
+        .filter(|(k, d)| needle.is_empty() || k.to_lowercase().contains(&needle) || d.as_ref().is_some_and(|d| d.to_lowercase().contains(&needle)))
+        .take(1000)
+        .collect();
+    let just_opened = dd.just_opened;
+    let resp = Popup::new(id.with("dropdown"), ui.ctx().clone(), cell, ui.layer_id())
+        .open(true)
+        .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
+        .width(cell.width().clamp(240.0, 420.0))
+        .show(|ui| {
+            let te = ui.add(TextEdit::singleline(&mut dd.search).id(search_id).hint_text(tr("Search…")).return_key(None).desired_width(f32::INFINITY));
+            if just_opened {
+                te.request_focus();
+            }
+            // The Enter that opened the dropdown must not pick an entry.
+            if !just_opened
+                && te.has_focus()
+                && ui.input(|i| i.key_pressed(Key::Enter))
+                && let Some((k, _)) = filtered.first()
+            {
+                chosen = Some(Some(k.clone()));
+            }
+            ui.separator();
+            ScrollArea::vertical().max_height(280.0).auto_shrink([false, true]).show(ui, |ui| {
+                if nullable && ui.selectable_label(false, egui::RichText::new(tr("[NULL]")).weak()).clicked() {
+                    chosen = Some(None);
                 }
-                ui.separator();
-                ScrollArea::vertical().max_height(280.0).auto_shrink([false, true]).show(ui, |ui| {
-                    if nullable && ui.selectable_label(false, egui::RichText::new(tr("[NULL]")).weak()).clicked() {
-                        chosen = Some(None);
+                for (k, d) in &filtered {
+                    let label = match d {
+                        Some(d) => format!("{k} — {d}"),
+                        None => k.clone(),
+                    };
+                    if ui.selectable_label(*k == current, label).clicked() {
+                        chosen = Some(Some(k.clone()));
                     }
-                    for (k, d) in &filtered {
-                        let label = match d {
-                            Some(d) => format!("{k} — {d}"),
-                            None => k.clone(),
-                        };
-                        if ui.selectable_label(*k == current, label).clicked() {
-                            chosen = Some(Some(k.clone()));
-                        }
-                    }
-                    if filtered.is_empty() {
-                        ui.weak(tr("No matching values"));
-                    }
-                });
-                if entries.len() > filtered.len() && !needle.is_empty() {
-                    ui.weak(trf("{} of {} values", &[&filtered.len(), &entries.len()]));
+                }
+                if filtered.is_empty() {
+                    ui.weak(tr("No matching values"));
                 }
             });
-        dd.just_opened = false;
-        let close_requested = resp.as_ref().is_none_or(|r| r.response.should_close()) || ui.input(|i| i.key_pressed(Key::Escape));
-        if let Some(choice) = chosen {
-            let result = match choice {
-                Some(k) => self.model.set_cell(dd.row, dd.col, &k),
-                None => self.model.set_null(dd.row, dd.col),
-            };
-            if let Err(e) = result {
-                self.notify(e, true);
+            if entries.len() > filtered.len() && !needle.is_empty() {
+                ui.weak(trf("{} of {} values", &[&filtered.len(), &entries.len()]));
             }
-            self.state.rt.dropdown = None;
-            ui.memory_mut(|m| m.request_focus(self.id));
-        } else if close_requested {
-            self.state.rt.dropdown = None;
-            ui.memory_mut(|m| m.request_focus(self.id));
-        } else {
-            self.state.rt.dropdown = Some(dd);
-        }
+        });
+    dd.just_opened = false;
+    let close_requested = resp.as_ref().is_none_or(|r| r.response.should_close()) || ui.input(|i| i.key_pressed(Key::Escape));
+    match chosen {
+        Some(choice) => ListChoice::Picked(choice),
+        None if close_requested => ListChoice::Closed,
+        None => ListChoice::Open,
     }
 }

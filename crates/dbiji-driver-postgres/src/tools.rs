@@ -401,7 +401,7 @@ mod tests {
         assert!(backup_command(&params(), &opts).is_err());
         let opts = BackupOptions { tool_path: None, ..opts };
         let c = backup_command(&params(), &opts).unwrap();
-        assert!(c.program.ends_with("pg_dump"));
+        assert!(is_tool(&c.program, "pg_dump"), "{}", c.program);
         assert!(c.args.contains(&"--format=c".to_string()));
         assert!(c.args.contains(&"--file=/tmp/out.dump".to_string()));
         assert!(c.args.contains(&"--schema=app".to_string()));
@@ -435,17 +435,22 @@ mod tests {
         assert_eq!(args[args.len() - 2..], ["-d".to_string(), "dbname='a=b c'".to_string()]);
     }
 
+    /// `program` runs the tool `name` (`name.exe` on Windows, maybe with its folder).
+    fn is_tool(program: &str, name: &str) -> bool {
+        Path::new(program).file_stem().is_some_and(|s| s == name)
+    }
+
     #[test]
     fn restore_arguments() {
         let plain = RestoreOptions { input: "/tmp/in.sql".into(), format: BackupFormat::Plain, single_transaction: true, exit_on_error: true, ..Default::default() };
         let c = restore_command(&params(), &plain).unwrap();
-        assert!(c.program.ends_with("psql"));
+        assert!(is_tool(&c.program, "psql"), "{}", c.program);
         assert!(c.args.contains(&"--set=ON_ERROR_STOP=1".to_string()));
         assert!(c.args.contains(&"--single-transaction".to_string()));
         assert!(c.args.contains(&"--file=/tmp/in.sql".to_string()));
         let archive = RestoreOptions { input: "/tmp/in.dump".into(), format: BackupFormat::Custom, clean: true, create_database: true, exit_on_error: true, ..Default::default() };
         let c = restore_command(&params(), &archive).unwrap();
-        assert!(c.program.ends_with("pg_restore"));
+        assert!(is_tool(&c.program, "pg_restore"), "{}", c.program);
         assert!(c.args.contains(&"--create".to_string()));
         assert!(c.args.contains(&"--exit-on-error".to_string()));
         assert!(c.args.windows(2).any(|w| w[0] == "-d" && w[1] == "postgres"));
@@ -462,7 +467,7 @@ mod tests {
         p.user = Some("admin".into());
         let opts = BackupOptions { output: "/tmp/all.sql".into(), all_databases: true, globals_only: true, format: BackupFormat::Plain, ..Default::default() };
         let c = backup_command(&p, &opts).unwrap();
-        assert!(c.program.ends_with("pg_dumpall"), "{}", c.program);
+        assert!(is_tool(&c.program, "pg_dumpall"), "{}", c.program);
         assert!(c.args.contains(&"--globals-only".to_string()) && c.args.contains(&"--file=/tmp/all.sql".to_string()), "{:?}", c.args);
         let p = dbiji_core::ConnectParams { database: Some("app db".into()), ..p };
         let c = backup_command(&p, &opts).unwrap();

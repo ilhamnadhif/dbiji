@@ -182,6 +182,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "allocator-api2"
+version = "0.2.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
+
+[[package]]
 name = "android-activity"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1613,7 +1619,7 @@ checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
 name = "dbiji-ai"
-version = "0.3.46"
+version = "0.3.49"
 dependencies = [
  "async-trait",
  "dbiji-core",
@@ -1629,7 +1635,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-app"
-version = "0.3.46"
+version = "0.3.49"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1685,12 +1691,14 @@ dependencies = [
  "tracing-subscriber",
  "ureq",
  "uuid",
+ "wgpu",
+ "winresource",
  "zip 9.0.5",
 ]
 
 [[package]]
 name = "dbiji-compare"
-version = "0.3.46"
+version = "0.3.49"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1706,7 +1714,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-config"
-version = "0.3.46"
+version = "0.3.49"
 dependencies = [
  "aes",
  "argon2",
@@ -1732,11 +1740,12 @@ dependencies = [
 
 [[package]]
 name = "dbiji-core"
-version = "0.3.46"
+version = "0.3.49"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
  "chrono",
+ "flate2",
  "hex",
  "parking_lot",
  "serde",
@@ -1752,7 +1761,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-driver-clickhouse"
-version = "0.3.46"
+version = "0.3.49"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -1771,7 +1780,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-driver-duckdb"
-version = "0.3.46"
+version = "0.3.49"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1786,7 +1795,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-driver-mongodb"
-version = "0.3.46"
+version = "0.3.49"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1801,7 +1810,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-driver-mssql"
-version = "0.3.46"
+version = "0.3.49"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1818,7 +1827,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-driver-mysql"
-version = "0.3.46"
+version = "0.3.49"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1836,7 +1845,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-driver-postgres"
-version = "0.3.46"
+version = "0.3.49"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1865,7 +1874,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-driver-redis"
-version = "0.3.46"
+version = "0.3.49"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1878,7 +1887,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-driver-sqlite"
-version = "0.3.46"
+version = "0.3.49"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1895,7 +1904,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-editor"
-version = "0.3.46"
+version = "0.3.49"
 dependencies = [
  "dbiji-core",
  "eframe",
@@ -1910,7 +1919,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-grid"
-version = "0.3.46"
+version = "0.3.49"
 dependencies = [
  "chrono",
  "dbiji-core",
@@ -1930,7 +1939,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-icons"
-version = "0.3.46"
+version = "0.3.49"
 dependencies = [
  "egui",
  "egui-phosphor",
@@ -1938,7 +1947,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-net"
-version = "0.3.46"
+version = "0.3.49"
 dependencies = [
  "base64 0.23.1",
  "dbiji-core",
@@ -1958,7 +1967,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-sql"
-version = "0.3.46"
+version = "0.3.49"
 dependencies = [
  "dbiji-core",
  "flate2",
@@ -1970,7 +1979,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-tasks"
-version = "0.3.46"
+version = "0.3.49"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1989,7 +1998,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-transfer"
-version = "0.3.46"
+version = "0.3.49"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2015,7 +2024,7 @@ dependencies = [
 
 [[package]]
 name = "dbiji-visual"
-version = "0.3.46"
+version = "0.3.49"
 dependencies = [
  "chrono",
  "dbiji-core",
@@ -2354,12 +2363,14 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "parking_lot",
  "percent-encoding",
+ "pollster 1.0.1",
  "profiling",
  "raw-window-handle",
  "static_assertions",
  "wasm-bindgen",
  "web-sys",
  "web-time",
+ "wgpu",
  "windows-sys 0.61.2",
  "winit",
 ]
@@ -3200,6 +3211,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "gpu-allocator"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51255ea7cfaadb6c5f1528d43e92a82acb2b96c43365989a28b2d44ee38f8795"
+dependencies = [
+ "hashbrown 0.16.1",
+ "log",
+ "presser",
+ "thiserror 2.0.21",
+ "windows",
+]
+
+[[package]]
 name = "group"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3258,6 +3282,8 @@ version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
 dependencies = [
+ "allocator-api2",
+ "equivalent",
  "foldhash 0.2.0",
 ]
 
@@ -4952,6 +4978,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ordered-float"
+version = "5.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c860fd3227ca4ac3cc032e2cd20cba3f02ccdf4b610538f8ee6584d56bb62e96"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "ordered-stream"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5360,6 +5395,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f3a9f18d041e6d0e102a0a46750538147e5e8992d3b4873aaafee2520b00ce3"
 
 [[package]]
+name = "pollster"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc6355899e1c9462875b6757c79f3caa011a1fdae12bbb1a2e72dd1f234f8336"
+
+[[package]]
 name = "poly1305"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5473,6 +5514,12 @@ dependencies = [
  "ipnet",
  "num-traits",
 ]
+
+[[package]]
+name = "presser"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8cf8e6a8aa66ce33f63993ffc4ea4271eb5b0530a9002db8455ea6050c77bfa"
 
 [[package]]
 name = "pretty-hex"
@@ -5684,6 +5731,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69"
 
 [[package]]
+name = "range-alloc"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca45419789ae5a7899559e9512e58ca889e41f04f1f2445e9f4b290ceccd1d08"
+
+[[package]]
 name = "raw-window-handle"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5868,7 +5921,7 @@ dependencies = [
  "objc2-core-foundation",
  "objc2-foundation 0.3.2",
  "percent-encoding",
- "pollster",
+ "pollster 0.4.0",
  "raw-window-handle",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -8012,6 +8065,7 @@ dependencies = [
  "hashbrown 0.17.1",
  "js-sys",
  "log",
+ "parking_lot",
  "portable-atomic",
  "profiling",
  "raw-window-handle",
@@ -8072,22 +8126,33 @@ version = "30.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6b7fb58561a792bc237628ba0792e332de418fefe145f13b5ed8201e6d52f58"
 dependencies = [
+ "arrayvec",
+ "bit-set",
  "bitflags 2.13.2",
+ "bytemuck",
  "cfg-if",
  "cfg_aliases",
+ "gpu-allocator",
  "hashbrown 0.17.1",
  "libloading",
  "log",
  "naga",
  "naga-types",
+ "once_cell",
+ "ordered-float",
+ "parking_lot",
  "portable-atomic",
  "portable-atomic-util",
+ "profiling",
+ "range-alloc",
  "raw-window-handle",
  "renderdoc-sys",
  "static_assertions",
  "thiserror 2.0.21",
  "wgpu-naga-bridge",
  "wgpu-types",
+ "windows",
+ "windows-core",
 ]
 
 [[package]]
@@ -8458,6 +8523,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "winresource"
+version = "0.1.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2bc6d36480b829272a5bdabf08e6dca8004761c1da7e35efef800540c66221b"
+dependencies = [
+ "version_check",
 ]
 
 [[package]]

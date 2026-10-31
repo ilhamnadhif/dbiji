@@ -521,6 +521,65 @@ fn record_view_copies_values_as_they_are_and_edits_by_typing() {
     v.frame(vec![key(egui::Key::Enter)]);
     v.frame(vec![]);
     assert_eq!(v.model.cell(0, 3), Some(Value::text("z")), "one typed character is a change");
+    // Enter, as in the grid: the value's text selected, typing replaces it.
+    v.frame(vec![key(egui::Key::ArrowUp)]);
+    v.frame(vec![]);
+    v.frame(vec![key(egui::Key::Enter)]);
+    v.frame(vec![]);
+    v.frame(vec![Event::Text("y".into())]);
+    v.frame(vec![]);
+    v.frame(vec![key(egui::Key::Enter)]);
+    v.frame(vec![]);
+    assert_eq!(v.model.cell(0, 2), Some(Value::text("y")), "Enter selects the text: typing replaces it");
+}
+
+#[test]
+fn record_view_picks_enum_values_from_the_list_as_the_grid() {
+    let src = |c: &str| dbiji_core::ColumnSource { database: None, schema: Some("app".into()), table: "users".into(), column: c.into() };
+    let cols = vec![ColumnMeta::new("id", "int", DataKind::Int).with_source(src("id")), ColumnMeta::new("role", "text", DataKind::Text).with_source(src("role"))];
+    let mut m = ResultModel::from_rows(cols, vec![vec![Value::Int(1), Value::text("admin")]]);
+    let e = crate::model::determine_editability(m.columns(), |_| Some(vec!["id".into()]), false);
+    m.set_editability(e);
+    m.set_enum_values(1, vec!["admin".into(), "user".into(), "guest".into()]);
+    let mut v = Viewer::new(m);
+    v.state.grid.select_cell(0, 1);
+    v.state.toolbar.view = ResultViewKind::Record;
+    v.frame(vec![]);
+    v.frame(vec![]);
+    // The value: right of the field's name.
+    let update = v.output.accesskit_update.as_ref().expect("accesskit");
+    let role = update
+        .nodes
+        .iter()
+        .find_map(|(_, n)| {
+            let b = n.bounds()?;
+            (n.label().or(n.value()) == Some("role")).then(|| Pos2::new(b.x1 as f32 + 60.0, ((b.y0 + b.y1) / 2.0) as f32))
+        })
+        .expect("the role field");
+    v.click(role);
+    let key = |k: egui::Key| Event::Key { key: k, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
+    // Enter: the list of values (no text editor), its search takes the keyboard.
+    v.frame(vec![key(egui::Key::Enter)]);
+    v.frame(vec![]);
+    v.frame(vec![]);
+    assert!(v.find("guest").is_some(), "the list of values is open");
+    v.frame(vec![Event::Text("gue".into())]);
+    v.frame(vec![]);
+    v.frame(vec![key(egui::Key::Enter)]);
+    v.frame(vec![]);
+    v.frame(vec![]);
+    assert_eq!(v.model.cell(0, 1), Some(Value::text("guest")));
+    assert!(v.find("user").is_none(), "the list closed");
+    // The keyboard is the record's again: Enter opens the list, Escape closes it unchanged.
+    v.frame(vec![key(egui::Key::Enter)]);
+    v.frame(vec![]);
+    v.frame(vec![]);
+    assert!(v.find("user").is_some());
+    v.frame(vec![key(egui::Key::Escape)]);
+    v.frame(vec![]);
+    v.frame(vec![]);
+    assert!(v.find("user").is_none());
+    assert_eq!(v.model.cell(0, 1), Some(Value::text("guest")));
 }
 
 #[test]

@@ -194,41 +194,62 @@ pub fn run() -> ExitCode {
     if let Some(icon) = window_icon() {
         viewport = viewport.with_icon(icon);
     }
-    let options = eframe::NativeOptions { viewport, ..Default::default() };
     let exit_after_first = args.exit_after_first_frame;
     let files = args.files.clone();
     let execute = args.execute;
-    let result = eframe::run_native(
-        "DBiji",
-        options,
-        Box::new(move |cc| {
-            theme::setup_fonts(&cc.egui_ctx);
-            theme::apply_settings(&cc.egui_ctx, &settings);
-            backend.set_context(cc.egui_ctx.clone());
-            let mut app = app::DbijiApp::new(backend, conns, services, settings);
-            app.exit_after_first_frame = exit_after_first;
-            #[cfg(target_os = "macos")]
-            {
-                app.app_menu = macmenu::AppMenu::install(&cc.egui_ctx);
-            }
-            match std::env::var("DBIJI_BENCH_SCENARIO").as_deref() {
-                Ok("workload") => app.start_bench_workload(),
-                Ok(_) => {}
-                Err(_) if app.settings.general.restore_session => app.restore_session(),
-                Err(_) => {}
-            }
-            // Database files first, so scripts can use their connection.
-            let (dbs, scripts): (Vec<&String>, Vec<&String>) = files.iter().partition(|f| app::is_database_file(std::path::Path::new(f)));
-            for f in dbs.into_iter().chain(scripts) {
-                app.open_path(std::path::Path::new(f), execute);
-            }
-            Ok(Box::new(app))
-        }),
-    );
+    let creator: eframe::AppCreator<'static> = Box::new(move |cc| {
+        theme::setup_fonts(&cc.egui_ctx);
+        theme::apply_settings(&cc.egui_ctx, &settings);
+        backend.set_context(cc.egui_ctx.clone());
+        let mut app = app::DbijiApp::new(backend, conns, services, settings);
+        app.exit_after_first_frame = exit_after_first;
+        #[cfg(target_os = "macos")]
+        {
+            app.app_menu = macmenu::AppMenu::install(&cc.egui_ctx);
+        }
+        match std::env::var("DBIJI_BENCH_SCENARIO").as_deref() {
+            Ok("workload") => app.start_bench_workload(),
+            Ok(_) => {}
+            Err(_) if app.settings.general.restore_session => app.restore_session(),
+            Err(_) => {}
+        }
+        // Database files first, so scripts can use their connection.
+        let (dbs, scripts): (Vec<&String>, Vec<&String>) = files.iter().partition(|f| app::is_database_file(std::path::Path::new(f)));
+        for f in dbs.into_iter().chain(scripts) {
+            app.open_path(std::path::Path::new(f), execute);
+        }
+        Ok(Box::new(app))
+    });
+    // Taken by the attempt whose window opens: a renderer that cannot start fails before.
+    let creator = std::rc::Rc::new(std::cell::RefCell::new(Some(creator)));
+    let attempt = |renderer| {
+        let creator = creator.clone();
+        let options = eframe::NativeOptions { viewport: viewport.clone(), renderer, ..Default::default() };
+        eframe::run_native("DBiji", options, Box::new(move |cc| (creator.borrow_mut().take().expect("the app is created once"))(cc)))
+    };
+    let result = attempt(eframe::Renderer::Glow);
+    // Windows without OpenGL 2 (a virtual machine, Remote Desktop, no graphics
+    // driver): Direct3D 12, in software (WARP) when there is no graphics card.
+    #[cfg(windows)]
+    let result = match result {
+        Err(e) if creator.borrow().is_some() => {
+            tracing::warn!("OpenGL: {e}; trying Direct3D 12");
+            attempt(eframe::Renderer::Wgpu)
+        }
+        r => r,
+    };
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("DBiji failed: {e}");
+            tracing::error!("DBiji failed: {e}");
+            // Started from a menu, the Dock or Explorer, nobody sees the console.
+            let _ = rfd::MessageDialog::new()
+                .set_level(rfd::MessageLevel::Error)
+                .set_title("DBiji")
+                .set_description(dbiji_core::trf("DBiji could not open its window: {}\n\nIt needs OpenGL 2.0 or later; updating the graphics driver usually helps.", &[&e]))
+                .set_buttons(rfd::MessageButtons::Ok)
+                .show();
             ExitCode::FAILURE
         }
     }

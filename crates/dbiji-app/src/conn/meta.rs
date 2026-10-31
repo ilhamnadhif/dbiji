@@ -72,6 +72,21 @@ impl MetadataCache {
         *self = MetadataCache { generation: self.generation + 1, invalidations: self.invalidations + 1, ..Default::default() };
     }
 
+    /// Forget the loads that failed (their session was lost meanwhile): they load
+    /// again when shown.
+    pub fn forget_failed(&mut self) {
+        if self.databases.error().is_some() {
+            self.databases = Loadable::NotLoaded;
+        }
+        self.schemas.retain(|_, l| l.error().is_none());
+        self.objects.retain(|_, l| l.error().is_none());
+        self.children.retain(|_, l| l.error().is_none());
+        self.snapshots.retain(|_, l| l.error().is_none());
+        self.table_defs.retain(|_, l| l.error().is_none());
+        self.catalog.retain(|_, l| l.error().is_none());
+        self.generation += 1;
+    }
+
     /// Forget one schema's objects and snapshot.
     pub fn clear_schema(&mut self, schema: &SchemaRef) {
         self.objects.retain(|(s, _), _| s != schema);

@@ -27,6 +27,36 @@ notes of a new version once after it was updated (Help → What's new).
 - The release binary grows by about 7 MiB (37 → 44 MiB) for the MongoDB and Redis clients; the size budget is now 48 MB. Both driver crates are compiled with `opt-level = "z"`.
 - The SQL-only tools are hidden for MongoDB and Redis instead of failing: query builder, ER diagram, table designer, data search, import, count and column statistics, smart commit and the SQL templates. Their editor keeps its own splitter and classifier (`SqlSyntax::shell`), no `:name` substitution and no SQL formatter.
 
+## 0.3.49 — 2026-10-31
+
+### Fixed
+- After the computer slept (or the network or the server dropped it), a connection stayed red in the navigator even once its tabs worked again with Retry: only unfolding it or Reconnect brought it back. It now connects again by itself — at once, then less and less often while the server does not answer, and at once when a tab's Retry got through — and turns green. A connection through an SSH tunnel or a proxy gets a new tunnel too. SQL editors sharing its session work again, and navigator folders that failed to load meanwhile load again.
+
+### Changed
+- README: new screenshots (SQL editor, a table's data, ER diagram), current measurements, and the AI assistant's agent mode; the update check runs when DBiji starts and every 6 hours, not once a day as it said.
+- The app is about 115 KB smaller: the translations and release notes are stored compressed.
+
+## 0.3.48 — 2026-10-30
+
+### Added
+- DBiji for Windows and Linux. Every release now has, besides the macOS disk image:
+  - Windows 10 / 11 (x64): an installer (`DBiji-<version>-windows-x64-setup.exe`, per user, no administrator rights) and a portable `.zip`;
+  - Linux (x86_64 and ARM64): a `.deb` (Ubuntu, Debian, Linux Mint), an `.rpm` (Fedora, RHEL, openSUSE), an Arch Linux package, an AppImage and a `.tar.gz`.
+  On Windows passwords are kept in the Credential Manager, on Linux in the desktop's keyring (Secret Service). The update dialog's Download gets the Windows installer; on Linux it opens the release page.
+  Windows without OpenGL 2.0 (a virtual machine, Remote Desktop, no graphics driver) draws the window with Direct3D 12 instead.
+- When the window cannot open at all, DBiji says why in a dialog instead of quitting silently.
+
+## 0.3.47 — 2026-10-30
+
+### Changed
+- The record view edits enum and dictionary fields with the grid's list of values (with its search) instead of a text box, and Enter / F2 / double-click select the field's text as in the grid, so typing replaces it.
+
+### Fixed
+- Enter on a cell in the grid did nothing: the editor opened and the same Enter closed it at once (F2 and double-click worked).
+- The cell editor's text started at the cell's border instead of where the cell draws it.
+- In the record view, a refused value's message was drawn against the left edge, and the field was not outlined in red as in the grid.
+- In a narrow record view, the keyboard hint was drawn over "Hide empty"; it is cut short with "…" (the full text is in its tooltip).
+
 ## 0.3.46 — 2026-10-30
 
 ### Changed

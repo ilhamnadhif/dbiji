@@ -8,7 +8,7 @@ use dbiji_core::driver::{ConnectParams, ExecOptions};
 use dbiji_core::meta::{ObjectKind, ObjectRef, SchemaRef};
 use dbiji_core::{DbKind, Driver, Session, Value};
 use dbiji_driver_redis::RedisDriver;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 fn params() -> Option<ConnectParams> {
     let addr = std::env::var("DBIJI_TEST_REDIS").ok()?;
@@ -108,5 +108,27 @@ async fn a_live_server_round_trip() {
     assert!(e.message.to_lowercase().contains("unknown command"), "{e}");
 
     query(session.as_mut(), "DEL dbiji:smoke dbiji:hash").await;
+    session.close().await.expect("close");
+}
+
+/// redis-rs caps every response at 500 ms by default: a read that took longer
+/// — a large key, a paused or busy server — failed with a bare "timed out"
+/// ("Context: Reading the key" in the data editor). The cap is off now.
+#[tokio::test]
+async fn a_slow_server_does_not_fail_a_read() {
+    let Some(params) = params() else {
+        eprintln!("DBIJI_TEST_REDIS is not set: skipping");
+        return;
+    };
+    let mut session = RedisDriver::new().connect(&params).await.expect("connect");
+    query(session.as_mut(), "HSET dbiji:pause f v").await;
+    // The server holds every command for 1.2 s: longer than the old 500 ms cap.
+    query(session.as_mut(), "CLIENT PAUSE 1200 ALL").await;
+    let started = Instant::now();
+    let (cols, rows) = query(session.as_mut(), "DBIJI.KEYDATA dbiji:pause").await;
+    assert_eq!(cols, ["field", "value"]);
+    assert_eq!(rows.len(), 1);
+    assert!(started.elapsed() >= Duration::from_millis(1000), "the server did not pause: {:?}", started.elapsed());
+    query(session.as_mut(), "DEL dbiji:pause").await;
     session.close().await.expect("close");
 }

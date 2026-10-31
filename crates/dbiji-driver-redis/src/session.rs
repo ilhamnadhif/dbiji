@@ -33,6 +33,8 @@ pub struct RedisSession {
     /// The multiplexed connection, opened on first use and cloned afterwards
     /// (a clone shares the socket; the driver reconnects on its own).
     conn: std::sync::Mutex<Option<redis::aio::MultiplexedConnection>>,
+    /// Timeout of a connection attempt, kept for the reconnect in [`Self::conn`].
+    connect_timeout: Duration,
     dialect: Arc<RedisDialect>,
     info: ServerInfo,
     database: i64,
@@ -41,14 +43,28 @@ pub struct RedisSession {
     closed: bool,
 }
 
+/// Settings of the multiplexed connection.
+///
+/// `AsyncConnectionConfig::default()` caps every response at 500 ms
+/// (`DEFAULT_RESPONSE_TIMEOUT`), which failed any command that took longer —
+/// a large `HGETALL` / `SMEMBERS`, a paused or busy server — with a bare
+/// "timed out". DBiji bounds a statement with `ExecOptions::timeout` instead,
+/// and a key read has no bound, so the client's cap is off.
+fn connection_config(connect_timeout: Duration) -> redis::AsyncConnectionConfig {
+    redis::AsyncConnectionConfig::new()
+        .set_connection_timeout(Some(connect_timeout.max(Duration::from_millis(500))))
+        .set_response_timeout(None)
+}
+
 impl RedisSession {
     /// Connect with the parameters resolved by the application.
     pub async fn connect(params: &ConnectParams) -> DbResult<RedisSession> {
         let url = connection_url(params);
         let client = Client::open(url).map_err(|e| map_error(&e).with_context("Opening the Redis connection"))?;
         let database = params.database.as_deref().and_then(|d| d.trim().parse::<i64>().ok()).unwrap_or(0);
+        let connect_timeout = params.connect_timeout.max(Duration::from_millis(500));
         let mut conn = client
-            .get_multiplexed_async_connection_with_config(&redis::AsyncConnectionConfig::new().set_connection_timeout(Some(params.connect_timeout.max(Duration::from_millis(500)))))
+            .get_multiplexed_async_connection_with_config(&connection_config(connect_timeout))
             .await
             .map_err(|e| map_error(&e).with_context("Connecting to Redis"))?;
         let info_reply: String = Cmd::new().arg("INFO").arg("server").query_async(&mut conn).await.map_err(|e| map_error(&e).with_context("Reading INFO"))?;
@@ -60,6 +76,7 @@ impl RedisSession {
         Ok(RedisSession {
             client,
             conn: std::sync::Mutex::new(Some(conn)),
+            connect_timeout,
             dialect: Arc::new(RedisDialect::new()),
             info: ServerInfo { product: product.into(), version_number: parse_version_number(&version), version, session_id: None },
             database,
@@ -73,7 +90,11 @@ impl RedisSession {
         if let Some(c) = self.conn.lock().ok().and_then(|c| c.clone()) {
             return Ok(c);
         }
-        let c = self.client.get_multiplexed_async_connection().await.map_err(|e| map_error(&e).with_context("Reconnecting to Redis"))?;
+        let c = self
+            .client
+            .get_multiplexed_async_connection_with_config(&connection_config(self.connect_timeout))
+            .await
+            .map_err(|e| map_error(&e).with_context("Reconnecting to Redis"))?;
         if let Ok(mut slot) = self.conn.lock() {
             *slot = Some(c.clone());
         }

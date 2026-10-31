@@ -463,6 +463,23 @@ fn a_lost_connection_reconnects_only_when_unfolded() {
     wait(&mut h, "unfolded", |h| nav_row(h, "Tables").is_some());
 }
 
+/// The connection was dropped (the laptop slept): it connects again by itself
+/// and turns green, without unfolding or Reconnect.
+#[test]
+fn a_dropped_connection_connects_again_by_itself() {
+    let (_dir, mut h, conn) = setup();
+    wait(&mut h, "Tables folder", |h| nav_row(h, "Tables").is_some());
+    let (backend, main) = (h.state().backend.clone(), h.state().conns.live(&conn).unwrap().main.clone());
+    let dropped = main.clone();
+    backend.block_on(async move { dropped.close_from_server().await });
+    assert!(main.is_lost());
+    wait(&mut h, "connected again", |h| matches!(h.state().conns.status(&conn), dbiji_app::conn::ConnStatus::Connected) && !h.state().conns.live(&conn).unwrap().main.same(&main));
+    assert!(nav_row(&h, "Tables").is_some(), "still unfolded");
+    // The new session works.
+    let main = h.state().conns.live(&conn).unwrap().main.clone();
+    assert!(backend.block_on(async move { main.ping().await }).is_ok());
+}
+
 /// The text field on the same row as (to the right of) a label.
 fn field_right_of(h: &mut H, label: &str, text: &str) {
     pause(h);

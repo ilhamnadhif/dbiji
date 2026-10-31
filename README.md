@@ -4,7 +4,7 @@
 
 DBiji is a native alternative to DBeaver for SQL databases on macOS, Windows and Linux: one small
 binary, no JVM, no Electron.
-It opens in about 0.1 s, idles at 0 % CPU and uses around 70 MB of memory — and result sets of
+It opens in about 0.1 s, idles at 0 % CPU and uses around 90 MB of memory — and result sets of
 millions of rows never have to fit in memory.
 
 [Bahasa Indonesia](README.id.md)
@@ -25,15 +25,24 @@ millions of rows never have to fit in memory.
   `DELETE`/`UPDATE` without `WHERE` and `DROP`, read-only connections, a separate session per editor.
 - **Connections** through SSH tunnels, SOCKS5 / HTTP proxies and SSL. Passwords live in the system's
   keychain (macOS Keychain, Windows Credential Manager, GNOME Keyring / KWallet) or an encrypted vault
-  with a master password — never in a file.
+  with a master password — never in a file. A connection dropped while the computer slept or the
+  network was away connects again by itself.
 - **Import** connections from DBeaver, `~/.pgpass` and URLs.
 - **Everything else DBeaver users expect**: export / import (CSV, JSON, SQL, XLSX, XML, Parquet …),
   migration between databases, mock data, ER diagrams, visual query builder, schema and data compare
   (with Liquibase output), table designer, tasks and scheduler, backup / restore, session and lock
-  manager, server dashboard, PostgreSQL debugger and an optional AI assistant with your own API key.
+  manager, server dashboard and PostgreSQL debugger.
+- **AI assistant** (optional, with your own API key: Anthropic, OpenAI or any compatible service) in a
+  side panel: it knows the schema, writes and explains SQL, keeps its conversations and, if you
+  allow it, runs read-only queries itself.
 - English and Indonesian UI, light and dark themes (View → Theme or the sun / moon button in the status
   bar), customisable shortcuts and toolbar, no telemetry.
 - **Automatic updates** from GitHub releases (optional), with one click to install, and release notes after every update.
+
+<p>
+  <img src="docs/screenshots/data.png" width="49%" alt="A table's data: grid with server-side filter and ORDER BY">
+  <img src="docs/screenshots/er-diagram.png" width="49%" alt="ER diagram of the sample database">
+</p>
 
 ## Install
 
@@ -72,6 +81,8 @@ it again to update. To install a specific version, pass it as an argument: `… 
 > - **In Terminal**: `xattr -dr com.apple.quarantine /Applications/DBiji.app`
 
 ### Homebrew
+
+From a clone of this repository (the cask follows every release):
 
 ```sh
 brew install --cask ./packaging/homebrew/dbiji.rb
@@ -190,18 +201,18 @@ Measured on the release build (Apple M1 Pro) with `dbiji --bench all`:
 
 | | Target | Measured |
 | --- | --- | --- |
-| Binary size | < 40 MB | 37 MB |
-| Cold start to first frame | < 1 s | ≈ 0.1 s |
-| Idle memory | < 120 MB | ≈ 69 MB |
-| 3 connections + 5 result tabs | < 250 MB | ≈ 83 MB |
+| Binary size (macOS) | < 40 MB | 39.9 MB |
+| Cold start to first frame | < 1 s | ≈ 0.12 s |
+| Idle memory | < 120 MB | ≈ 93 MB |
+| 3 connections + 5 result tabs | < 250 MB | ≈ 93 MB |
 | 1 M rows scroll | < 16 ms / frame | p95 0.5 ms |
-| Typing in a 50 000-line script | < 16 ms / frame | p95 0.4 ms |
+| Typing in a 50 000-line script | < 16 ms / frame | p95 0.5 ms |
 
 ## Security and data
 
 - No telemetry. DBiji only connects to the servers you configure and, if you enable them, to your AI
-  provider and to GitHub for the update check (one anonymous request a day for the latest release;
-  asked once, changeable in Settings → General).
+  provider and to GitHub for the update check (one anonymous request for the latest release when
+  DBiji starts and every 6 hours; asked once, changeable in Settings → General).
 - Passwords and API keys are stored in the system's credential store (macOS Keychain, Windows
   Credential Manager, the Secret Service on Linux) or in `vault.bin` (Argon2id +
   XChaCha20-Poly1305); configuration files are written with mode 0600.

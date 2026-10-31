@@ -3,6 +3,15 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.3.49 — 2026-10-31
+
+### Fixed
+- After the computer slept (or the network or the server dropped it), a connection stayed red in the navigator even once its tabs worked again with Retry: only unfolding it or Reconnect brought it back. It now connects again by itself — at once, then less and less often while the server does not answer, and at once when a tab's Retry got through — and turns green. A connection through an SSH tunnel or a proxy gets a new tunnel too. SQL editors sharing its session work again, and navigator folders that failed to load meanwhile load again.
+
+### Changed
+- README: new screenshots (SQL editor, a table's data, ER diagram), current measurements, and the AI assistant's agent mode; the update check runs when DBiji starts and every 6 hours, not once a day as it said.
+- The app is about 115 KB smaller: the translations and release notes are stored compressed.
+
 ## 0.3.48 — 2026-10-30
 
 ### Added

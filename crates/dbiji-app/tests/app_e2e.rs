@@ -9,7 +9,7 @@
 //! Each test works on uniquely named tables that it drops again.
 
 use dbiji_app::backend::Backend;
-use dbiji_app::conn::{ConnectionManager, Credentials, DirectNet, MemorySecrets, SecretSource};
+use dbiji_app::conn::{ConnStatus, ConnectionManager, Credentials, DirectNet, MemorySecrets, NetConnector, SecretSource, TunnelGuard};
 use dbiji_app::exec::{ExecEvent, ExecOpts, Execution, StmtPlan};
 use dbiji_app::results::source::ResultSource;
 use dbiji_core::config::{SecretSlot, secret_key};
@@ -38,6 +38,10 @@ fn wait_until(mut f: impl FnMut() -> bool, what: &str) {
 
 /// Connect through the connection manager exactly like the UI does.
 fn connect(backend: &Backend, url: &str) -> (ConnectionManager, String) {
+    connect_with(backend, url, Arc::new(DirectNet))
+}
+
+fn connect_with(backend: &Backend, url: &str, net: Arc<dyn NetConnector>) -> (ConnectionManager, String) {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let (mut cfg, password) = dbiji_config::parse_connection_url(url).expect("valid test URL");
     cfg.name = "e2e".into();
@@ -49,7 +53,7 @@ fn connect(backend: &Backend, url: &str) -> (ConnectionManager, String) {
     if let Some(pw) = &password {
         secrets.set(&secret_key(&cfg.id, SecretSlot::Password), pw).unwrap();
     }
-    let mut cm = ConnectionManager::new(dbiji_app::driver_registry(), secrets, Arc::new(DirectNet));
+    let mut cm = ConnectionManager::new(dbiji_app::driver_registry(), secrets, net);
     let id = cfg.id.clone();
     cm.upsert(cfg);
     assert!(cm.missing_credentials(&id).is_empty(), "password should come from the secret store");
@@ -321,4 +325,48 @@ fn schema_compare_gate() {
         assert!(errs.is_empty(), "{name}: migration failed {errs:?}\nscript:\n{}", script.join(";\n"));
         assert!(remaining.is_empty(), "{name}: still different after the migration: {remaining:#?}\nscript:\n{}", script.join(";\n"));
     }
+}
+
+/// A "tunnel" straight to the server whose end the test decides.
+#[derive(Default)]
+struct FakeTunnels {
+    opened: std::sync::atomic::AtomicUsize,
+    alive: parking_lot::Mutex<Arc<std::sync::atomic::AtomicBool>>,
+}
+
+#[async_trait::async_trait]
+impl NetConnector for FakeTunnels {
+    async fn open(&self, _cfg: &dbiji_core::ConnectionConfig, _creds: &Credentials, host: &str, port: u16) -> dbiji_core::DbResult<Option<TunnelGuard>> {
+        let alive = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        *self.alive.lock() = alive.clone();
+        self.opened.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let alive = Box::new(move || alive.load(std::sync::atomic::Ordering::SeqCst));
+        Ok(Some(TunnelGuard { local_host: host.to_string(), local_port: port, alive, guard: Box::new(()) }))
+    }
+}
+
+/// The SSH tunnel ended (the computer slept): a new tunnel and main session are
+/// opened by themselves and the connection is connected (green) again.
+#[test]
+fn a_connection_whose_tunnel_ended_connects_again() {
+    let Some(url) = std::env::var("DBIJI_TEST_PG").ok().filter(|u| !u.trim().is_empty()) else { return };
+    let backend = Backend::new().unwrap();
+    let net = Arc::new(FakeTunnels::default());
+    let (mut cm, id) = connect_with(&backend, &url, net.clone());
+    assert_eq!(net.opened.load(std::sync::atomic::Ordering::SeqCst), 1);
+    let old = cm.live(&id).unwrap().main.clone();
+    net.alive.lock().store(false, std::sync::atomic::Ordering::SeqCst);
+    assert!(matches!(cm.status(&id), ConnStatus::Lost));
+    wait_until(
+        || {
+            cm.poll(&backend);
+            matches!(cm.status(&id), ConnStatus::Connected)
+        },
+        "connected again",
+    );
+    assert_eq!(net.opened.load(std::sync::atomic::Ordering::SeqCst), 2, "a new tunnel");
+    let main = cm.live(&id).unwrap().main.clone();
+    assert!(!main.same(&old), "a new main session");
+    let ping = backend.block_on(async move { main.ping().await });
+    assert!(ping.is_ok(), "{ping:?}");
 }

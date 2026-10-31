@@ -590,6 +590,13 @@ impl SessionHandle {
 
     pub async fn close(&self) {
         self.inner.closed_here.store(true, Ordering::Relaxed);
+        self.close_from_server().await;
+    }
+
+    /// Tests: the connection ends as when the server or the network dropped it
+    /// ([`is_lost`](Self::is_lost)).
+    #[doc(hidden)]
+    pub async fn close_from_server(&self) {
         self.close_cursor().await;
         let mut guard = self.inner.session.lock().await;
         let _ = guard.close().await;

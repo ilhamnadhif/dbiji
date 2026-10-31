@@ -91,6 +91,8 @@ pub struct LiveConnection {
     /// A ping of `main` after another session of the connection was lost (is the
     /// server gone or just that session?).
     health_probe: Option<Job<DbResult<()>>>,
+    /// Opens `main` again after it was lost.
+    revive: Revive,
     pub server: ServerInfo,
     pub meta: MetadataCache,
     pub connected_at: Instant,
@@ -100,6 +102,30 @@ pub struct LiveConnection {
     pub catalog_folders: Arc<Vec<dbiji_core::catalog::CatalogFolder>>,
     /// Stops the keep-alive task when the connection is dropped.
     _keepalive: KeepAlive,
+}
+
+/// The main session was lost (the computer slept, the network dropped, the
+/// server restarted): it is opened again in the background, at once and then
+/// less and less often while the server does not answer, so the connection
+/// turns green again by itself. A session a tab opens meanwhile (its Retry)
+/// shows that the server answers again: the next attempt is made at once.
+/// When the SSH tunnel or proxy ended too, the whole connection is opened
+/// again (by [`ConnectionManager::poll`], which has the credentials).
+#[derive(Default)]
+struct Revive {
+    job: Option<ReviveJob>,
+    /// No attempt before this.
+    next: Option<Instant>,
+    failures: u32,
+    /// Set when a session of the connection was opened.
+    answered: Arc<std::sync::atomic::AtomicBool>,
+}
+
+enum ReviveJob {
+    /// The main session, through the tunnel that still runs (or none).
+    Session(Job<DbResult<SessionHandle>>),
+    /// A new tunnel and main session.
+    Connection(Job<DbResult<Connected>>),
 }
 
 /// Background keep-alive: pings the main session every `keep_alive_secs`
@@ -226,6 +252,80 @@ impl LiveConnection {
             let main = self.main.clone();
             self.health_probe = Some(backend.spawn(async move { main.ping().await }));
         }
+        self.revive_main(backend);
+    }
+
+    /// See [`Revive`]: takes a finished attempt, and starts the next one when the
+    /// tunnel still runs ([`Self::needs_new_tunnel`] otherwise).
+    fn revive_main(&mut self, backend: &Backend) {
+        use std::sync::atomic::Ordering;
+        let done = match self.revive.job.as_mut() {
+            Some(ReviveJob::Session(job)) => job.poll().map(|r| r.map(|s| (s, None))),
+            Some(ReviveJob::Connection(job)) => job.poll().map(|r| {
+                r.map(|c| {
+                    let main = SessionHandle::new(c.session, format!("{} (main)", self.config.name), self.current_database.clone());
+                    (main, Some((c.tunnel, c.params, c.server)))
+                })
+            }),
+            None => None,
+        };
+        if let Some(r) = done {
+            self.revive.job = None;
+            match r {
+                Ok((s, connection)) => {
+                    tracing::info!("{}: connected again", self.config.name);
+                    if let Some((tunnel, params, server)) = connection {
+                        // The other databases' sessions went through the old tunnel.
+                        self.db_sessions.clear();
+                        self.tunnel = tunnel;
+                        self.params = params;
+                        self.server = server;
+                    }
+                    self._keepalive = KeepAlive::start(backend, s.clone(), self.config.init.keep_alive_secs);
+                    self.main = s;
+                    self.revive.next = None;
+                    self.revive.failures = 0;
+                    // What failed to load meanwhile loads again.
+                    self.meta.forget_failed();
+                    return;
+                }
+                Err(e) => {
+                    tracing::info!("{}: not connected again yet: {e}", self.config.name);
+                    self.revive.failures += 1;
+                    let wait = Duration::from_secs((5u64 << self.revive.failures.min(4)).min(60));
+                    self.revive.next = Some(Instant::now() + wait);
+                    if let Some(ctx) = backend.context() {
+                        ctx.request_repaint_after(wait);
+                    }
+                }
+            }
+        }
+        if self.revive.job.is_some() || !self.main.is_lost() || !self.tunnel_alive() {
+            return;
+        }
+        let answered = self.revive.answered.swap(false, Ordering::Relaxed);
+        if !answered && !self.revive_due() {
+            return;
+        }
+        let driver = self.driver.clone();
+        let params = self.params.clone();
+        let cfg = self.config.clone();
+        let database = self.current_database.clone();
+        self.revive.job = Some(ReviveJob::Session(backend.spawn(async move {
+            let mut s = driver.connect(&params).await?;
+            init_session(s.as_mut(), &cfg, &params).await?;
+            Ok(SessionHandle::new(s, format!("{} (main)", cfg.name), database))
+        })));
+    }
+
+    fn revive_due(&self) -> bool {
+        self.revive.next.is_none_or(|t| Instant::now() >= t)
+    }
+
+    /// The SSH tunnel or proxy ended (the computer slept): time to open the
+    /// connection again as a whole.
+    fn needs_new_tunnel(&self) -> bool {
+        self.revive.job.is_none() && !self.tunnel_alive() && self.revive_due()
     }
 
     /// Why the session for `database` could not be opened (shown instead of "Loading…").
@@ -253,9 +353,11 @@ impl LiveConnection {
         }
         let cfg = self.config.clone();
         let tab_sessions = self.tab_sessions.clone();
+        let answered = self.revive.answered.clone();
         async move {
             let mut s = driver.connect(&params).await?;
             init_session(s.as_mut(), &cfg, &params).await?;
+            answered.store(true, std::sync::atomic::Ordering::Relaxed);
             let handle = SessionHandle::new(s, label, database);
             // Weak: a session its tab dropped (closed while opening) closes instead of staying open.
             let mut list = tab_sessions.lock();
@@ -795,6 +897,7 @@ impl ConnectionManager {
                                 db_sessions: HashMap::new(),
                                 tab_sessions: Arc::new(parking_lot::Mutex::new(Vec::new())),
                                 health_probe: None,
+                                revive: Revive::default(),
                                 server: c.server,
                                 meta: MetadataCache::default(),
                                 connected_at: Instant::now(),
@@ -819,6 +922,20 @@ impl ConnectionManager {
                 s.poll();
             }
             live.check_health(backend);
+        }
+        let ids: Vec<String> = self.live.iter().filter(|(_, l)| l.needs_new_tunnel()).map(|(id, _)| id.clone()).collect();
+        for id in ids {
+            let Some(cfg) = self.config(&id).map(|c| self.effective_config(c)) else { continue };
+            let Some(driver) = self.registry.get(cfg.kind) else { continue };
+            let conn_type = self.connection_type(&cfg.connection_type);
+            // The database password the connection was opened with (it may have been prompted).
+            let prompted = Credentials { password: self.live[&id].params.password.clone(), ..Default::default() };
+            let creds = self.credentials(&id, &prompted);
+            let job = backend.spawn(connect_task(driver, cfg, conn_type, creds, self.net.clone(), self.pgpass.clone(), session_time_zone(self.time_zone)));
+            if let Some(live) = self.live.get_mut(&id) {
+                tracing::info!("{}: the tunnel ended; connecting again", live.config.name);
+                live.revive.job = Some(ReviveJob::Connection(job));
+            }
         }
     }
 

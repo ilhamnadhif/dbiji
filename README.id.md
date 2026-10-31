@@ -3,7 +3,7 @@
 **Klien database SQL yang ringan, ditulis sepenuhnya dengan Rust.**
 
 DBiji adalah alternatif native untuk DBeaver pada database SQL di macOS, Windows, dan Linux: satu
-biner kecil, tanpa JVM, tanpa Electron. Terbuka dalam sekitar 0,1 detik, CPU 0 % saat diam, memakai sekitar 70 MB memori — dan
+biner kecil, tanpa JVM, tanpa Electron. Terbuka dalam sekitar 0,1 detik, CPU 0 % saat diam, memakai sekitar 90 MB memori — dan
 hasil query jutaan baris tidak perlu muat di memori.
 
 [English](README.md)
@@ -24,16 +24,24 @@ hasil query jutaan baris tidak perlu muat di memori.
   `DELETE`/`UPDATE` tanpa `WHERE` dan `DROP`, koneksi read-only, sesi terpisah per editor.
 - **Koneksi** lewat SSH tunnel, proxy SOCKS5 / HTTP, dan SSL. Kata sandi disimpan di keychain sistem
   (macOS Keychain, Windows Credential Manager, GNOME Keyring / KWallet) atau brankas terenkripsi
-  dengan kata sandi master — tidak pernah di file.
+  dengan kata sandi master — tidak pernah di file. Koneksi yang terputus saat komputer tidur atau
+  jaringan hilang tersambung lagi dengan sendirinya.
 - **Impor** koneksi dari DBeaver, `~/.pgpass`, dan URL.
 - **Fitur lain yang biasa dipakai pengguna DBeaver**: ekspor / impor (CSV, JSON, SQL, XLSX, XML,
   Parquet …), migrasi antar database, data uji, diagram ER, query builder visual, schema compare dan
   data compare (dengan output Liquibase), desainer tabel, task dan penjadwal, backup / restore,
-  session dan lock manager, dashboard server, debugger PostgreSQL, serta asisten AI opsional dengan
-  kunci API Anda sendiri.
+  session dan lock manager, dashboard server, serta debugger PostgreSQL.
+- **Asisten AI** (opsional, dengan kunci API Anda sendiri: Anthropic, OpenAI, atau layanan yang
+  kompatibel) di panel samping: mengenal skema, menulis dan menjelaskan SQL, menyimpan percakapannya,
+  dan, jika diizinkan, menjalankan query read-only sendiri.
 - Antarmuka Inggris dan Indonesia, tema terang dan gelap (View → Theme atau tombol matahari / bulan di
   status bar), pintasan dan toolbar yang bisa diubah, tanpa telemetri.
 - **Pembaruan otomatis** dari rilis GitHub (opsional), pasang dengan satu klik, dan catatan rilis setelah setiap pembaruan.
+
+<p>
+  <img src="docs/screenshots/data.png" width="49%" alt="Data tabel: grid dengan filter dan ORDER BY di server">
+  <img src="docs/screenshots/er-diagram.png" width="49%" alt="Diagram ER database contoh">
+</p>
 
 ## Instalasi
 
@@ -72,6 +80,8 @@ memperbarui. Untuk memasang versi tertentu, berikan versinya: `… | bash -s -- 
 > - **Lewat Terminal**: `xattr -dr com.apple.quarantine /Applications/DBiji.app`
 
 ### Homebrew
+
+Dari clone repositori ini (cask-nya mengikuti setiap rilis):
 
 ```sh
 brew install --cask ./packaging/homebrew/dbiji.rb
@@ -195,18 +205,18 @@ Diukur pada build rilis (Apple M1 Pro) dengan `dbiji --bench all`:
 
 | | Target | Hasil |
 | --- | --- | --- |
-| Ukuran biner | < 40 MB | 37 MB |
-| Waktu buka sampai frame pertama | < 1 dtk | ≈ 0,1 dtk |
-| Memori saat diam | < 120 MB | ≈ 69 MB |
-| 3 koneksi + 5 tab hasil | < 250 MB | ≈ 83 MB |
+| Ukuran biner (macOS) | < 40 MB | 39,9 MB |
+| Waktu buka sampai frame pertama | < 1 dtk | ≈ 0,12 dtk |
+| Memori saat diam | < 120 MB | ≈ 93 MB |
+| 3 koneksi + 5 tab hasil | < 250 MB | ≈ 93 MB |
 | Scroll 1 juta baris | < 16 ms / frame | p95 0,5 ms |
-| Mengetik di skrip 50.000 baris | < 16 ms / frame | p95 0,4 ms |
+| Mengetik di skrip 50.000 baris | < 16 ms / frame | p95 0,5 ms |
 
 ## Keamanan dan data
 
 - Tanpa telemetri. DBiji hanya terhubung ke server yang Anda atur dan, jika diaktifkan, ke penyedia
-  AI Anda serta ke GitHub untuk pemeriksaan pembaruan (satu permintaan anonim sehari untuk rilis
-  terbaru; ditanyakan sekali, bisa diubah di Settings → General).
+  AI Anda serta ke GitHub untuk pemeriksaan pembaruan (satu permintaan anonim untuk rilis terbaru
+  saat DBiji dibuka dan setiap 6 jam; ditanyakan sekali, bisa diubah di Settings → General).
 - Kata sandi dan kunci API disimpan di penyimpanan kredensial sistem (macOS Keychain, Windows
   Credential Manager, Secret Service di Linux) atau `vault.bin` (Argon2id + XChaCha20-Poly1305);
   file konfigurasi ditulis dengan mode 0600.

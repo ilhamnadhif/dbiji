@@ -487,7 +487,10 @@ impl SqlEditorTab {
     fn prep_config(&self, cx: &AppContext) -> PrepConfig<'_> {
         let p = &cx.settings.editor.parameters;
         let params = p.enabled.then_some(dbiji_sql::ParamOptions { named: p.named_colon, template: p.dollar_brace, positional: p.question_mark, numbered: false });
-        PrepConfig { syntax: self.lang.syntax(), split: split_options(cx), params, base_dir: self.path.as_ref().and_then(|p| p.parent().map(|d| d.to_path_buf())) }
+        let language = self.lang.dialect.kind().language();
+        // `user:1` (Redis keys) and `{a:1}` are not parameters outside SQL.
+        let params = params.filter(|_| language.is_sql() || language == dbiji_core::QueryLanguage::Search);
+        PrepConfig { syntax: self.lang.syntax(), language, split: split_options(cx), params, base_dir: self.path.as_ref().and_then(|p| p.parent().map(|d| d.to_path_buf())) }
     }
 
     fn scope_for(&self, statement: bool) -> Scope {
@@ -758,7 +761,8 @@ impl SqlEditorTab {
                     let budget = cx.settings.results.store_budget_bytes();
                     let mut src = ResultSource::from_executed(session.clone(), sql.clone(), Vec::new(), columns, store, token, exhausted, budget);
                     src.exec_duration = elapsed;
-                    src.rerun_safe = !dbiji_sql::classify(&sql, self.lang.syntax()).is_write;
+                    src.rerun_safe =
+                        !dbiji_sql::classify_command(&sql, self.lang.dialect.kind().language()).unwrap_or_else(|| dbiji_sql::classify(&sql, self.lang.syntax())).is_write;
                     if self.terminal {
                         self.print_rows(&src, cx);
                         src.release(cx.backend);
@@ -949,7 +953,16 @@ impl SqlEditorTab {
         self.log("INFO", tr("@export: the export dialog was opened with this query."));
     }
 
+    /// The connection speaks SQL (the formatter and SQL tools apply).
+    fn is_sql(&self, cx: &AppContext) -> bool {
+        self.conn.as_ref().and_then(|c| cx.conns.config(c)).is_none_or(|c| c.kind.language().is_sql())
+    }
+
     /// The connection's database can show execution plans (not Cassandra).
+    fn has_transactions(&self, cx: &AppContext) -> bool {
+        self.conn.as_ref().and_then(|c| cx.conns.live(c)).is_none_or(|l| l.driver.info().capabilities.transactions)
+    }
+
     fn can_explain(&self, cx: &AppContext) -> bool {
         self.conn.as_ref().and_then(|c| cx.conns.live(c)).is_none_or(|l| l.driver.info().capabilities.explain)
     }
@@ -1296,7 +1309,7 @@ impl SqlEditorTab {
             {
                 self.cancel(cx);
             }
-            if ui.button(dbiji_icons::ic(icon::TEXT_INDENT)).on_hover_text(tip(Action::FormatSql)).clicked() {
+            if self.is_sql(cx) && ui.button(dbiji_icons::ic(icon::TEXT_INDENT)).on_hover_text(tip(Action::FormatSql)).clicked() {
                 self.format(cx);
             }
             ui.menu_button(icon::DOTS_THREE_VERTICAL, |ui| {
@@ -1330,7 +1343,8 @@ impl SqlEditorTab {
             .response
             .on_hover_text(tr("More editor commands"));
             ui.separator();
-            // Transaction controls.
+            // Transaction controls, for databases that have transactions.
+            let transactions = self.has_transactions(cx);
             let tx = match &self.session {
                 SessionSlot::Ready(s) => Some(s.tx_state()),
                 _ => None,
@@ -1338,7 +1352,7 @@ impl SqlEditorTab {
             let manual = tx.as_ref().is_some_and(|t| t.mode == TransactionMode::Manual);
             let pending = tx.as_ref().map(|t| t.log.len()).unwrap_or(0);
             let label = if manual { format!("{} {}", icon::TOGGLE_LEFT, tr("Manual commit")) } else { format!("{} {}", icon::TOGGLE_RIGHT, tr("Auto-commit")) };
-            if ui.add_enabled(tx.is_some(), egui::Button::new(label)).on_hover_text(tip(Action::ToggleAutoCommit)).clicked() {
+            if transactions && ui.add_enabled(tx.is_some(), egui::Button::new(label)).on_hover_text(tip(Action::ToggleAutoCommit)).clicked() {
                 self.set_tx_mode(cx, if manual { TransactionMode::Auto } else { TransactionMode::Manual });
             }
             if manual {
@@ -1930,7 +1944,7 @@ impl TabView for SqlEditorTab {
             }
             A::Commit => self.commit(cx, true),
             A::Rollback => self.commit(cx, false),
-            A::ToggleAutoCommit => {
+            A::ToggleAutoCommit if self.has_transactions(cx) => {
                 let manual = matches!(&self.session, SessionSlot::Ready(s) if s.tx_state().mode == TransactionMode::Manual);
                 self.set_tx_mode(cx, if manual { TransactionMode::Auto } else { TransactionMode::Manual });
             }

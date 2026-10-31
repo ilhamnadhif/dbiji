@@ -227,6 +227,8 @@ struct Seg {
     skip_end_word: bool,
     /// A PL/SQL `DECLARE` opened the block its `BEGIN` belongs to.
     declare_open: bool,
+    /// Open `[` and `{` (JSON in MongoDB calls).
+    brackets: i32,
 }
 
 impl Seg {
@@ -244,6 +246,7 @@ impl Seg {
             header_len: 0,
             skip_end_word: false,
             declare_open: false,
+            brackets: 0,
         }
     }
 
@@ -490,6 +493,17 @@ impl Splitter<'_> {
             match t.kind {
                 TokenKind::Whitespace => {}
                 TokenKind::Newline => {
+                    if self.syntax.newline_ends_statement
+                        && seg.has_content()
+                        && seg.paren <= 0
+                        && seg.brackets <= 0
+                    {
+                        self.finish(&seg, None);
+                        seg = Seg::new(true);
+                        pending_newlines = 1;
+                        i += 1;
+                        continue;
+                    }
                     if pending_newlines >= 1 {
                         self.blank_line(&mut seg, i);
                     }
@@ -700,6 +714,17 @@ impl Splitter<'_> {
         match t.kind {
             TokenKind::LParen => seg.paren += 1,
             TokenKind::RParen => seg.paren = (seg.paren - 1).max(0),
+            TokenKind::LBracket => seg.brackets += 1,
+            TokenKind::RBracket => seg.brackets = (seg.brackets - 1).max(0),
+            TokenKind::Operator => {
+                for c in self.src[t.start..t.end].chars() {
+                    match c {
+                        '{' => seg.brackets += 1,
+                        '}' => seg.brackets = (seg.brackets - 1).max(0),
+                        _ => {}
+                    }
+                }
+            }
             _ => {}
         }
         self.header(seg, i);
@@ -952,6 +977,24 @@ mod tests {
         assert!(t[0].ends_with("SELECT 2; END"));
         assert_eq!(t[1], "BEGIN");
         assert_eq!(t[2], "COMMIT");
+    }
+
+    #[test]
+    fn one_statement_per_line_unless_brackets_are_open() {
+        let mut syn = SqlSyntax::ansi();
+        syn.newline_ends_statement = true;
+        syn.double_quoted_strings = true;
+        let src = "SET a 1\nHGETALL user:1\n\ndb.users.find({\n  age: {$gt: 3},\n  tags: [\"a\",\n \"b\"]\n}).limit(5)\ndb.users.countDocuments({})\n";
+        let got = texts(src, &syn);
+        assert_eq!(got.len(), 4, "{got:#?}");
+        assert_eq!(got[0], "SET a 1");
+        assert_eq!(got[1], "HGETALL user:1");
+        assert!(
+            got[2].starts_with("db.users.find({") && got[2].ends_with(".limit(5)"),
+            "{}",
+            got[2]
+        );
+        assert_eq!(got[3], "db.users.countDocuments({})");
     }
 
     #[test]

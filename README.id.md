@@ -13,10 +13,16 @@ hasil query jutaan baris tidak perlu muat di memori.
 ## Sorotan
 
 - **Banyak database, satu antarmuka**: PostgreSQL, MySQL, MariaDB, SQLite, SQL Server, Oracle,
-  CockroachDB, ClickHouse, dan Cassandra / ScyllaDB, semuanya dengan driver yang ditulis dalam Rust
-  (tanpa Java, tanpa Oracle Client). Produk yang kompatibel punya entri sendiri dengan default yang
-  sesuai: YugabyteDB, TimescaleDB, Supabase, Neon, Redshift, AlloyDB, Greenplum, QuestDB, CrateDB,
-  TiDB, OceanBase, Doris, StarRocks, SingleStore, PlanetScale, Azure SQL Database, dan Amazon Keyspaces.
+  CockroachDB, ClickHouse, Cassandra / ScyllaDB, Redis, MongoDB, dan Elasticsearch / OpenSearch,
+  semuanya dengan driver yang ditulis dalam Rust (tanpa Java, tanpa Oracle Client). Produk yang
+  kompatibel punya entri sendiri dengan default yang sesuai: YugabyteDB, TimescaleDB, Supabase, Neon,
+  Redshift, AlloyDB, Greenplum, QuestDB, CrateDB, TiDB, OceanBase, Doris, StarRocks, SingleStore,
+  PlanetScale, Azure SQL Database, Amazon Keyspaces, Valkey, Dragonfly, KeyDB, MongoDB Atlas,
+  FerretDB, Amazon DocumentDB, Azure Cosmos DB for MongoDB, dan Amazon OpenSearch Service.
+- **Redis, MongoDB, dan Elasticsearch** di editor dan grid yang sama: perintah Redis (key per tipe di
+  navigator, hash dan list besar dibaca bertahap), perintah `mongosh`
+  (`db.users.find({age: {$gt: 30}})`, aggregation, filter di tab data menerima dokumen query), dan
+  SQL Elasticsearch atau request gaya Kibana (`GET /logs/_search` + JSON) dengan hits sebagai baris.
 - **Editor SQL** dengan autocomplete sesuai skema (tabel, kolom, join, alias, CTE), template,
   parameter `:nama` / `${nama}`, `@set` / `@include` / `@export`, pemformat, outline, penanda error,
   execution plan (teks, pohon, diagram), dan riwayat query yang bisa dicari.
@@ -207,10 +213,10 @@ Diukur pada build rilis (Apple M1 Pro) dengan `dbiji --bench all`:
 
 | | Target | Hasil |
 | --- | --- | --- |
-| Ukuran biner (macOS) | < 50 MB | 44,0 MB |
+| Ukuran biner (macOS) | < 50 MB | 49,8 MB |
 | Waktu buka sampai frame pertama | < 1 dtk | ≈ 0,12 dtk |
-| Memori saat diam | < 120 MB | ≈ 93 MB |
-| 3 koneksi + 5 tab hasil | < 250 MB | ≈ 93 MB |
+| Memori saat diam | < 120 MB | ≈ 88 MB |
+| 3 koneksi + 5 tab hasil | < 250 MB | ≈ 94 MB |
 | Scroll 1 juta baris | < 16 ms / frame | p95 0,5 ms |
 | Mengetik di skrip 50.000 baris | < 16 ms / frame | p95 0,5 ms |
 
@@ -237,7 +243,11 @@ export DBIJI_TEST_MARIADB=mariadb://root:dbiji@127.0.0.1:53307/dbiji
 export DBIJI_TEST_COCKROACH='cockroachdb://root@127.0.0.1:26257/defaultdb?sslmode=disable'
 export DBIJI_TEST_ORACLE=oracle://dbiji:dbiji@127.0.0.1:51521/FREEPDB1   # gvenzl/oracle-free
 export DBIJI_TEST_CASSANDRA=cassandra://127.0.0.1:59042                  # scylladb/scylla
-cargo test -p dbiji-app -p dbiji-driver-oracle -p dbiji-driver-cassandra
+export DBIJI_TEST_REDIS=redis://127.0.0.1:56379
+export DBIJI_TEST_MONGO=mongodb://127.0.0.1:57017
+export DBIJI_TEST_ELASTIC=http://127.0.0.1:59200                          # tanpa security
+cargo test -p dbiji-app -p dbiji-driver-oracle -p dbiji-driver-cassandra -p dbiji-driver-redis \
+  -p dbiji-driver-mongodb -p dbiji-driver-elasticsearch
 ```
 
 Tanda tangan dan notarisasi: atur `DBIJI_SIGN_IDENTITY` (Developer ID) dan `DBIJI_NOTARY_PROFILE`
@@ -249,7 +259,9 @@ Struktur proyek ada di [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), matriks par
 ## Keterbatasan
 
 - Hanya database yang punya driver dalam Rust yang didukung: Db2, Teradata, Informix, Snowflake,
-  BigQuery, dan DuckDB tidak. Oracle memakai driver Rust buatan Oracle sendiri, yang masih beta.
+  BigQuery, dan DuckDB tidak, begitu juga Neo4j (driver Rust-nya membawa pustaka kripto TLS kedua).
+  Oracle memakai driver Rust buatan Oracle sendiri, yang masih beta.
+- Hasil Redis, MongoDB, dan Elasticsearch hanya-baca di grid: ubah data dengan perintah.
 - Kerberos dan autentikasi multi-faktor MySQL belum didukung.
 - Build rilis belum dinotarisasi (macOS) atau ditandatangani (Windows).
 

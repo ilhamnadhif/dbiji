@@ -188,6 +188,10 @@ Legend: ✅ implemented and tested · 🟡 implemented, partially tested ·
 | Oracle | ✅ | `dbiji-driver-oracle` on Oracle's pure Rust thin driver (`oracledb`, beta): SQL and PL/SQL with DBMS_OUTPUT and compile errors, catalog, DBMS_METADATA DDL, EXPLAIN PLAN, sessions *(env `DBIJI_TEST_ORACLE`)* |
 | Cassandra, ScyllaDB | ✅ | `dbiji-driver-cassandra` on the `scylla` driver: CQL with paging, keyspaces, tables, indexes, materialized views, server DESCRIBE *(env `DBIJI_TEST_CASSANDRA`)* |
 | CockroachDB | ✅ | PostgreSQL driver with CockroachDB catalog adjustments; `dbiji-app` end-to-end suites (execution, cancel, schema compare gate, data editing, editor) run against CockroachDB *(env `DBIJI_TEST_COCKROACH`)* |
+| Redis, Valkey, Dragonfly | ✅ | `dbiji-driver-redis` on the `redis` crate: commands, keys by type (SCAN + pipelined TYPE), paged HSCAN/SSCAN/ZSCAN/LRANGE/ZRANGE/XRANGE, INFO and CLIENT LIST as tables, server dashboard, client list *(env `DBIJI_TEST_REDIS`)* |
+| MongoDB, FerretDB, DocumentDB | ✅ | `dbiji-driver-mongodb` on the official driver: a `mongosh` subset, streamed cursors, collections, sampled fields, indexes, explain, currentOp, serverStatus *(env `DBIJI_TEST_MONGO`)* |
+| Elasticsearch, OpenSearch | ✅ | `dbiji-driver-elasticsearch` over HTTP: SQL with cursor paging, REST requests, indices, aliases, mappings, tasks, cluster metrics *(env `DBIJI_TEST_ELASTIC`)* |
+| Neo4j | ⛔ | `neo4rs` requires the `ring` crypto provider beside rustls' aws-lc (a second native crypto library) |
 | DuckDB | ⛔ | Removed: its engine is C++ (the full-Rust rule, PRD §7) |
 | Db2, Teradata, Informix | ⛔ | No usable pure-Rust network driver yet (PRD §7: "only if a viable Rust driver exists") |
 

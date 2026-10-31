@@ -35,6 +35,7 @@ pub const fn tsql_syntax() -> SqlSyntax {
         delimiter_command: false,
         compound_blocks: true,
         plsql_blocks: false,
+        newline_ends_statement: false,
         extra_ident_chars: "#@$",
         ident_case: IdentCase::Preserve,
         case_sensitive_names: false,

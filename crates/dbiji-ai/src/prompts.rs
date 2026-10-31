@@ -576,7 +576,28 @@ impl<'a> SchemaContextBuilder<'a> {
 
 // ------------------------------------------------------------ extraction
 
-const SQL_TAGS: &[&str] = &["sql", "postgresql", "postgres", "pgsql", "plpgsql", "mysql", "mariadb", "sqlite", "tsql", "t-sql", "mssql", "plsql", "oracle", "clickhouse", "cql"];
+const SQL_TAGS: &[&str] = &[
+    "sql",
+    "postgresql",
+    "postgres",
+    "pgsql",
+    "plpgsql",
+    "mysql",
+    "mariadb",
+    "sqlite",
+    "tsql",
+    "t-sql",
+    "mssql",
+    "plsql",
+    "oracle",
+    "clickhouse",
+    "cql",
+    "redis",
+    "javascript",
+    "js",
+    "mongodb",
+    "http",
+];
 
 /// SQL code blocks of an answer: the contents of ```sql fences (and other
 /// SQL dialect tags), or, when there are none, of untagged fences. An

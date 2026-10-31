@@ -3,6 +3,18 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.5.0 — 2026-10-31
+
+### Added
+- **Redis** (also Valkey, Dragonfly and KeyDB), with a driver written in Rust. Redis commands in the editor, one per line, with the reply as a grid: a hash as field and value, a sorted set as member and score, a stream as id and fields, `INFO` and `CLIENT LIST` as tables. The navigator lists each database's keys with their type, found with `SCAN` (never `KEYS`) and capped so that a large database stays fast. Opening a key pages through it (`HSCAN`, `LRANGE`, `ZRANGE`, `XRANGE`, …), the object view shows its type, length, TTL, encoding and memory, and the session manager and server metrics come from `CLIENT LIST` and `INFO`. TLS (`rediss://`) and ACL users are supported.
+- **MongoDB** (also MongoDB Atlas with `mongodb+srv`, FerretDB, Amazon DocumentDB and Azure Cosmos DB for MongoDB), with MongoDB's official Rust driver. Shell commands in the editor: `db.users.find({age: {$gt: 30}}).sort({name: 1})`, `aggregate`, `countDocuments`, `distinct`, the insert, update, delete and index methods, `db.runCommand`, `show dbs`, `use`, and `ObjectId()`, `ISODate()`, `NumberLong()` and the other shell types. Results stream in batches; top-level fields become columns and nested documents show as JSON. The navigator lists databases, collections and views with their fields (sampled) and indexes; a collection's data view filters with a query document, and Explain shows the winning plan.
+- **Elasticsearch and OpenSearch** (also Amazon OpenSearch Service): SQL in the editor through the SQL API with paged results, and REST requests such as `GET /logs/_search {"query": …}`, whose hits show as rows. The navigator lists indices (with their document count, size and health), aliases and each index's mapped fields. Basic and API key authentication, TLS, and the tasks of the cluster in the session manager.
+- Commands that change data are recognised in Redis, MongoDB and Elasticsearch too: they ask for confirmation on a production connection and are refused on a read-only one, like SQL.
+
+### Changed
+- For Redis, MongoDB and Elasticsearch, the features that only make sense for SQL are hidden (formatter, ER diagram, table designer, schema compare, query builder, SQL generation), the result grid is read-only (data is changed with commands in the editor), and the Auto-commit button is hidden where the database has no transactions.
+- The app is about 50 MB (it was 44 MB) with the three new drivers; it starts and runs as fast as before.
+
 ## 0.4.0 — 2026-10-31
 
 ### Added

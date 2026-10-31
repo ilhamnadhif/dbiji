@@ -68,6 +68,9 @@ pub struct SqlSyntax {
     /// PL/SQL scripts (Oracle): `DECLARE ... BEGIN ... END;` blocks stay whole
     /// and a `/` line ends a routine body (with `batch_separator` `/`).
     pub plsql_blocks: bool,
+    /// A line break ends the statement when no `(`, `[` or `{` is open
+    /// (Redis commands, MongoDB shell calls).
+    pub newline_ends_statement: bool,
     /// Characters allowed inside unquoted identifiers besides `[A-Za-z0-9_]`.
     pub extra_ident_chars: &'static str,
     pub ident_case: IdentCase,
@@ -99,6 +102,7 @@ impl SqlSyntax {
             delimiter_command: false,
             compound_blocks: false,
             plsql_blocks: false,
+            newline_ends_statement: false,
             extra_ident_chars: "",
             ident_case: IdentCase::Upper,
             case_sensitive_names: false,

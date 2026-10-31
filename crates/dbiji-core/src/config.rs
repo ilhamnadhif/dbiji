@@ -157,6 +157,24 @@ impl DbKind {
         }
     }
 
+    /// Navigator folder name of `kind` objects: Redis keys, MongoDB
+    /// collections, Elasticsearch indices, Neo4j labels instead of tables.
+    pub fn folder_label(self, kind: crate::meta::ObjectKind) -> &'static str {
+        use crate::meta::ObjectKind as K;
+        match (self, kind) {
+            (DbKind::Redis, K::Table) => "Keys",
+            (DbKind::MongoDb, K::Table) => "Collections",
+            (DbKind::MongoDb, K::Column) => "Fields",
+            (DbKind::Elasticsearch, K::Table) => "Indices",
+            (DbKind::Elasticsearch, K::View) => "Aliases",
+            (DbKind::Elasticsearch, K::Column) => "Fields",
+            (DbKind::Neo4j, K::Table) => "Node labels",
+            (DbKind::Neo4j, K::View) => "Relationship types",
+            (DbKind::Neo4j, K::Column) => "Properties",
+            _ => kind.plural_label(),
+        }
+    }
+
     /// Label of the connection dialog's database field.
     pub fn database_label(self) -> &'static str {
         match self {
@@ -238,11 +256,13 @@ pub struct ConnectionPreset {
     pub database: Option<&'static str>,
     /// Hosted services that only accept TLS.
     pub tls: bool,
+    /// Driver properties the product needs.
+    pub props: &'static [(&'static str, &'static str)],
 }
 
 impl ConnectionPreset {
     const fn new(id: &'static str, name: &'static str, kind: DbKind) -> Self {
-        ConnectionPreset { id, name, kind, port: None, user: None, database: None, tls: false }
+        ConnectionPreset { id, name, kind, port: None, user: None, database: None, tls: false, props: &[] }
     }
     const fn port(mut self, port: u16) -> Self {
         self.port = Some(port);
@@ -258,6 +278,10 @@ impl ConnectionPreset {
     }
     const fn tls(mut self) -> Self {
         self.tls = true;
+        self
+    }
+    const fn props(mut self, props: &'static [(&'static str, &'static str)]) -> Self {
+        self.props = props;
         self
     }
 
@@ -276,6 +300,9 @@ impl ConnectionPreset {
         }
         if self.tls {
             cfg.ssl.mode = SslMode::Require;
+        }
+        for (k, v) in self.props {
+            cfg.properties.insert((*k).to_string(), (*v).to_string());
         }
         cfg
     }
@@ -301,6 +328,15 @@ pub const PRESETS: &[ConnectionPreset] = &[
     ConnectionPreset::new("azuresql", "Azure SQL Database", DbKind::SqlServer).user("").database("").tls(),
     ConnectionPreset::new("scylladb", "ScyllaDB", DbKind::Cassandra),
     ConnectionPreset::new("keyspaces", "Amazon Keyspaces", DbKind::Cassandra).port(9142).tls(),
+    ConnectionPreset::new("valkey", "Valkey", DbKind::Redis),
+    ConnectionPreset::new("dragonfly", "Dragonfly", DbKind::Redis),
+    ConnectionPreset::new("keydb", "KeyDB", DbKind::Redis),
+    ConnectionPreset::new("atlas", "MongoDB Atlas", DbKind::MongoDb).tls().props(&[("srv", "true")]),
+    ConnectionPreset::new("ferretdb", "FerretDB", DbKind::MongoDb),
+    ConnectionPreset::new("documentdb", "Amazon DocumentDB", DbKind::MongoDb).tls().props(&[("retryWrites", "false")]),
+    ConnectionPreset::new("cosmosmongo", "Azure Cosmos DB for MongoDB", DbKind::MongoDb).port(10255).tls().props(&[("retryWrites", "false")]),
+    ConnectionPreset::new("opensearch", "OpenSearch", DbKind::Elasticsearch),
+    ConnectionPreset::new("aws-opensearch", "Amazon OpenSearch Service", DbKind::Elasticsearch).port(443).tls(),
 ];
 
 impl fmt::Display for DbKind {
@@ -842,6 +878,8 @@ mod tests {
         assert_eq!((tidb.kind, tidb.effective_port(), tidb.user.as_deref()), (DbKind::MySql, 4000, Some("root")));
         let neon = PRESETS.iter().find(|p| p.id == "neon").unwrap().config("n");
         assert_eq!((neon.kind, neon.database.as_deref(), neon.ssl.mode), (DbKind::Postgres, Some("neondb"), SslMode::Require));
+        let atlas = PRESETS.iter().find(|p| p.id == "atlas").unwrap().config("m");
+        assert_eq!((atlas.kind, atlas.properties.get("srv").map(String::as_str)), (DbKind::MongoDb, Some("true")));
         let azure = PRESETS.iter().find(|p| p.id == "azuresql").unwrap().config("a");
         assert_eq!((azure.user.as_deref(), azure.database.as_deref()), (None, None));
         let mut ids: Vec<_> = PRESETS.iter().map(|p| p.id).collect();

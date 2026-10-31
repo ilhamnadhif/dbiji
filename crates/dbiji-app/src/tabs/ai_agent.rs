@@ -81,6 +81,21 @@ pub fn system_note() -> String {
     )
 }
 
+/// [`check`] for a connection's language: Redis commands, MongoDB statements
+/// and Elasticsearch requests may run when they only read.
+pub fn check_for(sql: &str, syntax: &SqlSyntax, language: dbiji_core::QueryLanguage) -> Result<String, String> {
+    let text = sql.trim();
+    let Some(info) = dbiji_sql::classify_command(text, language) else { return check(sql, syntax) };
+    let stmts = dbiji_sql::split_statements(text, syntax, &Default::default());
+    if stmts.len() != 1 {
+        return Err(tr("Exactly one statement per query").to_string());
+    }
+    if info.is_write {
+        return Err(trf("Only queries can run here ({} is not one); show the statement to the user instead", &[&info.first_keyword]));
+    }
+    Ok(text.to_string())
+}
+
 /// `Ok(statement)` when `sql` may run, else why not.
 pub fn check(sql: &str, syntax: &SqlSyntax) -> Result<String, String> {
     let stmts = dbiji_sql::split_and_classify(sql, syntax, &Default::default());
@@ -153,7 +168,7 @@ impl Agent {
         if call.name != TOOL {
             return ToolStep::refused(sql, trf("There is no tool {}", &[&call.name]));
         }
-        let stmt = match check(&sql, &self.syntax) {
+        let stmt = match check_for(&sql, &self.syntax, self.kind.language()) {
             Ok(s) => s,
             Err(why) => return ToolStep::refused(sql, why),
         };

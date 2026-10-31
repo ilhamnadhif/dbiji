@@ -92,7 +92,8 @@ pub use analyze::{
 };
 pub use catalog::{CatalogTable, CompletionCatalog, SnapshotCatalog};
 pub use classify::{
-    Danger, QualifiedName, StatementInfo, StatementKind, TxCommand, classify, split_and_classify,
+    Danger, QualifiedName, StatementInfo, StatementKind, TxCommand, classify, classify_command,
+    split_and_classify,
 };
 pub use commands::{ClientCommand, parse_client_command};
 pub use complete::{CompletionItem, CompletionKind, CompletionOptions, CompletionResult, complete};

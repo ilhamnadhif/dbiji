@@ -205,6 +205,212 @@ impl StatementInfo {
     }
 }
 
+/// What a Redis command, MongoDB shell statement or Elasticsearch request
+/// does (`None` for SQL and CQL: use [`classify`]).
+pub fn classify_command(stmt: &str, language: dbiji_core::QueryLanguage) -> Option<StatementInfo> {
+    use dbiji_core::QueryLanguage as L;
+    let text = stmt.trim();
+    let first: String = text
+        .chars()
+        .take_while(|c| !c.is_whitespace() && *c != '(')
+        .collect::<String>()
+        .to_ascii_uppercase();
+    let mut info = StatementInfo::new(StatementKind::Other, first.clone());
+    match language {
+        L::Redis => {
+            let read = matches!(
+                first.as_str(),
+                "GET"
+                    | "MGET"
+                    | "GETRANGE"
+                    | "STRLEN"
+                    | "EXISTS"
+                    | "TYPE"
+                    | "TTL"
+                    | "PTTL"
+                    | "EXPIRETIME"
+                    | "KEYS"
+                    | "SCAN"
+                    | "HGET"
+                    | "HMGET"
+                    | "HGETALL"
+                    | "HKEYS"
+                    | "HVALS"
+                    | "HLEN"
+                    | "HEXISTS"
+                    | "HSCAN"
+                    | "HSTRLEN"
+                    | "HRANDFIELD"
+                    | "LRANGE"
+                    | "LINDEX"
+                    | "LLEN"
+                    | "LPOS"
+                    | "SMEMBERS"
+                    | "SISMEMBER"
+                    | "SMISMEMBER"
+                    | "SCARD"
+                    | "SSCAN"
+                    | "SRANDMEMBER"
+                    | "SINTER"
+                    | "SUNION"
+                    | "SDIFF"
+                    | "SINTERCARD"
+                    | "ZRANGE"
+                    | "ZREVRANGE"
+                    | "ZRANGEBYSCORE"
+                    | "ZREVRANGEBYSCORE"
+                    | "ZRANGEBYLEX"
+                    | "ZSCORE"
+                    | "ZMSCORE"
+                    | "ZRANK"
+                    | "ZREVRANK"
+                    | "ZCARD"
+                    | "ZCOUNT"
+                    | "ZLEXCOUNT"
+                    | "ZSCAN"
+                    | "ZRANDMEMBER"
+                    | "XRANGE"
+                    | "XREVRANGE"
+                    | "XLEN"
+                    | "XINFO"
+                    | "XREAD"
+                    | "XPENDING"
+                    | "PFCOUNT"
+                    | "BITCOUNT"
+                    | "BITPOS"
+                    | "GETBIT"
+                    | "GEOPOS"
+                    | "GEODIST"
+                    | "GEOSEARCH"
+                    | "JSON.GET"
+                    | "JSON.TYPE"
+                    | "INFO"
+                    | "PING"
+                    | "ECHO"
+                    | "TIME"
+                    | "DBSIZE"
+                    | "LASTSAVE"
+                    | "RANDOMKEY"
+                    | "OBJECT"
+                    | "MEMORY"
+                    | "SLOWLOG"
+                    | "LATENCY"
+                    | "COMMAND"
+                    | "SELECT"
+                    | "DUMP"
+                    | "PUBSUB"
+                    | "TOUCH"
+            ) || first == "CLIENT" && text.to_ascii_uppercase().contains("LIST")
+                || first == "CONFIG"
+                    && text.to_ascii_uppercase().split_whitespace().nth(1) == Some("GET");
+            info.is_write = !read;
+            info.returns_rows = read;
+            info.kind = if read {
+                StatementKind::Select
+            } else {
+                StatementKind::Other
+            };
+            if matches!(
+                first.as_str(),
+                "FLUSHALL" | "FLUSHDB" | "SWAPDB" | "SHUTDOWN"
+            ) {
+                info.danger = Some(Danger::Truncate);
+            } else if matches!(first.as_str(), "DEL" | "UNLINK") {
+                info.danger = Some(Danger::Drop);
+            }
+        }
+        L::Mongo => {
+            let lower = text.to_ascii_lowercase();
+            let method = |m: &str| lower.contains(&format!(".{}(", m.to_ascii_lowercase()));
+            let writes = [
+                "insertOne",
+                "insertMany",
+                "updateOne",
+                "updateMany",
+                "replaceOne",
+                "deleteOne",
+                "deleteMany",
+                "remove",
+                "drop",
+                "dropDatabase",
+                "createIndex",
+                "dropIndex",
+                "createCollection",
+                "renameCollection",
+                "findOneAndUpdate",
+                "findOneAndDelete",
+                "findOneAndReplace",
+                "bulkWrite",
+                "runCommand",
+                "adminCommand",
+            ];
+            info.is_write = writes.iter().any(|w| method(w)) || lower.starts_with("use ");
+            info.returns_rows = !info.is_write;
+            info.kind = if info.is_write {
+                StatementKind::Other
+            } else {
+                StatementKind::Select
+            };
+            let empty_filter = |m: &str| {
+                let pat = format!(".{}(", m.to_ascii_lowercase());
+                lower.find(&pat).is_some_and(|i| {
+                    let rest: String = lower[i + pat.len()..]
+                        .chars()
+                        .filter(|c| !c.is_whitespace())
+                        .collect();
+                    rest.starts_with(')') || rest.starts_with("{})") || rest.starts_with("{},")
+                })
+            };
+            if method("drop") || method("dropDatabase") {
+                info.danger = Some(Danger::Drop);
+            } else if empty_filter("deleteMany") || empty_filter("remove") {
+                info.danger = Some(Danger::DeleteWithoutWhere);
+            } else if empty_filter("updateMany") {
+                info.danger = Some(Danger::UpdateWithoutWhere);
+            }
+        }
+        L::Search => {
+            let method = first.as_str();
+            let path = text.split_whitespace().nth(1).unwrap_or("");
+            let rest = matches!(method, "GET" | "POST" | "PUT" | "DELETE" | "HEAD")
+                && !path.eq_ignore_ascii_case("FROM");
+            if !rest {
+                return None;
+            }
+            let reads = [
+                "_search",
+                "_count",
+                "_msearch",
+                "_sql",
+                "_mapping",
+                "_cat",
+                "_stats",
+                "_explain",
+                "_field_caps",
+                "_validate",
+            ];
+            info.is_write = match method {
+                "GET" | "HEAD" => false,
+                "POST" => !reads.iter().any(|r| path.contains(r)),
+                _ => true,
+            };
+            info.returns_rows = !info.is_write;
+            info.kind = if info.is_write {
+                StatementKind::Other
+            } else {
+                StatementKind::Select
+            };
+            if method == "DELETE" {
+                info.danger = Some(Danger::Drop);
+            } else if path.contains("_delete_by_query") {
+                info.danger = Some(Danger::DeleteWithoutWhere);
+            }
+        }
+        _ => return None,
+    }
+    Some(info)
+}
+
 /// Classify one statement.
 pub fn classify(stmt: &str, syntax: &SqlSyntax) -> StatementInfo {
     let tokens = tokenize(stmt, syntax);
@@ -1435,5 +1641,32 @@ mod tests {
                 let _ = classify(&src, &syn);
             }
         }
+    }
+
+    #[test]
+    fn redis_mongo_and_rest_commands() {
+        use dbiji_core::QueryLanguage as L;
+        let c = |s: &str, l| classify_command(s, l).unwrap();
+        assert!(!c("HGETALL user:1", L::Redis).is_write);
+        assert!(c("SET a 1", L::Redis).is_write);
+        assert_eq!(c("FLUSHDB", L::Redis).danger, Some(Danger::Truncate));
+        assert!(!c("CLIENT LIST", L::Redis).is_write);
+        assert!(!c("db.users.find({a: 1}).sort({b: 1})", L::Mongo).is_write);
+        assert!(c("db.users.updateOne({_id: 1}, {$set: {a: 2}})", L::Mongo).is_write);
+        assert_eq!(
+            c("db.users.deleteMany({})", L::Mongo).danger,
+            Some(Danger::DeleteWithoutWhere)
+        );
+        assert_eq!(c("db.users.deleteMany({a: 1})", L::Mongo).danger, None);
+        assert_eq!(
+            c("db.getCollection(\"x\").drop()", L::Mongo).danger,
+            Some(Danger::Drop)
+        );
+        assert!(!c("GET /logs/_search", L::Search).is_write);
+        assert!(!c("POST /logs/_search\n{}", L::Search).is_write);
+        assert!(c("PUT /logs", L::Search).is_write);
+        assert_eq!(c("DELETE /logs", L::Search).danger, Some(Danger::Drop));
+        assert!(classify_command("SELECT 1", L::Search).is_none());
+        assert!(classify_command("SELECT 1", L::Sql).is_none());
     }
 }

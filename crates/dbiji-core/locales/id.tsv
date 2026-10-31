@@ -2813,3 +2813,13 @@ Service name	Nama service
 Keyspace	Keyspace
 Database number	Nomor database
 Keyspaces	Keyspace
+Keys	Key
+Collections	Koleksi
+Fields	Field
+Indices	Indeks
+Aliases	Alias
+Node labels	Label node
+Relationship types	Tipe relasi
+Read-only: change {} data with commands in the editor	Hanya-baca: ubah data {} dengan perintah di editor
+DNS seed list (mongodb+srv, Atlas)	Daftar seed DNS (mongodb+srv, Atlas)
+Query document, e.g. {status: "open"}	Dokumen query, mis. {status: "open"}

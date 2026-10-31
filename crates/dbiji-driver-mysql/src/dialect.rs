@@ -38,6 +38,7 @@ pub const fn mysql_syntax() -> SqlSyntax {
         delimiter_command: true,
         compound_blocks: true,
         plsql_blocks: false,
+        newline_ends_statement: false,
         extra_ident_chars: "$",
         ident_case: IdentCase::Preserve,
         case_sensitive_names: false,

@@ -686,7 +686,7 @@ impl Navigator {
         let mut schemas: Vec<_> = schemas.into_iter().filter(|s| (show_system || !s.is_system) && filter_ok(&live.config, ObjectKind::Schema, &s.name)).collect();
         schemas.sort_by(|a, b| b.is_current.cmp(&a.is_current).then(a.name.to_lowercase().cmp(&b.name.to_lowercase())));
         // SQLite with only "main": show folders directly.
-        let flatten = live.kind() == DbKind::Sqlite && schemas.len() == 1;
+        let flatten = matches!(live.kind(), DbKind::Sqlite | DbKind::Elasticsearch | DbKind::Neo4j) && schemas.len() == 1;
         for s in schemas {
             let schema_ref = SchemaRef { database: db.map(str::to_string), schema: Some(s.name.clone()) };
             if flatten {
@@ -741,7 +741,7 @@ impl Navigator {
             rows.push(Row {
                 node,
                 depth,
-                label: tr(kind.plural_label()).to_string(),
+                label: tr(live.driver.info().kind.folder_label(kind)).to_string(),
                 detail: count.map(|c| c.to_string()),
                 icon: icon::FOLDER_SIMPLE,
                 icon_color: None,
@@ -757,7 +757,9 @@ impl Navigator {
                 if let Some(session) = live.ensure_session(backend, schema.database.as_deref()) {
                     live.meta.request_objects(backend, &session, schema, kind);
                 }
-                let has_children = kind.is_table_like() || matches!(kind, ObjectKind::View | ObjectKind::MaterializedView);
+                // Redis keys have no columns or indexes to show.
+                let leaf = live.config.kind == DbKind::Redis;
+                let has_children = !leaf && (kind.is_table_like() || matches!(kind, ObjectKind::View | ObjectKind::MaterializedView));
                 self.push_objects(live, rows, conn, schema, kind, depth + 1, has_children);
                 // expanded objects get their child folders
                 let objs: Vec<ObjectInfo> = live.meta.objects.get(&(schema.clone(), kind)).and_then(|l| l.get()).cloned().unwrap_or_default();
@@ -841,7 +843,7 @@ impl Navigator {
             rows.push(Row {
                 node,
                 depth,
-                label: tr(kind.plural_label()).to_string(),
+                label: tr(live.driver.info().kind.folder_label(kind)).to_string(),
                 detail: None,
                 icon: icon::FOLDER_SIMPLE,
                 icon_color: None,
@@ -1575,21 +1577,24 @@ impl Navigator {
                         ui.close();
                     }
                 }
-                if ui.button((dbiji_icons::ic(icon::TABLE), tr("Create table"))).clicked() {
-                    cx.push(AppCommand::CreateTable { connection: conn.clone(), schema: schema.clone() });
-                    ui.close();
-                }
-                if ui.button((dbiji_icons::ic(icon::GRAPH), tr("ER diagram"))).clicked() {
-                    cx.push(AppCommand::OpenErDiagram { connection: conn.clone(), schema: schema.clone(), tables: Vec::new() });
-                    ui.close();
-                }
-                if ui.button((dbiji_icons::ic(icon::DOWNLOAD), tr("Import data"))).clicked() {
-                    cx.push(AppCommand::OpenImport { connection: conn.clone(), table: None, schema: Some(schema.clone()) });
-                    ui.close();
-                }
-                if ui.button((dbiji_icons::ic(icon::GIT_DIFF), tr("Compare schema"))).clicked() {
-                    cx.push(AppCommand::OpenSchemaCompare { connection: Some(conn.clone()), schema: Some(schema.clone()) });
-                    ui.close();
+                // Table designer, diagrams, imports and compare write SQL.
+                if is_sql(cx, conn) {
+                    if ui.button((dbiji_icons::ic(icon::TABLE), tr("Create table"))).clicked() {
+                        cx.push(AppCommand::CreateTable { connection: conn.clone(), schema: schema.clone() });
+                        ui.close();
+                    }
+                    if ui.button((dbiji_icons::ic(icon::GRAPH), tr("ER diagram"))).clicked() {
+                        cx.push(AppCommand::OpenErDiagram { connection: conn.clone(), schema: schema.clone(), tables: Vec::new() });
+                        ui.close();
+                    }
+                    if ui.button((dbiji_icons::ic(icon::DOWNLOAD), tr("Import data"))).clicked() {
+                        cx.push(AppCommand::OpenImport { connection: conn.clone(), table: None, schema: Some(schema.clone()) });
+                        ui.close();
+                    }
+                    if ui.button((dbiji_icons::ic(icon::GIT_DIFF), tr("Compare schema"))).clicked() {
+                        cx.push(AppCommand::OpenSchemaCompare { connection: Some(conn.clone()), schema: Some(schema.clone()) });
+                        ui.close();
+                    }
                 }
                 ui.menu_button((dbiji_icons::ic(icon::WRENCH), tr("Tools")), |ui| tools_menu(ui, cx, conn, Some(schema.clone())));
                 if let NavNode::KindFolder { kind, .. } = node
@@ -1816,7 +1821,8 @@ pub fn tools_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, schema: Option<S
         cx.push(AppCommand::OpenBackup { connection: conn.to_string(), schema: schema.clone(), restore: true });
         ui.close();
     }
-    if ui.button((dbiji_icons::ic(icon::BLUEPRINT), tr("Query builder"))).clicked() {
+    let sql = is_sql(cx, conn);
+    if sql && ui.button((dbiji_icons::ic(icon::BLUEPRINT), tr("Query builder"))).clicked() {
         cx.push(AppCommand::OpenQueryBuilder { connection: conn.to_string(), schema: schema.clone() });
         ui.close();
     }
@@ -1824,7 +1830,7 @@ pub fn tools_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, schema: Option<S
         cx.push(AppCommand::OpenSearch { connection: Some(conn.to_string()), data: false });
         ui.close();
     }
-    if ui.button((dbiji_icons::ic(icon::TEXT_AA), tr("Search data"))).clicked() {
+    if sql && ui.button((dbiji_icons::ic(icon::TEXT_AA), tr("Search data"))).clicked() {
         cx.push(AppCommand::OpenSearch { connection: Some(conn.to_string()), data: true });
         ui.close();
     }
@@ -1854,8 +1860,14 @@ const DROP_KEYS: &str = if crate::keys::IS_MAC { "⌘⌫" } else { "Delete" };
 ///
 /// Outside the navigator (the object editor's ⋯ menu) the items its pages and
 /// Refresh button already offer are left out: Open, View data, View DDL, ER diagram, Refresh.
+/// The connection's language is SQL (or CQL): the SQL tools apply.
+fn is_sql(cx: &AppContext, conn: &str) -> bool {
+    cx.conns.config(conn).is_none_or(|c| c.kind.language().is_sql())
+}
+
 pub fn object_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, obj: &ObjectRef, in_navigator: bool) {
     let c = conn.to_string();
+    let sql = is_sql(cx, conn);
     let keys = |k: &str| if in_navigator { k.to_string() } else { String::new() };
     if in_navigator && item(ui, icon::ARROW_SQUARE_OUT, tr("Open"), &keys(OPEN_KEYS)).clicked() {
         cx.push(AppCommand::OpenObject { connection: c.clone(), object: obj.clone(), page: ObjectPage::Properties });
@@ -1869,7 +1881,7 @@ pub fn object_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, obj: &ObjectRef
         cx.push(AppCommand::OpenObject { connection: c.clone(), object: obj.clone(), page: ObjectPage::Ddl });
         ui.close();
     }
-    if obj.kind.is_table_like() {
+    if sql && obj.kind.is_table_like() {
         if ui.button((dbiji_icons::ic(icon::PENCIL), tr("Edit table"))).clicked() {
             cx.push(AppCommand::EditTable { connection: c.clone(), table: obj.clone() });
             ui.close();
@@ -1879,21 +1891,23 @@ pub fn object_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, obj: &ObjectRef
             ui.close();
         }
     }
-    ui.menu_button((dbiji_icons::ic(icon::FILE_SQL), tr("Generate SQL")), |ui| {
-        for (label, kind) in [("SELECT", "select"), ("INSERT", "insert"), ("UPDATE", "update"), ("DELETE", "delete"), ("UPSERT", "upsert"), ("DDL", "ddl")] {
-            if (obj.kind.is_table_like() || kind == "ddl" || kind == "select") && ui.button(label).clicked() {
-                cx.push(AppCommand::GenerateSql { connection: c.clone(), object: obj.clone(), kind: kind.to_string() });
-                ui.close();
+    if sql {
+        ui.menu_button((dbiji_icons::ic(icon::FILE_SQL), tr("Generate SQL")), |ui| {
+            for (label, kind) in [("SELECT", "select"), ("INSERT", "insert"), ("UPDATE", "update"), ("DELETE", "delete"), ("UPSERT", "upsert"), ("DDL", "ddl")] {
+                if (obj.kind.is_table_like() || kind == "ddl" || kind == "select") && ui.button(label).clicked() {
+                    cx.push(AppCommand::GenerateSql { connection: c.clone(), object: obj.clone(), kind: kind.to_string() });
+                    ui.close();
+                }
             }
-        }
-    });
+        });
+    }
     if obj.kind.has_data() {
         ui.separator();
         if ui.button((dbiji_icons::ic(icon::EXPORT), tr("Export data"))).clicked() {
             cx.push(AppCommand::OpenExport { connection: c.clone(), objects: vec![obj.clone()], sql: None });
             ui.close();
         }
-        if obj.kind.is_table_like() {
+        if sql && obj.kind.is_table_like() {
             if ui.button((dbiji_icons::ic(icon::DOWNLOAD), tr("Import data"))).clicked() {
                 cx.push(AppCommand::OpenImport { connection: c.clone(), table: Some(obj.clone()), schema: Some(obj.schema_ref()) });
                 ui.close();
@@ -1925,7 +1939,7 @@ pub fn object_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, obj: &ObjectRef
         ui.close();
     }
     ui.separator();
-    if obj.kind == ObjectKind::Column && obj.table.is_some() {
+    if sql && obj.kind == ObjectKind::Column && obj.table.is_some() {
         for (label, unique) in [(tr("Create index…"), false), (tr("Add unique constraint…"), true)] {
             if ui.button(format!("{} {label}", if unique { icon::KEY } else { icon::LIST_NUMBERS })).clicked() {
                 if let Some(live) = cx.conns.live(conn) {
@@ -1965,7 +1979,8 @@ pub fn object_menu(ui: &mut Ui, cx: &mut AppContext, conn: &str, obj: &ObjectRef
     ui.separator();
     let red = crate::theme::error_color(ui.visuals().dark_mode);
     // Truncate (Tools › Truncate in DBeaver): its options and SQL in the maintenance dialog.
-    if matches!(obj.kind, ObjectKind::Table | ObjectKind::Partition)
+    if sql
+        && matches!(obj.kind, ObjectKind::Table | ObjectKind::Partition)
         && ui.add(egui::Button::new(RichText::new(format!("{} {}", icon::ERASER, tr("Truncate…"))).color(red))).on_hover_text(tr("Delete every row of the table")).clicked()
     {
         cx.push(AppCommand::OpenMaintenance { connection: c.clone(), objects: vec![obj.clone()], op: Some(dbiji_core::admin::MaintenanceOp::TRUNCATE.to_string()) });

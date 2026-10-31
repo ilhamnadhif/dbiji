@@ -421,6 +421,19 @@ impl ConnectionDialog {
                     });
                     ui.end_row();
                 }
+                if kind == DbKind::MongoDb {
+                    // Atlas and other hosted clusters: `mongodb+srv://` (hosts from DNS, port unused).
+                    let mut srv = self.cfg.properties.get("srv").is_some_and(|v| v == "true");
+                    ui.label("");
+                    if ui.checkbox(&mut srv, tr("DNS seed list (mongodb+srv, Atlas)")).changed() {
+                        if srv {
+                            self.cfg.properties.insert("srv".into(), "true".into());
+                        } else {
+                            self.cfg.properties.remove("srv");
+                        }
+                    }
+                    ui.end_row();
+                }
                 let sid = kind == DbKind::Oracle && self.cfg.properties.contains_key("sid");
                 ui.label(if sid { "SID" } else { tr(kind.database_label()) });
                 let mut db = if sid { self.cfg.properties.get("sid").cloned().unwrap_or_default() } else { self.cfg.database.clone().unwrap_or_default() };

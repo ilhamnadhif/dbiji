@@ -23,6 +23,9 @@ dbiji-driver-mssql = { path = "crates/dbiji-driver-mssql" }
 dbiji-driver-clickhouse = { path = "crates/dbiji-driver-clickhouse" }
 dbiji-driver-oracle = { path = "crates/dbiji-driver-oracle" }
 dbiji-driver-cassandra = { path = "crates/dbiji-driver-cassandra" }
+dbiji-driver-redis = { path = "crates/dbiji-driver-redis" }
+dbiji-driver-mongodb = { path = "crates/dbiji-driver-mongodb" }
+dbiji-driver-elasticsearch = { path = "crates/dbiji-driver-elasticsearch" }
 dbiji-net = { path = "crates/dbiji-net" }
 dbiji-config = { path = "crates/dbiji-config" }
 dbiji-transfer = { path = "crates/dbiji-transfer" }
@@ -52,6 +55,10 @@ tiberius = { version = "0.13", default-features = false, features = ["tds73", "c
 oracledb = "=26.0.0-beta.5"
 # Cassandra / ScyllaDB (CQL native protocol), with rustls.
 scylla = { version = "1.9", default-features = false, features = ["rustls-023"] }
+# Redis, Valkey, KeyDB, Dragonfly (RESP), async on tokio, TLS with rustls.
+redis = { version = "1.8", default-features = false, features = ["aio", "tokio-comp", "tokio-rustls-comp", "tls-rustls-insecure"] }
+# MongoDB's official driver: rustls (aws-lc, shared), SRV lookups for Atlas, zlib/snappy compression (no zstd: C).
+mongodb = { version = "3.9", default-features = false, features = ["compat-3-0-0", "rustls-tls-aws-lc", "dns-resolver", "zlib-compression", "snappy-compression"] }
 
 # --- TLS / network / crypto
 rustls = { version = "0.23", features = ["aws_lc_rs", "logging", "std", "tls12"] }

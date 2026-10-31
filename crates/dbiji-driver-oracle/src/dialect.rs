@@ -454,6 +454,7 @@ pub const SYNTAX: SqlSyntax = SqlSyntax {
     delimiter_command: false,
     compound_blocks: true,
     plsql_blocks: true,
+    newline_ends_statement: false,
     extra_ident_chars: "$#",
     ident_case: IdentCase::Upper,
     case_sensitive_names: false,

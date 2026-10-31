@@ -11,5 +11,8 @@ pub fn register_all(reg: &mut DriverRegistry) {
     reg.register(Arc::new(dbiji_driver_clickhouse::ClickHouseDriver::new()));
     dbiji_driver_oracle::register(reg);
     dbiji_driver_cassandra::register(reg);
+    dbiji_driver_redis::register(reg);
+    dbiji_driver_mongodb::register(reg);
+    dbiji_driver_elasticsearch::register(reg);
     reg.register(Arc::new(dbiji_driver_sqlite::SqliteDriver::new()));
 }

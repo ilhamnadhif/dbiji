@@ -159,19 +159,22 @@ jobs:
           cargo test -p dbiji-driver-postgres -p dbiji-driver-mysql -p dbiji-driver-mssql -p dbiji-transfer
           -p dbiji-compare -p dbiji-tasks -p dbiji-app -- --test-threads=4
 
-  # Oracle and Cassandra / ScyllaDB in a job of their own: the Oracle image is
-  # large and starts slowly.
+  # Oracle, Cassandra / ScyllaDB, Redis, MongoDB and Elasticsearch in a job of
+  # their own: the Oracle image is large and starts slowly.
   integration-drivers:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       DBIJI_TEST_ORACLE: oracle://dbiji:dbiji@127.0.0.1:51521/FREEPDB1
       DBIJI_TEST_CASSANDRA: cassandra://127.0.0.1:59042
+      DBIJI_TEST_REDIS: redis://127.0.0.1:56379
+      DBIJI_TEST_MONGO: mongodb://127.0.0.1:57017
+      DBIJI_TEST_ELASTIC: http://127.0.0.1:59200
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Oracle Database Free and ScyllaDB
+      - name: Oracle Database Free, ScyllaDB, Redis, MongoDB and Elasticsearch
         run: |
           start() {
             for i in 1 2 3; do
@@ -182,11 +185,19 @@ jobs:
           }
           start oracle -e ORACLE_PASSWORD=Dbiji_test1 -e APP_USER=dbiji -e APP_USER_PASSWORD=dbiji -p 51521:1521 gvenzl/oracle-free:23-slim-faststart
           start scylla -p 59042:9042 scylladb/scylla:6.2 --smp 1 --memory 750M --overprovisioned 1 --developer-mode 1
+          start redis -p 56379:6379 redis:7
+          start mongo -p 57017:27017 mongo:7
+          start elastic -p 59200:9200 -e discovery.type=single-node -e xpack.security.enabled=false -e ES_JAVA_OPTS="-Xms512m -Xmx512m" docker.elastic.co/elasticsearch/elasticsearch:8.15.3
           ready() { for i in $(seq 1 150); do "$@" >/dev/null 2>&1 && return 0; sleep 2; done; echo "not ready: $*"; docker logs "$2" | tail -20; return 1; }
           ready docker exec oracle healthcheck.sh
           ready docker exec scylla cqlsh -e "SELECT now() FROM system.local"
+          ready docker exec redis redis-cli ping
+          ready docker exec mongo mongosh --quiet --eval "db.runCommand({ping: 1})"
+          ready curl -sf http://127.0.0.1:59200/_cluster/health
       - name: Driver tests
-        run: cargo test -p dbiji-driver-oracle -p dbiji-driver-cassandra -- --test-threads=2
+        run: >-
+          cargo test -p dbiji-driver-oracle -p dbiji-driver-cassandra -p dbiji-driver-redis
+          -p dbiji-driver-mongodb -p dbiji-driver-elasticsearch -- --test-threads=2
 
   audit:
     runs-on: ubuntu-24.04

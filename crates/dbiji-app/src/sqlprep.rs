@@ -25,6 +25,8 @@ pub enum Scope {
 
 pub struct PrepConfig<'a> {
     pub syntax: &'a SqlSyntax,
+    /// Redis, MongoDB and Elasticsearch requests are classified as commands.
+    pub language: dbiji_core::QueryLanguage,
     pub split: SplitOptions,
     /// `None` disables parameter substitution.
     pub params: Option<ParamOptions>,
@@ -109,7 +111,13 @@ fn add_spans(text: &str, spans: &[StatementSpan], cfg: &PrepConfig, out: &mut Pr
                     match std::fs::read_to_string(&full) {
                         Ok(inner) => {
                             let inner_spans = dbiji_sql::split_statements(&inner, cfg.syntax, &cfg.split);
-                            let sub = PrepConfig { syntax: cfg.syntax, split: cfg.split.clone(), params: cfg.params, base_dir: full.parent().map(Path::to_path_buf) };
+                            let sub = PrepConfig {
+                                syntax: cfg.syntax,
+                                language: cfg.language,
+                                split: cfg.split.clone(),
+                                params: cfg.params,
+                                base_dir: full.parent().map(Path::to_path_buf),
+                            };
                             add_spans(&inner, &inner_spans, &sub, out, index, depth + 1, false);
                         }
                         Err(e) => out.errors.push(format!("@include {}: {e}", full.display())),
@@ -119,7 +127,7 @@ fn add_spans(text: &str, spans: &[StatementSpan], cfg: &PrepConfig, out: &mut Pr
             }
             continue;
         }
-        let info = dbiji_sql::classify(stmt, cfg.syntax);
+        let info = dbiji_sql::classify_command(stmt, cfg.language).unwrap_or_else(|| dbiji_sql::classify(stmt, cfg.syntax));
         let mut missing = Vec::new();
         let sql = substitute(stmt, cfg, &out.variables, &mut missing);
         for m in missing {
@@ -167,7 +175,7 @@ mod tests {
     use super::*;
 
     fn cfg(syntax: &SqlSyntax) -> PrepConfig<'_> {
-        PrepConfig { syntax, split: SplitOptions::default(), params: Some(ParamOptions::default()), base_dir: None }
+        PrepConfig { syntax, language: dbiji_core::QueryLanguage::Sql, split: SplitOptions::default(), params: Some(ParamOptions::default()), base_dir: None }
     }
 
     #[test]

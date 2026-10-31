@@ -396,6 +396,13 @@ impl ResultPanel {
             return;
         }
         let read_only = cx.conns.config(&self.conn).is_some_and(|c| c.read_only);
+        // Redis, MongoDB, Elasticsearch and Neo4j are changed with their own commands.
+        if let Some(kind) = cx.conns.config(&self.conn).map(|c| c.kind).filter(|k| !k.language().is_sql()) {
+            let e = Err(ReadOnlyReason::Custom(trf("Read-only: change {} data with commands in the editor", &[&kind.display_name()])));
+            self.model.set_editability(e.clone());
+            self.editability = Some(e);
+            return;
+        }
         // Columns without a database come from the result's one (a table of
         // another database of the server).
         let result_database = self.table.as_ref().and_then(|t| t.database.clone());

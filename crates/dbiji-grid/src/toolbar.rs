@@ -201,6 +201,7 @@ impl<'a> FilterBar<'a> {
     /// Show it. Returns actions for the application (server side filters).
     pub fn show(self, ui: &mut Ui) -> Vec<GridAction> {
         let FilterBar { model, grid, state, dialect } = self;
+        let kind = dialect.as_ref().map(|d| d.kind());
         // Column names for the suggestions, written as SQL (server) or as typed (client).
         let columns: Vec<String> = model.columns().iter().map(|c| c.name.clone()).collect();
         let simple = |n: &str| n.chars().next().is_some_and(|c| c.is_ascii_lowercase() || c == '_') && n.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
@@ -233,6 +234,10 @@ impl<'a> FilterBar<'a> {
                     client = true;
                 }
             });
+            // Redis has no server side filter: the read commands take no condition.
+            if kind == Some(dbiji_core::DbKind::Redis) {
+                client = true;
+            }
             grid.mode = if client { DataMode::Client } else { DataMode::Server };
             let server = !client;
             ui.add_space(4.0);
@@ -247,7 +252,11 @@ impl<'a> FilterBar<'a> {
             let button = ui.spacing().interact_size.y + ui.spacing().button_padding.x * 2.0 + ui.spacing().item_spacing.x;
             let trailing = label_w + button * 6.0 + ui.spacing().item_spacing.x * 4.0;
             let flexible = (ui.available_width() - trailing).max(160.0);
-            let hint = if server { tr("WHERE condition, e.g. status = 'open'") } else { tr("Filter, e.g. amount > 100 and city = 'Bandung'") };
+            let hint = match kind {
+                _ if !server => tr("Filter, e.g. amount > 100 and city = 'Bandung'"),
+                Some(dbiji_core::DbKind::MongoDb) => tr("Query document, e.g. {status: \"open\"}"),
+                _ => tr("WHERE condition, e.g. status = 'open'"),
+            };
             const WHERE_WORDS: [&str; 10] = ["AND", "OR", "NOT", "IS NULL", "IS NOT NULL", "LIKE", "ILIKE", "IN", "BETWEEN", "NULL"];
             let filter_resp = crate::suggest::suggest_edit(
                 ui,

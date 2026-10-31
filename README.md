@@ -14,10 +14,16 @@ millions of rows never have to fit in memory.
 ## Highlights
 
 - **Many databases, one interface**: PostgreSQL, MySQL, MariaDB, SQLite, SQL Server, Oracle,
-  CockroachDB, ClickHouse and Cassandra / ScyllaDB, all with drivers written in Rust (no Java, no
-  Oracle Client). Compatible products have their own entry with the right defaults: YugabyteDB,
-  TimescaleDB, Supabase, Neon, Redshift, AlloyDB, Greenplum, QuestDB, CrateDB, TiDB, OceanBase,
-  Doris, StarRocks, SingleStore, PlanetScale, Azure SQL Database and Amazon Keyspaces.
+  CockroachDB, ClickHouse, Cassandra / ScyllaDB, Redis, MongoDB and Elasticsearch / OpenSearch, all
+  with drivers written in Rust (no Java, no Oracle Client). Compatible products have their own entry
+  with the right defaults: YugabyteDB, TimescaleDB, Supabase, Neon, Redshift, AlloyDB, Greenplum,
+  QuestDB, CrateDB, TiDB, OceanBase, Doris, StarRocks, SingleStore, PlanetScale, Azure SQL Database,
+  Amazon Keyspaces, Valkey, Dragonfly, KeyDB, MongoDB Atlas, FerretDB, Amazon DocumentDB, Azure
+  Cosmos DB for MongoDB and Amazon OpenSearch Service.
+- **Redis, MongoDB and Elasticsearch** in the same editor and grid: Redis commands (keys by type in
+  the navigator, big hashes and lists read page by page), `mongosh` statements
+  (`db.users.find({age: {$gt: 30}})`, aggregations, the data tab's filter takes a query document),
+  and Elasticsearch SQL or Kibana-style requests (`GET /logs/_search` + JSON) with hits as rows.
 - **SQL editor** with schema-aware autocomplete (tables, columns, joins, aliases, CTEs), templates,
   `:name` / `${name}` parameters, `@set` / `@include` / `@export`, formatter, outline, error markers,
   explain plans (text, tree, diagram) and a searchable query history.
@@ -203,10 +209,10 @@ Measured on the release build (Apple M1 Pro) with `dbiji --bench all`:
 
 | | Target | Measured |
 | --- | --- | --- |
-| Binary size (macOS) | < 50 MB | 44.0 MB |
+| Binary size (macOS) | < 50 MB | 49.8 MB |
 | Cold start to first frame | < 1 s | ≈ 0.12 s |
-| Idle memory | < 120 MB | ≈ 93 MB |
-| 3 connections + 5 result tabs | < 250 MB | ≈ 93 MB |
+| Idle memory | < 120 MB | ≈ 88 MB |
+| 3 connections + 5 result tabs | < 250 MB | ≈ 94 MB |
 | 1 M rows scroll | < 16 ms / frame | p95 0.5 ms |
 | Typing in a 50 000-line script | < 16 ms / frame | p95 0.5 ms |
 
@@ -233,7 +239,11 @@ export DBIJI_TEST_MARIADB=mariadb://root:dbiji@127.0.0.1:53307/dbiji
 export DBIJI_TEST_COCKROACH='cockroachdb://root@127.0.0.1:26257/defaultdb?sslmode=disable'
 export DBIJI_TEST_ORACLE=oracle://dbiji:dbiji@127.0.0.1:51521/FREEPDB1   # gvenzl/oracle-free
 export DBIJI_TEST_CASSANDRA=cassandra://127.0.0.1:59042                  # scylladb/scylla
-cargo test -p dbiji-app -p dbiji-driver-oracle -p dbiji-driver-cassandra
+export DBIJI_TEST_REDIS=redis://127.0.0.1:56379
+export DBIJI_TEST_MONGO=mongodb://127.0.0.1:57017
+export DBIJI_TEST_ELASTIC=http://127.0.0.1:59200                          # security disabled
+cargo test -p dbiji-app -p dbiji-driver-oracle -p dbiji-driver-cassandra -p dbiji-driver-redis \
+  -p dbiji-driver-mongodb -p dbiji-driver-elasticsearch
 ```
 
 Signing and notarization: set `DBIJI_SIGN_IDENTITY` (Developer ID) and `DBIJI_NOTARY_PROFILE`
@@ -246,7 +256,7 @@ before running `scripts/bundle-macos.sh`.
 | `dbiji-app` | The application: window, tabs, navigator, execution engine, CLI |
 | `dbiji-core` | Shared contract: values, driver/session traits, metadata, DDL, dialects, row store, i18n |
 | `dbiji-sql` | Tokenizer, splitter, formatter, autocomplete, analysis, parameters |
-| `dbiji-driver-*` | PostgreSQL, MySQL, SQLite, SQL Server, Oracle, ClickHouse, Cassandra drivers |
+| `dbiji-driver-*` | PostgreSQL, MySQL, SQLite, SQL Server, Oracle, ClickHouse, Cassandra, Redis, MongoDB, Elasticsearch drivers |
 | `dbiji-editor` / `dbiji-grid` / `dbiji-visual` | Editor widget, data grid, diagrams and charts |
 | `dbiji-config` / `dbiji-net` | Settings, secrets, importers / SSH tunnels and proxies |
 | `dbiji-transfer` / `dbiji-compare` / `dbiji-tasks` / `dbiji-ai` | Data transfer, compare, tasks, AI |
@@ -257,7 +267,9 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the DBeaver parity matr
 ## Known limitations
 
 - Only databases with a driver written in Rust are supported: Db2, Teradata, Informix, Snowflake,
-  BigQuery and DuckDB are not. Oracle uses Oracle's own Rust driver, still a beta.
+  BigQuery and DuckDB are not, nor Neo4j (its Rust driver brings a second TLS crypto library).
+  Oracle uses Oracle's own Rust driver, still a beta.
+- Redis, MongoDB and Elasticsearch results are read-only in the grid: change data with commands.
 - Kerberos and MySQL multi-factor authentication are not supported.
 - Release builds are not notarized (macOS) or code-signed (Windows) yet.
 

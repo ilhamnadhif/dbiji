@@ -31,7 +31,7 @@ impl MongoDriver {
             info: DriverInfo {
                 kind: DbKind::MongoDb,
                 name: "MongoDB",
-                description: "MongoDB 4.0 and newer, through the shell language (official Rust driver)",
+                description: "MongoDB 4.2 and newer, through the shell language (official Rust driver)",
                 capabilities: Capabilities {
                     // Databases are presented as schemas: one connection serves all.
                     multiple_databases: false,

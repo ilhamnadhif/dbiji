@@ -4,8 +4,10 @@ use dbiji_core::{DbError, ErrorKind};
 use mongodb::error::{Error as MongoError, ErrorKind as MongoErrorKind};
 
 /// The server version DBiji needs: the `mongodb` crate refuses anything older
-/// (`DRIVER_MIN_WIRE_VERSION`), so the message must say which version is which.
-pub const MIN_SERVER_VERSION: &str = "4.4";
+/// (`DRIVER_MIN_WIRE_VERSION`, 8), so the message must say which version is
+/// which. The crate is pinned to 3.8 for this range — 3.9 raised the minimum to
+/// 4.4 without extending the maximum (both accept MongoDB 8.0).
+pub const MIN_SERVER_VERSION: &str = "4.2";
 
 /// Explain a wire-version refusal from the driver.
 ///
@@ -20,7 +22,7 @@ fn wire_version_hint(message: &str) -> Option<String> {
     Some(match reported {
         Some(v) => format!(
             "DBiji needs MongoDB {MIN_SERVER_VERSION} or newer; this server reports wire version {v} \
-             (MongoDB {} and older). Upgrade the server, or use an older DBiji build for it.",
+             (MongoDB {} or older). Upgrade the server.",
             wire_version_to_version(&v)
         ),
         None => format!("DBiji needs MongoDB {MIN_SERVER_VERSION} or newer; this server is older."),
@@ -156,11 +158,11 @@ mod tests {
 
     #[test]
     fn an_old_server_names_both_versions() {
-        let message = "Server at 127.0.0.1:27017 reports wire version 8, but this version of the \
-                       MongoDB Rust driver requires at least 9 (MongoDB 4.4).";
+        let message = "Server at 127.0.0.1:27017 reports wire version 7, but this version of the \
+                       MongoDB Rust driver requires at least 8 (MongoDB 4.2).";
         let hint = wire_version_hint(message).expect("a hint");
-        assert!(hint.contains("MongoDB 4.4 or newer"), "{hint}");
-        assert!(hint.contains("MongoDB 4.2"), "{hint}");
+        assert!(hint.contains("MongoDB 4.2 or newer"), "{hint}");
+        assert!(hint.contains("MongoDB 4.0"), "{hint}");
         assert!(wire_version_hint("connection refused").is_none());
     }
 
@@ -185,7 +187,7 @@ mod tests {
         assert_eq!(wire_version_to_version("99"), "(wire version 99)");
         // A refusal without a number still says what is needed.
         let hint = wire_version_hint("wire version too old").expect("a hint");
-        assert!(hint.contains("MongoDB 4.4 or newer"), "{hint}");
+        assert!(hint.contains("MongoDB 4.2 or newer"), "{hint}");
     }
 
     #[test]

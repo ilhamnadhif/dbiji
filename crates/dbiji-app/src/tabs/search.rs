@@ -61,8 +61,8 @@ fn like_contains(text: &str, kind: DbKind) -> String {
 }
 
 /// Condition true when column `column` (unquoted name) contains `text`,
-/// written for the dialect: `ILIKE` (PostgreSQL, DuckDB), `LOWER(..) LIKE`
-/// (MySQL, SQL Server, ANSI), `instr` (SQLite) or `position` (ClickHouse).
+/// written for the dialect: `ILIKE` (PostgreSQL), `LOWER(..) LIKE` (MySQL,
+/// SQL Server, Oracle, ANSI), `instr` (SQLite) or `position` (ClickHouse).
 pub fn match_predicate(d: &dyn Dialect, column: &str, text: &str, case_sensitive: bool) -> String {
     let kind = d.kind();
     let c = d.quote_ident(column);
@@ -72,7 +72,6 @@ pub fn match_predicate(d: &dyn Dialect, column: &str, text: &str, case_sensitive
         DbKind::Postgres | DbKind::CockroachDb => {
             format!("CAST({c} AS TEXT) {} {} ESCAPE {esc}", if case_sensitive { "LIKE" } else { "ILIKE" }, lit(&like_contains(text, kind)))
         }
-        DbKind::DuckDb => format!("CAST({c} AS VARCHAR) {} {} ESCAPE {esc}", if case_sensitive { "LIKE" } else { "ILIKE" }, lit(&like_contains(text, kind))),
         DbKind::MySql | DbKind::MariaDb => {
             let p = lit(&like_contains(text, kind));
             if case_sensitive { format!("CAST({c} AS BINARY) LIKE CAST({p} AS BINARY) ESCAPE {esc}") } else { format!("LOWER({c}) LIKE LOWER({p}) ESCAPE {esc}") }
@@ -99,7 +98,9 @@ pub fn match_predicate(d: &dyn Dialect, column: &str, text: &str, case_sensitive
                 format!("positionCaseInsensitiveUTF8(toString({c}), {}) > 0", lit(text))
             }
         }
-        DbKind::Generic => {
+        // Data search is offered for SQL connections only; the others get the
+        // portable form.
+        DbKind::Oracle | DbKind::Cassandra | DbKind::Redis | DbKind::MongoDb | DbKind::Elasticsearch | DbKind::Neo4j | DbKind::Generic => {
             let p = lit(&like_contains(text, kind));
             if case_sensitive { format!("{c} LIKE {p} ESCAPE {esc}") } else { format!("LOWER({c}) LIKE LOWER({p}) ESCAPE {esc}") }
         }

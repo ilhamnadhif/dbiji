@@ -1,0 +1,22 @@
+[package]
+name = "dbiji-driver-oracle"
+description = "Oracle Database driver for DBiji (pure Rust thin client)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+dbiji-core.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+oracledb.workspace = true
+chrono.workspace = true
+serde_json.workspace = true
+hex.workspace = true
+tracing.workspace = true
+parking_lot.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true }

@@ -466,8 +466,10 @@ impl SessionHandle {
         // Without one, a savepoint would itself be the transaction (SQLite: RELEASE commits),
         // and on failure the whole batch is rolled back instead.
         let savepoint = match (in_tx, guard.dialect().kind()) {
-            (false, _) | (_, dbiji_core::DbKind::DuckDb | dbiji_core::DbKind::ClickHouse) => None,
+            (false, _) | (_, dbiji_core::DbKind::ClickHouse | dbiji_core::DbKind::Cassandra) => None,
             (true, dbiji_core::DbKind::SqlServer) => Some(("SAVE TRANSACTION dbiji_save", "ROLLBACK TRANSACTION dbiji_save", None)),
+            // Oracle has no RELEASE SAVEPOINT.
+            (true, dbiji_core::DbKind::Oracle) => Some(("SAVEPOINT dbiji_save", "ROLLBACK TO SAVEPOINT dbiji_save", None)),
             (true, _) => Some(("SAVEPOINT dbiji_save", "ROLLBACK TO SAVEPOINT dbiji_save", Some("RELEASE SAVEPOINT dbiji_save"))),
         };
         let savepoint = match savepoint {
@@ -480,7 +482,7 @@ impl SessionHandle {
         // How far the driver's row count can be trusted: SQL Server reports none with
         // NOCOUNT and adds a trigger's; MySQL counts changed rows (an unchanged value is 0).
         let (zero_means_missing, many_means_ambiguous) = match self.kind() {
-            DbKind::Postgres | DbKind::CockroachDb | DbKind::Sqlite | DbKind::DuckDb => (true, true),
+            DbKind::Postgres | DbKind::CockroachDb | DbKind::Sqlite | DbKind::Oracle => (true, true),
             DbKind::MySql | DbKind::MariaDb => (false, true),
             _ => (false, false),
         };
@@ -496,7 +498,8 @@ impl SessionHandle {
             });
             match checked {
                 Ok(r) => {
-                    total += r.rows.unwrap_or(0);
+                    // No count (Cassandra, SQL Server's NOCOUNT): the statement was made for one row.
+                    total += r.rows.unwrap_or(1);
                     self.log_tx(sql, started, r.rows, true);
                     results.push(r);
                 }

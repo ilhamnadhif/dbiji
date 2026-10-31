@@ -32,7 +32,7 @@ pub const DEFAULT_FILE_NAME_PATTERN: &str = "${object}_${date}_${time}";
 pub struct NameContext {
     /// Database product.
     pub kind: Option<DbKind>,
-    /// The connection's database (SQLite, DuckDB: the file name without its
+    /// The connection's database (SQLite: the file name without its
     /// extension); used when an object does not name its database.
     pub database: Option<String>,
 }
@@ -285,7 +285,7 @@ fn sanitize_file_name(name: &str) -> String {
 /// Database, schema and table (or partition) of an item joined with `_`,
 /// as the product names them: PostgreSQL, CockroachDB and SQL Server
 /// `database_schema_table`; MySQL, MariaDB and ClickHouse `database_table`
-/// (the schema is the database); SQLite and DuckDB `file_table`, with the
+/// (the schema is the database); SQLite `file_table`, with the
 /// schema only when it is not `main`. Missing parts are left out.
 pub fn object_name(item: &ExportItem, ctx: &NameContext) -> String {
     let some = |v: Option<&str>| v.map(str::trim).filter(|v| !v.is_empty()).map(str::to_string);
@@ -294,7 +294,7 @@ pub fn object_name(item: &ExportItem, ctx: &NameContext) -> String {
     let database = some(table.and_then(|t| t.database.as_deref())).or_else(|| some(ctx.database.as_deref()));
     let parts = match ctx.kind {
         Some(DbKind::MySql | DbKind::MariaDb | DbKind::ClickHouse) => vec![schema.or(database)],
-        Some(DbKind::Sqlite | DbKind::DuckDb) => vec![database, schema.filter(|s| !s.eq_ignore_ascii_case("main"))],
+        Some(DbKind::Sqlite) => vec![database, schema.filter(|s| !s.eq_ignore_ascii_case("main"))],
         _ => vec![database, schema],
     };
     let mut out: Vec<String> = Vec::new();

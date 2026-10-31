@@ -324,8 +324,18 @@ pub fn map_driver(provider: &str, driver: &str) -> Option<DbKind> {
             DbKind::Postgres
         } else if s.contains("sqlite") {
             DbKind::Sqlite
-        } else if s.contains("duckdb") {
-            DbKind::DuckDb
+        } else if s.contains("oracle") {
+            DbKind::Oracle
+        } else if s.contains("cassandra") || s.contains("scylla") {
+            DbKind::Cassandra
+        } else if s.contains("redis") {
+            DbKind::Redis
+        } else if s.contains("mongo") {
+            DbKind::MongoDb
+        } else if s.contains("elasticsearch") || s.contains("opensearch") {
+            DbKind::Elasticsearch
+        } else if s.contains("neo4j") {
+            DbKind::Neo4j
         } else if s.contains("clickhouse") {
             DbKind::ClickHouse
         } else if ["mssql", "sqlserver", "sql_server", "jtds"]
@@ -562,7 +572,7 @@ fn parse_connection(
         cfg.user = user.or(cfg.user);
         match s(conf, "auth-model").unwrap_or("native") {
             "native" | "mysql_native" | "postgres_native" | "sqlserver_database"
-            | "clickhouse_native" => {
+            | "clickhouse_native" | "oracle_native" => {
                 cfg.auth = AuthMethod::Password;
             }
             "postgres_pgpass" | "pgpass" => cfg.auth = AuthMethod::Pgpass,
@@ -623,6 +633,15 @@ fn parse_connection(
         && b(pp, "@dbeaver-show-non-default-db@") == Some(true)
     {
         cfg.init.show_all_databases = true;
+    }
+    // Oracle: DBeaver keeps a SID in `database` and says so in a provider property.
+    if kind == DbKind::Oracle
+        && obj(conf, "provider-properties")
+            .and_then(|pp| s(pp, "@dbeaver-sid-service@"))
+            .is_some_and(|v| v.eq_ignore_ascii_case("SID"))
+        && let Some(sid) = cfg.database.take()
+    {
+        cfg.properties.insert("sid".into(), sid);
     }
     if let Some(events) = obj(conf, "events") {
         let command = |key: &str| {
@@ -1048,7 +1067,8 @@ mod tests {
             "generic-5": {"provider": "generic", "driver": "duckdb_jdbc", "name": "Duck",
                 "configuration": {"url": "jdbc:duckdb:/data/w.duckdb"}},
             "oracle_thin-6": {"provider": "oracle", "driver": "oracle_thin", "name": "Legacy Oracle",
-                "configuration": {"host": "ora", "port": "1521"}},
+                "configuration": {"host": "ora", "port": "1521", "database": "ORCL",
+                    "provider-properties": {"@dbeaver-sid-service@": "SID"}}},
             "mssql_jdbc_ms_new-7": {"provider": "sqlserver", "driver": "mssql_jdbc_ms_new", "name": "MSSQL",
                 "configuration": {"host": "sql", "port": "1433", "database": "master", "user": "sa"}},
             "clickhouse-com-8": {"provider": "clickhouse", "driver": "com_clickhouse", "name": "CH",
@@ -1133,7 +1153,11 @@ mod tests {
     fn data_sources_main_fields() {
         let r = parse_data_sources(DATA_SOURCES, &creds()).unwrap();
         assert_eq!(r.connections.len(), 8, "{:?}", r.warnings);
-        assert!(r.warnings.iter().any(|w| w.contains("Legacy Oracle")));
+        assert!(
+            r.warnings.iter().any(|w| w.contains("'Duck'")),
+            "{:?}",
+            r.warnings
+        );
         assert!(r.warnings.iter().any(|w| w.contains("kerberos")));
         assert!(r.folders.contains(&"Prod".to_string()));
         assert!(r.folders.contains(&"Prod/EU".to_string()));
@@ -1222,11 +1246,18 @@ mod tests {
             (lite.kind, lite.file_path.as_deref()),
             (DbKind::Sqlite, Some("/data/local.db"))
         );
-        let duck = find(&r, "generic-5");
+        assert!(r.connections.iter().all(|c| c.id != "generic-5"));
+        let ora = find(&r, "oracle_thin-6");
         assert_eq!(
-            (duck.kind, duck.file_path.as_deref()),
-            (DbKind::DuckDb, Some("/data/w.duckdb"))
+            (
+                ora.kind,
+                ora.host.as_str(),
+                ora.port,
+                ora.database.as_deref()
+            ),
+            (DbKind::Oracle, "ora", Some(1521), None)
         );
+        assert_eq!(ora.properties.get("sid").map(String::as_str), Some("ORCL"));
         let ms = find(&r, "mssql_jdbc_ms_new-7");
         assert_eq!(
             (ms.kind, ms.user.as_deref()),
@@ -1262,13 +1293,15 @@ mod tests {
             map_driver("clickhouse", "clickhouse-com"),
             Some(DbKind::ClickHouse)
         );
-        assert_eq!(map_driver("generic", "duckdb_jdbc"), Some(DbKind::DuckDb));
+        assert_eq!(map_driver("generic", "duckdb_jdbc"), None);
         assert_eq!(
             map_driver("postgresql", "greenplum"),
             Some(DbKind::Postgres)
         );
         assert_eq!(map_driver("generic", "h2_embedded"), None);
-        assert_eq!(map_driver("oracle", "oracle_thin"), None);
+        assert_eq!(map_driver("oracle", "oracle_thin"), Some(DbKind::Oracle));
+        assert_eq!(map_driver("mongodb", "mongo"), Some(DbKind::MongoDb));
+        assert_eq!(map_driver("redis", "redis"), Some(DbKind::Redis));
         assert_eq!(parse_color("247,159,129"), Some([247, 159, 129]));
         assert_eq!(parse_color("#0a141e"), Some([10, 20, 30]));
         assert_eq!(parse_color("org.jkiss.color"), None);

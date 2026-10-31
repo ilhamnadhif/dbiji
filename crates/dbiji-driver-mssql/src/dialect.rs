@@ -34,6 +34,7 @@ pub const fn tsql_syntax() -> SqlSyntax {
         batch_separator: Some("GO"),
         delimiter_command: false,
         compound_blocks: true,
+        plsql_blocks: false,
         extra_ident_chars: "#@$",
         ident_case: IdentCase::Preserve,
         case_sensitive_names: false,

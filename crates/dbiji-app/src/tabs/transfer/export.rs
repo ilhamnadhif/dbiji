@@ -77,11 +77,11 @@ pub fn grid_store_rows(model: &dbiji_grid::ResultModel, display_rows: &[usize]) 
 }
 
 /// Database kind and current database of a connection, for file names
-/// (SQLite and DuckDB: the database file name without its extension).
+/// (SQLite: the database file name without its extension).
 pub fn name_context(cx: &AppContext, conn: &str) -> NameContext {
     let Some(cfg) = cx.conns.config(conn) else { return NameContext::default() };
     let database = match cfg.kind {
-        DbKind::Sqlite | DbKind::DuckDb => cfg.file_path.as_deref().and_then(|p| std::path::Path::new(p).file_stem()).map(|s| s.to_string_lossy().into_owned()),
+        DbKind::Sqlite => cfg.file_path.as_deref().and_then(|p| std::path::Path::new(p).file_stem()).map(|s| s.to_string_lossy().into_owned()),
         _ => cx.conns.live(conn).and_then(|l| l.current_database.clone()).or_else(|| cfg.database.clone()),
     };
     NameContext { kind: Some(cfg.kind), database: database.filter(|d| !d.is_empty()) }

@@ -65,6 +65,15 @@ fn copy_paste_edit_and_undo() {
     h.key(Key::Enter, Modifiers::NONE);
     assert!(!h.state.is_editing());
     assert_eq!(h.model.cell(3, 1), Some(Value::text("zq")));
+    // Several characters typed within one frame all reach the cell.
+    h.state.select_cell(4, 1);
+    h.frame(vec![]);
+    let key = |k: Key| Event::Key { key: k, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
+    h.frame(vec![key(Key::Num1), Event::Text("1".into()), key(Key::Num5), Event::Text("5".into()), key(Key::Num0), Event::Text("0".into())]);
+    h.frame(vec![]);
+    h.key(Key::Enter, Modifiers::NONE);
+    assert_eq!(h.model.cell(4, 1), Some(Value::text("150")));
+    h.key(Key::Z, Modifiers::COMMAND);
     assert_eq!(h.model.row_state(3), RowState::Modified);
     h.key(Key::Z, Modifiers::COMMAND);
     assert_eq!(h.model.cell(3, 1), Some(Value::text("name 3")));

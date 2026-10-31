@@ -223,7 +223,7 @@ pub fn kind_icon(kind: ObjectKind) -> &'static str {
 
 pub fn db_icon(kind: DbKind) -> &'static str {
     match kind {
-        DbKind::Sqlite | DbKind::DuckDb => icon::FILE_SQL,
+        DbKind::Sqlite => icon::FILE_SQL,
         DbKind::ClickHouse => icon::CHART_BAR,
         _ => icon::DATABASE,
     }

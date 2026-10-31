@@ -19,7 +19,7 @@ Status: ☐ open · ☑ done (with the test that covers it).
 | MySQL / MariaDB | Users (grants), System info (session / global status and variables), Engines, Charsets, Collations, Plugins |
 | SQL Server | Logins, Database triggers, External tables, Extended properties |
 
-- ☑ Generic catalog folders (`dbiji_core::catalog`: list query, DDL queries, sub-folders) for PostgreSQL, CockroachDB, MySQL, MariaDB, ClickHouse, SQLite, DuckDB and SQL Server — `dbiji-app::catalog_e2e::every_catalog_folder_runs` runs every query, DDL and sub-folder against each server (SQL Server: no test server yet)
+- ☑ Generic catalog folders (`dbiji_core::catalog`: list query, DDL queries, sub-folders) for PostgreSQL, CockroachDB, MySQL, MariaDB, ClickHouse, SQLite and SQL Server — `dbiji-app::catalog_e2e::every_catalog_folder_runs` runs every query, DDL and sub-folder against each server (SQL Server: no test server yet)
 - ☑ Navigator groups Security / Storage / Administer / System Info, database and table level folders, "View as table", refresh — `dbiji-app::ui_full::catalog_folders_in_the_navigator`
 - ☑ Object tab with properties, DDL (copy / open in editor) and sub-objects (e.g. role members) — same test
 
@@ -77,5 +77,5 @@ Status: ☐ open · ☑ done (with the test that covers it).
 
 - ☑ PostgreSQL global backup (`pg_dumpall`): all databases, or only roles and tablespaces (Backup › Scope) — `dbiji-driver-postgres::tools::tests::dumpall`, `dbiji-driver-postgres::integration::backup_and_restore_with_local_tools`, `dbiji-app::tabs::dbtools::backup::tests::forms_roundtrip`
 - ☑ Enable / disable triggers (PostgreSQL: user or all triggers of a table, one trigger; SQL Server) from Maintenance — `dbiji-driver-postgres::dialect::tests::trigger_maintenance`, `dbiji-driver-mssql::dialect` tests
-- ☑ Foreign data wrapper configurator: Tools › Foreign data wrapper… generates CREATE EXTENSION / SERVER / USER MAPPING / IMPORT FOREIGN SCHEMA from another connection (postgres_fdw, mysql_fdw, tds_fdw, sqlite_fdw, clickhouse_fdw, duckdb_fdw); the password is the `:password` parameter, never written to the script — `dbiji-app::tabs::dbtools::fdw::tests::scripts`, `dbiji-app::fdw_e2e::postgres_fdw_script_imports_a_schema`
+- ☑ Foreign data wrapper configurator: Tools › Foreign data wrapper… generates CREATE EXTENSION / SERVER / USER MAPPING / IMPORT FOREIGN SCHEMA from another connection (postgres_fdw, mysql_fdw, tds_fdw, sqlite_fdw, clickhouse_fdw, oracle_fdw); the password is the `:password` parameter, never written to the script — `dbiji-app::tabs::dbtools::fdw::tests::scripts`, `dbiji-app::fdw_e2e::postgres_fdw_script_imports_a_schema`
 - ☑ Database-specific dashboards: PostgreSQL (transactions per second, sessions, block IO — already present), MySQL InnoDB memory and key efficiency (cache hit ratio) added — `dbiji-driver-mysql::admin::tests::metric_mapping`

@@ -225,6 +225,8 @@ struct Seg {
     header: Header,
     header_len: u32,
     skip_end_word: bool,
+    /// A PL/SQL `DECLARE` opened the block its `BEGIN` belongs to.
+    declare_open: bool,
 }
 
 impl Seg {
@@ -241,6 +243,7 @@ impl Seg {
             header: Header::Start,
             header_len: 0,
             skip_end_word: false,
+            declare_open: false,
         }
     }
 
@@ -264,6 +267,8 @@ const ROUTINE_WORDS: &[&str] = &[
     "PROC",
     "PACKAGE",
 ];
+/// PL/SQL object types whose bodies end at a `/` line.
+const PLSQL_ROUTINE_WORDS: &[&str] = &["TYPE", "LIBRARY", "JAVA"];
 const HEADER_FILLERS: &[&str] = &[
     "OR",
     "REPLACE",
@@ -719,6 +724,12 @@ impl Splitter<'_> {
                     if self.word(i, "BEGIN") && !self.is_tx_begin(next) {
                         // Anonymous block (T-SQL / PL/SQL style).
                         seg.mode = BlockMode::Compound;
+                    } else if self.syntax.plsql_blocks && self.word(i, "DECLARE") {
+                        // PL/SQL `DECLARE ... BEGIN ... END;`: the declarations
+                        // end with `;` inside the block.
+                        seg.mode = BlockMode::Compound;
+                        seg.blocks = 1;
+                        seg.declare_open = true;
                     } else if self.word(i, "IF") || self.word(i, "WHILE") {
                         seg.mode = BlockMode::Compound;
                     }
@@ -726,7 +737,9 @@ impl Splitter<'_> {
             }
             Header::AfterCreate { definer } => {
                 seg.header_len += 1;
-                if word_in(&t, self.src, ROUTINE_WORDS) {
+                if word_in(&t, self.src, ROUTINE_WORDS)
+                    || (self.syntax.plsql_blocks && word_in(&t, self.src, PLSQL_ROUTINE_WORDS))
+                {
                     seg.header = Header::Done;
                     seg.mode = if !self.syntax.compound_blocks {
                         BlockMode::Atomic
@@ -835,6 +848,11 @@ impl Splitter<'_> {
             }
             return;
         }
+        if seg.declare_open && self.word(i, "BEGIN") {
+            // The block was opened by its DECLARE.
+            seg.declare_open = false;
+            return;
+        }
         let opens = if self.word(i, "BEGIN") {
             !self.is_tx_begin(next)
         } else if self.word(i, "CASE") || self.word(i, "LOOP") {
@@ -934,6 +952,43 @@ mod tests {
         assert!(t[0].ends_with("SELECT 2; END"));
         assert_eq!(t[1], "BEGIN");
         assert_eq!(t[2], "COMMIT");
+    }
+
+    #[test]
+    fn plsql_blocks_and_slash_lines() {
+        let mut syn = SqlSyntax::ansi();
+        syn.compound_blocks = true;
+        syn.plsql_blocks = true;
+        syn.batch_separator = Some("/");
+        let src = "SELECT 1 FROM dual;\n\
+            DECLARE\n  n NUMBER := 1;\nBEGIN\n  IF n > 0 THEN\n    n := n + 1;\n  END IF;\nEND;\n\
+            BEGIN\n  NULL;\nEND;\n\
+            CREATE OR REPLACE PROCEDURE p AS\nBEGIN\n  UPDATE t SET a = 1;\n  COMMIT;\nEND;\n/\n\
+            CREATE OR REPLACE TYPE pt AS OBJECT (x NUMBER, y NUMBER);\n/\n\
+            SELECT 2 FROM dual / 2;\n";
+        let got = texts(src, &syn);
+        assert_eq!(got.len(), 6, "{got:#?}");
+        assert!(
+            got[1].starts_with("DECLARE") && got[1].trim_end().ends_with("END"),
+            "{}",
+            got[1]
+        );
+        assert!(got[1].contains("n := n + 1;"));
+        assert!(got[2].starts_with("BEGIN") && got[2].contains("NULL;"));
+        assert!(
+            got[3].starts_with("CREATE OR REPLACE PROCEDURE") && got[3].contains("COMMIT;"),
+            "{}",
+            got[3]
+        );
+        assert!(
+            got[4].starts_with("CREATE OR REPLACE TYPE pt"),
+            "{}",
+            got[4]
+        );
+        assert!(got[5].starts_with("SELECT 2 FROM dual / 2"), "{}", got[5]);
+        // T-SQL keeps DECLARE @x as a statement of its own.
+        let tsql = texts("DECLARE @x int;\nSELECT @x;", &tsql());
+        assert_eq!(tsql.len(), 2, "{tsql:#?}");
     }
 
     #[test]

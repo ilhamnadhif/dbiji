@@ -13,8 +13,11 @@ millions of rows never have to fit in memory.
 
 ## Highlights
 
-- **Many databases, one interface**: PostgreSQL, CockroachDB, MySQL, MariaDB, SQLite, SQL Server,
-  ClickHouse and (optional) DuckDB.
+- **Many databases, one interface**: PostgreSQL, MySQL, MariaDB, SQLite, SQL Server, Oracle,
+  CockroachDB, ClickHouse and Cassandra / ScyllaDB, all with drivers written in Rust (no Java, no
+  Oracle Client). Compatible products have their own entry with the right defaults: YugabyteDB,
+  TimescaleDB, Supabase, Neon, Redshift, AlloyDB, Greenplum, QuestDB, CrateDB, TiDB, OceanBase,
+  Doris, StarRocks, SingleStore, PlanetScale, Azure SQL Database and Amazon Keyspaces.
 - **SQL editor** with schema-aware autocomplete (tables, columns, joins, aliases, CTEs), templates,
   `:name` / `${name}` parameters, `@set` / `@include` / `@export`, formatter, outline, error markers,
   explain plans (text, tree, diagram) and a searchable query history.
@@ -129,7 +132,6 @@ its vault with a master password. To update, install the package of the new vers
 
 ```sh
 cargo build --release -p dbiji-app                     # target/release/dbiji (dbiji.exe)
-cargo build --release -p dbiji-app --features duckdb   # with the embedded DuckDB engine
 scripts/bundle-macos.sh                                # macOS: dist/DBiji.app, DBiji-<version>.dmg and .zip
 scripts/bundle-linux.sh                                # Linux: .deb, .rpm, Arch package, AppImage and .tar.gz
 pwsh scripts/bundle-windows.ps1                        # Windows: installer and .zip (needs Inno Setup 6)
@@ -169,7 +171,7 @@ Installing in place needs DBiji in `/Applications` (or another folder it can wri
 ## Command line
 
 ```text
-dbiji [FILE.sql | DATABASE.db ...]   open scripts, SQLite / DuckDB files
+dbiji [FILE.sql | DATABASE.db ...]   open scripts and SQLite files
 dbiji --execute FILE.db FILE.sql     open and run the script on the database
 dbiji --run-task <id|name>           run a saved task without a window (exit code 0/1/2/3)
 dbiji --portable <DIR>               keep all settings and data in DIR
@@ -201,7 +203,7 @@ Measured on the release build (Apple M1 Pro) with `dbiji --bench all`:
 
 | | Target | Measured |
 | --- | --- | --- |
-| Binary size (macOS) | < 40 MB | 39.9 MB |
+| Binary size (macOS) | < 50 MB | 44.0 MB |
 | Cold start to first frame | < 1 s | ≈ 0.12 s |
 | Idle memory | < 120 MB | ≈ 93 MB |
 | 3 connections + 5 result tabs | < 250 MB | ≈ 93 MB |
@@ -223,13 +225,15 @@ Measured on the release build (Apple M1 Pro) with `dbiji --bench all`:
 ## Building and testing
 
 ```sh
-cargo test --workspace --exclude dbiji-driver-duckdb
+cargo test --workspace
 # integration tests against real servers (Docker):
 export DBIJI_TEST_PG=postgres://dbiji:dbiji@127.0.0.1:55432/dbiji
 export DBIJI_TEST_MYSQL=mysql://root:dbiji@127.0.0.1:53306/dbiji
 export DBIJI_TEST_MARIADB=mariadb://root:dbiji@127.0.0.1:53307/dbiji
 export DBIJI_TEST_COCKROACH='cockroachdb://root@127.0.0.1:26257/defaultdb?sslmode=disable'
-cargo test -p dbiji-app
+export DBIJI_TEST_ORACLE=oracle://dbiji:dbiji@127.0.0.1:51521/FREEPDB1   # gvenzl/oracle-free
+export DBIJI_TEST_CASSANDRA=cassandra://127.0.0.1:59042                  # scylladb/scylla
+cargo test -p dbiji-app -p dbiji-driver-oracle -p dbiji-driver-cassandra
 ```
 
 Signing and notarization: set `DBIJI_SIGN_IDENTITY` (Developer ID) and `DBIJI_NOTARY_PROFILE`
@@ -242,7 +246,7 @@ before running `scripts/bundle-macos.sh`.
 | `dbiji-app` | The application: window, tabs, navigator, execution engine, CLI |
 | `dbiji-core` | Shared contract: values, driver/session traits, metadata, DDL, dialects, row store, i18n |
 | `dbiji-sql` | Tokenizer, splitter, formatter, autocomplete, analysis, parameters |
-| `dbiji-driver-*` | PostgreSQL, MySQL, SQLite, SQL Server, ClickHouse, DuckDB drivers |
+| `dbiji-driver-*` | PostgreSQL, MySQL, SQLite, SQL Server, Oracle, ClickHouse, Cassandra drivers |
 | `dbiji-editor` / `dbiji-grid` / `dbiji-visual` | Editor widget, data grid, diagrams and charts |
 | `dbiji-config` / `dbiji-net` | Settings, secrets, importers / SSH tunnels and proxies |
 | `dbiji-transfer` / `dbiji-compare` / `dbiji-tasks` / `dbiji-ai` | Data transfer, compare, tasks, AI |
@@ -252,7 +256,8 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the DBeaver parity matr
 
 ## Known limitations
 
-- Oracle, Db2, Firebird, H2 and Trino are not supported (no pure-Rust network driver yet).
+- Only databases with a driver written in Rust are supported: Db2, Teradata, Informix, Snowflake,
+  BigQuery and DuckDB are not. Oracle uses Oracle's own Rust driver, still a beta.
 - Kerberos and MySQL multi-factor authentication are not supported.
 - Release builds are not notarized (macOS) or code-signed (Windows) yet.
 

@@ -9,6 +9,10 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 /// Database product.
+///
+/// Serialized as its [`id`](DbKind::id). A connection of a kind this build
+/// does not know (`duckdb`, whose driver was removed, or one added by a newer
+/// version) is kept unparsed by the connection store and written back as is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DbKind {
@@ -19,13 +23,77 @@ pub enum DbKind {
     Sqlite,
     SqlServer,
     ClickHouse,
-    DuckDb,
+    Oracle,
+    Cassandra,
+    Redis,
+    MongoDb,
+    Elasticsearch,
+    Neo4j,
     /// ANSI SQL, used when no connection is attached (e.g. a scratch editor).
     Generic,
 }
 
+/// Language typed into the editor of a connection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum QueryLanguage {
+    Sql,
+    /// Cassandra Query Language: SQL-like, without joins or transactions.
+    Cql,
+    /// Redis commands, one per line.
+    Redis,
+    /// MongoDB shell methods (`db.users.find({...})`).
+    Mongo,
+    /// Elasticsearch / OpenSearch: SQL or `GET /index/_search {...}`.
+    Search,
+    Cypher,
+}
+
+impl QueryLanguage {
+    /// SQL or a dialect close enough for the SQL tools (formatter, statement
+    /// splitter, SQL generation).
+    pub fn is_sql(self) -> bool {
+        matches!(self, QueryLanguage::Sql | QueryLanguage::Cql)
+    }
+
+    /// Code fence tag used in AI prompts and answers.
+    pub fn fence(self) -> &'static str {
+        match self {
+            QueryLanguage::Sql | QueryLanguage::Search => "sql",
+            QueryLanguage::Cql => "cql",
+            QueryLanguage::Redis => "redis",
+            QueryLanguage::Mongo => "javascript",
+            QueryLanguage::Cypher => "cypher",
+        }
+    }
+}
+
 impl DbKind {
-    pub const ALL: [DbKind; 8] = [DbKind::Postgres, DbKind::MySql, DbKind::MariaDb, DbKind::Sqlite, DbKind::SqlServer, DbKind::CockroachDb, DbKind::ClickHouse, DbKind::DuckDb];
+    pub const ALL: [DbKind; 13] = [
+        DbKind::Postgres,
+        DbKind::MySql,
+        DbKind::MariaDb,
+        DbKind::Sqlite,
+        DbKind::SqlServer,
+        DbKind::Oracle,
+        DbKind::CockroachDb,
+        DbKind::ClickHouse,
+        DbKind::Cassandra,
+        DbKind::MongoDb,
+        DbKind::Redis,
+        DbKind::Elasticsearch,
+        DbKind::Neo4j,
+    ];
+
+    pub fn language(self) -> QueryLanguage {
+        match self {
+            DbKind::Cassandra => QueryLanguage::Cql,
+            DbKind::Redis => QueryLanguage::Redis,
+            DbKind::MongoDb => QueryLanguage::Mongo,
+            DbKind::Elasticsearch => QueryLanguage::Search,
+            DbKind::Neo4j => QueryLanguage::Cypher,
+            _ => QueryLanguage::Sql,
+        }
+    }
 
     pub fn display_name(self) -> &'static str {
         match self {
@@ -36,7 +104,12 @@ impl DbKind {
             DbKind::Sqlite => "SQLite",
             DbKind::SqlServer => "SQL Server",
             DbKind::ClickHouse => "ClickHouse",
-            DbKind::DuckDb => "DuckDB",
+            DbKind::Oracle => "Oracle",
+            DbKind::Cassandra => "Cassandra",
+            DbKind::Redis => "Redis",
+            DbKind::MongoDb => "MongoDB",
+            DbKind::Elasticsearch => "Elasticsearch",
+            DbKind::Neo4j => "Neo4j",
             DbKind::Generic => "SQL",
         }
     }
@@ -48,7 +121,13 @@ impl DbKind {
             DbKind::MySql | DbKind::MariaDb => Some(3306),
             DbKind::SqlServer => Some(1433),
             DbKind::ClickHouse => Some(8123),
-            DbKind::Sqlite | DbKind::DuckDb | DbKind::Generic => None,
+            DbKind::Oracle => Some(1521),
+            DbKind::Cassandra => Some(9042),
+            DbKind::Redis => Some(6379),
+            DbKind::MongoDb => Some(27017),
+            DbKind::Elasticsearch => Some(9200),
+            DbKind::Neo4j => Some(7687),
+            DbKind::Sqlite | DbKind::Generic => None,
         }
     }
 
@@ -59,6 +138,9 @@ impl DbKind {
             DbKind::MySql | DbKind::MariaDb => Some("root"),
             DbKind::SqlServer => Some("sa"),
             DbKind::ClickHouse => Some("default"),
+            DbKind::Oracle => Some("system"),
+            DbKind::Elasticsearch => Some("elastic"),
+            DbKind::Neo4j => Some("neo4j"),
             _ => None,
         }
     }
@@ -69,13 +151,25 @@ impl DbKind {
             DbKind::CockroachDb => Some("defaultdb"),
             DbKind::SqlServer => Some("master"),
             DbKind::ClickHouse => Some("default"),
+            DbKind::Oracle => Some("FREEPDB1"),
+            DbKind::Neo4j => Some("neo4j"),
             _ => None,
+        }
+    }
+
+    /// Label of the connection dialog's database field.
+    pub fn database_label(self) -> &'static str {
+        match self {
+            DbKind::Oracle => "Service name",
+            DbKind::Cassandra => "Keyspace",
+            DbKind::Redis => "Database number",
+            _ => "Database",
         }
     }
 
     /// Embedded / file based engines need a path instead of host and port.
     pub fn is_file_based(self) -> bool {
-        matches!(self, DbKind::Sqlite | DbKind::DuckDb)
+        matches!(self, DbKind::Sqlite)
     }
 
     /// Engines speaking the PostgreSQL wire protocol.
@@ -97,7 +191,12 @@ impl DbKind {
             DbKind::Sqlite => "sqlite",
             DbKind::SqlServer => "sqlserver",
             DbKind::ClickHouse => "clickhouse",
-            DbKind::DuckDb => "duckdb",
+            DbKind::Oracle => "oracle",
+            DbKind::Cassandra => "cassandra",
+            DbKind::Redis => "redis",
+            DbKind::MongoDb => "mongodb",
+            DbKind::Elasticsearch => "elasticsearch",
+            DbKind::Neo4j => "neo4j",
             DbKind::Generic => "generic",
         }
     }
@@ -114,12 +213,95 @@ impl DbKind {
             "sqlite" | "sqlite3" => DbKind::Sqlite,
             "sqlserver" | "mssql" | "sql_server" | "microsoft" | "jtds" => DbKind::SqlServer,
             "clickhouse" => DbKind::ClickHouse,
-            "duckdb" => DbKind::DuckDb,
+            "oracle" | "oracledb" | "oci" => DbKind::Oracle,
+            "cassandra" | "scylla" | "scylladb" | "astra" | "keyspaces" => DbKind::Cassandra,
+            "redis" | "rediss" | "valkey" | "keydb" | "dragonfly" | "garnet" => DbKind::Redis,
+            "mongodb" | "mongo" | "mongodb+srv" | "documentdb" | "ferretdb" => DbKind::MongoDb,
+            "elasticsearch" | "elastic" | "opensearch" | "es" => DbKind::Elasticsearch,
+            "neo4j" | "neo4j+s" | "neo4j+ssc" | "bolt" | "bolt+s" | "memgraph" => DbKind::Neo4j,
             "generic" | "sql" => DbKind::Generic,
             _ => return None,
         })
     }
 }
+
+/// A product that speaks the protocol of a supported database (TiDB is
+/// MySQL, Supabase is PostgreSQL ...): offered in the new-connection dialog
+/// with its own defaults, connected with the base driver.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConnectionPreset {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub kind: DbKind,
+    pub port: Option<u16>,
+    pub user: Option<&'static str>,
+    pub database: Option<&'static str>,
+    /// Hosted services that only accept TLS.
+    pub tls: bool,
+}
+
+impl ConnectionPreset {
+    const fn new(id: &'static str, name: &'static str, kind: DbKind) -> Self {
+        ConnectionPreset { id, name, kind, port: None, user: None, database: None, tls: false }
+    }
+    const fn port(mut self, port: u16) -> Self {
+        self.port = Some(port);
+        self
+    }
+    const fn user(mut self, user: &'static str) -> Self {
+        self.user = Some(user);
+        self
+    }
+    const fn database(mut self, database: &'static str) -> Self {
+        self.database = Some(database);
+        self
+    }
+    const fn tls(mut self) -> Self {
+        self.tls = true;
+        self
+    }
+
+    /// A new configuration with the preset's defaults.
+    pub fn config(&self, name: impl Into<String>) -> ConnectionConfig {
+        let mut cfg = ConnectionConfig::new(self.kind, name);
+        if self.port.is_some() {
+            cfg.port = self.port;
+        }
+        // An empty value clears the base database's default (`sa`, `master`).
+        if let Some(u) = self.user {
+            cfg.user = Some(u.to_string()).filter(|u| !u.is_empty());
+        }
+        if let Some(d) = self.database {
+            cfg.database = Some(d.to_string()).filter(|d| !d.is_empty());
+        }
+        if self.tls {
+            cfg.ssl.mode = SslMode::Require;
+        }
+        cfg
+    }
+}
+
+/// Compatible products, by base database.
+pub const PRESETS: &[ConnectionPreset] = &[
+    ConnectionPreset::new("yugabytedb", "YugabyteDB", DbKind::Postgres).port(5433).user("yugabyte").database("yugabyte"),
+    ConnectionPreset::new("timescaledb", "TimescaleDB", DbKind::Postgres),
+    ConnectionPreset::new("supabase", "Supabase", DbKind::Postgres).tls(),
+    ConnectionPreset::new("neon", "Neon", DbKind::Postgres).database("neondb").tls(),
+    ConnectionPreset::new("redshift", "Amazon Redshift", DbKind::Postgres).port(5439).user("awsuser").database("dev").tls(),
+    ConnectionPreset::new("alloydb", "AlloyDB", DbKind::Postgres),
+    ConnectionPreset::new("greenplum", "Greenplum", DbKind::Postgres).user("gpadmin"),
+    ConnectionPreset::new("questdb", "QuestDB", DbKind::Postgres).port(8812).user("admin").database("qdb"),
+    ConnectionPreset::new("cratedb", "CrateDB", DbKind::Postgres).user("crate").database("doc"),
+    ConnectionPreset::new("tidb", "TiDB", DbKind::MySql).port(4000),
+    ConnectionPreset::new("oceanbase", "OceanBase", DbKind::MySql).port(2881),
+    ConnectionPreset::new("doris", "Apache Doris", DbKind::MySql).port(9030),
+    ConnectionPreset::new("starrocks", "StarRocks", DbKind::MySql).port(9030),
+    ConnectionPreset::new("singlestore", "SingleStore", DbKind::MySql),
+    ConnectionPreset::new("planetscale", "PlanetScale", DbKind::MySql).user("").tls(),
+    ConnectionPreset::new("azuresql", "Azure SQL Database", DbKind::SqlServer).user("").database("").tls(),
+    ConnectionPreset::new("scylladb", "ScyllaDB", DbKind::Cassandra),
+    ConnectionPreset::new("keyspaces", "Amazon Keyspaces", DbKind::Cassandra).port(9142).tls(),
+];
 
 impl fmt::Display for DbKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -498,7 +680,7 @@ pub struct ConnectionConfig {
     pub user: Option<String>,
     pub auth: AuthMethod,
     pub save_password: bool,
-    /// Database file for SQLite / DuckDB.
+    /// Database file for SQLite.
     pub file_path: Option<String>,
     /// Connection type id (`dev`, `test`, `prod` or user defined).
     pub connection_type: String,
@@ -652,5 +834,31 @@ mod tests {
         // unknown / missing fields fall back to defaults
         let partial: ConnectionConfig = serde_json::from_str(r#"{"name":"x","kind":"sqlite"}"#).unwrap();
         assert_eq!(partial.kind, DbKind::Sqlite);
+    }
+
+    #[test]
+    fn presets_fill_in_their_defaults() {
+        let tidb = PRESETS.iter().find(|p| p.id == "tidb").unwrap().config("t");
+        assert_eq!((tidb.kind, tidb.effective_port(), tidb.user.as_deref()), (DbKind::MySql, 4000, Some("root")));
+        let neon = PRESETS.iter().find(|p| p.id == "neon").unwrap().config("n");
+        assert_eq!((neon.kind, neon.database.as_deref(), neon.ssl.mode), (DbKind::Postgres, Some("neondb"), SslMode::Require));
+        let azure = PRESETS.iter().find(|p| p.id == "azuresql").unwrap().config("a");
+        assert_eq!((azure.user.as_deref(), azure.database.as_deref()), (None, None));
+        let mut ids: Vec<_> = PRESETS.iter().map(|p| p.id).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), PRESETS.len(), "preset ids are unique");
+    }
+
+    #[test]
+    fn kinds_serialize_as_their_id() {
+        for kind in DbKind::ALL.into_iter().chain([DbKind::Generic]) {
+            let s = serde_json::to_string(&kind).unwrap();
+            assert_eq!(s, format!("\"{}\"", kind.id()));
+            assert_eq!(serde_json::from_str::<DbKind>(&s).unwrap(), kind);
+            assert_eq!(DbKind::from_id(kind.id()), Some(kind));
+        }
+        // The DuckDB driver was removed: the connection store keeps such entries unparsed.
+        assert!(serde_json::from_str::<DbKind>("\"duckdb\"").is_err());
     }
 }

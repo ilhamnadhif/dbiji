@@ -12,8 +12,11 @@ hasil query jutaan baris tidak perlu muat di memori.
 
 ## Sorotan
 
-- **Banyak database, satu antarmuka**: PostgreSQL, CockroachDB, MySQL, MariaDB, SQLite, SQL Server,
-  ClickHouse, dan (opsional) DuckDB.
+- **Banyak database, satu antarmuka**: PostgreSQL, MySQL, MariaDB, SQLite, SQL Server, Oracle,
+  CockroachDB, ClickHouse, dan Cassandra / ScyllaDB, semuanya dengan driver yang ditulis dalam Rust
+  (tanpa Java, tanpa Oracle Client). Produk yang kompatibel punya entri sendiri dengan default yang
+  sesuai: YugabyteDB, TimescaleDB, Supabase, Neon, Redshift, AlloyDB, Greenplum, QuestDB, CrateDB,
+  TiDB, OceanBase, Doris, StarRocks, SingleStore, PlanetScale, Azure SQL Database, dan Amazon Keyspaces.
 - **Editor SQL** dengan autocomplete sesuai skema (tabel, kolom, join, alias, CTE), template,
   parameter `:nama` / `${nama}`, `@set` / `@include` / `@export`, pemformat, outline, penanda error,
   execution plan (teks, pohon, diagram), dan riwayat query yang bisa dicari.
@@ -130,7 +133,6 @@ baru.
 
 ```sh
 cargo build --release -p dbiji-app                     # target/release/dbiji (dbiji.exe)
-cargo build --release -p dbiji-app --features duckdb   # dengan engine DuckDB tertanam
 scripts/bundle-macos.sh                                # macOS: dist/DBiji.app, DBiji-<versi>.dmg dan .zip
 scripts/bundle-linux.sh                                # Linux: .deb, .rpm, paket Arch, AppImage dan .tar.gz
 pwsh scripts/bundle-windows.ps1                        # Windows: installer dan .zip (perlu Inno Setup 6)
@@ -173,7 +175,7 @@ Pembaruan langsung memerlukan DBiji di `/Applications` (atau folder lain yang bi
 ## Baris perintah
 
 ```text
-dbiji [FILE.sql | DATABASE.db ...]   buka skrip, file SQLite / DuckDB
+dbiji [FILE.sql | DATABASE.db ...]   buka skrip dan file SQLite
 dbiji --execute FILE.db FILE.sql     buka lalu jalankan skrip di database itu
 dbiji --run-task <id|nama>           jalankan task tersimpan tanpa jendela (exit code 0/1/2/3)
 dbiji --portable <DIR>               simpan semua pengaturan dan data di DIR
@@ -205,7 +207,7 @@ Diukur pada build rilis (Apple M1 Pro) dengan `dbiji --bench all`:
 
 | | Target | Hasil |
 | --- | --- | --- |
-| Ukuran biner (macOS) | < 40 MB | 39,9 MB |
+| Ukuran biner (macOS) | < 50 MB | 44,0 MB |
 | Waktu buka sampai frame pertama | < 1 dtk | ≈ 0,12 dtk |
 | Memori saat diam | < 120 MB | ≈ 93 MB |
 | 3 koneksi + 5 tab hasil | < 250 MB | ≈ 93 MB |
@@ -227,13 +229,15 @@ Diukur pada build rilis (Apple M1 Pro) dengan `dbiji --bench all`:
 ## Build dan pengujian
 
 ```sh
-cargo test --workspace --exclude dbiji-driver-duckdb
+cargo test --workspace
 # uji integrasi terhadap server sungguhan (Docker):
 export DBIJI_TEST_PG=postgres://dbiji:dbiji@127.0.0.1:55432/dbiji
 export DBIJI_TEST_MYSQL=mysql://root:dbiji@127.0.0.1:53306/dbiji
 export DBIJI_TEST_MARIADB=mariadb://root:dbiji@127.0.0.1:53307/dbiji
 export DBIJI_TEST_COCKROACH='cockroachdb://root@127.0.0.1:26257/defaultdb?sslmode=disable'
-cargo test -p dbiji-app
+export DBIJI_TEST_ORACLE=oracle://dbiji:dbiji@127.0.0.1:51521/FREEPDB1   # gvenzl/oracle-free
+export DBIJI_TEST_CASSANDRA=cassandra://127.0.0.1:59042                  # scylladb/scylla
+cargo test -p dbiji-app -p dbiji-driver-oracle -p dbiji-driver-cassandra
 ```
 
 Tanda tangan dan notarisasi: atur `DBIJI_SIGN_IDENTITY` (Developer ID) dan `DBIJI_NOTARY_PROFILE`
@@ -244,7 +248,8 @@ Struktur proyek ada di [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), matriks par
 
 ## Keterbatasan
 
-- Oracle, Db2, Firebird, H2, dan Trino belum didukung (belum ada driver jaringan Rust).
+- Hanya database yang punya driver dalam Rust yang didukung: Db2, Teradata, Informix, Snowflake,
+  BigQuery, dan DuckDB tidak. Oracle memakai driver Rust buatan Oracle sendiri, yang masih beta.
 - Kerberos dan autentikasi multi-faktor MySQL belum didukung.
 - Build rilis belum dinotarisasi (macOS) atau ditandatangani (Windows).
 

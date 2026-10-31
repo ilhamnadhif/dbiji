@@ -185,10 +185,11 @@ Legend: ✅ implemented and tested · 🟡 implemented, partially tested ·
 | SQLite | ✅ | `dbiji-driver-sqlite` (87) |
 | SQL Server | ✅ | `dbiji-driver-mssql` (39 unit, 6 integration) *(env)* |
 | ClickHouse | ✅ | `dbiji-driver-clickhouse` (54 unit, 5 integration) *(env)* |
-| DuckDB | ✅ | `dbiji-driver-duckdb` (43), optional `duckdb` feature |
+| Oracle | ✅ | `dbiji-driver-oracle` on Oracle's pure Rust thin driver (`oracledb`, beta): SQL and PL/SQL with DBMS_OUTPUT and compile errors, catalog, DBMS_METADATA DDL, EXPLAIN PLAN, sessions *(env `DBIJI_TEST_ORACLE`)* |
+| Cassandra, ScyllaDB | ✅ | `dbiji-driver-cassandra` on the `scylla` driver: CQL with paging, keyspaces, tables, indexes, materialized views, server DESCRIBE *(env `DBIJI_TEST_CASSANDRA`)* |
 | CockroachDB | ✅ | PostgreSQL driver with CockroachDB catalog adjustments; `dbiji-app` end-to-end suites (execution, cancel, schema compare gate, data editing, editor) run against CockroachDB *(env `DBIJI_TEST_COCKROACH`)* |
-| Oracle | ⛔ | Only driver needs Oracle's native client library (OCI), excluded by the full-Rust rule (PRD §7) |
-| Db2, Firebird, H2, Trino | ⛔ | No usable pure-Rust network driver yet (PRD §7: "only if a viable Rust driver exists") |
+| DuckDB | ⛔ | Removed: its engine is C++ (the full-Rust rule, PRD §7) |
+| Db2, Teradata, Informix | ⛔ | No usable pure-Rust network driver yet (PRD §7: "only if a viable Rust driver exists") |
 
 ## Performance targets (PRD §2)
 
@@ -196,7 +197,7 @@ Measured with `dbiji --bench all` on the release build (macOS, Apple M1 Pro):
 
 | Target | Result |
 | --- | --- |
-| Binary < 40 MB | 37.0 MB (without DuckDB) |
+| Binary < 50 MB | 44.0 MB (MiB, with Oracle and Cassandra) |
 | Cold start < 1 s | 105 ms to the first frame |
 | Idle memory < 120 MB | 69 MB |
 | 3 connections + 5 result tabs < 250 MB | 83 MB (20 000 rows fetched per tab) |

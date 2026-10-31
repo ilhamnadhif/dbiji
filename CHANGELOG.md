@@ -3,6 +3,28 @@
 All notable changes to DBiji. The newest version comes first; DBiji shows the
 notes of a new version once after it was updated (Help → What's new).
 
+## 0.4.0 — 2026-10-31
+
+### Added
+- **Oracle Database** (12c and later, including 23ai and Autonomous Database over TCPS), with Oracle's own driver written in Rust: no Oracle Client or Instant Client to install. Connect by service name or SID (or a full connect descriptor), as SYSDBA and the other roles, with a wallet.
+  - SQL and PL/SQL in the editor: `BEGIN … END;` and `DECLARE` blocks stay whole, a `/` line ends a procedure, package, trigger or type, DBMS_OUTPUT lines appear in the output, and creating code with errors lists them with their line and column.
+  - The navigator shows schemas, tables (with row estimates and comments), views, materialized views, sequences, functions, procedures and packages, types and synonyms, and each table's columns, keys, indexes, checks, foreign keys and triggers. DDL comes from DBMS_METADATA when allowed.
+  - Explain plan (tree and DBMS_XPLAN text), the session manager, data editing, transactions with savepoints, cancelling (with the ALTER SYSTEM privilege), data transfer to and from Oracle, and the foreign data wrapper script (`oracle_fdw`).
+- **Apache Cassandra and ScyllaDB** (also Amazon Keyspaces and DataStax Astra): CQL in the editor with paged results, keyspaces with their tables, materialized views, types and functions, each table's partition and clustering keys and indexes, DDL from the server's DESCRIBE, and data editing by primary key. Collections and user types show as JSON.
+- Compatible products in the new connection dialog, each with its own defaults: YugabyteDB, TimescaleDB, Supabase, Neon, Amazon Redshift, AlloyDB, Greenplum, QuestDB, CrateDB (PostgreSQL), TiDB, OceanBase, Apache Doris, StarRocks, SingleStore, PlanetScale (MySQL), Azure SQL Database (SQL Server), ScyllaDB and Amazon Keyspaces (Cassandra).
+- Connection URLs for the new databases: `oracle://`, `jdbc:oracle:thin:@…`, `cassandra://`, and DBeaver connections of Oracle and Cassandra are imported.
+
+### Fixed
+- Typing quickly into a grid cell kept only the first character (typing `15000` saved `1`): everything typed before the editor opened now goes into the cell.
+- A table's data could not be edited when the database does not tell which table a result column comes from (it said "No source table").
+- Saving grid changes on a database that reports no row counts said "0 rows changed".
+
+### Changed
+- The app is about 44 MB (it was 40 MB) with the Oracle and Cassandra drivers; it starts as fast as before.
+
+### Removed
+- DuckDB, which was only available in builds made with the `duckdb` feature: its engine is C++, and every DBiji driver is now written in Rust. A saved DuckDB connection is no longer listed; it stays unchanged in the connections file.
+
 ## 0.3.50 — 2026-10-31
 
 ### Fixed

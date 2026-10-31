@@ -17,12 +17,11 @@ use egui_phosphor::regular as icon;
 use std::sync::Arc;
 use std::time::Instant;
 
-/// SQLite / DuckDB database file (by extension).
+/// SQLite database file (by extension).
 pub fn database_file_kind(path: &std::path::Path) -> Option<dbiji_core::DbKind> {
     let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     match ext.as_str() {
         "db" | "sqlite" | "sqlite3" | "db3" => Some(dbiji_core::DbKind::Sqlite),
-        "duckdb" | "ddb" => Some(dbiji_core::DbKind::DuckDb),
         _ => None,
     }
 }
@@ -917,7 +916,7 @@ impl DbijiApp {
     }
 
     /// Open a file given on the command line: SQL scripts open in an editor,
-    /// SQLite / DuckDB database files become (or reuse) a connection.
+    /// SQLite database files become (or reuse) a connection.
     pub fn open_path(&mut self, path: &std::path::Path, execute: bool) {
         let kind = database_file_kind(path);
         let Some(kind) = kind.filter(|k| self.conns.registry.get(*k).is_some()) else {

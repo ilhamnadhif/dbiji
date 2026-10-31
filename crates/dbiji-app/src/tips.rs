@@ -17,7 +17,7 @@ pub const TIPS: &[&str] = &[
     "In manual commit mode, Database › Pending transactions lists every connection with uncommitted changes.",
     "Navigator › Link with editor selects the table of the active tab in the tree.",
     "Fold long statements and block comments with the markers in the gutter; the SQL editor menu collapses or expands them all.",
-    "Drag a .sql file onto the window to open it; drop a SQLite or DuckDB file to add it as a connection.",
+    "Drag a .sql file onto the window to open it; drop a SQLite file to add it as a connection.",
     "Tools › Backup and Restore use pg_dump, mysqldump or sqlite3; Scope › All databases runs pg_dumpall.",
     "Export results to CSV, JSON, Excel, SQL INSERT statements, Markdown and more from the results toolbar.",
     "The ER diagram of a schema opens from the navigator context menu; drag tables to arrange it.",

@@ -34,6 +34,7 @@ pub const fn clickhouse_syntax() -> SqlSyntax {
         batch_separator: None,
         delimiter_command: false,
         compound_blocks: false,
+        plsql_blocks: false,
         extra_ident_chars: "",
         ident_case: IdentCase::Preserve,
         case_sensitive_names: true,

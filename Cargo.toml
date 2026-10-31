@@ -21,7 +21,8 @@ dbiji-driver-mysql = { path = "crates/dbiji-driver-mysql" }
 dbiji-driver-sqlite = { path = "crates/dbiji-driver-sqlite" }
 dbiji-driver-mssql = { path = "crates/dbiji-driver-mssql" }
 dbiji-driver-clickhouse = { path = "crates/dbiji-driver-clickhouse" }
-dbiji-driver-duckdb = { path = "crates/dbiji-driver-duckdb" }
+dbiji-driver-oracle = { path = "crates/dbiji-driver-oracle" }
+dbiji-driver-cassandra = { path = "crates/dbiji-driver-cassandra" }
 dbiji-net = { path = "crates/dbiji-net" }
 dbiji-config = { path = "crates/dbiji-config" }
 dbiji-transfer = { path = "crates/dbiji-transfer" }
@@ -47,7 +48,10 @@ tokio-postgres-rustls = "0.14"
 mysql_async = { version = "0.37", default-features = false, features = ["default-rustls"] }
 rusqlite = { version = "0.40", features = ["bundled", "column_metadata", "backup", "functions", "hooks", "limits"] }
 tiberius = { version = "0.13", default-features = false, features = ["tds73", "chrono", "rustls", "sql-browser-tokio"] }
-duckdb = { version = "1.10506", features = ["bundled"] }
+# Oracle's pure Rust thin driver (no Oracle Client libraries); still a beta, so pinned.
+oracledb = "=26.0.0-beta.5"
+# Cassandra / ScyllaDB (CQL native protocol), with rustls.
+scylla = { version = "1.9", default-features = false, features = ["rustls-023"] }
 
 # --- TLS / network / crypto
 rustls = { version = "0.23", features = ["aws_lc_rs", "logging", "std", "tls12"] }

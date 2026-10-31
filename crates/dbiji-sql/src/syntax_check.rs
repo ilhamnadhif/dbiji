@@ -11,8 +11,8 @@ use crate::position::offset_of_line_col_lf;
 use crate::token::{TokenKind, is_word, tokenize};
 use dbiji_core::{DbKind, SqlSyntax};
 use sqlparser::dialect::{
-    ClickHouseDialect, Dialect as ParserDialect, DuckDbDialect, GenericDialect, MsSqlDialect,
-    MySqlDialect, PostgreSqlDialect, SQLiteDialect,
+    ClickHouseDialect, Dialect as ParserDialect, GenericDialect, MsSqlDialect, MySqlDialect,
+    PostgreSqlDialect, SQLiteDialect,
 };
 use sqlparser::parser::{Parser, ParserError};
 
@@ -56,22 +56,13 @@ const SKIP_WORDS_MYSQL: &[&str] = &[
 const SKIP_WORDS_CLICKHOUSE: &[&str] = &[
     "FORMAT", "SETTINGS", "PREWHERE", "FINAL", "SAMPLE", "ARRAY", "GLOBAL", "ASOF",
 ];
-const SKIP_WORDS_DUCKDB: &[&str] = &[
-    "EXCLUDE",
-    "COLUMNS",
-    "ASOF",
-    "POSITIONAL",
-    "SUMMARIZE",
-    "STRUCT",
-    "LAMBDA",
-];
 const SKIP_WORDS_MSSQL: &[&str] = &["OUTPUT", "OPTION", "PIVOT", "FOR"];
 
 /// Lexical rules approximating each product, for the pre-checks.
 fn lexical(kind: DbKind) -> SqlSyntax {
     let mut s = SqlSyntax::ansi();
     match kind {
-        DbKind::Postgres | DbKind::CockroachDb | DbKind::DuckDb => {
+        DbKind::Postgres | DbKind::CockroachDb => {
             s.dollar_quoting = true;
             s.e_strings = true;
             s.dollar_params = true;
@@ -100,7 +91,14 @@ fn lexical(kind: DbKind) -> SqlSyntax {
             s.identifier_quotes = &[('`', '`'), ('"', '"')];
             s.backslash_escapes = true;
         }
-        DbKind::Generic => {}
+        DbKind::Cassandra => s.dollar_quoting = true,
+        // Not checked (see `checkable`).
+        DbKind::Oracle
+        | DbKind::Redis
+        | DbKind::MongoDb
+        | DbKind::Elasticsearch
+        | DbKind::Neo4j
+        | DbKind::Generic => {}
     }
     s
 }
@@ -112,13 +110,23 @@ fn parser_dialect(kind: DbKind) -> Box<dyn ParserDialect> {
         DbKind::Sqlite => Box::new(SQLiteDialect {}),
         DbKind::SqlServer => Box::new(MsSqlDialect {}),
         DbKind::ClickHouse => Box::new(ClickHouseDialect {}),
-        DbKind::DuckDb => Box::new(DuckDbDialect {}),
-        DbKind::Generic => Box::new(GenericDialect {}),
+        DbKind::Oracle
+        | DbKind::Cassandra
+        | DbKind::Redis
+        | DbKind::MongoDb
+        | DbKind::Elasticsearch
+        | DbKind::Neo4j
+        | DbKind::Generic => Box::new(GenericDialect {}),
     }
 }
 
-/// Whether `stmt` is suitable for checking with `sqlparser`.
+/// Whether `stmt` is suitable for checking with `sqlparser`: not for
+/// products whose syntax sqlparser does not model (Oracle's PL/SQL, CONNECT
+/// BY and `q'[...]'` quoting, CQL) or that are not SQL at all.
 fn checkable(stmt: &str, kind: DbKind) -> bool {
+    if matches!(kind, DbKind::Oracle | DbKind::Cassandra) || !kind.language().is_sql() {
+        return false;
+    }
     let syn = lexical(kind);
     let toks = tokenize(stmt, &syn);
     let sig: Vec<_> = toks.iter().filter(|t| !t.is_trivia()).collect();
@@ -138,7 +146,6 @@ fn checkable(stmt: &str, kind: DbKind) -> bool {
     let vendor: &[&str] = match kind {
         DbKind::MySql | DbKind::MariaDb => SKIP_WORDS_MYSQL,
         DbKind::ClickHouse => SKIP_WORDS_CLICKHOUSE,
-        DbKind::DuckDb => SKIP_WORDS_DUCKDB,
         DbKind::SqlServer => SKIP_WORDS_MSSQL,
         _ => &[],
     };
@@ -234,7 +241,14 @@ mod tests {
         );
         assert_eq!(syntax_check("SELECT \"a\" FROM t", DbKind::Sqlite), None);
         assert_eq!(syntax_check("SELECT 1", DbKind::Generic), None);
-        assert_eq!(syntax_check("SELECT 1", DbKind::DuckDb), None);
+        assert_eq!(
+            syntax_check(
+                "SELECT * FROM t CONNECT BY PRIOR id = parent",
+                DbKind::Oracle
+            ),
+            None
+        );
+        assert_eq!(syntax_check("GET user:1", DbKind::Redis), None);
         assert_eq!(syntax_check("SELECT 1", DbKind::ClickHouse), None);
     }
 
@@ -296,7 +310,7 @@ mod tests {
             DbKind::Sqlite,
             DbKind::SqlServer,
             DbKind::ClickHouse,
-            DbKind::DuckDb,
+            DbKind::Oracle,
             DbKind::Generic,
         ];
         for i in 0..300 {

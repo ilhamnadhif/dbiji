@@ -949,6 +949,11 @@ impl SqlEditorTab {
         self.log("INFO", tr("@export: the export dialog was opened with this query."));
     }
 
+    /// The connection's database can show execution plans (not Cassandra).
+    fn can_explain(&self, cx: &AppContext) -> bool {
+        self.conn.as_ref().and_then(|c| cx.conns.live(c)).is_none_or(|l| l.driver.info().capabilities.explain)
+    }
+
     fn format(&mut self, cx: &mut AppContext) {
         use dbiji_config::settings::FormatterKind;
         let f = cx.settings.editor.format.clone();
@@ -1281,7 +1286,7 @@ impl SqlEditorTab {
             if ui.add_enabled(!running, egui::Button::new(RichText::new(icon::FAST_FORWARD).color(go))).on_hover_text(tip(Action::ExecuteScript)).clicked() {
                 self.run(cx, Request { scope: self.scope_for(false), new_tab: false, explain: None, confirmed: false, sql: None });
             }
-            if ui.add_enabled(!running, egui::Button::new(dbiji_icons::ic(icon::TREE_VIEW))).on_hover_text(tip(Action::ExplainPlan)).clicked() {
+            if self.can_explain(cx) && ui.add_enabled(!running, egui::Button::new(dbiji_icons::ic(icon::TREE_VIEW))).on_hover_text(tip(Action::ExplainPlan)).clicked() {
                 self.run(cx, Request { scope: self.scope_for(true), new_tab: true, explain: Some(false), confirmed: false, sql: None });
             }
             if ui

@@ -1,0 +1,25 @@
+[package]
+name = "dbiji-driver-cassandra"
+description = "Apache Cassandra / ScyllaDB driver for DBiji (CQL native protocol)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+dbiji-core.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+scylla.workspace = true
+rustls.workspace = true
+rustls-native-certs.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+hex.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true }

@@ -62,6 +62,8 @@ pub struct ConnectionDialog {
     test: Option<Job<DbResult<String>>>,
     test_result: Option<Result<String, String>>,
     url: String,
+    /// The compatible product picked in the database list (TiDB, Supabase ...).
+    preset: Option<&'static str>,
     error: Option<String>,
     pub open: bool,
 }
@@ -100,9 +102,20 @@ impl ConnectionDialog {
             test: None,
             test_result: None,
             url: String::new(),
+            preset: None,
             error: None,
             open: true,
         }
+    }
+
+    /// Switch the new connection to another database or compatible product,
+    /// keeping its name, folder and id.
+    fn choose(&mut self, mut cfg: ConnectionConfig, preset: Option<&'static str>) {
+        cfg.name = std::mem::take(&mut self.cfg.name);
+        cfg.folder = self.cfg.folder.take();
+        cfg.id = std::mem::take(&mut self.cfg.id);
+        self.cfg = cfg;
+        self.preset = preset;
     }
 
     fn load_saved_secrets(&mut self, conns: &ConnectionManager) {
@@ -239,27 +252,31 @@ impl ConnectionDialog {
                     ui.set_max_height(body);
                     if self.is_new {
                         ui.vertical(|ui| {
-                            ui.set_width(150.0);
-                            ui.strong(tr("Database"));
-                            for kind in DbKind::ALL {
-                                if cx.conns.registry.get(kind).is_none() {
-                                    continue;
+                            ui.set_width(170.0);
+                            egui::ScrollArea::vertical().id_salt("conn_kinds").max_height(body).auto_shrink([false, true]).show(ui, |ui| {
+                                ui.strong(tr("Database"));
+                                for kind in DbKind::ALL {
+                                    if cx.conns.registry.get(kind).is_none() {
+                                        continue;
+                                    }
+                                    let sel = self.cfg.kind == kind && self.preset.is_none();
+                                    if kind_entry(ui, kind, kind.display_name(), sel).clicked() && !sel {
+                                        self.choose(ConnectionConfig::new(kind, ""), None);
+                                    }
                                 }
-                                let sel = self.cfg.kind == kind;
-                                let color = crate::theme::logo_color(kind, ui.visuals().dark_mode);
-                                let r = match crate::dblogo::image(ui.ctx(), kind, 18.0, color) {
-                                    Some(logo) => ui.selectable_label(sel, (logo, kind.display_name())),
-                                    None => ui.selectable_label(sel, (RichText::new(crate::nav::db_icon(kind)).color(color), kind.display_name())),
-                                };
-                                if r.clicked() && !sel {
-                                    let name = self.cfg.name.clone();
-                                    let folder = self.cfg.folder.clone();
-                                    let id = self.cfg.id.clone();
-                                    self.cfg = ConnectionConfig::new(kind, name);
-                                    self.cfg.folder = folder;
-                                    self.cfg.id = id;
+                                ui.add_space(6.0);
+                                ui.strong(tr("Compatible"));
+                                for preset in dbiji_core::config::PRESETS {
+                                    if cx.conns.registry.get(preset.kind).is_none() {
+                                        continue;
+                                    }
+                                    let sel = self.preset == Some(preset.id);
+                                    let r = kind_entry(ui, preset.kind, preset.name, sel).on_hover_text(trf("Connects with the {} driver", &[&preset.kind.display_name()]));
+                                    if r.clicked() && !sel {
+                                        self.choose(preset.config(""), Some(preset.id));
+                                    }
                                 }
-                            }
+                            });
                         });
                         ui.separator();
                     }
@@ -385,10 +402,35 @@ impl ConnectionDialog {
                     }
                 });
                 ui.end_row();
-                ui.label(tr("Database"));
-                let mut db = self.cfg.database.clone().unwrap_or_default();
-                if ui.add(egui::TextEdit::singleline(&mut db).desired_width(220.0).hint_text(kind.default_database().unwrap_or(""))).changed() {
-                    self.cfg.database = if db.is_empty() { None } else { Some(db) };
+                if kind == DbKind::Oracle {
+                    // A service name (the usual) or the SID of an older database.
+                    let mut sid = self.cfg.properties.contains_key("sid");
+                    ui.label(tr("Connect by"));
+                    ui.horizontal(|ui| {
+                        let before = sid;
+                        ui.radio_value(&mut sid, false, tr("Service name"));
+                        ui.radio_value(&mut sid, true, "SID");
+                        if sid != before {
+                            if sid {
+                                let v = self.cfg.database.take().unwrap_or_default();
+                                self.cfg.properties.insert("sid".into(), v);
+                            } else {
+                                self.cfg.database = self.cfg.properties.remove("sid").filter(|v| !v.is_empty());
+                            }
+                        }
+                    });
+                    ui.end_row();
+                }
+                let sid = kind == DbKind::Oracle && self.cfg.properties.contains_key("sid");
+                ui.label(if sid { "SID" } else { tr(kind.database_label()) });
+                let mut db = if sid { self.cfg.properties.get("sid").cloned().unwrap_or_default() } else { self.cfg.database.clone().unwrap_or_default() };
+                let hint = if sid { "ORCL" } else { kind.default_database().unwrap_or("") };
+                if ui.add(egui::TextEdit::singleline(&mut db).desired_width(220.0).hint_text(hint)).changed() {
+                    if sid {
+                        self.cfg.properties.insert("sid".into(), db);
+                    } else {
+                        self.cfg.database = if db.is_empty() { None } else { Some(db) };
+                    }
                 }
                 ui.end_row();
                 ui.label(tr("Authentication"));
@@ -474,7 +516,7 @@ impl ConnectionDialog {
         ui.add_space(8.0);
         ui.collapsing(tr("Connect with a URL"), |ui| {
             ui.horizontal(|ui| {
-                ui.add(egui::TextEdit::singleline(&mut self.url).hint_text("postgres://user@host:5432/db").desired_width(380.0));
+                ui.add(egui::TextEdit::singleline(&mut self.url).hint_text(url_example(self.cfg.kind)).desired_width(380.0));
                 if ui.button(tr("Apply")).clicked() {
                     match crate::urls::parse(&self.url) {
                         Ok((cfg, pw)) => {
@@ -747,6 +789,31 @@ impl ConnectionDialog {
 
 fn split_patterns(s: &str) -> Vec<String> {
     s.split(',').map(|p| p.trim().to_string()).filter(|p| !p.is_empty()).collect()
+}
+
+/// One entry of the database list: logo (or icon) and name.
+fn kind_entry(ui: &mut Ui, kind: DbKind, name: &str, selected: bool) -> egui::Response {
+    let color = crate::theme::logo_color(kind, ui.visuals().dark_mode);
+    match crate::dblogo::image(ui.ctx(), kind, 18.0, color) {
+        Some(logo) => ui.selectable_label(selected, (logo, name)),
+        None => ui.selectable_label(selected, (RichText::new(crate::nav::db_icon(kind)).color(color), name)),
+    }
+}
+
+/// Example URL for the "Connect with a URL" field.
+fn url_example(kind: DbKind) -> &'static str {
+    match kind {
+        DbKind::MySql | DbKind::MariaDb => "mysql://user@host:3306/db",
+        DbKind::SqlServer => "sqlserver://user@host:1433/db",
+        DbKind::Oracle => "oracle://user@host:1521/service",
+        DbKind::ClickHouse => "clickhouse://user@host:8123/db",
+        DbKind::Cassandra => "cassandra://user@host:9042/keyspace",
+        DbKind::Redis => "redis://user@host:6379/0",
+        DbKind::MongoDb => "mongodb://user@host:27017/db",
+        DbKind::Elasticsearch => "elasticsearch+https://user@host:9200",
+        DbKind::Neo4j => "neo4j://user@host:7687",
+        _ => "postgres://user@host:5432/db",
+    }
 }
 
 fn auth_label(a: &AuthMethod) -> &'static str {

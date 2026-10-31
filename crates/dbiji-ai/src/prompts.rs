@@ -34,7 +34,24 @@ fn dialect_notes(kind: DbKind) -> &'static str {
         DbKind::ClickHouse => {
             "ClickHouse: analytical column store; use LIMIT, toDate / toStartOfInterval for time buckets, avoid row-by-row UPDATE/DELETE (they are mutations), and prefer aggregate functions such as uniq / quantile."
         }
-        DbKind::DuckDb => "DuckDB: PostgreSQL-like syntax plus conveniences such as GROUP BY ALL, QUALIFY, list functions and direct reading of files; use LIMIT.",
+        DbKind::Oracle => {
+            "Oracle: quote identifiers with double quotes only when needed (unquoted names are upper case), use FETCH FIRST n ROWS ONLY (12c+) instead of LIMIT, NVL / DECODE / TO_CHAR / TO_DATE / ADD_MONTHS / TRUNC for dates, SYSDATE / SYSTIMESTAMP, DUAL for expressions, and no semicolon inside a single statement sent to the server; PL/SQL blocks end with END;."
+        }
+        DbKind::Cassandra => {
+            "Cassandra (CQL): no joins, subqueries or GROUP BY on non-key columns; WHERE must restrict the partition key (or use ALLOW FILTERING knowingly), ORDER BY only on clustering columns, use LIMIT, and model queries per table. Answer with CQL in ```cql fences."
+        }
+        DbKind::Redis => {
+            "Redis: answer with Redis commands, one per line, in ```redis fences (for example HGETALL user:1, ZRANGE board 0 9 WITHSCORES, SCAN 0 MATCH user:* COUNT 100). Never suggest KEYS * or FLUSHALL / FLUSHDB unless explicitly asked."
+        }
+        DbKind::MongoDb => {
+            "MongoDB: answer with mongosh syntax in ```javascript fences, using db.<collection>.find({...}, {projection}).sort({...}).limit(n), aggregate([...]) pipelines, countDocuments, distinct, insertOne/insertMany, updateOne/updateMany with $set, deleteOne/deleteMany. Use one statement per query and relaxed JSON (ObjectId(\"...\"), ISODate(\"...\"))."
+        }
+        DbKind::Elasticsearch => {
+            "Elasticsearch / OpenSearch: prefer the SQL interface (SELECT ... FROM \"index-name\" WHERE ... LIMIT n; quote index names with hyphens or wildcards); for full-text relevance use MATCH() / QUERY() or, when SQL is not enough, a request like GET /index/_search followed by the JSON body."
+        }
+        DbKind::Neo4j => {
+            "Neo4j: answer with Cypher in ```cypher fences: MATCH (n:Label {prop: $v})-[r:TYPE]->(m) WHERE ... RETURN n.prop, m LIMIT 25; use parameters only when given, OPTIONAL MATCH for optional patterns, MERGE for upserts and avoid unbounded variable-length paths."
+        }
         DbKind::Generic => "Standard SQL: avoid vendor specific syntax.",
     }
 }
@@ -559,7 +576,7 @@ impl<'a> SchemaContextBuilder<'a> {
 
 // ------------------------------------------------------------ extraction
 
-const SQL_TAGS: &[&str] = &["sql", "postgresql", "postgres", "pgsql", "plpgsql", "mysql", "mariadb", "sqlite", "tsql", "t-sql", "mssql", "plsql", "clickhouse", "duckdb"];
+const SQL_TAGS: &[&str] = &["sql", "postgresql", "postgres", "pgsql", "plpgsql", "mysql", "mariadb", "sqlite", "tsql", "t-sql", "mssql", "plsql", "oracle", "clickhouse", "cql"];
 
 /// SQL code blocks of an answer: the contents of ```sql fences (and other
 /// SQL dialect tags), or, when there are none, of untagged fences. An

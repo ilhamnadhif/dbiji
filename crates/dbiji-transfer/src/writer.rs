@@ -84,8 +84,9 @@ struct Savepoints {
 
 fn savepoint_sql(kind: DbKind) -> Option<Savepoints> {
     match kind {
-        DbKind::DuckDb | DbKind::ClickHouse => None,
+        DbKind::ClickHouse | DbKind::Cassandra | DbKind::Redis | DbKind::MongoDb | DbKind::Elasticsearch | DbKind::Neo4j => None,
         DbKind::SqlServer => Some(Savepoints { create: "SAVE TRANSACTION", release: None, rollback: "ROLLBACK TRANSACTION" }),
+        DbKind::Oracle => Some(Savepoints { create: "SAVEPOINT", release: None, rollback: "ROLLBACK TO SAVEPOINT" }),
         _ => Some(Savepoints { create: "SAVEPOINT", release: Some("RELEASE SAVEPOINT"), rollback: "ROLLBACK TO SAVEPOINT" }),
     }
 }
@@ -135,7 +136,11 @@ impl<'a> BatchWriter<'a> {
     pub(crate) fn new(session: &'a mut dyn Session, target: TableTarget, scope: TransactionScope, on_error: OnError, rows_per_statement: usize, item: impl Into<String>) -> Self {
         let dialect = session.dialect();
         let ncols = target.columns.len().max(1);
-        let rows_per_statement = rows_per_statement.clamp(1, MAX_ROWS_PER_INSERT).min((MAX_PARAMS / ncols).max(1));
+        let mut rows_per_statement = rows_per_statement.clamp(1, MAX_ROWS_PER_INSERT).min((MAX_PARAMS / ncols).max(1));
+        // Oracle has `INSERT ... VALUES (..), (..)` from 23ai on.
+        if dialect.kind() == DbKind::Oracle && session.server_info().version_number.0 < 23 {
+            rows_per_statement = 1;
+        }
         let upsert_sql = if target.key_index.is_empty() {
             None
         } else {

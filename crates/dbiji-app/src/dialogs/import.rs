@@ -170,7 +170,7 @@ impl ImportDialog {
                             ui.add(egui::TextEdit::singleline(&mut self.url_name).desired_width(240.0));
                             ui.end_row();
                         });
-                        ui.weak(tr("Supported: postgres://, mysql://, mariadb://, sqlserver://, clickhouse://, sqlite:, duckdb:, jdbc:…"));
+                        ui.weak(tr("Supported: postgres://, mysql://, mariadb://, sqlserver://, oracle://, clickhouse://, cassandra://, sqlite:, jdbc:…"));
                     }
                 }
                 ui.horizontal(|ui| {

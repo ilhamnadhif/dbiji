@@ -22,8 +22,8 @@ changed, so the application uses ~0% CPU while idle.
                                Dialect, i18n, Secret)
          │                           │
    dbiji-grid / dbiji-editor   drivers: postgres (+CockroachDB), mysql (+MariaDB),
-   dbiji-visual (egui          sqlite, mssql (tiberius), clickhouse (HTTP), duckdb
-   widgets)                    (embedded, optional feature)
+   dbiji-visual (egui          sqlite, mssql (tiberius), clickhouse (HTTP),
+   widgets)                    oracle (oracledb thin), cassandra (scylla)
          │
    dbiji-config (settings, connections, secrets: Keychain / encrypted vault,
    DBeaver / pgpass / URL import, query history, projects & scripts)

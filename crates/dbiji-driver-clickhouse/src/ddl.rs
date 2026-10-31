@@ -739,7 +739,6 @@ mod tests {
         assert_eq!(m(DbKind::SqlServer, "datetimeoffset"), "DateTime64(6, 'UTC')");
         assert_eq!(m(DbKind::SqlServer, "bit"), "Bool");
         assert_eq!(m(DbKind::SqlServer, "money"), "Decimal(19, 4)");
-        assert_eq!(m(DbKind::DuckDb, "HUGEINT"), "Int128");
         assert_eq!(m(DbKind::ClickHouse, "LowCardinality(String)"), "LowCardinality(String)");
         assert_eq!(d.map_type(DbKind::Postgres, "weird_type", DataKind::Int), "Int64");
         assert_eq!(d.default_type_for(DataKind::Text), "String");

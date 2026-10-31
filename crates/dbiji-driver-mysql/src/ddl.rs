@@ -1683,48 +1683,66 @@ pub fn map_type(
                 return m;
             }
         }
-        DbKind::DuckDb => {
+        DbKind::Oracle => {
+            // `VARCHAR2(100 BYTE)`: the length is the first word.
+            let size = args
+                .first()
+                .and_then(|a| a.split_whitespace().next())
+                .and_then(|a| a.parse::<u64>().ok());
             let mapped: Option<String> = match base.as_str() {
-                "boolean" | "bool" | "logical" => Some("tinyint(1)".into()),
-                "tinyint" | "int1" => Some("tinyint".into()),
-                "smallint" | "int2" | "short" => Some("smallint".into()),
-                "integer" | "int4" | "int" | "signed" => Some("int".into()),
-                "bigint" | "int8" | "long" => Some("bigint".into()),
-                "hugeint" | "uhugeint" | "int128" => Some("decimal(39,0)".into()),
-                "utinyint" => Some("tinyint unsigned".into()),
-                "usmallint" => Some("smallint unsigned".into()),
-                "uinteger" => Some("int unsigned".into()),
-                "ubigint" => Some("bigint unsigned".into()),
-                "real" | "float4" | "float" => Some("float".into()),
-                "double" | "float8" => Some("double".into()),
-                "decimal" | "numeric" => Some(decimal(&args)),
-                "varchar" | "text" | "string" | "char" | "bpchar" => {
-                    Some(varchar(num_arg(&args, 0)))
+                "number" | "numeric" | "decimal" | "dec" => {
+                    Some(match (num_arg(&args, 0), num_arg(&args, 1)) {
+                        (Some(p), None | Some(0)) if p <= 9 => "int".into(),
+                        (Some(p), None | Some(0)) if p <= 18 => "bigint".into(),
+                        (Some(_), _) => decimal(&args),
+                        _ => "decimal(65,30)".into(),
+                    })
                 }
-                "blob" | "bytea" | "binary" | "varbinary" => Some("longblob".into()),
-                "uuid" => Some("char(36)".into()),
+                "integer" | "int" | "smallint" => Some("decimal(38,0)".into()),
+                "float" | "binary_double" | "double precision" => Some("double".into()),
+                "binary_float" | "real" => Some("float".into()),
+                "varchar2" | "nvarchar2" | "varchar" | "char" | "nchar" => Some(varchar(size)),
+                "clob" | "nclob" | "long" | "xmltype" => Some("longtext".into()),
+                "blob" | "raw" | "long raw" | "bfile" => Some("longblob".into()),
+                "date" => Some("datetime".into()),
+                b if b.starts_with("timestamp") => Some("datetime(6)".into()),
+                b if b.starts_with("interval") => Some("varchar(64)".into()),
                 "json" => Some("json".into()),
-                "date" => Some("date".into()),
-                "time" => Some("time(6)".into()),
-                "timestamp"
-                | "datetime"
-                | "timestamptz"
-                | "timestamp with time zone"
-                | "timestamp_us" => Some("datetime(6)".into()),
-                "timestamp_s" => Some("datetime".into()),
-                "timestamp_ms" => Some("datetime(3)".into()),
-                "timestamp_ns" => Some("datetime(6)".into()),
-                "interval" => Some("varchar(64)".into()),
-                "bit" | "bitstring" => Some("varchar(255)".into()),
-                "enum" => Some("varchar(255)".into()),
-                "list" | "struct" | "map" | "union" | "array" => Some("json".into()),
+                "boolean" => Some("tinyint(1)".into()),
+                "rowid" | "urowid" | "vector" => Some("varchar(4000)".into()),
                 _ => None,
             };
             if let Some(m) = mapped {
                 return m;
             }
         }
-        DbKind::Generic => {}
+        DbKind::Cassandra => {
+            return match base.as_str() {
+                "ascii" | "text" | "varchar" => "longtext".into(),
+                "bigint" | "counter" => "bigint".into(),
+                "int" => "int".into(),
+                "smallint" => "smallint".into(),
+                "tinyint" => "tinyint".into(),
+                "varint" => "decimal(65,0)".into(),
+                "decimal" => "decimal(65,30)".into(),
+                "double" => "double".into(),
+                "float" => "float".into(),
+                "boolean" => "tinyint(1)".into(),
+                "blob" => "longblob".into(),
+                "date" => "date".into(),
+                "time" => "time(6)".into(),
+                "timestamp" => "datetime(6)".into(),
+                "uuid" | "timeuuid" => "char(36)".into(),
+                "inet" => "varchar(45)".into(),
+                "duration" => "varchar(64)".into(),
+                _ => "json".into(),
+            };
+        }
+        DbKind::Generic
+        | DbKind::Redis
+        | DbKind::MongoDb
+        | DbKind::Elasticsearch
+        | DbKind::Neo4j => {}
     }
     let _ = rest;
     if is_native(&base) {
@@ -2227,10 +2245,16 @@ mod tests {
             "enum('a','b')"
         );
         assert_eq!(m(DbKind::ClickHouse, "Array(UInt8)"), "json");
-        assert_eq!(m(DbKind::DuckDb, "HUGEINT"), "decimal(39,0)");
-        assert_eq!(m(DbKind::DuckDb, "INTEGER[]"), "json");
-        assert_eq!(m(DbKind::DuckDb, "STRUCT(a INTEGER)"), "json");
-        assert_eq!(m(DbKind::DuckDb, "TIMESTAMP WITH TIME ZONE"), "datetime(6)");
+        assert_eq!(m(DbKind::Oracle, "NUMBER(10,2)"), "decimal(10,2)");
+        assert_eq!(m(DbKind::Oracle, "NUMBER(9)"), "int");
+        assert_eq!(m(DbKind::Oracle, "VARCHAR2(100 BYTE)"), "varchar(100)");
+        assert_eq!(
+            m(DbKind::Oracle, "TIMESTAMP(6) WITH TIME ZONE"),
+            "datetime(6)"
+        );
+        assert_eq!(m(DbKind::Oracle, "CLOB"), "longtext");
+        assert_eq!(m(DbKind::Cassandra, "map<text, int>"), "json");
+        assert_eq!(m(DbKind::Cassandra, "timeuuid"), "char(36)");
         assert_eq!(m(DbKind::MySql, "int unsigned"), "int unsigned");
         assert_eq!(m(DbKind::MariaDb, "uuid"), "char(36)");
         let maria = ServerProfile::new(Flavor::MariaDb, (11, 4, 0));

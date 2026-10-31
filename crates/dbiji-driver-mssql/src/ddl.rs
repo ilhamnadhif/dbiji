@@ -934,7 +934,7 @@ pub fn map_foreign_type(source: DbKind, data_type: &str, kind: DataKind) -> Opti
         "tinyint" | "int1" => {
             if source.is_mysql_family() && f.args.first().map(String::as_str) == Some("1") {
                 "bit".into()
-            } else if f.unsigned || matches!(source, DbKind::DuckDb) && base == "utinyint" {
+            } else if f.unsigned {
                 "tinyint".into()
             } else {
                 "smallint".into()

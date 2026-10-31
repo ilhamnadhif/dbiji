@@ -22,7 +22,7 @@ pub struct FdwSpec {
     pub port: Option<u16>,
     pub database: Option<String>,
     pub user: Option<String>,
-    /// Database file (SQLite, DuckDB).
+    /// Database file (SQLite).
     pub file: Option<String>,
     /// Schema (MySQL: database) to import.
     pub remote_schema: String,
@@ -41,8 +41,8 @@ pub fn wrapper_of(kind: DbKind) -> Option<&'static str> {
         DbKind::Sqlite => Some("sqlite_fdw"),
         DbKind::SqlServer => Some("tds_fdw"),
         DbKind::ClickHouse => Some("clickhouse_fdw"),
-        DbKind::DuckDb => Some("duckdb_fdw"),
-        DbKind::Generic => None,
+        DbKind::Oracle => Some("oracle_fdw"),
+        DbKind::Cassandra | DbKind::Redis | DbKind::MongoDb | DbKind::Elasticsearch | DbKind::Neo4j | DbKind::Generic => None,
     }
 }
 
@@ -76,7 +76,9 @@ pub fn spec_for(source: &ConnectionConfig) -> FdwSpec {
         DbKind::MySql | DbKind::MariaDb => source.database.clone().unwrap_or_default(),
         DbKind::ClickHouse => source.database.clone().filter(|d| !d.is_empty()).unwrap_or_else(|| "default".into()),
         DbKind::SqlServer => "dbo".into(),
-        DbKind::Sqlite | DbKind::DuckDb => "main".into(),
+        DbKind::Sqlite => "main".into(),
+        // Oracle schemas are users, stored in upper case.
+        DbKind::Oracle => source.user.clone().unwrap_or_default().to_uppercase(),
         _ => "public".into(),
     };
     FdwSpec {
@@ -114,8 +116,9 @@ pub fn fdw_script(spec: &FdwSpec) -> Result<String, String> {
         DbKind::MySql | DbKind::MariaDb => vec![("host", spec.host.clone()), ("port", port)],
         DbKind::SqlServer => vec![("servername", spec.host.clone()), ("port", port), ("database", db.to_string())],
         DbKind::ClickHouse => vec![("host", spec.host.clone()), ("port", port), ("dbname", db.to_string()), ("driver", "http".into())],
-        DbKind::Sqlite | DbKind::DuckDb => vec![("database", file.to_string())],
-        DbKind::Generic => Vec::new(),
+        DbKind::Sqlite => vec![("database", file.to_string())],
+        DbKind::Oracle => vec![("dbserver", format!("//{}:{port}/{db}", spec.host))],
+        DbKind::Cassandra | DbKind::Redis | DbKind::MongoDb | DbKind::Elasticsearch | DbKind::Neo4j | DbKind::Generic => Vec::new(),
     };
     options.retain(|(_, v)| !v.is_empty());
     let options = options.iter().map(|(k, v)| format!("{k} {}", lit(v))).collect::<Vec<_>>().join(", ");
@@ -130,7 +133,7 @@ pub fn fdw_script(spec: &FdwSpec) -> Result<String, String> {
         out.push_str(&format!("\n    OPTIONS ({options})"));
     }
     out.push_str(";\n\n");
-    if !matches!(kind, DbKind::Sqlite | DbKind::DuckDb) {
+    if kind != DbKind::Sqlite {
         let user_key = match kind {
             DbKind::MySql | DbKind::MariaDb | DbKind::SqlServer => "username",
             _ => "user",

@@ -517,7 +517,7 @@ impl GridFrame<'_> {
         let ncols = self.geo.cols.len();
         let page = self.geo.page_rows() as isize;
         let mut handled_space = false;
-        for ev in events {
+        for (at, ev) in events.iter().cloned().enumerate() {
             match ev {
                 Event::Key { key, pressed: true, modifiers: m, .. } => {
                     if m.command && m.alt {
@@ -618,7 +618,7 @@ impl GridFrame<'_> {
                     let cmd = ui.input(|i| i.modifiers.command || i.modifiers.ctrl);
                     if !cmd && !t.chars().all(char::is_control) {
                         if let Some((row, col)) = self.active() {
-                            self.start_edit(row, col, Some(t));
+                            self.start_edit(row, col, Some(t + &typed_after(&events[at + 1..])));
                         }
                         break;
                     }
@@ -641,7 +641,7 @@ impl GridFrame<'_> {
     pub(super) fn detached_keys(&mut self, ui: &Ui) {
         let events = ui.input(|i| i.events.clone());
         let mut handled_space = false;
-        for ev in events {
+        for (at, ev) in events.iter().cloned().enumerate() {
             match ev {
                 Event::Key { key, pressed: true, modifiers: m, .. } => match key {
                     Key::ArrowUp if m.command && m.alt => self.copy_from_adjacent(true),
@@ -684,7 +684,7 @@ impl GridFrame<'_> {
                     let cmd = ui.input(|i| i.modifiers.command || i.modifiers.ctrl);
                     if !cmd && !t.chars().all(char::is_control) {
                         if let Some((row, col)) = self.active() {
-                            self.start_edit(row, col, Some(t));
+                            self.start_edit(row, col, Some(t + &typed_after(&events[at + 1..])));
                         }
                         break;
                     }
@@ -1150,4 +1150,19 @@ pub(crate) fn next_sort(current: &[SortKey], col: usize, add: bool) -> Vec<SortK
     } else {
         next.into_iter().collect()
     }
+}
+
+/// Text typed after the first character in the same frame (fast typing, an
+/// input method, a key repeat): it goes into the cell that character opened,
+/// up to a key that would end the edit.
+fn typed_after(events: &[Event]) -> String {
+    let mut s = String::new();
+    for ev in events {
+        match ev {
+            Event::Text(t) => s.push_str(t),
+            Event::Key { key: Key::Enter | Key::Tab | Key::Escape | Key::ArrowUp | Key::ArrowDown | Key::ArrowLeft | Key::ArrowRight, pressed: true, .. } => break,
+            _ => {}
+        }
+    }
+    s
 }

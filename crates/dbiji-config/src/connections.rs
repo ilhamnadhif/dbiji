@@ -948,7 +948,7 @@ mod tests {
             paths.connections_file(),
             r#"{"version": 9, "connections": [
                 {"id": "a", "name": "ok", "kind": "mysql"},
-                {"id": "b", "name": "future", "kind": "oracle", "host": "ora"}
+                {"id": "b", "name": "future", "kind": "duckdb", "file_path": "/data/w.duckdb"}
             ], "folders": ["X"], "future_field": 1}"#,
         )
         .unwrap();
@@ -960,7 +960,7 @@ mod tests {
         store.save(&paths).unwrap();
         let text = std::fs::read_to_string(paths.connections_file()).unwrap();
         assert!(
-            text.contains("oracle"),
+            text.contains("duckdb"),
             "unparsed entry must be written back"
         );
     }

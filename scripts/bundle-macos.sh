@@ -2,7 +2,7 @@
 # Build DBiji.app and a DMG for macOS.
 #
 # Usage:
-#   scripts/bundle-macos.sh [--universal] [--features "duckdb"]
+#   scripts/bundle-macos.sh [--universal] [--features "<cargo features>"]
 #
 # Optional environment variables:
 #   DBIJI_SIGN_IDENTITY   "Developer ID Application: Name (TEAMID)" — sign with hardened runtime.

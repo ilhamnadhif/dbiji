@@ -1121,40 +1121,65 @@ pub(crate) fn map_type(source: DbKind, data_type: &str, kind: DataKind) -> Strin
             _ => default_type_for(kind).to_string(),
         },
         DbKind::ClickHouse => map_clickhouse(raw, kind),
-        DbKind::DuckDb => {
-            if let Some(inner) = raw.strip_suffix("[]") {
-                return format!("{}[]", map_type(DbKind::DuckDb, inner, DataKind::guess_from_type_name(inner)));
-            }
+        DbKind::Oracle => {
+            // `VARCHAR2(100 BYTE)` / `NUMBER(10,2)` / `TIMESTAMP(6) WITH TIME ZONE`
+            let size = args.as_deref().map(|a| a.split_whitespace().next().unwrap_or(a).to_string());
+            let zone = base.contains("time zone") || rest.contains("time zone");
             match base.as_str() {
-                "tinyint" | "int1" | "smallint" | "int2" | "utinyint" => "smallint".into(),
-                "integer" | "int" | "int4" | "signed" | "usmallint" => "integer".into(),
-                "bigint" | "int8" | "long" | "uinteger" => "bigint".into(),
-                "hugeint" | "uhugeint" => "numeric(39)".into(),
-                "ubigint" => "numeric(20)".into(),
-                "float" | "real" | "float4" => "real".into(),
-                "double" | "float8" => "double precision".into(),
-                "decimal" | "numeric" => with_args("numeric", &args),
-                "varchar" | "text" | "string" | "char" | "bpchar" => "text".into(),
-                "blob" | "bytea" | "binary" | "varbinary" => "bytea".into(),
-                "boolean" | "bool" | "logical" => "boolean".into(),
-                "date" => "date".into(),
-                "time" => "time".into(),
-                "timestamp" | "datetime" | "timestamp_us" => "timestamp".into(),
-                "timestamp_ms" => "timestamp(3)".into(),
-                "timestamp_s" => "timestamp(0)".into(),
-                "timestamp_ns" => "timestamp".into(),
-                "timestamptz" | "timestamp with time zone" => "timestamptz".into(),
-                "interval" => "interval".into(),
-                "uuid" => "uuid".into(),
+                "number" | "numeric" | "decimal" | "dec" => {
+                    let mut it = args.as_deref().unwrap_or("").split(',').map(|v| v.trim().parse::<i64>().ok());
+                    match (it.next().flatten(), it.next().flatten()) {
+                        (Some(p), None | Some(0)) if p <= 4 => "smallint".into(),
+                        (Some(p), None | Some(0)) if p <= 9 => "integer".into(),
+                        (Some(p), None | Some(0)) if p <= 18 => "bigint".into(),
+                        (Some(p), Some(sc)) if sc > 0 && sc <= p => format!("numeric({p},{sc})"),
+                        (Some(p), _) if p <= 1000 => format!("numeric({p})"),
+                        _ => "numeric".into(),
+                    }
+                }
+                "integer" | "int" | "smallint" => "numeric(38)".into(),
+                "float" | "binary_double" | "double precision" => "double precision".into(),
+                "binary_float" | "real" => "real".into(),
+                "varchar2" | "nvarchar2" | "varchar" => with_args("varchar", &size),
+                "char" | "nchar" => with_args("char", &size),
+                "clob" | "nclob" | "long" => "text".into(),
+                "blob" | "raw" | "long raw" | "bfile" => "bytea".into(),
+                "date" => "timestamp(0)".into(),
+                b if b.starts_with("timestamp") => {
+                    if zone {
+                        "timestamptz".into()
+                    } else {
+                        "timestamp".into()
+                    }
+                }
+                b if b.starts_with("interval") => "interval".into(),
                 "json" => "jsonb".into(),
-                "bit" | "bitstring" => "varbit".into(),
-                "enum" => "text".into(),
-                "struct" | "map" | "union" => "jsonb".into(),
-                b if b.starts_with("list") => "text[]".into(),
+                "xmltype" => "xml".into(),
+                "boolean" => "boolean".into(),
+                "rowid" | "urowid" | "vector" => "text".into(),
                 _ => default_type_for(kind).to_string(),
             }
         }
-        DbKind::Generic => {
+        DbKind::Cassandra => match base.as_str() {
+            "ascii" | "text" | "varchar" => "text".into(),
+            "bigint" | "counter" => "bigint".into(),
+            "int" => "integer".into(),
+            "smallint" | "tinyint" => "smallint".into(),
+            "varint" => "numeric".into(),
+            "decimal" => "numeric".into(),
+            "double" => "double precision".into(),
+            "float" => "real".into(),
+            "boolean" => "boolean".into(),
+            "blob" => "bytea".into(),
+            "date" => "date".into(),
+            "time" => "time".into(),
+            "timestamp" => "timestamptz".into(),
+            "uuid" | "timeuuid" => "uuid".into(),
+            "inet" => "inet".into(),
+            "duration" => "interval".into(),
+            _ => "jsonb".into(),
+        },
+        DbKind::Generic | DbKind::Redis | DbKind::MongoDb | DbKind::Elasticsearch | DbKind::Neo4j => {
             let k = DataKind::guess_from_type_name(raw);
             match k {
                 DataKind::Text if base.starts_with("varchar") || base.starts_with("character varying") => with_args("varchar", &args),
@@ -1517,9 +1542,15 @@ mod tests {
         assert_eq!(m(DbKind::ClickHouse, "LowCardinality(Nullable(String))"), "text");
         assert_eq!(m(DbKind::ClickHouse, "DateTime64(3, 'UTC')"), "timestamptz(3)");
         assert_eq!(m(DbKind::ClickHouse, "UInt64"), "numeric(20)");
-        assert_eq!(m(DbKind::DuckDb, "HUGEINT"), "numeric(39)");
-        assert_eq!(m(DbKind::DuckDb, "VARCHAR"), "text");
-        assert_eq!(m(DbKind::DuckDb, "INTEGER[]"), "integer[]");
+        assert_eq!(m(DbKind::Oracle, "NUMBER(10,2)"), "numeric(10,2)");
+        assert_eq!(m(DbKind::Oracle, "NUMBER(5)"), "integer");
+        assert_eq!(m(DbKind::Oracle, "NUMBER"), "numeric");
+        assert_eq!(m(DbKind::Oracle, "VARCHAR2(100 BYTE)"), "varchar(100)");
+        assert_eq!(m(DbKind::Oracle, "DATE"), "timestamp(0)");
+        assert_eq!(m(DbKind::Oracle, "TIMESTAMP(6) WITH TIME ZONE"), "timestamptz");
+        assert_eq!(m(DbKind::Oracle, "TIMESTAMP WITH LOCAL TIME ZONE"), "timestamptz");
+        assert_eq!(m(DbKind::Cassandra, "list<text>"), "jsonb");
+        assert_eq!(m(DbKind::Cassandra, "timestamp"), "timestamptz");
         assert_eq!(m(DbKind::Postgres, "varchar(10)"), "varchar(10)");
         assert_eq!(default_type_for(DataKind::Json), "jsonb");
         assert_eq!(default_type_for(DataKind::DateTimeTz), "timestamptz");

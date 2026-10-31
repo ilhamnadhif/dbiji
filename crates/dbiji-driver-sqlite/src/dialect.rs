@@ -376,6 +376,7 @@ pub static SQLITE_SYNTAX: SqlSyntax = SqlSyntax {
     batch_separator: None,
     delimiter_command: false,
     compound_blocks: true,
+    plsql_blocks: false,
     extra_ident_chars: "$",
     ident_case: IdentCase::Preserve,
     case_sensitive_names: false,

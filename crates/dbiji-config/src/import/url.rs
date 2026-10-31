@@ -10,8 +10,6 @@ const FILE_DB_EXTENSIONS: &[(&str, DbKind)] = &[
     (".sqlite", DbKind::Sqlite),
     (".db3", DbKind::Sqlite),
     (".db", DbKind::Sqlite),
-    (".duckdb", DbKind::DuckDb),
-    (".ddb", DbKind::DuckDb),
 ];
 
 /// Percent-decodes `s` (`+` is kept literally). Invalid escapes are kept as written.
@@ -71,7 +69,19 @@ fn kind_for_scheme(scheme: &str) -> Option<DbKind> {
         "mysql" | "mysqlx" | "mysql2" => DbKind::MySql,
         "mariadb" => DbKind::MariaDb,
         "sqlite" | "sqlite3" => DbKind::Sqlite,
-        "duckdb" => DbKind::DuckDb,
+        "oracle" | "oracledb" | "oracle+thin" => DbKind::Oracle,
+        "cassandra" | "scylla" | "scylladb" | "cql" => DbKind::Cassandra,
+        "redis" | "rediss" | "valkey" | "valkeys" => DbKind::Redis,
+        "mongodb" | "mongodb+srv" | "mongo" => DbKind::MongoDb,
+        "elasticsearch"
+        | "elasticsearch+https"
+        | "opensearch"
+        | "opensearch+https"
+        | "es"
+        | "es+https" => DbKind::Elasticsearch,
+        "neo4j" | "neo4j+s" | "neo4j+ssc" | "bolt" | "bolt+s" | "bolt+ssc" | "memgraph" => {
+            DbKind::Neo4j
+        }
         "sqlserver" | "mssql" | "microsoft" | "jtds" => DbKind::SqlServer,
         "clickhouse" | "ch" | "clickhouse+http" | "clickhouse+https" | "clickhouses" => {
             DbKind::ClickHouse
@@ -118,12 +128,14 @@ fn parse_bool(v: &str) -> Option<bool> {
 ///
 /// Supported: `postgres(ql)://`, `cockroachdb://`, `mysql://`, `mariadb://`,
 /// `sqlserver://` / `mssql://` (also with `;key=value` properties),
-/// `clickhouse://`, `duckdb://` / `duckdb:`, `sqlite:///abs/path`,
+/// `clickhouse://`, `oracle://`, `cassandra://`, `redis(s)://`,
+/// `mongodb(+srv)://`, `elasticsearch(+https)://`, `neo4j(+s)://` / `bolt://`,
+/// `sqlite:///abs/path`,
 /// `sqlite:relative`, `jdbc:` variants of all of them (`jdbc:postgresql://`,
 /// `jdbc:mysql://`, `jdbc:mariadb://`, `jdbc:sqlite:path`,
 /// `jdbc:sqlserver://h:p;databaseName=x;user=..;password=..`, `jdbc:clickhouse://`,
-/// `jdbc:duckdb:`) and plain file paths ending in `.db`, `.sqlite`,
-/// `.sqlite3`, `.db3`, `.duckdb`. Recognised query parameters: `sslmode` /
+/// `jdbc:oracle:thin:@//host:port/service`, `jdbc:oracle:thin:@host:port:SID`)
+/// and plain file paths ending in `.db`, `.sqlite`, `.sqlite3`, `.db3`. Recognised query parameters: `sslmode` /
 /// `ssl-mode` / `sslMode`, `ssl` / `useSSL`, `sslrootcert`, `sslcert`,
 /// `sslkey`, `application_name`, `options`, `connect_timeout`, `user`,
 /// `password`, `dbname`, `currentSchema` / `search_path`; others become driver
@@ -163,6 +175,9 @@ pub fn parse_connection_url(url: &str) -> DbResult<(ConnectionConfig, Option<Sec
     let rest = &body[scheme_end.unwrap_or(0) + 1..];
     if kind.is_file_based() {
         return parse_file_url(kind, rest);
+    }
+    if kind == DbKind::Oracle && !rest.starts_with("//") {
+        return parse_oracle_thin(rest);
     }
     // jTDS: jdbc:jtds:sqlserver://host:port/db;props
     let rest = if scheme.as_deref() == Some("jtds") {
@@ -229,6 +244,63 @@ fn parse_file_url(kind: DbKind, rest: &str) -> DbResult<(ConnectionConfig, Optio
     Ok((cfg, None))
 }
 
+/// Oracle JDBC thin URLs after `jdbc:oracle:`:
+/// `thin:[user/password]@[//]host[:port][/service]`, `thin:@host:port:SID`
+/// and `thin:@(DESCRIPTION=...)` (kept whole as the `connect_descriptor`
+/// property).
+fn parse_oracle_thin(rest: &str) -> DbResult<(ConnectionConfig, Option<Secret>)> {
+    let r = rest
+        .strip_prefix("thin:")
+        .or_else(|| rest.strip_prefix("oci:"))
+        .unwrap_or(rest);
+    let (creds, target) = r.rsplit_once('@').unwrap_or(("", r));
+    let mut cfg = ConnectionConfig::new(DbKind::Oracle, String::new());
+    let mut password = None;
+    if !creds.is_empty() {
+        let (u, p) = creds.split_once('/').unwrap_or((creds, ""));
+        cfg.user = Some(u.to_string()).filter(|u| !u.is_empty());
+        password = Some(Secret::from(p.to_string())).filter(|p| !p.is_empty());
+    }
+    let target = target.trim();
+    if target.starts_with('(') {
+        let value = |key: &str| {
+            let upper = target.to_ascii_uppercase();
+            let i = upper.find(&format!("({key}="))? + key.len() + 2;
+            let end = target[i..].find(')')? + i;
+            Some(target[i..end].trim().to_string())
+        };
+        cfg.host = value("HOST").unwrap_or_default();
+        cfg.port = value("PORT").and_then(|p| p.parse().ok());
+        cfg.database = value("SERVICE_NAME");
+        cfg.properties
+            .insert("connect_descriptor".into(), target.to_string());
+    } else {
+        let target = target.strip_prefix("//").unwrap_or(target);
+        let (hostport, service) = match target.split_once('/') {
+            Some((h, s)) => (h, Some(s)),
+            None => (target, None),
+        };
+        let parts: Vec<&str> = hostport.split(':').collect();
+        cfg.host = parts.first().copied().unwrap_or_default().to_string();
+        cfg.port = parts.get(1).and_then(|p| p.parse().ok());
+        if let Some(sid) = parts.get(2).filter(|s| !s.is_empty()) {
+            cfg.properties.insert("sid".into(), sid.to_string());
+        }
+        cfg.database = service
+            .map(|s| s.split('?').next().unwrap_or(s).to_string())
+            .filter(|s| !s.is_empty());
+    }
+    if cfg.host.is_empty() {
+        return Err(DbError::config("The URL does not contain a host"));
+    }
+    cfg.auth = AuthMethod::Password;
+    cfg.name = match cfg.database.as_ref().or(cfg.properties.get("sid")) {
+        Some(db) => format!("{db}@{}", cfg.host),
+        None => cfg.host.clone(),
+    };
+    Ok((cfg, password))
+}
+
 fn parse_network_url(
     kind: DbKind,
     rest: &str,
@@ -274,6 +346,7 @@ fn parse_network_url(
         }
     }
     let first_host = hostlist.split(',').next().unwrap_or("");
+    let more_hosts = hostlist.contains(',') && matches!(kind, DbKind::MongoDb | DbKind::Cassandra);
     let (mut host, mut port) = split_host_port(first_host)?;
     let mut instance = None;
     if kind == DbKind::SqlServer
@@ -371,9 +444,28 @@ fn parse_network_url(
                 (true, false, DbKind::SqlServer) => SslMode::VerifyFull,
                 (true, false, _) => SslMode::Require,
             };
-        } else if matches!(scheme, "clickhouse+https" | "clickhouses") {
+        } else if matches!(
+            scheme,
+            "clickhouse+https" | "clickhouses" | "rediss" | "valkeys" | "neo4j+ssc" | "bolt+ssc"
+        ) {
             cfg.ssl.mode = SslMode::Require;
+        } else if matches!(
+            scheme,
+            "mongodb+srv"
+                | "neo4j+s"
+                | "bolt+s"
+                | "elasticsearch+https"
+                | "opensearch+https"
+                | "es+https"
+        ) {
+            cfg.ssl.mode = SslMode::VerifyFull;
         }
+    }
+    if scheme == "mongodb+srv" {
+        cfg.properties.insert("srv".into(), "true".into());
+    }
+    if more_hosts {
+        cfg.properties.insert("hosts".into(), hostlist.to_string());
     }
     if host.is_empty() {
         return Err(DbError::config("The URL does not contain a host"));
@@ -477,7 +569,12 @@ fn scheme_for(kind: DbKind) -> &'static str {
         DbKind::SqlServer => "sqlserver",
         DbKind::ClickHouse => "clickhouse",
         DbKind::Sqlite => "sqlite",
-        DbKind::DuckDb => "duckdb",
+        DbKind::Oracle => "oracle",
+        DbKind::Cassandra => "cassandra",
+        DbKind::Redis => "redis",
+        DbKind::MongoDb => "mongodb",
+        DbKind::Elasticsearch => "elasticsearch",
+        DbKind::Neo4j => "neo4j",
         DbKind::Generic => "sql",
     }
 }
@@ -731,7 +828,7 @@ mod tests {
     }
 
     #[test]
-    fn clickhouse_and_duckdb() {
+    fn clickhouse_urls() {
         let (c, _) = parse("clickhouse://default:@ch.local:8123/logs");
         assert_eq!(c.kind, DbKind::ClickHouse);
         assert_eq!(c.database.as_deref(), Some("logs"));
@@ -739,12 +836,77 @@ mod tests {
         assert_eq!(c.ssl.mode, SslMode::Require);
         let (c, _) = parse("jdbc:clickhouse://ch:8443/db?ssl=true");
         assert_eq!(c.ssl.mode, SslMode::Require);
-        let (c, _) = parse("duckdb:///data/analytics.duckdb");
-        assert_eq!(c.kind, DbKind::DuckDb);
-        assert_eq!(c.file_path.as_deref(), Some("/data/analytics.duckdb"));
-        assert_eq!(c.auth, AuthMethod::None);
-        let (c, _) = parse("jdbc:duckdb:local.duckdb");
-        assert_eq!(c.file_path.as_deref(), Some("local.duckdb"));
+        assert!(parse_connection_url("duckdb:///data/analytics.duckdb").is_err());
+    }
+
+    #[test]
+    fn oracle_and_nosql_urls() {
+        let (c, pw) = parse("oracle://scott:tiger@ora.local:1521/FREEPDB1");
+        assert_eq!(
+            (c.kind, c.host.as_str(), c.port, c.database.as_deref()),
+            (DbKind::Oracle, "ora.local", Some(1521), Some("FREEPDB1"))
+        );
+        assert_eq!(
+            (c.user.as_deref(), pw.as_ref().map(|p| p.expose())),
+            (Some("scott"), Some("tiger"))
+        );
+        let (c, _) = parse("jdbc:oracle:thin:@//db.example.com:1522/sales.example.com");
+        assert_eq!(
+            (c.host.as_str(), c.port, c.database.as_deref()),
+            ("db.example.com", Some(1522), Some("sales.example.com"))
+        );
+        let (c, pw) = parse("jdbc:oracle:thin:hr/secret@db:1521:ORCL");
+        assert_eq!(
+            (c.host.as_str(), c.database.as_deref(), c.user.as_deref()),
+            ("db", None, Some("hr"))
+        );
+        assert_eq!(c.properties.get("sid").map(String::as_str), Some("ORCL"));
+        assert_eq!(pw.as_ref().map(|p| p.expose()), Some("secret"));
+        let (c, _) = parse(
+            "jdbc:oracle:thin:@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=h1)(PORT=1530))(CONNECT_DATA=(SERVICE_NAME=svc)))",
+        );
+        assert_eq!(
+            (c.host.as_str(), c.port, c.database.as_deref()),
+            ("h1", Some(1530), Some("svc"))
+        );
+        assert!(c.properties.contains_key("connect_descriptor"));
+
+        let (c, _) = parse("cassandra://cass:pw@n1:9042,n2:9042/shop");
+        assert_eq!(
+            (c.kind, c.host.as_str(), c.database.as_deref()),
+            (DbKind::Cassandra, "n1", Some("shop"))
+        );
+        assert_eq!(
+            c.properties.get("hosts").map(String::as_str),
+            Some("n1:9042,n2:9042")
+        );
+        let (c, pw) = parse("rediss://:s3cret@cache.example.com:6380/2");
+        assert_eq!(
+            (c.kind, c.port, c.database.as_deref(), c.user.as_deref()),
+            (DbKind::Redis, Some(6380), Some("2"), None)
+        );
+        assert_eq!(c.ssl.mode, SslMode::Require);
+        assert_eq!(pw.as_ref().map(|p| p.expose()), Some("s3cret"));
+        let (c, _) = parse(
+            "mongodb+srv://app:pw@cluster0.abcde.mongodb.net/shop?authSource=admin&retryWrites=true",
+        );
+        assert_eq!(
+            (c.kind, c.host.as_str(), c.database.as_deref()),
+            (DbKind::MongoDb, "cluster0.abcde.mongodb.net", Some("shop"))
+        );
+        assert_eq!(c.properties.get("srv").map(String::as_str), Some("true"));
+        assert_eq!(
+            c.properties.get("authSource").map(String::as_str),
+            Some("admin")
+        );
+        assert_eq!(c.ssl.mode, SslMode::VerifyFull);
+        let (c, _) = parse("neo4j+s://abc.databases.neo4j.io");
+        assert_eq!((c.kind, c.ssl.mode), (DbKind::Neo4j, SslMode::VerifyFull));
+        let (c, _) = parse("opensearch+https://admin@search.local:9200");
+        assert_eq!(
+            (c.kind, c.ssl.mode, c.user.as_deref()),
+            (DbKind::Elasticsearch, SslMode::VerifyFull, Some("admin"))
+        );
     }
 
     #[test]
@@ -766,16 +928,15 @@ mod tests {
         assert_eq!(c.file_path.as_deref(), Some(":memory:"));
         let (c, _) = parse("/Users/me/chinook.db");
         assert_eq!(c.kind, DbKind::Sqlite);
-        let (c, _) = parse("C:\\data\\warehouse.duckdb");
-        assert_eq!(c.kind, DbKind::DuckDb);
+        assert!(parse_connection_url("C:\\data\\warehouse.duckdb").is_err());
         let (c, _) = parse("./local.sqlite3");
         assert_eq!(c.file_path.as_deref(), Some("./local.sqlite3"));
     }
 
     #[test]
     fn errors_do_not_leak_passwords() {
-        let e = parse_connection_url("oracle://scott:tiger@ora:1521/xe").unwrap_err();
-        assert!(e.message.contains("scott:***@ora"), "{}", e.message);
+        let e = parse_connection_url("db2://scott:tiger@db2:50000/sample").unwrap_err();
+        assert!(e.message.contains("scott:***@db2"), "{}", e.message);
         assert!(!e.message.contains("tiger"));
         assert!(parse_connection_url("").is_err());
         assert!(parse_connection_url("postgres://u@:5432/db").is_err());
@@ -835,10 +996,10 @@ mod tests {
         let u = to_url(&file);
         assert_eq!(u, "sqlite:///var/data/my%20app.db");
         assert_eq!(parse(&u).0.file_path, file.file_path);
-        let mut rel = ConnectionConfig::new(DbKind::DuckDb, "d");
-        rel.file_path = Some("data/x.duckdb".into());
+        let mut rel = ConnectionConfig::new(DbKind::Sqlite, "d");
+        rel.file_path = Some("data/x.db".into());
         rel.read_only = true;
-        assert_eq!(to_url(&rel), "duckdb:data/x.duckdb?mode=ro");
+        assert_eq!(to_url(&rel), "sqlite:data/x.db?mode=ro");
     }
 
     #[test]

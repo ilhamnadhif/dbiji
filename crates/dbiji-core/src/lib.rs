@@ -26,7 +26,7 @@ pub mod rowstore;
 pub mod secret;
 pub mod value;
 
-pub use config::{ConnectionConfig, DbKind};
+pub use config::{ConnectionConfig, DbKind, QueryLanguage};
 pub use dialect::{DatabaseEdits, DatabaseProps, Dialect, NewDatabase, SqlSyntax};
 pub use driver::{CancelHandle, ConnectParams, Driver, ExecOptions, QueryCursor, ResultHeader, ServerMessage, Session, TransactionMode};
 pub use error::{DbError, DbResult, ErrorKind};

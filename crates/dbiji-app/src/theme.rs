@@ -320,7 +320,13 @@ pub fn brand_color(kind: dbiji_core::DbKind) -> Color32 {
         K::MariaDb => hex(0xC0765A),
         K::Sqlite => hex(0x0F80CC),
         K::SqlServer => hex(0xCC2927),
-        K::ClickHouse | K::DuckDb => dbiji_icons::GOLD,
+        K::ClickHouse => dbiji_icons::GOLD,
+        K::Oracle => hex(0xF80000),
+        K::Cassandra => hex(0x1287B1),
+        K::Redis => hex(0xDC382D),
+        K::MongoDb => hex(0x47A248),
+        K::Elasticsearch => hex(0x005571),
+        K::Neo4j => hex(0x4581C3),
         _ => dbiji_icons::SLATE,
     }
 }

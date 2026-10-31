@@ -196,7 +196,7 @@ impl Dialogs {
         if self.drivers_open {
             let mut open = true;
             let shown = egui::Window::new(format!("{} {}", icon::PLUGS, tr("Database drivers"))).open(&mut open).default_width(720.0).show(ctx, |ui| {
-                ui.label(tr("Drivers are built into DBiji (no downloads); network drivers are written in Rust, SQLite and DuckDB are embedded engines."));
+                ui.label(tr("Drivers are built into DBiji (no downloads) and written in Rust; SQLite is an embedded engine."));
                 ui.add_space(4.0);
                 let mut kinds = cx.conns.registry.kinds();
                 kinds.sort_by_key(|k| k.display_name());

@@ -17,8 +17,6 @@ path = "src/lib.rs"
 
 [features]
 default = []
-# Embedded DuckDB engine (adds ~30 MB to the binary): `cargo build --release --features duckdb`.
-duckdb = ["dep:dbiji-driver-duckdb"]
 
 [dependencies]
 dbiji-core.workspace = true
@@ -36,8 +34,9 @@ dbiji-driver-mysql.workspace = true
 dbiji-driver-postgres.workspace = true
 dbiji-driver-mssql.workspace = true
 dbiji-driver-clickhouse.workspace = true
+dbiji-driver-oracle.workspace = true
+dbiji-driver-cassandra.workspace = true
 dbiji-driver-sqlite.workspace = true
-dbiji-driver-duckdb = { workspace = true, optional = true }
 dbiji-transfer.workspace = true
 eframe.workspace = true
 egui.workspace = true

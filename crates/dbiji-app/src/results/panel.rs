@@ -166,16 +166,18 @@ fn select_by_key(d: &dyn Dialect, table: &ObjectRef, columns: &[(usize, String, 
     d.select_table(table, Some(&cols), Some(&conds.join(" AND ")), None, Some(1))
 }
 
+/// `SELECT * FROM table` (a table's data tab): every column without a
+/// source of its own comes from the table (drivers that cannot tell, Oracle).
+fn table_sources(columns: &mut [dbiji_core::value::ColumnMeta], table: Option<&ObjectRef>) {
+    let Some(t) = table else { return };
+    for c in columns.iter_mut().filter(|c| c.source.is_none()) {
+        c.source = Some(dbiji_core::value::ColumnSource { database: t.database.clone(), schema: t.schema.clone(), table: t.name.clone(), column: c.name.clone() });
+    }
+}
+
 impl ResultPanel {
     pub fn new(conn: String, title: String, mut src: ResultSource, table: Option<ObjectRef>) -> Self {
-        if let Some(t) = &table {
-            // `SELECT * FROM table`: every column comes from the table.
-            for c in &mut src.columns {
-                if c.source.is_none() {
-                    c.source = Some(dbiji_core::value::ColumnSource { database: t.database.clone(), schema: t.schema.clone(), table: t.name.clone(), column: c.name.clone() });
-                }
-            }
-        }
+        table_sources(&mut src.columns, table.as_ref());
         let mut model = ResultModel::new(src.columns.clone(), src.store.clone());
         model.fetch.has_more = src.has_more();
         model.fetch.fetching = src.is_fetching();
@@ -275,6 +277,7 @@ impl ResultPanel {
             self.columns_seen = self.src.columns_version;
             self.editability = None;
             self.foreign_keys.clear();
+            table_sources(&mut self.src.columns, self.table.as_ref());
             self.model.reset(self.src.columns.clone(), self.src.store.clone());
             if let Some(layout) = self.next_layout.take() {
                 self.view.grid = layout;
@@ -289,6 +292,7 @@ impl ResultPanel {
             self.view.grid = layout;
         }
         if !Arc::ptr_eq(self.model.store(), &self.src.store) {
+            table_sources(&mut self.src.columns, self.table.as_ref());
             self.model.reset(self.src.columns.clone(), self.src.store.clone());
             self.model.set_foreign_keys(self.foreign_keys.clone());
             if let Some(e) = &self.editability {

@@ -688,8 +688,8 @@ fn cancel_stops_a_slow_query_on_the_server() {
     assert_eq!(h.query("SELECT 1")[0][0], "1", "the session still works");
 }
 
-/// SQL Server (`datetimeoffset`), ClickHouse (`DateTime`) and DuckDB
-/// (`timestamptz`) show the same instant in the computer's time zone too.
+/// SQL Server (`datetimeoffset`) and ClickHouse (`DateTime`) show the same
+/// instant in the computer's time zone too.
 #[test]
 fn other_servers_show_dates_in_the_computer_time_zone() {
     use chrono::TimeZone;
@@ -698,10 +698,6 @@ fn other_servers_show_dates_in_the_computer_time_zone() {
     let with_offset = dbiji_core::Value::DateTimeTz(local.fixed_offset()).to_text().into_owned();
     let naive = local.format("%Y-%m-%d %H:%M:%S").to_string();
     let mut cases = Vec::new();
-    // DuckDB is an optional feature of the build.
-    if dbiji_app::driver_registry().get(dbiji_core::DbKind::DuckDb).is_some() {
-        cases.push(("duckdb", "duckdb://:memory:".to_string(), "SELECT TIMESTAMPTZ '2024-01-02 03:04:05+00'", with_offset.clone()));
-    }
     if let Some(url) = std::env::var("DBIJI_TEST_MSSQL").ok().filter(|u| !u.trim().is_empty()) {
         cases.push(("mssql", url, "SELECT CAST('2024-01-02T03:04:05+00:00' AS datetimeoffset)", with_offset.clone()));
     }

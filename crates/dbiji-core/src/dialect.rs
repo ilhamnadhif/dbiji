@@ -65,6 +65,9 @@ pub struct SqlSyntax {
     /// dollar quoting (MySQL / SQLite triggers / T-SQL), so `;` inside them
     /// must not split statements.
     pub compound_blocks: bool,
+    /// PL/SQL scripts (Oracle): `DECLARE ... BEGIN ... END;` blocks stay whole
+    /// and a `/` line ends a routine body (with `batch_separator` `/`).
+    pub plsql_blocks: bool,
     /// Characters allowed inside unquoted identifiers besides `[A-Za-z0-9_]`.
     pub extra_ident_chars: &'static str,
     pub ident_case: IdentCase,
@@ -95,6 +98,7 @@ impl SqlSyntax {
             batch_separator: None,
             delimiter_command: false,
             compound_blocks: false,
+            plsql_blocks: false,
             extra_ident_chars: "",
             ident_case: IdentCase::Upper,
             case_sensitive_names: false,
@@ -389,7 +393,7 @@ pub trait Dialect: Send + Sync + 'static {
     }
 
     /// `CREATE DATABASE`; `None` when the product has no databases to
-    /// create on the server (SQLite and DuckDB use files).
+    /// create on the server (SQLite uses files).
     fn create_database_sql(&self, db: &NewDatabase) -> Option<String> {
         let name = db.name.trim();
         if name.is_empty() {
@@ -424,7 +428,10 @@ pub trait Dialect: Send + Sync + 'static {
                 }
             }
             DbKind::CockroachDb | DbKind::ClickHouse => {}
-            DbKind::Sqlite | DbKind::DuckDb | DbKind::Generic => return None,
+            // Oracle creates pluggable databases with DBA tooling, Cassandra
+            // has keyspaces (schemas) only and the document / key-value
+            // stores create databases implicitly.
+            DbKind::Sqlite | DbKind::Oracle | DbKind::Cassandra | DbKind::Redis | DbKind::MongoDb | DbKind::Elasticsearch | DbKind::Neo4j | DbKind::Generic => return None,
         }
         Some(sql)
     }
@@ -559,7 +566,6 @@ pub trait Dialect: Send + Sync + 'static {
                 }
                 Some(sql)
             }
-            DbKind::DuckDb => Some(format!("CREATE SCHEMA {}", self.quote_ident(name))),
             _ => None,
         }
     }

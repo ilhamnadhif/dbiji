@@ -16,7 +16,12 @@ fn svg(kind: DbKind) -> Option<(&'static str, bool)> {
         DbKind::SqlServer => (include_str!("../assets/db/sqlserver.svg"), true),
         DbKind::CockroachDb => (include_str!("../assets/db/cockroachlabs.svg"), false),
         DbKind::ClickHouse => (include_str!("../assets/db/clickhouse.svg"), true),
-        DbKind::DuckDb => (include_str!("../assets/db/duckdb.svg"), true),
+        DbKind::Oracle => (include_str!("../assets/db/oracle.svg"), false),
+        DbKind::Cassandra => (include_str!("../assets/db/cassandra.svg"), false),
+        DbKind::Redis => (include_str!("../assets/db/redis.svg"), true),
+        DbKind::MongoDb => (include_str!("../assets/db/mongodb.svg"), true),
+        DbKind::Elasticsearch => (include_str!("../assets/db/elasticsearch.svg"), false),
+        DbKind::Neo4j => (include_str!("../assets/db/neo4j.svg"), false),
         DbKind::Generic => return None,
     })
 }

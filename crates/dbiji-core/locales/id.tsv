@@ -282,7 +282,7 @@ Select none	Kosongkan pilihan
 Size:	Ukuran:
 Skip	Lewati
 Statistics	Statistik
-Supported: postgres://, mysql://, mariadb://, sqlserver://, clickhouse://, sqlite:, duckdb:, jdbc:…	Didukung: postgres://, mysql://, mariadb://, sqlserver://, clickhouse://, sqlite:, duckdb:, jdbc:…
+Supported: postgres://, mysql://, mariadb://, sqlserver://, oracle://, clickhouse://, cassandra://, sqlite:, jdbc:…	Didukung: postgres://, mysql://, mariadb://, sqlserver://, oracle://, clickhouse://, cassandra://, sqlite:, jdbc:…
 Table	Tabel
 The connection is closed.	Koneksi ditutup.
 The data editor is not available.	Editor data tidak tersedia.
@@ -1398,7 +1398,7 @@ Dictionary	Kamus data
 Diff diagram	Diagram perbedaan
 Diff {}	Perbedaan {}
 Driver	Driver
-Drivers are built into DBiji (no downloads); network drivers are written in Rust, SQLite and DuckDB are embedded engines.	Driver sudah terpasang di DBiji (tanpa unduhan); driver jaringan ditulis dengan Rust, SQLite dan DuckDB adalah engine tertanam.
+Drivers are built into DBiji (no downloads) and written in Rust; SQLite is an embedded engine.	Driver sudah terpasang di DBiji (tanpa unduhan) dan ditulis dengan Rust; SQLite adalah engine tertanam.
 ER diagram of the target with the differences highlighted	Diagram ER target dengan perbedaan disorot
 Network profile	Profil jaringan
 Network profiles	Profil jaringan
@@ -2552,7 +2552,7 @@ Connection types (development, test, production) colour the connection and can r
 In manual commit mode, Database › Pending transactions lists every connection with uncommitted changes.	Dalam mode commit manual, Database › Transaksi tertunda menampilkan semua koneksi dengan perubahan yang belum di-commit.
 Navigator › Link with editor selects the table of the active tab in the tree.	Navigator › Tautkan dengan editor memilih tabel dari tab aktif di pohon navigator.
 Fold long statements and block comments with the markers in the gutter; the SQL editor menu collapses or expands them all.	Lipat statement panjang dan komentar blok dengan penanda di gutter; menu editor SQL bisa melipat atau membuka semuanya.
-Drag a .sql file onto the window to open it; drop a SQLite or DuckDB file to add it as a connection.	Seret file .sql ke jendela untuk membukanya; jatuhkan file SQLite atau DuckDB untuk menambahkannya sebagai koneksi.
+Drag a .sql file onto the window to open it; drop a SQLite file to add it as a connection.	Seret file .sql ke jendela untuk membukanya; jatuhkan file SQLite untuk menambahkannya sebagai koneksi.
 Tools › Backup and Restore use pg_dump, mysqldump or sqlite3; Scope › All databases runs pg_dumpall.	Alat › Backup dan Restore memakai pg_dump, mysqldump, atau sqlite3; Cakupan › Semua database menjalankan pg_dumpall.
 Export results to CSV, JSON, Excel, SQL INSERT statements, Markdown and more from the results toolbar.	Ekspor hasil ke CSV, JSON, Excel, statement SQL INSERT, Markdown, dan lainnya dari toolbar hasil.
 The ER diagram of a schema opens from the navigator context menu; drag tables to arrange it.	Diagram ER sebuah skema dibuka dari menu konteks navigator; seret tabel untuk menatanya.
@@ -2806,3 +2806,10 @@ Tab: grid · ← →: rows · ↑ ↓: fields · type, Enter: edit · ⌘C: copy
 Tab: grid · ↑ ↓: fields · type, Enter: edit · ⌘C: copy	Tab: grid · ↑ ↓: kolom · ketik, Enter: ubah · ⌘C: salin
 Type, Enter or double-click to edit	Ketik, Enter, atau klik ganda untuk mengubah
 DBiji could not open its window: {}\n\nIt needs OpenGL 2.0 or later; updating the graphics driver usually helps.	DBiji tidak bisa membuka jendelanya: {}\n\nDBiji membutuhkan OpenGL 2.0 atau lebih baru; memperbarui driver grafis biasanya membantu.
+Compatible	Kompatibel
+Connects with the {} driver	Terhubung dengan driver {}
+Connect by	Terhubung lewat
+Service name	Nama service
+Keyspace	Keyspace
+Database number	Nomor database
+Keyspaces	Keyspace

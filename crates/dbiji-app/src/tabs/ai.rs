@@ -46,7 +46,7 @@ pub const SAMPLE_ROWS: u64 = 5;
 const SAMPLE_VALUE_CHARS: usize = 120;
 
 /// Fence tags treated as SQL (same list as `dbiji_ai::extract_sql_blocks`).
-const SQL_TAGS: &[&str] = &["sql", "postgresql", "postgres", "pgsql", "plpgsql", "mysql", "mariadb", "sqlite", "tsql", "t-sql", "mssql", "plsql", "clickhouse", "duckdb"];
+const SQL_TAGS: &[&str] = &["sql", "postgresql", "postgres", "pgsql", "plpgsql", "mysql", "mariadb", "sqlite", "tsql", "t-sql", "mssql", "plsql", "oracle", "clickhouse", "cql"];
 
 // ------------------------------------------------------------ quick actions
 

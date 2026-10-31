@@ -502,16 +502,16 @@ fn zone_abbreviation() -> Option<String> {
 
 /// Set the session time zone on `params` unless the connection's driver
 /// properties set one: a zone name for PostgreSQL, CockroachDB and ClickHouse
-/// (23.6+), an offset for MySQL / MariaDB; SQL Server and DuckDB convert
-/// their `datetimeoffset` / `timestamptz` values (`local` or `utc`). SQLite
-/// has no time zone.
+/// (23.6+) and Oracle, an offset for MySQL / MariaDB; SQL Server converts
+/// its `datetimeoffset` values (`local` or `utc`). SQLite has no time zone.
 pub fn apply_time_zone(params: &mut ConnectParams, tz: &SessionTimeZone) {
     let convert = if tz.local { "local" } else { "utc" };
     let (key, value, names): (&str, &str, &[&str]) = match params.kind {
         DbKind::Postgres | DbKind::CockroachDb => ("timezone", &tz.name, &["timezone"]),
         DbKind::MySql | DbKind::MariaDb => ("time_zone", &tz.offset, &["time_zone", "timezone", "servertimezone"]),
         DbKind::ClickHouse => ("time_zone", &tz.name, &["time_zone", "setting.session_timezone"]),
-        DbKind::SqlServer | DbKind::DuckDb => ("time_zone", convert, &["time_zone"]),
+        DbKind::Oracle => ("time_zone", &tz.name, &["time_zone"]),
+        DbKind::SqlServer => ("time_zone", convert, &["time_zone"]),
         _ => return,
     };
     if params.properties.keys().any(|k| names.contains(&k.to_ascii_lowercase().as_str())) {
@@ -562,7 +562,7 @@ async fn connect_task(
         apply_time_zone(&mut params, tz);
     }
     // An in-memory database is one per connection, not one per session (editor, data tab, navigator).
-    if matches!(cfg.kind, DbKind::Sqlite | DbKind::DuckDb) && params.file_path.as_deref().is_some_and(|p| p.as_os_str() == ":memory:") {
+    if cfg.kind == DbKind::Sqlite && params.file_path.as_deref().is_some_and(|p| p.as_os_str() == ":memory:") {
         params.file_path = Some(PathBuf::from(format!(":memory:{}", cfg.id)));
     }
     let mut tunnel = None;
@@ -1122,7 +1122,7 @@ mod tests {
         assert_eq!(params(DbKind::CockroachDb, &[]).get("timezone").map(String::as_str), Some("Asia/Jakarta"));
         assert_eq!(params(DbKind::ClickHouse, &[]).get("time_zone").map(String::as_str), Some("Asia/Jakarta"));
         assert_eq!(params(DbKind::SqlServer, &[]).get("time_zone").map(String::as_str), Some("local"));
-        assert_eq!(params(DbKind::DuckDb, &[]).get("time_zone").map(String::as_str), Some("local"));
+        assert_eq!(params(DbKind::Oracle, &[]).get("time_zone").map(String::as_str), Some("Asia/Jakarta"));
         assert!(params(DbKind::Sqlite, &[]).is_empty());
     }
 

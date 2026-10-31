@@ -173,34 +173,59 @@ pub fn common_types(kind: DbKind) -> &'static [&'static str] {
             "LowCardinality(String)",
             "Array(String)",
         ],
-        DbKind::DuckDb => &[
+        DbKind::Oracle => &[
+            "NUMBER",
             "INTEGER",
-            "BIGINT",
-            "SMALLINT",
-            "TINYINT",
-            "HUGEINT",
-            "DOUBLE",
-            "REAL",
-            "DECIMAL",
-            "BOOLEAN",
-            "VARCHAR",
+            "BINARY_FLOAT",
+            "BINARY_DOUBLE",
+            "VARCHAR2",
+            "NVARCHAR2",
+            "CHAR",
+            "CLOB",
+            "NCLOB",
             "BLOB",
-            "UUID",
+            "RAW",
             "DATE",
-            "TIME",
             "TIMESTAMP",
-            "TIMESTAMPTZ",
-            "INTERVAL",
+            "TIMESTAMP WITH TIME ZONE",
+            "INTERVAL DAY TO SECOND",
             "JSON",
+            "BOOLEAN",
         ],
-        DbKind::Generic => &["INTEGER", "BIGINT", "SMALLINT", "DECIMAL", "REAL", "DOUBLE PRECISION", "BOOLEAN", "VARCHAR", "CHAR", "CLOB", "BLOB", "DATE", "TIME", "TIMESTAMP"],
+        DbKind::Cassandra => &[
+            "text",
+            "int",
+            "bigint",
+            "smallint",
+            "tinyint",
+            "varint",
+            "decimal",
+            "double",
+            "float",
+            "boolean",
+            "uuid",
+            "timeuuid",
+            "timestamp",
+            "date",
+            "time",
+            "blob",
+            "inet",
+            "counter",
+            "list<text>",
+            "set<text>",
+            "map<text, text>",
+        ],
+        // The table designer is offered for SQL connections only.
+        DbKind::Redis | DbKind::MongoDb | DbKind::Elasticsearch | DbKind::Neo4j | DbKind::Generic => {
+            &["INTEGER", "BIGINT", "SMALLINT", "DECIMAL", "REAL", "DOUBLE PRECISION", "BOOLEAN", "VARCHAR", "CHAR", "CLOB", "BLOB", "DATE", "TIME", "TIMESTAMP"]
+        }
     }
 }
 
 /// Length offered when a type that needs one is picked.
 fn default_length(type_text: &str) -> Option<&'static str> {
     match type_text.trim().to_ascii_lowercase().as_str() {
-        "varchar" | "nvarchar" | "varbinary" | "character varying" => Some("255"),
+        "varchar" | "nvarchar" | "varbinary" | "character varying" | "varchar2" | "nvarchar2" => Some("255"),
         "decimal" | "numeric" => Some("10,2"),
         "fixedstring" => Some("16"),
         "datetime64" => Some("3"),
@@ -216,18 +241,19 @@ fn new_column_types(kind: DbKind) -> ((&'static str, &'static str), (&'static st
         DbKind::Sqlite => (("INTEGER", ""), ("TEXT", "")),
         DbKind::SqlServer => (("int", ""), ("nvarchar", "255")),
         DbKind::ClickHouse => (("UInt64", ""), ("String", "")),
-        DbKind::DuckDb => (("INTEGER", ""), ("VARCHAR", "")),
-        DbKind::Generic => (("INTEGER", ""), ("VARCHAR", "255")),
+        DbKind::Oracle => (("NUMBER", "10"), ("VARCHAR2", "255")),
+        DbKind::Cassandra => (("int", ""), ("text", "")),
+        DbKind::Redis | DbKind::MongoDb | DbKind::Elasticsearch | DbKind::Neo4j | DbKind::Generic => (("INTEGER", ""), ("VARCHAR", "255")),
     }
 }
 
 fn supports_auto_increment(kind: DbKind) -> bool {
-    !matches!(kind, DbKind::ClickHouse | DbKind::DuckDb)
+    !matches!(kind, DbKind::ClickHouse | DbKind::Cassandra)
 }
 
 /// DDL runs in one transaction (all or nothing).
 fn transactional_ddl(kind: DbKind) -> bool {
-    matches!(kind, DbKind::Postgres | DbKind::Sqlite | DbKind::SqlServer | DbKind::DuckDb)
+    matches!(kind, DbKind::Postgres | DbKind::Sqlite | DbKind::SqlServer)
 }
 
 /// Table options offered in the options page.

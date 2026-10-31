@@ -263,14 +263,16 @@ impl QueryModel {
         if let Some(n) = self.limit {
             match kind {
                 DbKind::SqlServer => {}
-                DbKind::Generic => return dialect.limit_query(&sql, n, 0),
+                DbKind::Generic | DbKind::Oracle => return dialect.limit_query(&sql, n, 0),
                 DbKind::Postgres
                 | DbKind::CockroachDb
                 | DbKind::MySql
                 | DbKind::MariaDb
                 | DbKind::Sqlite
-                | DbKind::DuckDb
-                | DbKind::ClickHouse => sql.push_str(&format!("\nLIMIT {n}")),
+                | DbKind::ClickHouse
+                | DbKind::Cassandra => sql.push_str(&format!("\nLIMIT {n}")),
+                // The visual builder is not offered for these.
+                DbKind::Redis | DbKind::MongoDb | DbKind::Elasticsearch | DbKind::Neo4j => {}
             }
         }
         sql
